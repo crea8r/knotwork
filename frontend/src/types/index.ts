@@ -30,6 +30,7 @@ export interface Graph {
 export interface GraphDefinition {
   nodes: NodeDef[]
   edges: EdgeDef[]
+  entry_point?: string | null
 }
 
 export interface NodeDef {

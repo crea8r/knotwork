@@ -1,9 +1,11 @@
-import { useState } from 'react'
+import { useId, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { Play, Plus, Save } from 'lucide-react'
+import { MessageSquare, Play, Plus, Save } from 'lucide-react'
 import { useGraph, useSaveGraphVersion } from '@/api/graphs'
 import { useTriggerRun } from '@/api/runs'
 import GraphCanvas from '@/components/canvas/GraphCanvas'
+import NodeConfigPanel from '@/components/designer/NodeConfigPanel'
+import DesignerChat from '@/components/designer/DesignerChat'
 import { useCanvasStore } from '@/store/canvas'
 import { useAuthStore } from '@/store/auth'
 import type { NodeDef, NodeType, GraphDefinition } from '@/types'
@@ -34,11 +36,15 @@ export default function GraphDetailPage() {
   const storeDefinition = useCanvasStore((s) => s.definition)
   const setGraph = useCanvasStore((s) => s.setGraph)
 
+  const sessionId = useId()
   const [inputJson, setInputJson] = useState('{}')
   const [inputError, setInputError] = useState('')
   const [addingNode, setAddingNode] = useState(false)
   const [newNodeName, setNewNodeName] = useState('')
   const [newNodeType, setNewNodeType] = useState<NodeType>('llm_agent')
+  const [showChat, setShowChat] = useState(false)
+  const updateNodeConfig = useCanvasStore(s => s.updateNodeConfig)
+  const removeNode = useCanvasStore(s => s.removeNode)
 
   if (isLoading) return <p className="p-8 text-gray-400 text-sm">Loading…</p>
   if (!graph) return <p className="p-8 text-red-500 text-sm">Graph not found.</p>
@@ -95,6 +101,12 @@ export default function GraphDetailPage() {
             </button>
           )}
           <button
+            onClick={() => setShowChat(v => !v)}
+            className={`flex items-center gap-1.5 px-3 py-2 border rounded-lg text-sm hover:bg-gray-50 ${showChat ? 'border-blue-400 text-blue-600' : 'border-gray-300 text-gray-700'}`}
+          >
+            <MessageSquare size={14} /> Designer
+          </button>
+          <button
             onClick={() => setAddingNode((v) => !v)}
             className="flex items-center gap-1.5 px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-700 hover:bg-gray-50"
           >
@@ -138,26 +150,42 @@ export default function GraphDetailPage() {
         </form>
       )}
 
-      {/* Canvas + side panel */}
+      {/* Canvas + side panels */}
       <div className="flex flex-1 overflow-hidden">
+        {/* Designer chat (left, collapsible) */}
+        {showChat && (
+          <div className="w-72 border-r border-gray-200 bg-white flex flex-col">
+            <div className="px-3 py-2 border-b text-xs font-medium text-gray-500 uppercase">Designer</div>
+            <DesignerChat graphId={graphId!} sessionId={sessionId} />
+          </div>
+        )}
+
+        {/* Canvas */}
         <div className="flex-1 p-4">
           <GraphCanvas definition={definition} selectedNodeId={selectedNodeId} onSelectNode={selectNode} />
         </div>
-        {selectedNodeId && (
-          <div className="w-72 border-l border-gray-200 p-4 bg-white overflow-y-auto">
-            {(() => {
-              const node = definition.nodes.find((n: { id: string }) => n.id === selectedNodeId)
-              if (!node) return null
-              return (
-                <>
-                  <h2 className="font-medium text-gray-900 mb-1">{node.name}</h2>
-                  <p className="text-xs text-gray-500 mb-3 capitalize">{node.type.replace('_', ' ')}</p>
-                  <pre className="text-xs bg-gray-50 rounded p-2 overflow-auto">{JSON.stringify(node.config, null, 2)}</pre>
-                </>
-              )
-            })()}
-          </div>
-        )}
+
+        {/* Node config panel (right) */}
+        {selectedNodeId && (() => {
+          const node = definition.nodes.find((n: NodeDef) => n.id === selectedNodeId)
+          if (!node) return null
+          return (
+            <div className="w-80 border-l border-gray-200 bg-white overflow-y-auto">
+              <NodeConfigPanel
+                node={node}
+                allNodes={definition.nodes}
+                onConfigChange={(nodeId, patch) => {
+                  if (!isDirty) setGraph(graphId!, serverDef)
+                  updateNodeConfig(nodeId, patch)
+                }}
+                onRemove={(nodeId) => {
+                  removeNode(nodeId)
+                  selectNode(null)
+                }}
+              />
+            </div>
+          )
+        })()}
       </div>
 
       {/* Bottom bar */}

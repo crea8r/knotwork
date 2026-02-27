@@ -6,7 +6,8 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from knotwork.graphs.models import Graph, GraphVersion
-from knotwork.graphs.schemas import GraphCreate, GraphVersionCreate
+from sqlalchemy import delete as sql_delete
+from knotwork.graphs.schemas import GraphCreate, GraphUpdate, GraphVersionCreate
 
 
 async def list_graphs(db: AsyncSession, workspace_id: UUID) -> list[Graph]:
@@ -57,6 +58,29 @@ async def create_graph(
     await db.commit()
     await db.refresh(graph)
     return graph
+
+
+async def update_graph(
+    db: AsyncSession, graph_id: UUID, data: GraphUpdate
+) -> Graph | None:
+    graph = await db.get(Graph, graph_id)
+    if graph is None:
+        return None
+    for field, value in data.model_dump(exclude_none=True).items():
+        setattr(graph, field, value)
+    await db.commit()
+    await db.refresh(graph)
+    return graph
+
+
+async def delete_graph(db: AsyncSession, graph_id: UUID) -> bool:
+    graph = await db.get(Graph, graph_id)
+    if graph is None:
+        return False
+    await db.execute(sql_delete(GraphVersion).where(GraphVersion.graph_id == graph_id))
+    await db.delete(graph)
+    await db.commit()
+    return True
 
 
 async def save_version(

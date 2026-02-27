@@ -28,6 +28,30 @@ class GraphDefinitionSchema(BaseModel):
     entry_point: str | None = None
 
 
+class GraphUpdate(BaseModel):
+    name: str | None = None
+    description: str | None = None
+    status: str | None = None
+    default_model: str | None = None
+
+
+class DesignChatRequest(BaseModel):
+    session_id: str
+    message: str
+    graph_id: str
+
+
+class DesignChatResponse(BaseModel):
+    reply: str
+    graph_delta: dict
+    questions: list[str]
+
+
+class ImportMdRequest(BaseModel):
+    content: str
+    name: str
+
+
 class GraphCreate(BaseModel):
     name: str
     description: str | None = None

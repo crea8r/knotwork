@@ -7,6 +7,15 @@
 import { create } from 'zustand'
 import type { GraphDefinition, NodeDef, EdgeDef } from '@/types'
 
+export interface GraphDelta {
+  add_nodes?: NodeDef[]
+  update_nodes?: Array<{ id: string; name?: string; config?: Record<string, unknown> }>
+  remove_nodes?: string[]
+  add_edges?: EdgeDef[]
+  remove_edges?: string[]
+  set_entry_point?: string
+}
+
 interface CanvasState {
   graphId: string | null
   definition: GraphDefinition
@@ -14,7 +23,7 @@ interface CanvasState {
   isDirty: boolean
 
   setGraph: (graphId: string, definition: GraphDefinition) => void
-  applyDelta: (delta: { nodes?: Array<{ op: string; node: NodeDef }>; edges?: Array<{ op: string; edge: EdgeDef }> }) => void
+  applyDelta: (delta: GraphDelta) => void
   selectNode: (nodeId: string | null) => void
   updateNodeConfig: (nodeId: string, config: Record<string, unknown>) => void
   addNode: (node: NodeDef) => void
@@ -35,10 +44,37 @@ export const useCanvasStore = create<CanvasState>((set) => ({
   setGraph: (graphId, definition) =>
     set({ graphId, definition, selectedNodeId: null, isDirty: false }),
 
-  applyDelta: (_delta) =>
+  applyDelta: (delta) =>
     set((state) => {
-      // TODO: implement delta application (add/remove/update nodes and edges)
-      return { ...state, isDirty: true }
+      let { nodes, edges } = state.definition
+      let entry_point = state.definition.entry_point
+
+      if (delta.add_nodes?.length) {
+        nodes = [...nodes, ...delta.add_nodes]
+      }
+      if (delta.update_nodes?.length) {
+        nodes = nodes.map(n => {
+          const u = delta.update_nodes!.find(x => x.id === n.id)
+          if (!u) return n
+          return { ...n, ...(u.name ? { name: u.name } : {}), config: { ...n.config, ...u.config } }
+        })
+      }
+      if (delta.remove_nodes?.length) {
+        const removed = new Set(delta.remove_nodes)
+        nodes = nodes.filter(n => !removed.has(n.id))
+        edges = edges.filter(e => !removed.has(e.source) && !removed.has(e.target))
+      }
+      if (delta.add_edges?.length) {
+        edges = [...edges, ...delta.add_edges]
+      }
+      if (delta.remove_edges?.length) {
+        const removedEdges = new Set(delta.remove_edges)
+        edges = edges.filter(e => !removedEdges.has(e.id))
+      }
+      if (delta.set_entry_point) {
+        entry_point = delta.set_entry_point
+      }
+      return { definition: { nodes, edges, entry_point }, isDirty: true }
     }),
 
   selectNode: (nodeId) => set({ selectedNodeId: nodeId }),
