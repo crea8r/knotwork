@@ -1,8 +1,10 @@
+import { useEffect, useRef, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { useRun, useRunNodes } from '@/api/runs'
+import { useSubmitRating } from '@/api/ratings'
 import { useGraph } from '@/api/graphs'
 import GraphCanvas from '@/components/canvas/GraphCanvas'
-import type { NodeStatus } from '@/types'
+import type { NodeStatus, RunNodeState } from '@/types'
 import { useAuthStore } from '@/store/auth'
 
 const DEV_WORKSPACE = import.meta.env.VITE_DEV_WORKSPACE_ID ?? 'dev-workspace'
@@ -25,21 +27,93 @@ const STATUS_COLOR: Record<string, string> = {
   stopped: 'text-gray-400',
 }
 
+const TERMINAL = new Set(['completed', 'failed', 'stopped'])
+
+function StarRating({
+  workspaceId,
+  runId,
+  nodeState,
+}: {
+  workspaceId: string
+  runId: string
+  nodeState: RunNodeState
+}) {
+  const [hovered, setHovered] = useState(0)
+  const [submitted, setSubmitted] = useState(false)
+  const submit = useSubmitRating(workspaceId, runId, nodeState.id)
+  if (nodeState.status !== 'completed') return null
+  if (submitted) return <span className="text-xs text-green-600">Rated</span>
+  return (
+    <span className="flex gap-0.5">
+      {[1, 2, 3, 4, 5].map((s) => (
+        <button
+          key={s}
+          className={`text-base leading-none ${s <= hovered ? 'text-amber-400' : 'text-gray-300'}`}
+          onMouseEnter={() => setHovered(s)}
+          onMouseLeave={() => setHovered(0)}
+          onClick={() => {
+            submit.mutate({ score: s }, { onSuccess: () => setSubmitted(true) })
+          }}
+        >
+          ★
+        </button>
+      ))}
+    </span>
+  )
+}
+
 export default function RunDetailPage() {
   const { runId } = useParams<{ runId: string }>()
   const workspaceId = useAuthStore((s) => s.workspaceId) ?? DEV_WORKSPACE
 
-  // Poll every 2s — the hook itself will stop refetching when the component unmounts
-  const { data: run } = useRun(workspaceId, runId!, { refetchInterval: 2000 })
+  const { data: run, refetch: refetchRun } = useRun(workspaceId, runId!, {
+    refetchInterval: (query) => {
+      const status = (query.state.data as { status?: string } | undefined)?.status
+      return !status || status === 'queued' ? 2000 : false
+    },
+  })
 
-  const { data: nodeStates = [] } = useRunNodes(workspaceId, runId!)
+  const { data: nodeStates = [], refetch: refetchNodes } = useRunNodes(workspaceId, runId!)
   const { data: graph } = useGraph(workspaceId, run?.graph_id ?? '')
 
   const definition = graph?.latest_version?.definition ?? { nodes: [], edges: [] }
-
   const nodeStatuses = Object.fromEntries(
     nodeStates.map((n) => [n.node_id, n.status as NodeStatus]),
   )
+
+  // WebSocket: receive live events and trigger refetches
+  const wsRef = useRef<WebSocket | null>(null)
+  const [wsConnected, setWsConnected] = useState(false)
+
+  useEffect(() => {
+    if (!runId || (run && TERMINAL.has(run.status))) return
+
+    const apiBase = (import.meta.env.VITE_API_URL ?? 'http://localhost:8000/api/v1')
+      .replace(/^http/, 'ws')
+    const ws = new WebSocket(`${apiBase}/ws/runs/${runId}`)
+    wsRef.current = ws
+
+    ws.onopen = () => setWsConnected(true)
+    ws.onclose = () => setWsConnected(false)
+    ws.onmessage = (ev) => {
+      try {
+        const event = JSON.parse(ev.data as string)
+        if (event.type === 'node_completed' || event.type === 'escalation_created') {
+          refetchNodes()
+        }
+        if (event.type === 'run_status_changed') {
+          refetchRun()
+        }
+      } catch {
+        // ignore malformed
+      }
+    }
+
+    return () => {
+      ws.close()
+      wsRef.current = null
+    }
+  }, [runId, run?.status, refetchRun, refetchNodes])
 
   return (
     <div className="h-full flex flex-col">
@@ -54,8 +128,16 @@ export default function RunDetailPage() {
             {STATUS_LABEL[run.status] ?? run.status}
           </span>
         )}
-        {run?.status === 'running' && (
-          <span className="text-xs text-gray-400 animate-pulse">live</span>
+        {wsConnected && run?.status === 'running' && (
+          <span className="text-xs text-blue-400 animate-pulse">live</span>
+        )}
+        {run?.status === 'paused' && (
+          <a
+            href={`/escalations`}
+            className="ml-auto text-xs bg-amber-100 text-amber-700 px-2 py-1 rounded hover:bg-amber-200"
+          >
+            Review escalation →
+          </a>
         )}
       </div>
 
@@ -74,6 +156,7 @@ export default function RunDetailPage() {
                 <th className="pb-1">Status</th>
                 <th className="pb-1">Confidence</th>
                 <th className="pb-1">Tokens</th>
+                <th className="pb-1">Rate</th>
               </tr>
             </thead>
             <tbody>
@@ -87,6 +170,9 @@ export default function RunDetailPage() {
                       : '—'}
                   </td>
                   <td className="py-1">{ns.resolved_token_count ?? '—'}</td>
+                  <td className="py-1">
+                    <StarRating workspaceId={workspaceId} runId={runId!} nodeState={ns} />
+                  </td>
                 </tr>
               ))}
             </tbody>

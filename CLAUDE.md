@@ -38,8 +38,24 @@ Visual agent workflow platform. Users design business processes via chat; canvas
 - `service.py` — business logic, calls models and other services
 - `router.py` — HTTP layer only, calls service, never touches models directly
 
-### Tests
-Mirror source structure: `tests/test_runtime/` mirrors `knotwork/runtime/`. Every public function in `runtime/` must have a test. Run with `cd backend && pytest`.
+### Session structure
+Every session **must** produce three artifacts under `docs/implementation/S<N>/`:
+
+- `spec.md` — what was built, key decisions, and any breaking changes from prior sessions
+- `validation.md` — manual checklist the user runs to visually confirm the session works end-to-end. Every checklist item **must** include a ✅ pass condition and a ❌ fail condition so the tester knows exactly what to look for.
+- `tests/` — automated pytest suite (SQLite in-memory, no live services needed)
+
+Run one session: `cd backend && pytest ../docs/implementation/S<N>/tests/ -v`
+Run all sessions: `cd backend && pytest ../docs/implementation/ -v`
+
+### Regression policy
+At the **start** of every new session, run the full suite (`pytest ../docs/implementation/`) and confirm all prior tests pass before writing any new code. This is the baseline.
+
+If a new session **must** break a prior test (e.g. schema change, renamed endpoint):
+1. Fix the old test to match the new contract, **or**
+2. Mark it `@pytest.mark.xfail(reason="superseded by S<N>: <what changed>")` and document the breaking change in the new session's `spec.md` under a `## Breaking Changes` section.
+
+Silent regressions are never acceptable. Intentional ones must be declared.
 
 ## File Map
 
@@ -130,38 +146,11 @@ TELEGRAM_BOT_TOKEN=...
 JWT_SECRET=...
 ```
 
-## Session Plan
+## Implementation Sessions
 
-| Phase | Goal | Sessions |
-|-------|------|----------|
-| **S1 (now)** | Walking skeleton: graph CRUD, trigger run, LLM Agent + Human Checkpoint, dagre canvas, polling status | 2-3 |
-| S2 | WebSocket run monitor, confidence scoring, escalation resolve flow | 3-4 |
-| S3 | Handbook CRUD UI, health scoring, token badges, progressive education | 2-3 |
-| S4 | Chat designer agent, graph delta application, node config panel | 2-3 |
-| S5 | Full canvas (run state overlay), operator dashboard, escalation inbox | 2-3 |
-| S6 | Tool registry, built-in tools, notifications (Telegram, WhatsApp, email) | 2-3 |
-| S7 | MCP server (full tool set) | 1-2 |
-| S8 | Polish, E2E tests, mobile layout, auth flow | 2-3 |
+Roadmap and per-session status: `docs/implementation/roadmap.md`
 
-**Token estimate**: ~4.4M total | **Cost**: 1 Claude Code account ($20/mo) × 3 months + ~$30 API overflow = ~$90
-
-## Current State
-- [x] Scaffold: directories, stubs, models, routers, stores, TypeScript types
-- [x] Implemented: `runtime/knowledge_loader.py`, `runtime/prompt_builder.py`, `knowledge/storage/adapter.py`, `knowledge/storage/__init__.py`
-- [x] All SQLAlchemy models defined
-- [x] Canvas tech: custom SVG + @dagrejs/dagre (no drag-and-drop; chat is primary design surface)
-- [x] Session 1 complete:
-      - `knowledge/storage/local_fs.py` — LocalFSAdapter implemented
-      - `graphs/schemas.py`, `graphs/service.py`, `graphs/router.py` — graph CRUD
-      - `runs/schemas.py`, `runs/service.py`, `runs/router.py` — run trigger + status
-      - `runtime/engine.py` — compile_graph + execute_run (MemorySaver)
-      - `runtime/nodes/llm_agent.py` — LLM call with knowledge loading
-      - `runtime/nodes/human_checkpoint.py` — interrupt() pause
-      - `worker/tasks.py` — arq execute_run task
-      - Frontend: GraphCanvas, GraphsPage, GraphDetailPage, RunDetailPage
-- [ ] `alembic upgrade head` — create initial migration (run manually: `cd backend && alembic revision --autogenerate -m "initial" && alembic upgrade head`)
-- [ ] Auth not yet wired to endpoints — endpoints currently unauthenticated (Session 2)
-- [ ] WebSocket not yet implemented — frontend polls every 2s (Session 2)
+Before starting a session: read `docs/implementation/S<N>/spec.md` and run its tests to confirm the baseline passes.
 
 ## Key Design Decisions (do not change without updating docs/)
 1. Folder-as-domain traversal — see `docs/04-knowledge-system.md`

@@ -20,6 +20,8 @@ Each checkpoint dict has the following shape::
 
 from __future__ import annotations
 
+from knotwork.runtime.confidence import evaluate_expression
+
 
 def evaluate_checkpoints(
     checkpoints: list[dict],
@@ -29,22 +31,30 @@ def evaluate_checkpoints(
     Evaluate a list of checkpoints against a node's output.
 
     For each checkpoint whose ``type`` is ``"expression"``, the ``expression``
-    field is evaluated against ``output`` using the same expression evaluator
-    as :func:`knotwork.runtime.confidence.evaluate_expression`.  Checkpoints
-    of other types (e.g. ``"human"``) are skipped here — they are handled by
-    the human-checkpoint node.
-
-    Args:
-        checkpoints: List of checkpoint definition dicts.  Unknown keys are
-                     ignored for forward compatibility.
-        output:      The LLM node's output dict used as the expression context.
+    field is evaluated against ``{"output": output}``.  Checkpoints of type
+    ``"human"`` are skipped — they are handled by the human-checkpoint node.
 
     Returns:
         A (possibly empty) list containing only the checkpoint dicts that
-        *failed* evaluation.  An empty return value means all checkpoints
-        passed.
-
-    Raises:
-        NotImplementedError: Always — implementation pending.
+        *failed* evaluation.  An empty return value means all checkpoints passed.
     """
-    raise NotImplementedError
+    failed: list[dict] = []
+    for cp in checkpoints:
+        cp_type = cp.get("type", "expression")
+        if cp_type == "human":
+            continue
+
+        expression = cp.get("expression", "")
+        if not expression:
+            failed.append(cp)
+            continue
+
+        try:
+            passed = evaluate_expression(expression, {"output": output})
+            if not passed:
+                failed.append(cp)
+        except Exception:
+            # Invalid / unevaluatable expression → fail safe
+            failed.append(cp)
+
+    return failed

@@ -5,7 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from knotwork.database import get_db
 from knotwork.runs import service
-from knotwork.runs.schemas import RunCreate, RunNodeStateOut, RunOut
+from knotwork.runs.schemas import ResumeRun, RunCreate, RunNodeStateOut, RunOut
 
 router = APIRouter(prefix="/workspaces", tags=["runs"])
 
@@ -61,14 +61,55 @@ async def list_run_nodes(
 
 
 @router.post("/{workspace_id}/runs/{run_id}/resume")
-async def resume_run(workspace_id: str, run_id: str):
-    # TODO: Session 2 — re-enqueue arq task with human response
-    return {"message": "not implemented"}
+async def resume_run(
+    workspace_id: UUID,
+    run_id: UUID,
+    data: ResumeRun,
+    db: AsyncSession = Depends(get_db),
+):
+    run = await service.get_run(db, run_id)
+    if not run or run.workspace_id != workspace_id:
+        raise HTTPException(404, "Run not found")
+    if run.status != "paused":
+        raise HTTPException(400, f"Run is not paused (status: {run.status})")
+
+    try:
+        from arq import create_pool
+        from arq.connections import RedisSettings
+
+        from knotwork.config import settings
+
+        redis = await create_pool(RedisSettings.from_dsn(settings.redis_url))
+        await redis.enqueue_job("resume_run", run_id=str(run_id), resolution=data.model_dump())
+        await redis.aclose()
+    except Exception as e:
+        raise HTTPException(503, f"Failed to enqueue resume task: {e}")
+
+    return {"status": "resuming", "run_id": str(run_id)}
 
 
-@router.delete("/{workspace_id}/runs/{run_id}")
-async def delete_run(workspace_id: str, run_id: str):
-    return {"message": "not implemented"}
+@router.delete("/{workspace_id}/runs/{run_id}", status_code=200)
+async def abort_run(
+    workspace_id: UUID,
+    run_id: UUID,
+    db: AsyncSession = Depends(get_db),
+):
+    from datetime import datetime, timezone
+
+    from knotwork.runtime.events import publish_event
+
+    run = await service.get_run(db, run_id)
+    if not run or run.workspace_id != workspace_id:
+        raise HTTPException(404, "Run not found")
+    if run.status in ("completed", "failed", "stopped"):
+        raise HTTPException(400, f"Run already in terminal state: {run.status}")
+
+    run.status = "stopped"
+    run.completed_at = datetime.now(timezone.utc)
+    await db.commit()
+
+    await publish_event(str(run_id), {"type": "run_status_changed", "status": "stopped"})
+    return {"status": "stopped", "run_id": str(run_id)}
 
 
 @router.get("/{workspace_id}/graphs/{graph_id}/runs", response_model=list[RunOut])

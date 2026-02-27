@@ -21,6 +21,7 @@ from knotwork.graphs.router import router as graphs_router
 from knotwork.knowledge.router import router as knowledge_router
 from knotwork.ratings.router import router as ratings_router
 from knotwork.runs.router import router as runs_router
+from knotwork.runs.ws import ws_router
 from knotwork.tools.router import router as tools_router
 from knotwork.workspaces.router import router as workspaces_router
 
@@ -52,6 +53,7 @@ def create_app() -> FastAPI:
     app.include_router(tools_router, prefix=prefix)
     app.include_router(escalations_router, prefix=prefix)
     app.include_router(ratings_router, prefix=prefix)
+    app.include_router(ws_router, prefix=prefix)
 
     return app
 

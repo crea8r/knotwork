@@ -12,6 +12,9 @@ class Settings(BaseSettings):
 
     # Database
     database_url: str
+    # Sync connection string for LangGraph AsyncPostgresSaver (strip +asyncpg).
+    # If unset, engine falls back to MemorySaver.
+    database_url_sync: str = ""
 
     # Redis / queue
     redis_url: str = "redis://localhost:6379"

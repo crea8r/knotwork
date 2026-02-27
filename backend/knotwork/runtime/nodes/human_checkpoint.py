@@ -1,17 +1,15 @@
 """
 Human Checkpoint node: always-human gate.
 
-Calls LangGraph's interrupt() to suspend execution and surface the current
-output for human review. The run is resumed via the /runs/{id}/resume endpoint
-once the operator approves, edits, or aborts.
-
-Walking skeleton: escalation record creation and notification dispatch
-are stubs — added in Session 2.
+Creates an Escalation record, publishes an event, then calls interrupt() to
+suspend execution. The run resumes via /runs/{id}/resume after operator action.
 """
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from typing import TYPE_CHECKING
+from uuid import UUID
 
 if TYPE_CHECKING:
     from knotwork.runtime.engine import RunState
@@ -19,7 +17,7 @@ if TYPE_CHECKING:
 
 def make_human_checkpoint_node(node_def: dict):
     """
-    Factory returning a LangGraph node function for a human_checkpoint node.
+    Factory returning an async LangGraph node function for a human_checkpoint node.
 
     Node config keys:
       prompt_to_operator — instructions shown to the operator in the escalation UI
@@ -30,16 +28,56 @@ def make_human_checkpoint_node(node_def: dict):
         "Please review the output above and approve or provide guidance.",
     )
 
-    def node_fn(state: "RunState") -> dict:
+    async def node_fn(state: "RunState") -> dict:
         from langgraph.types import interrupt
+
+        from knotwork.database import AsyncSessionLocal
+        from knotwork.escalations.service import create_escalation
+        from knotwork.runtime.events import publish_event
+        from knotwork.runs.models import RunNodeState
+
+        run_id = UUID(state["run_id"])
+        workspace_id = state["workspace_id"]
+        current_output = state.get("current_output")
+
+        async with AsyncSessionLocal() as db:
+            ns = RunNodeState(
+                run_id=run_id,
+                node_id=node_def["id"],
+                status="paused",
+                output={"current_output": current_output},
+                started_at=datetime.now(timezone.utc),
+            )
+            db.add(ns)
+            await db.commit()
+            await db.refresh(ns)
+
+            esc = await create_escalation(
+                db,
+                run_id=run_id,
+                run_node_state_id=ns.id,
+                workspace_id=UUID(workspace_id),
+                type="human_checkpoint",
+                context={
+                    "prompt": prompt_to_operator,
+                    "current_output": current_output,
+                    "node_id": node_def["id"],
+                },
+            )
+
+        await publish_event(state["run_id"], {
+            "type": "escalation_created",
+            "escalation_id": str(esc.id),
+            "node_id": node_def["id"],
+        })
 
         # Suspend here. Execution resumes after operator action via /runs/{id}/resume.
         interrupt({
+            "escalation_id": str(esc.id),
             "prompt": prompt_to_operator,
-            "current_output": state.get("current_output"),
+            "current_output": current_output,
             "node_id": node_def["id"],
         })
-        # Code below only runs after human resume
         return {}
 
     return node_fn
