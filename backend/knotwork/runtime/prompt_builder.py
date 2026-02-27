@@ -28,16 +28,17 @@ def _order_fragments(fragments: list[LoadedFragment]) -> list[LoadedFragment]:
 
 def _render_guidelines(tree: KnowledgeTree) -> str:
     """Render the knowledge tree as a structured guidelines section."""
-    if not tree.fragments:
-        return "(No guidelines loaded for this node.)"
-
-    ordered = _order_fragments(tree.fragments)
     sections = []
-    for fragment in ordered:
-        header = f"## [{fragment.domain.upper()}] {fragment.path}"
-        if fragment.referenced_from:
-            header += f"\n> Referenced from: {fragment.referenced_from}"
-        sections.append(f"{header}\n\n{fragment.content}")
+
+    if not tree.fragments:
+        sections.append("(No guidelines loaded for this node.)")
+    else:
+        ordered = _order_fragments(tree.fragments)
+        for fragment in ordered:
+            header = f"## [{fragment.domain.upper()}] {fragment.path}"
+            if fragment.referenced_from:
+                header += f"\n> Referenced from: {fragment.referenced_from}"
+            sections.append(f"{header}\n\n{fragment.content}")
 
     if tree.missing_links:
         missing = ", ".join(tree.missing_links)

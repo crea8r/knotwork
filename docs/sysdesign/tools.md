@@ -107,16 +107,6 @@ The tool registry screen (owner access) lets users:
 
 ---
 
-## Attaching Tools to Nodes
-
-LLM Agent nodes and Tool Executor nodes have a **tools panel** in the node configuration:
-
-- Search and select from the workspace and graph tool registry
-- Set the scope: "LLM may call this" (for LLM Agent) or "always execute this" (for Tool Executor)
-- Configure any tool-level overrides (e.g. different `top_k` for a RAG tool on this node)
-
----
-
 ## Built-in Tools (Phase 1)
 
 Knotwork ships with a set of built-in workspace tools available in every workspace:
@@ -136,8 +126,6 @@ Built-in tools cannot be deleted. They can be disabled at the workspace level.
 ---
 
 ## Tool Execution and Cost
-
-Tools vary in cost and latency:
 
 | Category | Latency | LLM cost | Notes |
 |----------|---------|----------|-------|

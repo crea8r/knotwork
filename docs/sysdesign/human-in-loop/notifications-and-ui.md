@@ -1,69 +1,4 @@
-# Human-in-the-Loop
-
-## Overview
-
-Human involvement in Knotwork is not an exception — it is a designed part of every workflow. There are two distinct mechanisms:
-
-| Mechanism | When | Who decides |
-|-----------|------|-------------|
-| **Human Checkpoint** | Always — it is a node in the graph | The graph designer |
-| **Confidence Escalation** | When the agent is not sure enough | The agent, based on configured thresholds |
-
-Both result in the same experience for the operator: a notification, an in-app review screen, and a set of response options. The difference is in intent — one is a planned gate, the other is a safety net.
-
----
-
-## Escalation Triggers
-
-### 1. Low confidence
-
-An LLM Agent node computes a confidence score from two sources:
-- Structured output field (the LLM self-reports)
-- Rule-based signals (configured per node)
-
-If the final score is below the node's `confidence_threshold`, the run pauses and an escalation is created.
-
-### 2. Checkpoint failure
-
-After a node produces output, its checkpoints are evaluated in order. If a checkpoint fails:
-1. Apply the node's `fail_safe` action if configured
-2. Otherwise retry (up to `retry_limit`)
-3. If retries exhausted → escalate
-
-### 3. Human Checkpoint node
-
-The run reaches a Human Checkpoint node in the graph. The run pauses unconditionally. No confidence or checkpoint evaluation — this step always requires a human.
-
-### 4. Node error
-
-An unexpected error (tool failure, LLM API error, parse error) that cannot be recovered by the retry policy → escalate.
-
----
-
-## Escalation Lifecycle
-
-```
-Trigger event
-     │
-     ▼
-Create Escalation record (status: open)
-     │
-     ▼
-Notify assigned operator(s)
-     │
-     ▼
-Operator opens escalation in-app
-     │
-     ├── Approve     → resume run with current output
-     ├── Edit        → operator modifies output → resume
-     ├── Guide       → operator writes instructions → node retries
-     └── Abort       → run status → stopped
-     │
-     ▼
-If timeout exceeded with no response → run status → stopped
-```
-
----
+# Human-in-the-Loop — Notifications & UI
 
 ## Notification Channels
 
@@ -156,19 +91,15 @@ The escalation screen is designed to work on a phone or tablet. Operators do not
 └─────────────────────────────────────┘
 ```
 
-### Response options
+### Response Options
 
-**Approve**
-Accept the agent's output as-is. The run continues to the next node.
+**Approve** — Accept the agent's output as-is. The run continues to the next node.
 
-**Edit**
-Open the output in an editable view. The operator modifies it directly. On save, the run continues with the edited output. The edit is logged in the audit trail.
+**Edit** — Open the output in an editable view. The operator modifies it directly. On save, the run continues with the edited output. The edit is logged in the audit trail.
 
-**Guide**
-A text field appears. The operator writes instructions (e.g. "Check the depreciation schedule in Appendix B — the IRR calculation must include it"). The current node retries with the guidance appended to its prompt. Retry count is reset.
+**Guide** — A text field appears. The operator writes instructions (e.g. "Check the depreciation schedule in Appendix B — the IRR calculation must include it"). The current node retries with the guidance appended to its prompt. Retry count is reset.
 
-**Abort**
-The run is stopped. The operator can add a reason. The graph owner is notified.
+**Abort** — The run is stopped. The operator can add a reason. The graph owner is notified.
 
 ---
 
@@ -196,18 +127,14 @@ These are configurable per node and per workspace.
 
 After a node completes (whether or not there was an escalation), operators and owners can rate the output.
 
-### Rating interface
-
 A 1–5 star rating with an optional text comment. Available:
 - On the node in the run inspection view
 - In the escalation screen after responding
 - In the operator dashboard's recent runs list
 
-### What ratings do
-
 Ratings are attached to the `RunNodeState` record and linked to the knowledge snapshot used in that run.
 
-Low-rated nodes appear in a **Needs Attention** list in the knowledge editor, grouped by fragment. This is the entry point for the knowledge improvement loop (see [Knowledge System](./04-knowledge-system.md)).
+Low-rated nodes appear in a **Needs Attention** list in the knowledge editor, grouped by fragment. This is the entry point for the knowledge improvement loop.
 
 ---
 

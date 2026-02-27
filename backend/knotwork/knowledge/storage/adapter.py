@@ -7,6 +7,8 @@ RULE: Never access filesystem or S3 directly anywhere in the codebase.
 To get the active adapter: from knotwork.knowledge.storage import get_storage_adapter
 """
 
+from __future__ import annotations
+
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 
