@@ -11,6 +11,7 @@ interface Checkpoint { type: 'expression' | 'human'; expression?: string }
 interface Props {
   config: Record<string, unknown>
   onChange: (patch: Record<string, unknown>) => void
+  predecessorNodes: { id: string; name: string }[]
 }
 
 function RuleList({
@@ -45,12 +46,25 @@ function RuleList({
   )
 }
 
-export default function LlmAgentConfig({ config, onChange }: Props) {
+export default function LlmAgentConfig({ config, onChange, predecessorNodes }: Props) {
   const { data: files = [] } = useKnowledgeFiles()
 
   const paths: string[] = (config.knowledge_paths as string[]) ?? []
   const rules: Rule[] = (config.confidence_rules as Rule[]) ?? []
   const checkpoints: Checkpoint[] = (config.checkpoints as Checkpoint[]) ?? []
+
+  // input_sources: undefined = all (default), string[] = explicit selection
+  const allSourceIds = ['run_input', ...predecessorNodes.map(n => n.id)]
+  const explicitSources = config.input_sources as string[] | undefined
+  const activeSources = new Set(explicitSources ?? allSourceIds)
+
+  function toggleSource(id: string) {
+    const next = activeSources.has(id)
+      ? allSourceIds.filter(s => s !== id && activeSources.has(s))
+      : [...allSourceIds.filter(s => activeSources.has(s)), id]
+    // If user selected everything back, revert to implicit default (undefined)
+    onChange({ input_sources: next.length === allSourceIds.length ? undefined : next })
+  }
 
   function togglePath(path: string) {
     const next = paths.includes(path) ? paths.filter(p => p !== path) : [...paths, path]
@@ -82,6 +96,37 @@ export default function LlmAgentConfig({ config, onChange }: Props) {
           placeholder="openai/gpt-4o"
           onChange={e => onChange({ model: e.target.value })} />
       </div>
+      {allSourceIds.length > 1 && (
+        <div>
+          <label className="block text-xs text-gray-500 mb-1">
+            Input sources
+            {explicitSources === undefined && (
+              <span className="ml-1 text-gray-400">(all)</span>
+            )}
+          </label>
+          <div className="space-y-0.5">
+            <label className="flex items-center gap-2 text-xs cursor-pointer hover:bg-gray-50 px-1 rounded">
+              <input
+                type="checkbox"
+                checked={activeSources.has('run_input')}
+                onChange={() => toggleSource('run_input')}
+              />
+              <span>Run input</span>
+            </label>
+            {predecessorNodes.map(n => (
+              <label key={n.id} className="flex items-center gap-2 text-xs cursor-pointer hover:bg-gray-50 px-1 rounded">
+                <input
+                  type="checkbox"
+                  checked={activeSources.has(n.id)}
+                  onChange={() => toggleSource(n.id)}
+                />
+                <span className="font-mono">{n.name}</span>
+                <span className="text-gray-400">output</span>
+              </label>
+            ))}
+          </div>
+        </div>
+      )}
       <div>
         <label className="block text-xs text-gray-500 mb-1">System prompt</label>
         <textarea className="border rounded px-2 py-1 text-sm w-full h-24 resize-y"

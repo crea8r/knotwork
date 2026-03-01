@@ -1,48 +1,73 @@
 """
-Notification dispatcher for escalation alerts.
+Notification dispatcher — routes escalation alerts to all enabled channels.
 
-Routes outbound notifications to one or more channels based on the operator's
-preferences stored in the database.  Channel-specific sender modules are
-imported lazily to avoid loading heavy dependencies (e.g. Telegram bot SDK)
-when a channel is not configured.
-
-Supported channels
-------------------
-  - ``"email"``     -- via ``knotwork.notifications.channels.email``
-  - ``"telegram"``  -- via ``knotwork.notifications.channels.telegram``
-  - ``"whatsapp"``  -- via ``knotwork.notifications.channels.whatsapp``
+Called after an escalation is created. Loads workspace preferences, sends
+to each configured channel, and logs every attempt to NotificationLog.
+Failures in one channel do not block delivery to the others.
 """
-
 from __future__ import annotations
 
+import logging
+from uuid import UUID
+
 from sqlalchemy.ext.asyncio import AsyncSession
+
+logger = logging.getLogger(__name__)
 
 
 async def dispatch(
     escalation_id: str,
-    channels: list[str],
+    workspace_id: str,
     db: AsyncSession,
+    message: str = "",
 ) -> None:
-    """
-    Send escalation notifications across the requested channels.
+    """Send notifications to all channels configured for the workspace."""
+    from knotwork.config import settings
+    from knotwork.notifications.service import get_or_create_preferences, log_notification
 
-    For each channel in ``channels``:
-      1. Dynamically import the corresponding sender module.
-      2. Load the operator's channel-specific preferences (API keys, recipient
-         addresses, etc.) from the database.
-      3. Call the sender's ``send()`` coroutine with the escalation details.
+    ws_id = UUID(workspace_id)
+    esc_id = UUID(escalation_id)
 
-    Failures in individual channels are logged but do not prevent delivery to
-    remaining channels.
+    if not message:
+        message = (
+            f"⚠️ Escalation requires your attention.\n"
+            f"ID: {escalation_id}\n"
+            f"Open Knotwork to review and resolve."
+        )
 
-    Args:
-        escalation_id: UUID of the ``Escalation`` record that triggered
-                       this notification.
-        channels:      Ordered list of channel names to notify, e.g.
-                       ``["email", "telegram"]``.
-        db:            Active async SQLAlchemy session for loading preferences.
+    prefs = await get_or_create_preferences(db, ws_id)
 
-    Raises:
-        NotImplementedError: Always — implementation pending.
-    """
-    raise NotImplementedError
+    if prefs.email_enabled and prefs.email_address:
+        try:
+            from knotwork.notifications.channels.email import send as email_send
+            await email_send(
+                to_address=prefs.email_address,
+                subject="[Knotwork] Escalation requires attention",
+                body=message,
+                from_address=settings.email_from,
+            )
+            await log_notification(db, ws_id, "email", "sent", esc_id)
+        except Exception as exc:
+            logger.error("Email notification failed: %s", exc)
+            await log_notification(db, ws_id, "email", "failed", esc_id, str(exc))
+
+    if prefs.telegram_enabled and prefs.telegram_chat_id and settings.telegram_bot_token:
+        try:
+            from knotwork.notifications.channels.telegram import send as tg_send
+            await tg_send(prefs.telegram_chat_id, message, settings.telegram_bot_token)
+            await log_notification(db, ws_id, "telegram", "sent", esc_id)
+        except Exception as exc:
+            logger.error("Telegram notification failed: %s", exc)
+            await log_notification(db, ws_id, "telegram", "failed", esc_id, str(exc))
+
+    if prefs.whatsapp_enabled and prefs.whatsapp_number:
+        try:
+            from knotwork.notifications.channels.whatsapp import send as wa_send
+            deep_link = await wa_send(prefs.whatsapp_number, message)
+            await log_notification(db, ws_id, "whatsapp", "sent", esc_id, deep_link)
+        except Exception as exc:
+            logger.error("WhatsApp notification failed: %s", exc)
+            await log_notification(db, ws_id, "whatsapp", "failed", esc_id, str(exc))
+
+    if not (prefs.email_enabled or prefs.telegram_enabled or prefs.whatsapp_enabled):
+        logger.debug("No notification channels enabled for workspace %s", workspace_id)

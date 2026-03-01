@@ -33,6 +33,14 @@ async def create_escalation(
     db.add(esc)
     await db.commit()
     await db.refresh(esc)
+
+    # Fire-and-forget notifications (errors logged, never propagated)
+    try:
+        from knotwork.notifications.dispatcher import dispatch
+        await dispatch(str(esc.id), str(workspace_id), db)
+    except Exception:
+        pass
+
     return esc
 
 

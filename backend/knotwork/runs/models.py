@@ -14,6 +14,7 @@ class Run(Base):
     workspace_id: Mapped[UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("workspaces.id"), nullable=False)
     graph_id: Mapped[UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("graphs.id"), nullable=False)
     graph_version_id: Mapped[UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("graph_versions.id"), nullable=False)
+    name: Mapped[str | None] = mapped_column(String(200), nullable=True)
     status: Mapped[str] = mapped_column(String, nullable=False, default="queued")
     trigger: Mapped[str] = mapped_column(String, nullable=False, default="manual")
     trigger_meta: Mapped[dict | None] = mapped_column(JSON, nullable=True)

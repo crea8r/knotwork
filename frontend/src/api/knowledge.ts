@@ -4,7 +4,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from './client'
 
-const WS_ID = import.meta.env.VITE_WORKSPACE_ID ?? 'dev-workspace'
+const WS_ID = import.meta.env.VITE_DEV_WORKSPACE_ID ?? 'dev-workspace'
 
 export interface KnowledgeFile {
   id: string

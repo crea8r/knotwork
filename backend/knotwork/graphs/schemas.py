@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel
@@ -22,10 +23,19 @@ class EdgeDefSchema(BaseModel):
     condition_label: str | None = None
 
 
+class InputFieldDef(BaseModel):
+    name: str
+    label: str
+    description: str = ""
+    required: bool = True
+    type: Literal["text", "textarea", "number"] = "text"
+
+
 class GraphDefinitionSchema(BaseModel):
     nodes: list[NodeDefSchema] = []
     edges: list[EdgeDefSchema] = []
     entry_point: str | None = None
+    input_schema: list[InputFieldDef] = []
 
 
 class GraphUpdate(BaseModel):

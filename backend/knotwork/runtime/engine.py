@@ -16,6 +16,11 @@ from contextlib import asynccontextmanager
 from operator import add
 from typing import TYPE_CHECKING, Annotated, Any, TypeAlias, TypedDict
 
+
+def _merge_outputs(a: dict, b: dict) -> dict:
+    """Reducer: merge per-node output dicts as the run progresses."""
+    return {**a, **b}
+
 try:
     from langgraph.graph.state import CompiledStateGraph
     CompiledGraph: TypeAlias = CompiledStateGraph
@@ -33,8 +38,9 @@ class RunState(TypedDict):
     workspace_id: str
     input: dict
     context_files: list
-    messages: Annotated[list, add]  # accumulated across nodes
+    messages: Annotated[list, add]      # accumulated across nodes
     current_output: str | None
+    node_outputs: Annotated[dict, _merge_outputs]  # {node_id: output_text}
 
 
 @asynccontextmanager
@@ -63,7 +69,7 @@ async def _checkpointer():
 
 def compile_graph(graph_def: dict, checkpointer: Any = None) -> CompiledGraph:
     """Compile a stored graph definition into a runnable LangGraph object."""
-    from langgraph.graph import END, StateGraph
+    from langgraph.graph import END, START as LG_START, StateGraph
 
     from knotwork.runtime.nodes.human_checkpoint import make_human_checkpoint_node
     from knotwork.runtime.nodes.llm_agent import make_llm_agent_node
@@ -72,32 +78,51 @@ def compile_graph(graph_def: dict, checkpointer: Any = None) -> CompiledGraph:
         from langgraph.checkpoint.memory import MemorySaver
         checkpointer = MemorySaver()
 
+    nodes = graph_def.get("nodes", [])
+    start_ids = {n["id"] for n in nodes if n.get("type") == "start"}
+    end_ids = {n["id"] for n in nodes if n.get("type") == "end"}
+    skip_ids = start_ids | end_ids
+
     workflow = StateGraph(RunState)
     node_ids: set[str] = set()
 
-    for node in graph_def.get("nodes", []):
+    for node in nodes:
         nid = node["id"]
+        if nid in skip_ids:
+            continue
         ntype = node.get("type")
         if ntype == "llm_agent":
             workflow.add_node(nid, make_llm_agent_node(node))
         elif ntype == "human_checkpoint":
             workflow.add_node(nid, make_human_checkpoint_node(node))
+        elif ntype == "tool_executor":
+            from knotwork.runtime.nodes.tool_executor import make_tool_executor_node
+            workflow.add_node(nid, make_tool_executor_node(node))
         else:
             workflow.add_node(nid, lambda s: s)
         node_ids.add(nid)
 
     for edge in graph_def.get("edges", []):
         src, tgt = edge["source"], edge["target"]
-        if src in node_ids and tgt in node_ids:
-            workflow.add_edge(src, tgt)
-        elif src in node_ids:
-            workflow.add_edge(src, END)
+        if src in start_ids:
+            if tgt in node_ids:
+                workflow.add_edge(LG_START, tgt)
+        elif tgt in end_ids:
+            if src in node_ids:
+                workflow.add_edge(src, END)
+        else:
+            if src in node_ids and tgt in node_ids:
+                workflow.add_edge(src, tgt)
+            elif src in node_ids:
+                workflow.add_edge(src, END)
 
-    entry = graph_def.get("entry_point") or (
-        graph_def["nodes"][0]["id"] if graph_def.get("nodes") else None
-    )
-    if entry:
-        workflow.set_entry_point(entry)
+    # Legacy graph with no start node — fall back to entry_point
+    if not start_ids:
+        entry = graph_def.get("entry_point") or (
+            nodes[0]["id"] if nodes else None
+        )
+        if entry and entry in node_ids:
+            workflow.set_entry_point(entry)
 
     return workflow.compile(checkpointer=checkpointer)
 
@@ -176,6 +201,7 @@ async def execute_run(run_id: str) -> None:
                     "context_files": context_files,
                     "messages": [],
                     "current_output": None,
+                    "node_outputs": {},
                 },
                 config=config,
             )

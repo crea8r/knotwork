@@ -1,31 +1,66 @@
 /**
  * DesignerChat — conversational UI for the designer agent.
- * Sends messages to POST /graphs/design/chat, receives reply + graph_delta,
- * and calls applyDelta on the canvas store.
+ * History is loaded from the DB on mount and persists across server restarts.
  */
-import { useRef, useState } from 'react'
-import { useDesignChat, type GraphDelta } from '@/api/designer'
-import { useCanvasStore } from '@/store/canvas'
+import { useEffect, useRef, useState } from 'react'
+import { Trash2 } from 'lucide-react'
+import { useDesignChat, useDesignerMessages, useClearDesignerHistory } from '@/api/designer'
+import { useCanvasStore, type GraphDelta } from '@/store/canvas'
+import { useAuthStore } from '@/store/auth'
+
+const DEV_WORKSPACE = import.meta.env.VITE_DEV_WORKSPACE_ID ?? 'dev-workspace'
 
 interface Message {
   role: 'user' | 'assistant'
   content: string
   questions?: string[]
+  created_at?: string
 }
 
 interface Props {
   graphId: string
   sessionId: string
+  onBeforeApplyDelta?: () => void
 }
 
-export default function DesignerChat({ graphId, sessionId }: Props) {
-  const [messages, setMessages] = useState<Message[]>([
-    { role: 'assistant', content: 'Hi! Describe the workflow you want to build and I\'ll set it up for you.' },
-  ])
+function relativeTime(iso: string): string {
+  const diff = Date.now() - new Date(iso).getTime()
+  const mins = Math.floor(diff / 60000)
+  if (mins < 1) return 'just now'
+  if (mins < 60) return `${mins}m ago`
+  const hrs = Math.floor(mins / 60)
+  if (hrs < 24) return `${hrs}h ago`
+  return `${Math.floor(hrs / 24)}d ago`
+}
+
+export default function DesignerChat({ graphId, sessionId, onBeforeApplyDelta }: Props) {
+  const workspaceId = useAuthStore((s) => s.workspaceId) ?? DEV_WORKSPACE
+  const [messages, setMessages] = useState<Message[]>([])
+  const [historyLoaded, setHistoryLoaded] = useState(false)
   const [input, setInput] = useState('')
   const chat = useDesignChat(graphId)
   const applyDelta = useCanvasStore(s => s.applyDelta)
   const endRef = useRef<HTMLDivElement>(null)
+
+  const { data: dbMessages } = useDesignerMessages(workspaceId, graphId)
+  const clearHistory = useClearDesignerHistory(workspaceId, graphId)
+
+  // Load DB history once on mount
+  useEffect(() => {
+    if (historyLoaded) return
+    if (dbMessages === undefined) return
+    if (dbMessages.length > 0) {
+      setMessages(dbMessages.map(m => ({ role: m.role, content: m.content, created_at: m.created_at })))
+    } else {
+      setMessages([{ role: 'assistant', content: "Hi! Describe the workflow you want to build and I'll set it up for you." }])
+    }
+    setHistoryLoaded(true)
+  }, [dbMessages, historyLoaded])
+
+  // Auto-scroll when messages change
+  useEffect(() => {
+    endRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }, [messages])
 
   async function send() {
     const text = input.trim()
@@ -40,8 +75,9 @@ export default function DesignerChat({ graphId, sessionId }: Props) {
         content: res.reply,
         questions: res.questions.length ? res.questions : undefined,
       }])
-      if (Object.keys(res.graph_delta).length > 0) {
-        applyDelta(res.graph_delta as GraphDelta)
+      if (res.graph_delta && Object.keys(res.graph_delta).length > 0) {
+        onBeforeApplyDelta?.()
+        applyDelta(res.graph_delta as unknown as GraphDelta)
       }
     } catch {
       setMessages(prev => [...prev, {
@@ -49,16 +85,38 @@ export default function DesignerChat({ graphId, sessionId }: Props) {
         content: 'Something went wrong. Please try again.',
       }])
     }
+  }
 
-    setTimeout(() => endRef.current?.scrollIntoView({ behavior: 'smooth' }), 50)
+  async function handleClear() {
+    if (!confirm('Clear chat history for this graph?')) return
+    await clearHistory.mutateAsync()
+    setMessages([{ role: 'assistant', content: "History cleared. How can I help you?" }])
+    setHistoryLoaded(false)
+  }
+
+  if (!historyLoaded) {
+    return <div className="flex h-full items-center justify-center text-xs text-gray-400">Loading…</div>
   }
 
   return (
     <div className="flex flex-col h-full">
+      {/* Chat header with clear button */}
+      <div className="flex items-center justify-between px-3 py-1.5 border-b flex-shrink-0">
+        <span className="text-xs text-gray-400">{messages.filter(m => m.role === 'user').length} messages</span>
+        <button
+          onClick={handleClear}
+          className="text-gray-300 hover:text-red-400 p-1 rounded"
+          title="Clear history"
+          disabled={clearHistory.isPending}
+        >
+          <Trash2 size={13} />
+        </button>
+      </div>
+
       {/* Message list */}
       <div className="flex-1 overflow-y-auto px-3 py-3 space-y-3">
         {messages.map((m, i) => (
-          <div key={i} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+          <div key={i} className={`flex flex-col ${m.role === 'user' ? 'items-end' : 'items-start'}`}>
             <div
               className={`max-w-[85%] rounded-xl px-3 py-2 text-sm ${
                 m.role === 'user'
@@ -75,6 +133,9 @@ export default function DesignerChat({ graphId, sessionId }: Props) {
                 </ul>
               )}
             </div>
+            {m.created_at && (
+              <span className="text-[10px] text-gray-300 mt-0.5 px-1">{relativeTime(m.created_at)}</span>
+            )}
           </div>
         ))}
         {chat.isPending && (
@@ -88,7 +149,7 @@ export default function DesignerChat({ graphId, sessionId }: Props) {
       </div>
 
       {/* Input */}
-      <div className="border-t p-3 flex gap-2">
+      <div className="border-t p-3 flex gap-2 flex-shrink-0">
         <input
           className="flex-1 border rounded-lg px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-blue-400"
           placeholder="Describe a change…"

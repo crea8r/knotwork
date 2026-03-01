@@ -1,8 +1,8 @@
 // Core domain types — mirror backend Pydantic schemas.
 // Keep in sync with backend schemas when they are implemented.
 
-export type NodeType = 'llm_agent' | 'human_checkpoint' | 'conditional_router' | 'tool_executor'
-export type RunStatus = 'queued' | 'running' | 'paused' | 'completed' | 'failed' | 'stopped'
+export type NodeType = 'llm_agent' | 'human_checkpoint' | 'conditional_router' | 'tool_executor' | 'start' | 'end'
+export type RunStatus = 'draft' | 'queued' | 'running' | 'paused' | 'completed' | 'failed' | 'stopped'
 export type NodeStatus = 'pending' | 'running' | 'paused' | 'completed' | 'failed' | 'skipped'
 export type EscalationType = 'low_confidence' | 'checkpoint_failure' | 'human_checkpoint' | 'node_error'
 export type EscalationResolution = 'approved' | 'edited' | 'guided' | 'aborted'
@@ -27,10 +27,19 @@ export interface Graph {
   updated_at: string
 }
 
+export interface InputFieldDef {
+  name: string
+  label: string
+  description: string
+  required: boolean
+  type: 'text' | 'textarea' | 'number'
+}
+
 export interface GraphDefinition {
   nodes: NodeDef[]
   edges: EdgeDef[]
   entry_point?: string | null
+  input_schema?: InputFieldDef[]
 }
 
 export interface NodeDef {
@@ -53,7 +62,10 @@ export interface EdgeDef {
 
 export interface Run {
   id: string
+  workspace_id: string
   graph_id: string
+  graph_version_id: string
+  name: string | null
   status: RunStatus
   trigger: 'manual' | 'api' | 'schedule'
   input: Record<string, unknown>
@@ -62,6 +74,10 @@ export interface Run {
   started_at: string | null
   completed_at: string | null
   created_at: string
+  // Enriched fields
+  total_tokens: number | null
+  output_summary: string | null
+  needs_attention: boolean
 }
 
 export interface RunNodeState {

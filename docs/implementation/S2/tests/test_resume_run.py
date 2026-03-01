@@ -42,12 +42,13 @@ async def test_resume_run_not_found(client, workspace):
 
 
 async def test_abort_run(client, workspace, run, db):
+    # S6.1: abort moved to POST .../abort (DELETE now permanently deletes terminal runs)
     from knotwork.runs.models import Run
     r = await db.get(Run, run.id)
     r.status = "running"
     await db.commit()
 
-    resp = await client.delete(f"/api/v1/workspaces/{workspace.id}/runs/{run.id}")
+    resp = await client.post(f"/api/v1/workspaces/{workspace.id}/runs/{run.id}/abort")
     assert resp.status_code == 200
     assert resp.json()["status"] == "stopped"
 
@@ -56,10 +57,11 @@ async def test_abort_run(client, workspace, run, db):
 
 
 async def test_abort_terminal_run_rejected(client, workspace, run, db):
+    # S6.1: abort moved to POST .../abort
     from knotwork.runs.models import Run
     r = await db.get(Run, run.id)
     r.status = "completed"
     await db.commit()
 
-    resp = await client.delete(f"/api/v1/workspaces/{workspace.id}/runs/{run.id}")
+    resp = await client.post(f"/api/v1/workspaces/{workspace.id}/runs/{run.id}/abort")
     assert resp.status_code == 400

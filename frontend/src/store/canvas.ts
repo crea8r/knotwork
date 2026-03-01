@@ -5,7 +5,7 @@
  * Persisted to the API on save.
  */
 import { create } from 'zustand'
-import type { GraphDefinition, NodeDef, EdgeDef } from '@/types'
+import type { GraphDefinition, InputFieldDef, NodeDef, EdgeDef } from '@/types'
 
 export interface GraphDelta {
   add_nodes?: NodeDef[]
@@ -14,6 +14,7 @@ export interface GraphDelta {
   add_edges?: EdgeDef[]
   remove_edges?: string[]
   set_entry_point?: string
+  set_input_schema?: InputFieldDef[]
 }
 
 interface CanvasState {
@@ -30,6 +31,7 @@ interface CanvasState {
   removeNode: (nodeId: string) => void
   addEdge: (edge: EdgeDef) => void
   removeEdge: (edgeId: string) => void
+  setInputSchema: (fields: InputFieldDef[]) => void
   markSaved: () => void
 }
 
@@ -74,7 +76,12 @@ export const useCanvasStore = create<CanvasState>((set) => ({
       if (delta.set_entry_point) {
         entry_point = delta.set_entry_point
       }
-      return { definition: { nodes, edges, entry_point }, isDirty: true }
+      let input_schema = state.definition.input_schema
+      // Only apply designer's schema suggestion if the user has no schema yet
+      if (delta.set_input_schema && !state.definition.input_schema?.length) {
+        input_schema = delta.set_input_schema
+      }
+      return { definition: { nodes, edges, entry_point, input_schema }, isDirty: true }
     }),
 
   selectNode: (nodeId) => set({ selectedNodeId: nodeId }),
@@ -120,6 +127,12 @@ export const useCanvasStore = create<CanvasState>((set) => ({
         ...state.definition,
         edges: state.definition.edges.filter((e) => e.id !== edgeId),
       },
+      isDirty: true,
+    })),
+
+  setInputSchema: (fields) =>
+    set((state) => ({
+      definition: { ...state.definition, input_schema: fields },
       isDirty: true,
     })),
 

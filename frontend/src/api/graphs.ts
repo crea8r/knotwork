@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import type { Graph, GraphDefinition } from '@/types'
+import type { Graph, GraphDefinition, GraphVersion } from '@/types'
 import { api } from './client'
 
 export function useGraphs(workspaceId: string) {
@@ -26,6 +26,17 @@ export function useCreateGraph(workspaceId: string) {
     mutationFn: (data: { name: string; description?: string }) =>
       api.post<Graph>(`/workspaces/${workspaceId}/graphs`, data).then((r) => r.data),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['graphs', workspaceId] }),
+  })
+}
+
+export function useGraphVersion(workspaceId: string, versionId: string) {
+  return useQuery({
+    queryKey: ['graph-version', versionId],
+    queryFn: () =>
+      api
+        .get<GraphVersion>(`/workspaces/${workspaceId}/graphs/versions/${versionId}`)
+        .then((r) => r.data),
+    enabled: !!workspaceId && !!versionId,
   })
 }
 

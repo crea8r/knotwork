@@ -1,56 +1,47 @@
+import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useEscalations } from '@/api/escalations'
 import { useAuthStore } from '@/store/auth'
+import PageHeader from '@/components/shared/PageHeader'
+import Card from '@/components/shared/Card'
+import StatusBadge from '@/components/shared/StatusBadge'
+import Badge from '@/components/shared/Badge'
+import EmptyState from '@/components/shared/EmptyState'
+import Spinner from '@/components/shared/Spinner'
 import type { Escalation } from '@/types'
 
 const DEV_WORKSPACE = import.meta.env.VITE_DEV_WORKSPACE_ID ?? 'dev-workspace'
 
 const TYPE_LABEL: Record<string, string> = {
   human_checkpoint: 'Human Checkpoint',
-  confidence: 'Low Confidence',
-  checkpoint_failed: 'Checkpoint Failed',
+  low_confidence: 'Low Confidence',
+  checkpoint_failure: 'Checkpoint Failed',
+  node_error: 'Node Error',
 }
 
-const STATUS_COLOR: Record<string, string> = {
-  open: 'bg-amber-100 text-amber-700',
-  resolved: 'bg-green-100 text-green-700',
-  timed_out: 'bg-red-100 text-red-700',
-}
-
-function EscalationRow({ esc, workspaceId }: { esc: Escalation; workspaceId: string }) {
+function EscalationCard({ esc }: { esc: Escalation }) {
   return (
-    <tr className="border-t border-gray-100 hover:bg-gray-50">
-      <td className="py-2 px-4">
+    <Card className="p-4">
+      <div className="flex items-center gap-4">
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2">
+            <p className="text-sm font-medium text-gray-800 truncate">
+              {TYPE_LABEL[esc.type] ?? esc.type}
+            </p>
+            <StatusBadge status={esc.status} />
+          </div>
+          <p className="text-xs text-gray-400 font-mono mt-1">
+            run {esc.run_id.slice(0, 8)}… · {new Date(esc.created_at).toLocaleString()}
+          </p>
+        </div>
         <Link
           to={`/escalations/${esc.id}`}
-          className="font-mono text-xs text-blue-600 hover:underline"
+          className="text-xs text-blue-600 hover:underline shrink-0"
         >
-          {esc.id.slice(0, 8)}…
+          {esc.status === 'open' ? 'Review →' : 'View →'}
         </Link>
-      </td>
-      <td className="py-2 px-4 text-sm">{TYPE_LABEL[esc.type] ?? esc.type}</td>
-      <td className="py-2 px-4">
-        <span className={`text-xs px-2 py-0.5 rounded-full ${STATUS_COLOR[esc.status] ?? ''}`}>
-          {esc.status}
-        </span>
-      </td>
-      <td className="py-2 px-4 font-mono text-xs text-gray-400">
-        {esc.run_id.slice(0, 8)}…
-      </td>
-      <td className="py-2 px-4 text-xs text-gray-400">
-        {new Date(esc.created_at).toLocaleString()}
-      </td>
-      <td className="py-2 px-4">
-        {esc.status === 'open' && (
-          <Link
-            to={`/escalations/${esc.id}`}
-            className="text-xs bg-amber-500 text-white px-2 py-1 rounded hover:bg-amber-600"
-          >
-            Review
-          </Link>
-        )}
-      </td>
-    </tr>
+      </div>
+    </Card>
   )
 }
 
@@ -59,55 +50,55 @@ export default function EscalationsPage() {
   const [filter, setFilter] = useState<string>('open')
   const { data: escalations = [], isLoading } = useEscalations(workspaceId, filter || undefined)
 
+  const openCount = escalations.filter((e) => e.status === 'open').length
+  const resolvedCount = escalations.filter((e) => e.status === 'resolved').length
+
+  const FILTERS = [
+    { value: 'open', label: 'Open' },
+    { value: 'resolved', label: 'Resolved' },
+    { value: '', label: 'All' },
+  ]
+
   return (
-    <div className="h-full flex flex-col">
-      <div className="px-6 py-4 border-b border-gray-200 bg-white flex items-center gap-4">
-        <h1 className="text-lg font-semibold">Escalations</h1>
-        <div className="flex gap-2 ml-auto">
-          {['open', 'resolved', ''].map((s) => (
-            <button
-              key={s || 'all'}
-              onClick={() => setFilter(s)}
-              className={`text-xs px-3 py-1 rounded-full border ${
-                filter === s
-                  ? 'bg-gray-800 text-white border-gray-800'
-                  : 'bg-white text-gray-600 border-gray-200 hover:border-gray-400'
-              }`}
-            >
-              {s || 'all'}
-            </button>
-          ))}
-        </div>
+    <div className="p-8 max-w-4xl mx-auto">
+      <PageHeader
+        title="Escalations"
+        actions={
+          <div className="flex items-center gap-2">
+            <Badge variant="orange">{openCount} open</Badge>
+            <Badge variant="gray">{resolvedCount} resolved</Badge>
+          </div>
+        }
+      />
+
+      <div className="flex gap-2 mb-6">
+        {FILTERS.map((f) => (
+          <button
+            key={f.value || 'all'}
+            onClick={() => setFilter(f.value)}
+            className={`px-4 py-1.5 rounded-full text-sm font-medium transition-colors ${
+              filter === f.value
+                ? 'bg-gray-900 text-white'
+                : 'bg-white border border-gray-200 text-gray-600 hover:border-gray-400'
+            }`}
+          >
+            {f.label}
+          </button>
+        ))}
       </div>
 
-      <div className="flex-1 overflow-auto">
-        {isLoading ? (
-          <p className="text-center text-gray-400 mt-16 text-sm">Loading…</p>
-        ) : escalations.length === 0 ? (
-          <p className="text-center text-gray-400 mt-16 text-sm">No escalations found.</p>
-        ) : (
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="text-xs text-gray-400 text-left bg-gray-50">
-                <th className="py-2 px-4">ID</th>
-                <th className="py-2 px-4">Type</th>
-                <th className="py-2 px-4">Status</th>
-                <th className="py-2 px-4">Run</th>
-                <th className="py-2 px-4">Created</th>
-                <th className="py-2 px-4"></th>
-              </tr>
-            </thead>
-            <tbody>
-              {escalations.map((esc) => (
-                <EscalationRow key={esc.id} esc={esc} workspaceId={workspaceId} />
-              ))}
-            </tbody>
-          </table>
-        )}
-      </div>
+      {isLoading ? (
+        <div className="flex justify-center py-16"><Spinner size="lg" /></div>
+      ) : escalations.length === 0 ? (
+        <EmptyState
+          heading="No escalations found"
+          subtext="Escalations appear when a run needs human review."
+        />
+      ) : (
+        <div className="space-y-2">
+          {escalations.map((esc) => <EscalationCard key={esc.id} esc={esc} />)}
+        </div>
+      )}
     </div>
   )
 }
-
-// useState import at top
-import { useState } from 'react'

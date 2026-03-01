@@ -7,9 +7,15 @@ from pydantic import BaseModel
 
 
 class RunCreate(BaseModel):
+    name: str | None = None
     input: dict = {}
     context_files: list[dict] = []
     trigger: str = "manual"
+
+
+class RunUpdate(BaseModel):
+    name: str | None = None
+    input: dict | None = None
 
 
 class RunNodeStateOut(BaseModel):
@@ -35,6 +41,7 @@ class RunOut(BaseModel):
     workspace_id: UUID
     graph_id: UUID
     graph_version_id: UUID
+    name: str | None = None
     status: str
     trigger: str
     input: dict
@@ -44,6 +51,10 @@ class RunOut(BaseModel):
     started_at: datetime | None
     completed_at: datetime | None
     created_at: datetime
+    # Enriched fields — populated by list/detail endpoints
+    total_tokens: int | None = None
+    output_summary: str | None = None
+    needs_attention: bool = False
 
     model_config = {"from_attributes": True}
 

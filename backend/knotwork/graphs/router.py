@@ -106,6 +106,22 @@ async def import_graph_from_md(
     return await _graph_out(db, graph)
 
 
+@router.get("/{workspace_id}/graphs/versions/{version_id}", response_model=GraphVersionOut)
+async def get_graph_version(
+    workspace_id: UUID, version_id: UUID, db: AsyncSession = Depends(get_db)
+):
+    """Return a specific graph version by ID (used to show exact config of a run)."""
+    from knotwork.graphs.models import GraphVersion
+    version = await db.get(GraphVersion, version_id)
+    if not version:
+        raise HTTPException(404, "Version not found")
+    # Verify workspace ownership via graph
+    graph = await service.get_graph(db, version.graph_id)
+    if not graph or graph.workspace_id != workspace_id:
+        raise HTTPException(404, "Version not found")
+    return GraphVersionOut.model_validate(version)
+
+
 @router.post("/{workspace_id}/graphs/design/chat", response_model=DesignChatResponse)
 async def design_chat(
     workspace_id: UUID, body: DesignChatRequest, db: AsyncSession = Depends(get_db)
@@ -122,5 +138,42 @@ async def design_chat(
         workspace_id=str(workspace_id),
         existing_graph=existing,
         db=db,
+        graph_id=str(graph.id),
     )
     return DesignChatResponse(**result)
+
+
+@router.get("/{workspace_id}/graphs/{graph_id}/designer-messages")
+async def list_designer_messages(
+    workspace_id: UUID, graph_id: UUID, db: AsyncSession = Depends(get_db)
+):
+    from sqlalchemy import select
+    from knotwork.designer.models import DesignerChatMessage
+    graph = await service.get_graph(db, graph_id)
+    if not graph or graph.workspace_id != workspace_id:
+        raise HTTPException(404, "Graph not found")
+    result = await db.execute(
+        select(DesignerChatMessage)
+        .where(DesignerChatMessage.graph_id == graph_id)
+        .order_by(DesignerChatMessage.created_at.asc())
+    )
+    msgs = result.scalars().all()
+    return [
+        {"role": m.role, "content": m.content, "created_at": m.created_at.isoformat()}
+        for m in msgs
+    ]
+
+
+@router.delete("/{workspace_id}/graphs/{graph_id}/designer-messages", status_code=204)
+async def clear_designer_messages(
+    workspace_id: UUID, graph_id: UUID, db: AsyncSession = Depends(get_db)
+):
+    from sqlalchemy import delete
+    from knotwork.designer.models import DesignerChatMessage
+    graph = await service.get_graph(db, graph_id)
+    if not graph or graph.workspace_id != workspace_id:
+        raise HTTPException(404, "Graph not found")
+    await db.execute(
+        delete(DesignerChatMessage).where(DesignerChatMessage.graph_id == graph_id)
+    )
+    await db.commit()

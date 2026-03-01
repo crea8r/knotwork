@@ -1,11 +1,5 @@
-/**
- * KnowledgeFilePage — Markdown editor for a single Handbook file.
- * Route: /handbook/file?path=<path>
- *
- * Panels: editor | history | health + suggestions
- */
 import { useState, useEffect } from 'react'
-import { useSearchParams, useNavigate } from 'react-router-dom'
+import { useSearchParams, Link } from 'react-router-dom'
 import {
   useKnowledgeFile,
   useKnowledgeHistory,
@@ -14,96 +8,84 @@ import {
   useUpdateKnowledgeFile,
   useRestoreKnowledgeFile,
 } from '../api/knowledge'
+import Card from '@/components/shared/Card'
+import HealthDots from '@/components/shared/HealthDots'
+import Btn from '@/components/shared/Btn'
+import Badge from '@/components/shared/Badge'
+import Spinner from '@/components/shared/Spinner'
 
 type Tab = 'editor' | 'history' | 'health'
-
-// ── HealthPanel ───────────────────────────────────────────────────────────────
 
 function HealthPanel({ path }: { path: string }) {
   const { data: health, isLoading: hLoading } = useKnowledgeHealth(path)
   const { data: sugg, isLoading: sLoading } = useKnowledgeSuggestions(path)
-
   const score = health?.health_score ?? null
-  const color =
-    score === null ? 'text-gray-400' :
-    score >= 4 ? 'text-green-600' :
-    score >= 2.5 ? 'text-yellow-600' : 'text-red-600'
 
   return (
-    <div className="space-y-4">
-      <div>
-        <p className="text-xs text-gray-500 uppercase mb-1">Health score</p>
-        {hLoading ? (
-          <p className="text-sm text-gray-400">Computing…</p>
-        ) : (
-          <p className={`text-3xl font-bold ${color}`}>
-            {score !== null ? `${score.toFixed(1)}/5.0` : 'No data yet'}
-          </p>
+    <div className="space-y-6">
+      <Card className="p-5">
+        <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">Health score</p>
+        {hLoading ? <Spinner /> : (
+          <div className="flex items-center gap-3">
+            <HealthDots score={score} />
+            <span className="text-2xl font-bold text-gray-800">
+              {score !== null ? `${score.toFixed(1)}/5` : 'No data'}
+            </span>
+          </div>
         )}
-        <p className="text-xs text-gray-400 mt-1">
+        <p className="text-xs text-gray-400 mt-2">
           token 20% · confidence 30% · escalation 25% · rating 25%
         </p>
-      </div>
+      </Card>
 
-      <div>
-        <p className="text-xs text-gray-500 uppercase mb-2">Mode B suggestions</p>
-        {sLoading ? (
-          <p className="text-sm text-gray-400">Generating…</p>
-        ) : !sugg?.suggestions.length ? (
+      <Card className="p-5">
+        <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">
+          Mode B Suggestions
+        </p>
+        {sLoading ? <Spinner /> : !sugg?.suggestions.length ? (
           <p className="text-sm text-gray-400">No suggestions yet — run this file through an agent first.</p>
         ) : (
           <ul className="space-y-2">
             {sugg.suggestions.map((s, i) => (
-              <li key={i} className="text-sm bg-amber-50 border border-amber-200 rounded px-3 py-2">
+              <li key={i} className="text-sm bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
                 💡 {s}
               </li>
             ))}
           </ul>
         )}
-      </div>
+      </Card>
     </div>
   )
 }
-
-// ── HistoryPanel ──────────────────────────────────────────────────────────────
 
 function HistoryPanel({ path }: { path: string }) {
   const { data: versions = [], isLoading } = useKnowledgeHistory(path)
   const restore = useRestoreKnowledgeFile(path)
 
-  if (isLoading) return <p className="text-sm text-gray-400">Loading history…</p>
+  if (isLoading) return <Spinner />
   if (!versions.length) return <p className="text-sm text-gray-400">No versions yet.</p>
 
   return (
-    <ul className="space-y-2">
+    <Card className="divide-y">
       {versions.map((v, i) => (
-        <li key={v.version_id} className="flex items-start gap-3 text-sm border-b pb-2">
+        <div key={v.version_id} className="flex items-start gap-4 p-4">
           <div className="flex-1">
             <p className="font-mono text-xs text-gray-500">{v.version_id.slice(0, 8)}…</p>
-            <p className="text-gray-700">{v.change_summary ?? '(no summary)'}</p>
+            <p className="text-sm text-gray-700">{v.change_summary ?? '(no summary)'}</p>
             <p className="text-xs text-gray-400">{new Date(v.saved_at).toLocaleString()}</p>
           </div>
-          {i > 0 && (
-            <button
-              onClick={() => restore.mutate(v.version_id)}
-              disabled={restore.isPending}
-              className="text-xs text-blue-600 hover:underline shrink-0"
-            >
-              Restore
-            </button>
-          )}
-          {i === 0 && <span className="text-xs text-green-600 shrink-0">Current</span>}
-        </li>
+          {i === 0
+            ? <Badge variant="green">Current</Badge>
+            : <Btn variant="ghost" size="sm" loading={restore.isPending} onClick={() => restore.mutate(v.version_id)}>Restore</Btn>
+          }
+        </div>
       ))}
-    </ul>
+    </Card>
   )
 }
 
-// ── KnowledgeFilePage ─────────────────────────────────────────────────────────
-
 export default function KnowledgeFilePage() {
   const [params] = useSearchParams()
-  const navigate = useNavigate()
   const path = params.get('path') ?? ''
 
   const { data: file, isLoading, error } = useKnowledgeFile(path || null)
@@ -125,7 +107,7 @@ export default function KnowledgeFilePage() {
   }
 
   if (!path) return <div className="p-8 text-red-500">No file path specified.</div>
-  if (isLoading) return <div className="p-8 text-gray-400">Loading…</div>
+  if (isLoading) return <div className="flex justify-center py-16"><Spinner size="lg" /></div>
   if (error) return <div className="p-8 text-red-500">File not found.</div>
   if (!file) return null
 
@@ -133,72 +115,68 @@ export default function KnowledgeFilePage() {
   const tokenWarn = tokenCount < 300 || tokenCount > 6000
 
   return (
-    <div className="p-8 max-w-5xl">
+    <div className="p-8 max-w-5xl mx-auto">
+      {/* Breadcrumb */}
+      <div className="flex items-center gap-2 text-xs text-gray-400 mb-4">
+        <Link to="/handbook" className="hover:text-gray-600">Handbook</Link>
+        <span>›</span>
+        <span className="text-gray-600 font-mono">{path}</span>
+      </div>
+
       {/* Header */}
-      <div className="flex items-start justify-between mb-4">
+      <div className="flex items-start justify-between mb-6">
         <div>
-          <button onClick={() => navigate('/handbook')} className="text-sm text-blue-600 hover:underline mb-1">
-            ← Handbook
-          </button>
-          <h1 className="text-xl font-semibold">{file.title}</h1>
-          <p className="text-xs font-mono text-gray-500">{file.path}</p>
+          <h1 className="text-xl font-semibold text-gray-900">{file.title}</h1>
+          <p className="text-xs font-mono text-gray-500 mt-0.5">{file.path}</p>
         </div>
         <div className="flex items-center gap-3">
           <span className={`text-xs ${tokenWarn ? 'text-amber-600 font-medium' : 'text-gray-400'}`}>
             {tokenCount} tokens{tokenCount < 300 ? ' ⚠ sparse' : tokenCount > 6000 ? ' ⚠ large' : ''}
           </span>
-          {file.health_score !== null && (
-            <span className={`text-xs font-medium ${
-              file.health_score >= 4 ? 'text-green-600' :
-              file.health_score >= 2.5 ? 'text-yellow-600' : 'text-red-600'
-            }`}>
-              ♥ {file.health_score.toFixed(1)}/5
-            </span>
-          )}
+          <HealthDots score={file.health_score} />
         </div>
       </div>
 
       {/* Tabs */}
-      <div className="flex gap-4 border-b mb-4 text-sm">
-        {(['editor', 'history', 'health'] as Tab[]).map(t => (
+      <div className="flex gap-4 border-b mb-6 text-sm">
+        {(['editor', 'history', 'health'] as Tab[]).map((t) => (
           <button
             key={t}
             onClick={() => setTab(t)}
-            className={`pb-2 capitalize ${tab === t ? 'border-b-2 border-blue-600 text-blue-600' : 'text-gray-500'}`}
+            className={`pb-2 capitalize ${
+              tab === t
+                ? 'border-b-2 border-brand-500 text-brand-600 font-medium'
+                : 'text-gray-500 hover:text-gray-700'
+            }`}
           >
             {t === 'health' ? 'Health & Suggestions' : t}
           </button>
         ))}
       </div>
 
-      {/* Tab content */}
       {tab === 'editor' && (
         <div className="space-y-3">
           <textarea
-            className="w-full border rounded p-3 font-mono text-sm h-96 resize-y focus:outline-none focus:ring-1 focus:ring-blue-400"
+            className="w-full border border-gray-200 rounded-xl p-4 font-mono text-sm h-96 resize-y focus:outline-none focus:ring-2 focus:ring-brand-500"
             value={content}
-            onChange={e => { setContent(e.target.value); setDirty(true) }}
+            onChange={(e) => { setContent(e.target.value); setDirty(true) }}
           />
           {dirty && (
             <div className="flex items-center gap-3">
               <input
-                className="border rounded px-2 py-1 text-sm flex-1"
+                className="border border-gray-200 rounded-lg px-3 py-1.5 text-sm flex-1"
                 placeholder="Change summary (optional)"
-                value={summary} onChange={e => setSummary(e.target.value)}
+                value={summary}
+                onChange={(e) => setSummary(e.target.value)}
               />
-              <button
-                onClick={save}
-                disabled={update.isPending}
-                className="bg-blue-600 text-white text-sm px-4 py-1.5 rounded hover:bg-blue-700 disabled:opacity-50"
-              >
-                {update.isPending ? 'Saving…' : 'Save'}
-              </button>
-              <button
+              <Btn size="sm" loading={update.isPending} onClick={save}>Save</Btn>
+              <Btn
+                size="sm"
+                variant="ghost"
                 onClick={() => { setContent(file.content); setDirty(false) }}
-                className="text-sm text-gray-500 hover:text-gray-700"
               >
                 Discard
-              </button>
+              </Btn>
             </div>
           )}
         </div>

@@ -76,7 +76,8 @@ async def generate_suggestions(file_id: UUID, db: AsyncSession) -> list[str]:
     try:
         from langchain_openai import ChatOpenAI
 
-        llm = ChatOpenAI(model="gpt-4o-mini", temperature=0)
+        from knotwork.config import settings
+        llm = ChatOpenAI(model="gpt-4o-mini", temperature=0, api_key=settings.openai_api_key)
         response = await llm.ainvoke(prompt)
         suggestions = json.loads(response.content)
         if isinstance(suggestions, list):
