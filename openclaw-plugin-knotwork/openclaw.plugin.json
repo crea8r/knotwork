@@ -1,0 +1,42 @@
+{
+  "id": "knotwork-bridge",
+  "name": "Knotwork Bridge",
+  "version": "0.2.0",
+  "description": "Plugin-first handshake, agent sync, and task execution bridge from OpenClaw to Knotwork.",
+  "author": "Knotwork",
+  "entry": "./index.ts",
+  "permissions": [
+    "network"
+  ],
+  "configSchema": {
+    "type": "object",
+    "properties": {
+      "knotworkBaseUrl": {
+        "type": "string",
+        "description": "Knotwork server base URL reachable from OpenClaw runtime (example: http://host.docker.internal:8000)."
+      },
+      "handshakeToken": {
+        "type": "string",
+        "description": "One-time token generated in Knotwork Settings > Agents."
+      },
+      "pluginInstanceId": {
+        "type": "string",
+        "description": "Stable plugin instance id. If omitted, plugin generates one."
+      },
+      "autoHandshakeOnStart": {
+        "type": "boolean",
+        "description": "If true, plugin handshakes immediately on startup.",
+        "default": true
+      },
+      "taskPollIntervalMs": {
+        "type": "number",
+        "description": "Task polling interval in milliseconds.",
+        "default": 2000
+      }
+    },
+    "required": [
+      "knotworkBaseUrl",
+      "handshakeToken"
+    ]
+  }
+}

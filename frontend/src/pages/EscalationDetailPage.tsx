@@ -9,10 +9,10 @@ import StatusBadge from '@/components/shared/StatusBadge'
 const DEV_WORKSPACE = import.meta.env.VITE_DEV_WORKSPACE_ID ?? 'dev-workspace'
 
 const ACTION_STYLES: Record<string, string> = {
-  approved: 'bg-green-600 hover:bg-green-700 text-white',
-  edited:   'bg-brand-600 hover:bg-brand-700 text-white',
-  guided:   'bg-blue-600 hover:bg-blue-700 text-white',
-  aborted:  'bg-red-600 hover:bg-red-700 text-white',
+  accept_output: 'bg-green-600 hover:bg-green-700 text-white',
+  override_output: 'bg-brand-600 hover:bg-brand-700 text-white',
+  request_revision: 'bg-blue-600 hover:bg-blue-700 text-white',
+  abort_run: 'bg-red-600 hover:bg-red-700 text-white',
 }
 
 export default function EscalationDetailPage() {
@@ -29,11 +29,11 @@ export default function EscalationDetailPage() {
 
   function handleResolve(resolution: EscalationResolve['resolution']) {
     const payload: EscalationResolve = { resolution }
-    if (resolution === 'edited' && editedOutput) {
-      try { payload.edited_output = JSON.parse(editedOutput) }
-      catch { payload.edited_output = { text: editedOutput } }
+    if (resolution === 'override_output' && editedOutput) {
+      try { payload.override_output = JSON.parse(editedOutput) }
+      catch { payload.override_output = { text: editedOutput } }
     }
-    if (resolution === 'guided' && guidance) payload.guidance = guidance
+    if (resolution === 'request_revision' && guidance) payload.guidance = guidance
     resolve.mutate(payload, { onSuccess: () => navigate('/escalations') })
   }
 
@@ -60,7 +60,19 @@ export default function EscalationDetailPage() {
       {/* Context */}
       <Card className="p-5 space-y-3">
         <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Context</p>
-        {ctx.prompt && <p className="text-sm text-gray-700">{ctx.prompt as string}</p>}
+        {ctx.prompt != null && <p className="text-sm text-gray-700">{String(ctx.prompt)}</p>}
+        {ctx.question != null && (
+          <p className="text-sm text-gray-700">
+            {String(ctx.question)}
+          </p>
+        )}
+        {Array.isArray(ctx.options) && ctx.options.length > 0 && (
+          <ul className="list-disc pl-5 text-sm text-gray-700 space-y-1">
+            {(ctx.options as unknown[]).map((opt, i) => (
+              <li key={i}>{String(opt)}</li>
+            ))}
+          </ul>
+        )}
         <div className="grid grid-cols-2 gap-2 text-xs text-gray-500">
           <span>Type: <strong className="text-gray-700">{esc.type}</strong></span>
           <span>Node: <strong className="text-gray-700">{(ctx.node_id as string) ?? '—'}</strong></span>
@@ -75,15 +87,16 @@ export default function EscalationDetailPage() {
       </Card>
 
       {/* Current output */}
-      {ctx.current_output != null && (
+      {(ctx.current_output != null || ctx.output != null) && (
         <Card className="p-5">
           <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">
             Current Output
           </p>
           <pre className="bg-gray-50 rounded p-3 text-sm whitespace-pre-wrap overflow-auto max-h-48 font-mono">
-            {typeof ctx.current_output === 'string'
-              ? ctx.current_output
-              : JSON.stringify(ctx.current_output, null, 2)}
+            {(() => {
+              const out = ctx.current_output ?? ctx.output
+              return typeof out === 'string' ? out : JSON.stringify(out, null, 2)
+            })()}
           </pre>
         </Card>
       )}
@@ -93,7 +106,7 @@ export default function EscalationDetailPage() {
         <Card className="p-5 space-y-4">
           <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Action</p>
           <div className="grid grid-cols-2 gap-3">
-            {(['approved', 'edited', 'guided', 'aborted'] as const).map((action) => (
+            {(['accept_output', 'override_output', 'request_revision', 'abort_run'] as const).map((action) => (
               <button
                 key={action}
                 onClick={() => setActiveAction(action === activeAction ? null : action)}
@@ -103,12 +116,12 @@ export default function EscalationDetailPage() {
                     : 'bg-white text-gray-700 border-gray-200 hover:border-gray-400'
                 }`}
               >
-                {action}
+                {action.replace(/_/g, ' ')}
               </button>
             ))}
           </div>
 
-          {activeAction === 'edited' && (
+          {activeAction === 'override_output' && (
             <textarea
               className="w-full border border-gray-200 rounded-lg p-3 text-sm font-mono resize-y"
               rows={5}
@@ -117,7 +130,7 @@ export default function EscalationDetailPage() {
               onChange={(e) => setEditedOutput(e.target.value)}
             />
           )}
-          {activeAction === 'guided' && (
+          {activeAction === 'request_revision' && (
             <textarea
               className="w-full border border-gray-200 rounded-lg p-3 text-sm resize-y"
               rows={3}
@@ -129,12 +142,12 @@ export default function EscalationDetailPage() {
 
           {activeAction && (
             <Btn
-              variant={activeAction === 'aborted' ? 'danger' : 'primary'}
+              variant={activeAction === 'abort_run' ? 'danger' : 'primary'}
               className="w-full justify-center"
               loading={resolve.isPending}
               onClick={() => handleResolve(activeAction)}
             >
-              Confirm: {activeAction}
+              Confirm: {activeAction.replace(/_/g, ' ')}
             </Btn>
           )}
           {resolve.isError && (

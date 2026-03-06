@@ -43,8 +43,32 @@ export const useCanvasStore = create<CanvasState>((set) => ({
   selectedNodeId: null,
   isDirty: false,
 
-  setGraph: (graphId, definition) =>
-    set({ graphId, definition, selectedNodeId: null, isDirty: false }),
+  setGraph: (graphId, definition) => {
+    const hasStart = definition.nodes.some(n => n.type === 'start')
+    const hasEnd = definition.nodes.some(n => n.type === 'end')
+
+    if (hasStart && hasEnd) {
+      // Complete graph — no seeding needed
+      set({ graphId, definition, selectedNodeId: null, isDirty: false })
+      return
+    }
+
+    // Seed missing start/end (empty graph OR legacy graph without them).
+    // Prepend so they appear at the top of the dagre layout.
+    const extraNodes: NodeDef[] = []
+    if (!hasStart) extraNodes.push({ id: 'start', type: 'start', name: 'Start', config: {} })
+    if (!hasEnd) extraNodes.push({ id: 'end', type: 'end', name: 'End', config: {} })
+
+    set({
+      graphId,
+      definition: {
+        ...definition,
+        nodes: [...extraNodes, ...definition.nodes],
+      },
+      selectedNodeId: null,
+      isDirty: true,
+    })
+  },
 
   applyDelta: (delta) =>
     set((state) => {
@@ -52,7 +76,10 @@ export const useCanvasStore = create<CanvasState>((set) => ({
       let entry_point = state.definition.entry_point
 
       if (delta.add_nodes?.length) {
-        nodes = [...nodes, ...delta.add_nodes]
+        // Deduplicate — designer may re-emit start/end that are already seeded
+        const existingIds = new Set(nodes.map(n => n.id))
+        const incoming = delta.add_nodes.filter(n => !existingIds.has(n.id))
+        nodes = [...nodes, ...incoming]
       }
       if (delta.update_nodes?.length) {
         nodes = nodes.map(n => {
@@ -67,7 +94,9 @@ export const useCanvasStore = create<CanvasState>((set) => ({
         edges = edges.filter(e => !removed.has(e.source) && !removed.has(e.target))
       }
       if (delta.add_edges?.length) {
-        edges = [...edges, ...delta.add_edges]
+        const existingEdgeIds = new Set(edges.map(e => e.id))
+        const incomingEdges = delta.add_edges.filter(e => !existingEdgeIds.has(e.id))
+        edges = [...edges, ...incomingEdges]
       }
       if (delta.remove_edges?.length) {
         const removedEdges = new Set(delta.remove_edges)
@@ -86,16 +115,22 @@ export const useCanvasStore = create<CanvasState>((set) => ({
 
   selectNode: (nodeId) => set({ selectedNodeId: nodeId }),
 
-  updateNodeConfig: (nodeId, config) =>
-    set((state) => ({
-      definition: {
-        ...state.definition,
-        nodes: state.definition.nodes.map((n) =>
-          n.id === nodeId ? { ...n, config: { ...n.config, ...config } } : n
-        ),
-      },
-      isDirty: true,
-    })),
+  updateNodeConfig: (nodeId, patch) =>
+    set((state) => {
+      // _config key → merged into node.config; all other keys → top-level node fields
+      const { _config, ...nodeFields } = patch as { _config?: Record<string, unknown> } & Record<string, unknown>
+      return {
+        definition: {
+          ...state.definition,
+          nodes: state.definition.nodes.map((n) =>
+            n.id === nodeId
+              ? { ...n, ...nodeFields, config: { ...n.config, ...(_config ?? {}) } }
+              : n
+          ),
+        },
+        isDirty: true,
+      }
+    }),
 
   addNode: (node) =>
     set((state) => ({

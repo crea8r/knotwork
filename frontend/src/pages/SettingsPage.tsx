@@ -1,15 +1,17 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import PageHeader from '@/components/shared/PageHeader'
 import Card from '@/components/shared/Card'
 import Badge from '@/components/shared/Badge'
 import MockWrap from '@/components/shared/MockWrap'
 import Spinner from '@/components/shared/Spinner'
+import AgentsTab from '@/components/settings/AgentsTab'
 import { MOCK_WORKSPACE, MOCK_MEMBERS } from '@/mocks'
 import { useNotifPreferences, useUpdateNotifPreferences, useNotifLog } from '@/api/notifications'
 
 const DEV_WORKSPACE = import.meta.env.VITE_DEV_WORKSPACE_ID ?? 'dev-workspace'
 
-type Tab = 'workspace' | 'members' | 'notifications'
+type Tab = 'workspace' | 'members' | 'agents' | 'notifications'
 
 function Field({ label, value }: { label: string; value: string }) {
   return (
@@ -135,8 +137,18 @@ function NotificationsTab() {
 }
 
 export default function SettingsPage() {
-  const [tab, setTab] = useState<Tab>('workspace')
-  const TABS: Tab[] = ['workspace', 'members', 'notifications']
+  const [searchParams, setSearchParams] = useSearchParams()
+  const tabFromUrl = searchParams.get('tab') as Tab | null
+  const initialTab: Tab =
+    tabFromUrl === 'workspace' || tabFromUrl === 'members' || tabFromUrl === 'agents' || tabFromUrl === 'notifications'
+      ? tabFromUrl
+      : 'workspace'
+  const [tab, setTab] = useState<Tab>(initialTab)
+  const TABS: Tab[] = ['workspace', 'members', 'agents', 'notifications']
+
+  useEffect(() => {
+    setTab(initialTab)
+  }, [initialTab])
 
   return (
     <div className="p-8 max-w-3xl mx-auto">
@@ -146,7 +158,10 @@ export default function SettingsPage() {
         {TABS.map((t) => (
           <button
             key={t}
-            onClick={() => setTab(t)}
+            onClick={() => {
+              setTab(t)
+              setSearchParams({ tab: t })
+            }}
             className={`pb-2 capitalize ${
               tab === t
                 ? 'border-b-2 border-brand-500 text-brand-600 font-medium'
@@ -194,6 +209,8 @@ export default function SettingsPage() {
           </Card>
         </MockWrap>
       )}
+
+      {tab === 'agents' && <AgentsTab />}
 
       {tab === 'notifications' && <NotificationsTab />}
     </div>

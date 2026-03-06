@@ -44,28 +44,11 @@ KnowledgeHealthLog
 
 ---
 
-## Tool
+## <span style="color:#c1121f;font-weight:700">LEGACY</span> Tool Registry *(removed in S7)*
 
-```
-Tool
-  id                uuid  PK
-  workspace_id      uuid  FK → Workspace  -- null if built-in
-  graph_id          uuid  FK → Graph  nullable  -- if graph-scoped
-  name              text
-  slug              text  -- used in code/YAML references
-  category          enum  [function, http, rag, lookup, rule, builtin]
-  scope             enum  [workspace, graph, node]
-  definition        jsonb         -- category-specific config
-  current_version   text
-  created_by        uuid  FK → User
-  created_at        timestamptz
-  updated_at        timestamptz
+The `Tool` and `ToolVersion` tables were part of the pre-S7 tool registry. This registry was
+removed in S7. Agents now bring their own tools.
 
-ToolVersion
-  id                uuid  PK
-  tool_id           uuid  FK → Tool
-  definition        jsonb
-  created_by        uuid  FK → User
-  created_at        timestamptz
-  note              text  nullable
-```
+The four Knotwork-native tools (`write_worklog`, `propose_handbook_update`, `escalate`,
+`complete_node`) are defined in `runtime/adapters/tools.py` and injected by every adapter — they
+are not stored in the database.

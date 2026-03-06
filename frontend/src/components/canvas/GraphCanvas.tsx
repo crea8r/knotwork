@@ -32,29 +32,61 @@ const STATUS_COLORS: Record<NodeStatus, string> = {
   skipped: '#6b7280',
 }
 
+const SELECT_RING = '#2563eb'
+const SELECT_GLOW = 'rgba(37, 99, 235, 0.32)'
+
 function computeLayout(definition: GraphDefinition) {
-  const g = new dagre.graphlib.Graph()
+  // multigraph=true allows multiple edges between the same pair of nodes (e.g. two branches)
+  const g = new dagre.graphlib.Graph({ multigraph: true })
   g.setDefaultEdgeLabel(() => ({}))
   g.setGraph({ rankdir: 'TB', nodesep: 48, ranksep: 64, marginx: PAD, marginy: PAD })
   for (const node of definition.nodes) g.setNode(node.id, { width: NODE_W, height: NODE_H })
-  for (const edge of definition.edges) g.setEdge(edge.source, edge.target)
+  // Use edge.id as the name so multigraph can distinguish parallel + back-edges
+  for (const edge of definition.edges) g.setEdge(edge.source, edge.target, {}, edge.id)
   dagre.layout(g)
   return g
 }
 
-function StartEndOval({ node, x, y, selected }: {
-  node: NodeDef; x: number; y: number; selected: boolean
+function StartEndOval({
+  node, x, y, selected, neighbor, dimmed, pulse, onClick,
+}: {
+  node: NodeDef
+  x: number
+  y: number
+  selected: boolean
+  neighbor: boolean
+  dimmed: boolean
+  pulse: boolean
+  onClick: () => void
 }) {
   const isStart = node.type === 'start'
   const fill = NODE_COLORS[node.type]
   const rx = NODE_W / 2
   const ry = NODE_H / 2
   const label = isStart ? '▶ Start' : '■ End'
+  const scale = selected ? (pulse ? 1.07 : 1.04) : (neighbor ? 1.01 : 1)
+  const opacity = dimmed ? 0.58 : 1
+
   return (
-    <g transform={`translate(${x},${y})`} style={{ cursor: 'default' }}>
+    <g
+      transform={`translate(${x},${y}) scale(${scale})`}
+      style={{ cursor: 'pointer', opacity, transition: 'opacity 160ms ease' }}
+      onClick={onClick}
+    >
+      {selected && (
+        <ellipse
+          cx={0}
+          cy={0}
+          rx={rx + 10}
+          ry={ry + 10}
+          fill="none"
+          stroke={SELECT_GLOW}
+          strokeWidth={10}
+        />
+      )}
       <ellipse cx={0} cy={0} rx={rx} ry={ry}
         fill={fill} fillOpacity={0.18}
-        stroke={selected ? '#1d4ed8' : fill} strokeWidth={selected ? 2.5 : 2} />
+        stroke={selected ? SELECT_RING : fill} strokeWidth={selected ? 4 : 2} />
       <text x={0} y={5} fontSize={13} fontWeight="600" fill={fill}
         fontFamily="sans-serif" textAnchor="middle">
         {label}
@@ -63,14 +95,54 @@ function StartEndOval({ node, x, y, selected }: {
   )
 }
 
-function NodeBox({ node, x, y, selected, statusColor, onClick }: {
-  node: NodeDef; x: number; y: number; selected: boolean; statusColor?: string; onClick: () => void
+function NodeBox({
+  node, x, y, selected, neighbor, dimmed, pulse, statusColor, onClick,
+}: {
+  node: NodeDef
+  x: number
+  y: number
+  selected: boolean
+  neighbor: boolean
+  dimmed: boolean
+  pulse: boolean
+  statusColor?: string
+  onClick: () => void
 }) {
   const fill = statusColor ?? NODE_COLORS[node.type] ?? '#6b7280'
+  const scale = selected ? (pulse ? 1.07 : 1.04) : (neighbor ? 1.01 : 1)
+  const opacity = dimmed ? 0.58 : 1
+  const shadow = selected
+    ? 'drop-shadow(0px 8px 18px rgba(37,99,235,0.28))'
+    : neighbor
+      ? 'drop-shadow(0px 4px 8px rgba(0,0,0,0.12))'
+      : 'none'
+
   return (
-    <g transform={`translate(${x - NODE_W / 2},${y - NODE_H / 2})`} onClick={onClick} style={{ cursor: 'pointer' }}>
+    <g
+      transform={`translate(${x - NODE_W / 2},${y - NODE_H / 2}) scale(${scale})`}
+      onClick={onClick}
+      style={{
+        cursor: 'pointer',
+        opacity,
+        filter: shadow,
+        transformOrigin: `${NODE_W / 2}px ${NODE_H / 2}px`,
+        transition: 'opacity 160ms ease, filter 160ms ease',
+      }}
+    >
+      {selected && (
+        <rect
+          x={-8}
+          y={-8}
+          width={NODE_W + 16}
+          height={NODE_H + 16}
+          rx={14}
+          fill="none"
+          stroke={SELECT_GLOW}
+          strokeWidth={10}
+        />
+      )}
       <rect width={NODE_W} height={NODE_H} rx={8} fill={fill} fillOpacity={0.15}
-        stroke={selected ? '#1d4ed8' : fill} strokeWidth={selected ? 2.5 : 1.5} />
+        stroke={selected ? SELECT_RING : fill} strokeWidth={selected ? 4 : 1.5} />
       <rect width={4} height={NODE_H} rx={2} fill={fill} />
       <text x={16} y={22} fontSize={11} fill="#6b7280" fontFamily="sans-serif">
         {node.type.replace(/_/g, ' ')}
@@ -82,12 +154,43 @@ function NodeBox({ node, x, y, selected, statusColor, onClick }: {
   )
 }
 
-function EdgePath({ edge, g }: { edge: EdgeDef; g: dagre.graphlib.Graph }) {
-  const edgeData = g.edge({ v: edge.source, w: edge.target })
-  if (!edgeData?.points?.length) return null
-  const pts = edgeData.points as Array<{ x: number; y: number }>
-  const d = pts.map((p, i) => `${i === 0 ? 'M' : 'L'}${p.x},${p.y}`).join(' ')
-  return <path d={d} fill="none" stroke="#d1d5db" strokeWidth={1.5} markerEnd="url(#arrow)" />
+function EdgePath({
+  edge, g, selected, neighbor, dimmed,
+}: {
+  edge: EdgeDef
+  g: dagre.graphlib.Graph
+  selected: boolean
+  neighbor: boolean
+  dimmed: boolean
+}) {
+  const srcNode = g.node(edge.source)
+  const tgtNode = g.node(edge.target)
+  if (!srcNode || !tgtNode) return null
+
+  const stroke = selected ? SELECT_RING : (neighbor ? '#64748b' : '#d1d5db')
+  const strokeWidth = selected ? 2.75 : (neighbor ? 2.1 : 1.5)
+  const opacity = dimmed ? 0.35 : 1
+
+  // Try dagre's routed points first (works reliably for forward edges)
+  const edgeData = g.edge({ v: edge.source, w: edge.target, name: edge.id })
+  if (edgeData?.points?.length) {
+    const pts = edgeData.points as Array<{ x: number; y: number }>
+    const d = pts.map((p, i) => `${i === 0 ? 'M' : 'L'}${p.x},${p.y}`).join(' ')
+    return <path d={d} fill="none" stroke={stroke} opacity={opacity} strokeWidth={strokeWidth} markerEnd={selected ? 'url(#arrow-selected)' : 'url(#arrow)'} />
+  }
+
+  // Fallback for back-edges (loops): dagre may not expose points for reversed edges.
+  // Draw a curved Bezier path hugging the left side, colored purple with a dash to signal a loop.
+  const sx = srcNode.x - NODE_W / 2
+  const sy = srcNode.y
+  const tx = tgtNode.x - NODE_W / 2
+  const ty = tgtNode.y
+  const cx = Math.min(sx, tx) - 72
+  const d = `M ${sx},${sy} C ${cx},${sy} ${cx},${ty} ${tx},${ty}`
+  return (
+    <path d={d} fill="none" stroke={selected ? SELECT_RING : '#8b5cf6'} opacity={opacity} strokeWidth={selected ? 2.75 : 1.5}
+      strokeDasharray="6,3" markerEnd={selected ? 'url(#arrow-selected)' : 'url(#arrow-loop)'} />
+  )
 }
 
 interface Props {
@@ -101,11 +204,27 @@ export default function GraphCanvas({ definition, nodeStatuses = {}, selectedNod
   const svgRef = useRef<SVGSVGElement>(null)
   const [zoom, setZoom] = useState(1)
   const [pan, setPan] = useState({ x: 0, y: 0 })
+  const [pulseNodeId, setPulseNodeId] = useState<string | null>(null)
   const dragRef = useRef<{ sx: number; sy: number; px: number; py: number } | null>(null)
   const wasDragging = useRef(false)
 
   const g = computeLayout(definition)
   const { width: gw = 400, height: gh = 300 } = g.graph() as { width?: number; height?: number }
+  const selected = selectedNodeId ?? null
+  const hasSelection = !!selected
+  const neighborIds = new Set<string>()
+  if (selected) {
+    for (const e of definition.edges) {
+      if (e.source === selected) neighborIds.add(e.target)
+      if (e.target === selected) neighborIds.add(e.source)
+    }
+  }
+  const selectedEdgeIds = new Set(definition.edges.filter(e => e.source === selected || e.target === selected).map(e => e.id))
+  const neighborEdgeIds = new Set(
+    definition.edges
+      .filter(e => neighborIds.has(e.source) || neighborIds.has(e.target))
+      .map(e => e.id),
+  )
 
   function fitToView() {
     const svg = svgRef.current
@@ -179,13 +298,37 @@ export default function GraphCanvas({ definition, nodeStatuses = {}, selectedNod
           <marker id="arrow" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
             <path d="M0,0 L0,6 L8,3 z" fill="#d1d5db" />
           </marker>
+          <marker id="arrow-selected" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+            <path d="M0,0 L0,6 L8,3 z" fill={SELECT_RING} />
+          </marker>
+          <marker id="arrow-loop" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+            <path d="M0,0 L0,6 L8,3 z" fill="#8b5cf6" />
+          </marker>
         </defs>
         <g transform={`translate(${pan.x},${pan.y}) scale(${zoom})`}>
-          {definition.edges.map(edge => <EdgePath key={edge.id} edge={edge} g={g} />)}
+          {definition.edges.map(edge => {
+            const isSelectedEdge = selectedEdgeIds.has(edge.id)
+            const isNeighborEdge = neighborEdgeIds.has(edge.id)
+            const isDimmed = hasSelection && !isSelectedEdge && !isNeighborEdge
+            return (
+              <EdgePath
+                key={edge.id}
+                edge={edge}
+                g={g}
+                selected={isSelectedEdge}
+                neighbor={isNeighborEdge}
+                dimmed={isDimmed}
+              />
+            )
+          })}
           {definition.nodes.map(node => {
             const pos = g.node(node.id)
             if (!pos) return null
             const status = nodeStatuses[node.id]
+            const isSelected = selected === node.id
+            const isNeighbor = neighborIds.has(node.id)
+            const isDimmed = hasSelection && !isSelected && !isNeighbor
+            const isPulse = pulseNodeId === node.id
             if (node.type === 'start' || node.type === 'end') {
               return (
                 <StartEndOval
@@ -193,7 +336,20 @@ export default function GraphCanvas({ definition, nodeStatuses = {}, selectedNod
                   node={node}
                   x={pos.x}
                   y={pos.y}
-                  selected={selectedNodeId === node.id}
+                  selected={isSelected}
+                  neighbor={isNeighbor}
+                  dimmed={isDimmed}
+                  pulse={isPulse}
+                  onClick={() => {
+                    if (!wasDragging.current) {
+                      const next = selected === node.id ? null : node.id
+                      onSelectNode?.(next)
+                      if (next) {
+                        setPulseNodeId(next)
+                        window.setTimeout(() => setPulseNodeId((p) => (p === next ? null : p)), 180)
+                      }
+                    }
+                  }}
                 />
               )
             }
@@ -203,10 +359,20 @@ export default function GraphCanvas({ definition, nodeStatuses = {}, selectedNod
                 node={node}
                 x={pos.x}
                 y={pos.y}
-                selected={selectedNodeId === node.id}
+                selected={isSelected}
+                neighbor={isNeighbor}
+                dimmed={isDimmed}
+                pulse={isPulse}
                 statusColor={status ? STATUS_COLORS[status] : undefined}
                 onClick={() => {
-                  if (!wasDragging.current) onSelectNode?.(selectedNodeId === node.id ? null : node.id)
+                  if (!wasDragging.current) {
+                    const next = selected === node.id ? null : node.id
+                    onSelectNode?.(next)
+                    if (next) {
+                      setPulseNodeId(next)
+                      window.setTimeout(() => setPulseNodeId((p) => (p === next ? null : p)), 180)
+                    }
+                  }
                 }}
               />
             )

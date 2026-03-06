@@ -84,10 +84,16 @@ async def graph(db, workspace):
         graph_id=g.id,
         definition={
             "nodes": [
+                {"id": "start", "type": "start", "name": "Start", "config": {}},
                 {"id": "analyse", "type": "llm_agent", "name": "Analyse", "config": {}},
                 {"id": "review", "type": "human_checkpoint", "name": "Review", "config": {}},
+                {"id": "end", "type": "end", "name": "End", "config": {}},
             ],
-            "edges": [{"id": "e1", "source": "analyse", "target": "review", "type": "direct"}],
+            "edges": [
+                {"id": "e0", "source": "start", "target": "analyse", "type": "direct"},
+                {"id": "e1", "source": "analyse", "target": "review", "type": "direct"},
+                {"id": "e2", "source": "review", "target": "end", "type": "direct"},
+            ],
             "entry_point": "analyse",
         },
     )

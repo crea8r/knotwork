@@ -148,8 +148,8 @@ graph TD
   UC3_7[Guide — write instructions for retry]
   UC3_8[Abort — stop the run]
 
-  UC3_9[Run resumes with approved output]
-  UC3_10[Run resumes with edited output]
+  UC3_9[Run resumes with accept_output]
+  UC3_10[Run resumes with override_output]
   UC3_11[Node retries with guidance in prompt]
   UC3_12[Run stopped — owner notified]
 

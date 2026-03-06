@@ -13,6 +13,10 @@ class NodeDefSchema(BaseModel):
     name: str
     config: dict = {}
     note: str | None = None
+    # Preserve top-level node fields introduced by newer sessions
+    # (e.g. agent_ref, trust_level, registered_agent_id) instead of
+    # silently dropping them during GraphVersion model validation.
+    model_config = {"extra": "allow"}
 
 
 class EdgeDefSchema(BaseModel):
@@ -91,8 +95,14 @@ class GraphOut(BaseModel):
     description: str | None
     status: str
     default_model: str | None
+    run_count: int = 0
     latest_version: GraphVersionOut | None = None
     created_at: datetime
     updated_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+class GraphDeleteResult(BaseModel):
+    action: Literal["deleted", "archived"]
+    run_count: int

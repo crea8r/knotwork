@@ -9,6 +9,7 @@ from knotwork.graphs.schemas import (
     DesignChatRequest,
     DesignChatResponse,
     GraphCreate,
+    GraphDeleteResult,
     GraphOut,
     GraphUpdate,
     GraphVersionCreate,
@@ -19,9 +20,10 @@ from knotwork.graphs.schemas import (
 router = APIRouter(prefix="/workspaces", tags=["graphs"])
 
 
-async def _graph_out(db: AsyncSession, graph) -> GraphOut:
+async def _graph_out(db: AsyncSession, graph, run_count: int | None = None) -> GraphOut:
     ver = await service.get_latest_version(db, graph.id)
     out = GraphOut.model_validate(graph)
+    out.run_count = run_count if run_count is not None else await service.count_graph_runs(db, graph.workspace_id, graph.id)
     out.latest_version = GraphVersionOut.model_validate(ver) if ver else None
     return out
 
@@ -29,7 +31,8 @@ async def _graph_out(db: AsyncSession, graph) -> GraphOut:
 @router.get("/{workspace_id}/graphs", response_model=list[GraphOut])
 async def list_graphs(workspace_id: UUID, db: AsyncSession = Depends(get_db)):
     graphs = await service.list_graphs(db, workspace_id)
-    return [await _graph_out(db, g) for g in graphs]
+    run_counts = await service.list_graph_run_counts(db, workspace_id)
+    return [await _graph_out(db, g, run_count=run_counts.get(g.id, 0)) for g in graphs]
 
 
 @router.post("/{workspace_id}/graphs", response_model=GraphOut, status_code=201)
@@ -77,14 +80,18 @@ async def update_graph(
     return await _graph_out(db, graph)
 
 
-@router.delete("/{workspace_id}/graphs/{graph_id}", status_code=204)
+@router.delete("/{workspace_id}/graphs/{graph_id}", response_model=GraphDeleteResult)
 async def delete_graph(
     workspace_id: UUID, graph_id: UUID, db: AsyncSession = Depends(get_db)
 ):
     graph = await service.get_graph(db, graph_id)
     if not graph or graph.workspace_id != workspace_id:
         raise HTTPException(404, "Graph not found")
-    await service.delete_graph(db, graph_id)
+    result = await service.retire_graph(db, workspace_id, graph_id)
+    if result is None:
+        raise HTTPException(404, "Graph not found")
+    action, run_count = result
+    return GraphDeleteResult(action=action, run_count=run_count)
 
 
 @router.post("/{workspace_id}/graphs/import-md", response_model=GraphOut, status_code=201)

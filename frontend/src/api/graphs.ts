@@ -50,3 +50,23 @@ export function useSaveGraphVersion(workspaceId: string, graphId: string) {
     onSuccess: () => qc.invalidateQueries({ queryKey: ['graph', graphId] }),
   })
 }
+
+export interface GraphDeleteResult {
+  action: 'deleted' | 'archived'
+  run_count: number
+}
+
+export function useDeleteGraph(workspaceId: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (graphId: string) =>
+      api
+        .delete<GraphDeleteResult>(`/workspaces/${workspaceId}/graphs/${graphId}`)
+        .then((r) => r.data),
+    onSuccess: (_, graphId) => {
+      qc.invalidateQueries({ queryKey: ['graphs', workspaceId] })
+      qc.invalidateQueries({ queryKey: ['graph', graphId] })
+      qc.invalidateQueries({ queryKey: ['runs', workspaceId] })
+    },
+  })
+}

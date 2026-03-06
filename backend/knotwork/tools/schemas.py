@@ -33,13 +33,6 @@ class ToolResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
-class BuiltinToolInfo(BaseModel):
-    slug: str
-    name: str
-    category: str
-    description: str
-    parameters: list[dict]
-
 
 class ToolTestRequest(BaseModel):
     input: dict

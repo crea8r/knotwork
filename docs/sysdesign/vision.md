@@ -2,7 +2,7 @@
 
 ## What It Is
 
-Knotwork is a visual agent workflow platform for non-technical operators. Users design AI-powered business processes through conversation and a drag-and-drop canvas, then run and monitor them day-to-day — on any device.
+Knotwork is a visual agent workflow platform for non-technical operators. Users design AI-powered business processes through conversation (the Chat Designer), with a read-only canvas showing the result, then run and monitor them day-to-day — on any device.
 
 Every step in a workflow carries its own upgradable knowledge: instructions, guidelines, quality checkpoints, and a feedback loop so the process gets better over time.
 

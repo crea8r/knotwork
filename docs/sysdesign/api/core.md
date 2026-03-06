@@ -74,7 +74,6 @@ POST   /api/v1/workspaces/:workspace_id/graphs/:graph_id/versions
 {
   "name": "Hotel Contract Review",
   "description": "...",
-  "default_model": "openai/gpt-4o",
   "trigger_config": {
     "manual": true,
     "api": true
@@ -139,3 +138,55 @@ Response:
 ```
 
 The `graph_delta` is applied to the canvas in real time as the conversation progresses.
+
+---
+
+## Registered Agents
+
+```
+GET    /api/v1/workspaces/:workspace_id/agents
+POST   /api/v1/workspaces/:workspace_id/agents
+DELETE /api/v1/workspaces/:workspace_id/agents/:agent_id
+```
+
+> S8 expands this surface substantially (capability refresh, preflight runs, activation lifecycle,
+> usage history, compatibility checks, debug links, avatar upload flow). See:
+> [agents-settings-profile.md](/Users/hieu/Work/crea8r/knotwork/docs/sysdesign/api/agents-settings-profile.md)
+
+POST body:
+```json
+{
+  "display_name": "My Legal Claude",
+  "provider": "anthropic",
+  "agent_ref": "anthropic:claude-sonnet-4-6",
+  "api_key": "sk-ant-..."
+}
+```
+
+Response includes `api_key_hint` (last 4 chars of stored key) instead of the raw key.
+
+---
+
+## Agent API (node execution session endpoints)
+
+Used by external agents during a run. Not under `/api/v1` — scoped by session JWT.
+
+```
+POST /agent-api/log        -- write_worklog tool call
+POST /agent-api/propose    -- propose_handbook_update tool call
+POST /agent-api/escalate   -- escalate tool call
+POST /agent-api/complete   -- complete_node tool call
+```
+
+Session JWT is scoped to a single run + node + workspace (2h TTL). Issued by the runtime and
+passed to the adapter as `session_token`.
+
+---
+
+## Handbook Proposals
+
+```
+GET  /api/v1/workspaces/:workspace_id/handbook/proposals
+POST /api/v1/workspaces/:workspace_id/handbook/proposals/:proposal_id/approve
+POST /api/v1/workspaces/:workspace_id/handbook/proposals/:proposal_id/reject
+```

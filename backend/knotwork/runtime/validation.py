@@ -5,9 +5,19 @@ validate_graph() performs a BFS reachability check:
 - Every non-start/end node must be reachable from a start node (forward BFS).
 - Every non-start/end node must reach an end node (backward BFS).
 
-Returns [] for legacy graphs that have no start node (backward-compatible).
+All graphs with work nodes must have Start and End nodes wired up.
 """
 from __future__ import annotations
+
+# Keep in sync with frontend src/utils/models.ts
+VALID_MODELS: frozenset[str] = frozenset({
+    # With provider prefix
+    "openai/gpt-4o", "openai/gpt-4o-mini", "openai/gpt-4-turbo", "openai/gpt-3.5-turbo",
+    "anthropic/claude-opus-4-6", "anthropic/claude-sonnet-4-6", "anthropic/claude-haiku-4-5-20251001",
+    # Without prefix
+    "gpt-4o", "gpt-4o-mini", "gpt-4-turbo", "gpt-3.5-turbo",
+    "claude-opus-4-6", "claude-sonnet-4-6", "claude-haiku-4-5-20251001",
+})
 
 
 def validate_graph(definition: dict) -> list[str]:
@@ -15,7 +25,7 @@ def validate_graph(definition: dict) -> list[str]:
     Validate graph topology. Returns a list of error strings.
     Empty list means valid.
 
-    Skips validation entirely for legacy graphs with no 'start' node.
+    All graphs with work nodes must have Start and End nodes wired up.
     """
     nodes = definition.get("nodes", [])
     edges = definition.get("edges", [])
@@ -27,13 +37,15 @@ def validate_graph(definition: dict) -> list[str]:
     start_ids = {n["id"] for n in nodes if n.get("type") == "start"}
     end_ids = {n["id"] for n in nodes if n.get("type") == "end"}
 
-    # Legacy graph — skip validation
-    if not start_ids:
-        return []
-
     work_ids = node_ids - start_ids - end_ids
     if not work_ids:
-        return []
+        return []  # Only start/end with no work nodes — valid
+
+    # All graphs with work nodes require Start and End
+    if not start_ids:
+        return ["Add a Start node and connect it to begin the workflow"]
+    if not end_ids:
+        return ["Add an End node and connect your last node to it"]
 
     # Build adjacency maps
     fwd: dict[str, set[str]] = {nid: set() for nid in node_ids}
@@ -60,11 +72,16 @@ def validate_graph(definition: dict) -> list[str]:
 
     errors: list[str] = []
     for nid in work_ids:
+        node = next((n for n in nodes if n["id"] == nid), {})
+        name = node.get("name", nid)
         if nid not in reachable_from_start:
-            name = next((n.get("name", nid) for n in nodes if n["id"] == nid), nid)
             errors.append(f'Node "{name}" is not reachable from Start')
         elif nid not in can_reach_end:
-            name = next((n.get("name", nid) for n in nodes if n["id"] == nid), nid)
             errors.append(f'Node "{name}" has no path to End')
+        # Model validation for llm_agent nodes
+        if node.get("type") == "llm_agent":
+            model = (node.get("config") or {}).get("model")
+            if model and model not in VALID_MODELS:
+                errors.append(f'Node "{name}": unknown model "{model}"')
 
     return errors

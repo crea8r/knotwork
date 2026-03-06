@@ -9,10 +9,23 @@ A graph has:
 - A set of nodes
 - A set of edges (connections between nodes)
 - A trigger configuration (manual, API, scheduled)
-- A default LLM configuration (overridable per node)
+- An optional input schema (JSON Schema for the run trigger form)
 - An owner and access roles
 
 A graph is designed once and run many times. Each execution is a **Run**.
+
+---
+
+## Channel
+
+A **Channel** is the primary collaboration surface in Knotwork. Channels are flat (not nested)
+and come in two types:
+
+- **Normal channel** — ad-hoc collaboration among humans and agents
+- **Workflow channel** — linked to a graph for structured execution and refinement
+
+Runs, escalations, and handbook suggestions appear as thread events within channels. Workflows
+remain first-class assets, but daily work is channel-first.
 
 ---
 
@@ -22,20 +35,23 @@ A **Node** is a single step in a graph. Every node has a type that determines ho
 
 All nodes share a common set of properties:
 - **Name** — human-readable label shown on the canvas
-- **Knowledge** — one or more linked knowledge fragments
-- **Input mapping** — which parts of the run state this node receives
-- **Output mapping** — what this node writes back to the run state
-- **Fail-safe** — what to do if the node fails or a checkpoint does not pass
+- **Knowledge** — one or more linked handbook fragments loaded at runtime
+- **Input sources** — which prior node outputs and run input this node receives
+- **Note** — optional designer annotation (visible on canvas, not used in execution)
 
 ### Node Types
 
 | Type | What it does |
 |------|-------------|
-| **LLM Agent** | Calls an LLM with the node's knowledge, run state, and tools. Produces structured output. |
-| **Human Checkpoint** | Always pauses for a human. No LLM involved. Used for required approvals. |
-| **Conditional Router** | Evaluates a condition against the run state and selects the next edge. No LLM. |
-| **Tool Executor** | Runs a tool directly — no LLM reasoning. Used for deterministic operations: fetch data, call API, transform. |
+| **Agent** | Delegates execution to a registered agent (`agent_ref`). Handles all reasoning, human gating, and tool use. `agent_ref` can be an Anthropic model, OpenAI model, or `"human"`. |
+| **Conditional Router** | <span style="color:#c1121f;font-weight:700">LEGACY</span> node type. In current runtime it executes through the unified agent pipeline and selects route via `next_branch`. |
+| **Start** | Required entry point. Every graph must have exactly one. |
+| **End** | Required exit point. Every graph must have at least one. |
 | **Sub-graph** *(Phase 2)* | Invokes another graph and waits for its result. |
+
+> **Note:** <span style="color:#c1121f;font-weight:700">LEGACY</span> node types `llm_agent` and `human_checkpoint` are supported via backward-compatible
+> fallbacks but should be migrated to the unified `agent` type. `tool_executor` nodes raise a
+> `RuntimeError` and must be replaced with `agent` nodes.
 
 ---
 
@@ -79,10 +95,10 @@ Where the knowledge base contains *how to work*, the Run Context contains *what 
 Run Context files are:
 - Uploaded or referenced at trigger time
 - Stored per-run, not in the knowledge base
-- Accessible to agents via the `file.read` tool during execution
+- Passed to agents as part of the `THIS CASE` prompt section
 - Never used as guidelines — the runtime keeps them explicitly separate
 
-The agent prompt for every LLM Agent node is structured as:
+The agent prompt for every agent node is structured as:
 
 ```text
 === GUIDELINES (how to work) ===
@@ -92,24 +108,22 @@ The agent prompt for every LLM Agent node is structured as:
 [run input + Run Context files]
 ```
 
-This framing is applied consistently so the LLM always knows which is which.
+This framing is applied consistently so the agent always knows which is which.
 
 ---
 
-## Tool
+## Tools
 
-A **Tool** is a capability an agent or executor can invoke during a run. Tools allow agents to act — not just reason.
+Knotwork provides four **Knotwork-native tools** that every agent node always has access to:
 
-Tools exist in a **Tool Registry** and are attached to nodes. A node's tools are available to its LLM agent during execution.
+| Tool | Purpose |
+|------|---------|
+| `write_worklog` | Record observations or reasoning to the run worklog |
+| `propose_handbook_update` | Propose a handbook improvement (requires human approval) |
+| `escalate` | Request human intervention — pauses the run |
+| `complete_node` | Signal completion with output and optional routing branch |
 
-Tool categories:
-- **Function tools** — Python functions called via LLM tool-use
-- **HTTP tools** — External API calls
-- **RAG tools** — Retrieve relevant chunks from a document collection
-- **Lookup tools** — Structured data (tables, JSON) queried by key
-- **Rule tools** — Deterministic logic encoded as human-defined rules
-
-See [tools.md](../tools.md) for full detail.
+Agents bring their own additional tools. Knotwork does not manage a tool registry — that is the agent's concern. See [tools.md](../tools.md) for full detail.
 
 ---
 
@@ -129,6 +143,9 @@ queued → running → [paused] → completed
 ```
 
 `stopped` is used when a human does not respond to an escalation within the configured timeout.
+
+Run timelines preserve immutable message history. Human corrections are captured as new artifacts
+and explicit decision events rather than edits to prior agent outputs.
 
 ---
 

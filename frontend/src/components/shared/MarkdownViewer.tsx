@@ -10,6 +10,7 @@ import { useState, useEffect } from 'react'
 import { createPortal } from 'react-dom'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
+import rehypeRaw from 'rehype-raw'
 import { Maximize2, X } from 'lucide-react'
 
 interface Props {
@@ -32,7 +33,7 @@ const PROSE =
 function MarkdownBody({ content }: { content: string }) {
   return (
     <div className={PROSE}>
-      <ReactMarkdown remarkPlugins={[remarkGfm]}>
+      <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeRaw]}>
         {content}
       </ReactMarkdown>
     </div>

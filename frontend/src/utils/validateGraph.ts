@@ -1,8 +1,9 @@
 /**
  * Frontend graph topology validation — mirrors backend runtime/validation.py.
- * Returns [] for valid graphs (or legacy graphs with no start node).
+ * All graphs with work nodes must have Start and End nodes wired up.
  */
 import type { GraphDefinition } from '@/types'
+import { VALID_MODEL_VALUES } from '@/utils/models'
 
 export function validateGraph(definition: GraphDefinition): string[] {
   const { nodes, edges } = definition
@@ -12,11 +13,12 @@ export function validateGraph(definition: GraphDefinition): string[] {
   const startIds = new Set(nodes.filter(n => n.type === 'start').map(n => n.id))
   const endIds = new Set(nodes.filter(n => n.type === 'end').map(n => n.id))
 
-  // Legacy graph — skip validation
-  if (startIds.size === 0) return []
-
   const workIds = [...nodeIds].filter(id => !startIds.has(id) && !endIds.has(id))
-  if (!workIds.length) return []
+  if (!workIds.length) return []  // Only start/end with no work nodes — valid
+
+  // All graphs with work nodes require Start and End
+  if (startIds.size === 0) return ['Add a Start node and connect it to begin the workflow']
+  if (endIds.size === 0) return ['Add an End node and connect your last node to it']
 
   // Build adjacency maps
   const fwd: Record<string, Set<string>> = {}
@@ -52,6 +54,17 @@ export function validateGraph(definition: GraphDefinition): string[] {
       errors.push(`Node "${label}" is not reachable from Start`)
     } else if (!canReachEnd.has(nid)) {
       errors.push(`Node "${label}" has no path to End`)
+    }
+    // tool_executor is removed in S7
+    if (node?.type === 'tool_executor') {
+      errors.push(`Node "${label}" uses the removed 'tool_executor' type — replace it with an agent node`)
+    }
+    // Model validation for legacy llm_agent nodes
+    if (node?.type === 'llm_agent') {
+      const model = node.config?.model as string | undefined
+      if (model && !VALID_MODEL_VALUES.has(model)) {
+        errors.push(`Node "${label}": unknown model "${model}"`)
+      }
     }
   }
   return errors

@@ -35,6 +35,29 @@ async def list_files(db: AsyncSession, workspace_id: UUID) -> list[KnowledgeFile
     return list(result.scalars().all())
 
 
+async def search_files(db: AsyncSession, workspace_id: UUID, query: str) -> list[KnowledgeFile]:
+    """Naive full-text search over path/title/content."""
+    q = query.strip().lower()
+    if not q:
+        return await list_files(db, workspace_id)
+
+    files = await list_files(db, workspace_id)
+    adapter = get_storage_adapter()
+    out: list[KnowledgeFile] = []
+    for f in files:
+        if q in f.path.lower() or q in f.title.lower():
+            out.append(f)
+            continue
+        try:
+            fc = await adapter.read(str(workspace_id), f.path)
+            if q in fc.content.lower():
+                out.append(f)
+        except Exception:
+            # Skip files missing in storage or unreadable.
+            continue
+    return out
+
+
 async def get_file_by_path(
     db: AsyncSession, workspace_id: UUID, path: str
 ) -> KnowledgeFile | None:

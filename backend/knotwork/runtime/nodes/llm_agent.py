@@ -35,6 +35,15 @@ def _get_llm(model: str):
     )
 
 
+def _agent_ref(model: str) -> str:
+    """Build a canonical agent_ref string from a model ID."""
+    if model.startswith("anthropic/") or model.startswith("claude"):
+        name = model.removeprefix("anthropic/")
+        return f"anthropic:{name}"
+    name = model.removeprefix("openai/")
+    return f"openai:{name}"
+
+
 def make_llm_agent_node(node_def: dict):
     """
     Factory returning an async LangGraph node function for an llm_agent node.
@@ -48,6 +57,7 @@ def make_llm_agent_node(node_def: dict):
       confidence_threshold — float; default 0.70
     """
     node_id = node_def["id"]
+    node_name = node_def.get("name") or node_id
     config = node_def.get("config", {})
     model_override: str | None = config.get("model")
     # Accept both frontend key (knowledge_paths) and legacy key (knowledge_files)
@@ -118,6 +128,12 @@ def make_llm_agent_node(node_def: dict):
         needs_escalation = confidence < confidence_threshold or bool(failed_cps)
         node_status = "escalated" if needs_escalation else "completed"
 
+        # Generate session token for this node (stored in input for agent/curl access)
+        from knotwork.agent_api.session import create_session_token
+        session_token = create_session_token(
+            str(run_id), node_id, state["workspace_id"], settings.jwt_secret
+        )
+
         # Capture everything sent to the LLM
         node_input = {
             "model": model,
@@ -125,12 +141,16 @@ def make_llm_agent_node(node_def: dict):
             "user_prompt": user_prompt,
             "run_input": state["input"],
             "previous_output": state.get("current_output"),
+            "session_token": session_token,
         }
 
+        resolved_model = model
         async with AsyncSessionLocal() as db:
             ns = RunNodeState(
                 run_id=run_id,
                 node_id=node_id,
+                node_name=node_name,
+                agent_ref=_agent_ref(resolved_model),
                 status=node_status,
                 input=node_input,
                 output=output_dict,

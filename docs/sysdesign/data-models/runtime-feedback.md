@@ -54,10 +54,10 @@ Escalation
   timeout_at        timestamptz
   resolved_by       uuid  FK → User  nullable
   resolved_at       timestamptz  nullable
-  resolution        enum  [approved, edited, guided, aborted]  nullable
+  resolution        enum  [accept_output, override_output, request_revision, abort_run]  nullable
   resolution_data   jsonb  nullable
-    -- edited: { output: {...} }
-    -- guided: { guidance: "..." }
+    -- override_output: { output: {...} }
+    -- request_revision: { guidance: "..." }
   created_at        timestamptz
 ```
 

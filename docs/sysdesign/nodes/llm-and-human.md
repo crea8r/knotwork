@@ -1,95 +1,129 @@
-# Node Types — LLM Agent & Human Checkpoint
+# Node Types — Agent and Human Escalation
 
-Every node in a graph has a type. The type determines how the node executes, what configuration it accepts, and how it interacts with the run state.
-
----
-
-## LLM Agent Node
-
-The core node type. Calls an LLM with knowledge, run state, and tools to produce a structured output.
-
-### Configuration
-
-| Field | Description |
-|-------|-------------|
-| `name` | Display name on the canvas |
-| `knowledge` | One or more knowledge fragment paths to load |
-| `model` | LLM provider and model (overrides graph default) |
-| `tools` | List of tools from the tool registry |
-| `output_schema` | JSON schema defining the expected output structure |
-| `confidence_field` | Field in the output the LLM uses to report confidence (0–1) |
-| `confidence_threshold` | Minimum confidence to proceed without escalation |
-| `confidence_rules` | Rule-based signals that override or adjust the confidence score |
-| `checkpoints` | List of validation rules applied to the output |
-| `fail_safe` | Action on checkpoint failure: `retry`, `escalate`, `skip`, or a specific node ID to route to |
-| `retry_limit` | Number of retries before escalating (default: 2) |
-| `input_mapping` | Which state fields this node receives |
-| `output_mapping` | Which state fields this node writes |
-
-### Execution Flow
-
-```
-1. Load knowledge tree (fetch all linked .md files)
-2. Check token count → flag if outside range
-3. Build prompt: system (knowledge) + user (state + task)
-4. Call LLM with tools available
-5. Parse structured output
-6. Evaluate confidence_rules → compute final confidence score
-7. Run checkpoints against output
-8. If checkpoint fails → apply fail_safe
-9. If confidence < threshold → escalate
-10. Write output to run state
-11. Persist RunNodeState
-```
-
-### Confidence Signals
-
-The LLM is instructed to include a confidence field in its structured output. Additionally, configurable rules can override this:
-
-```yaml
-confidence_rules:
-  - if: "output.contains('I am not sure')"
-    set: 0.2
-  - if: "output.contract_value > 1000000 and output.legal_review == null"
-    set: 0.3
-```
-
-The final confidence score is `min(structured_confidence, all matching rule values)`.
+> **S7/S7.1 update:** Execution is unified under a single runtime node factory:
+> `runtime/nodes/agent.py::make_agent_node()`.
+> <span style="color:#c1121f;font-weight:700">LEGACY</span> node types (`llm_agent`, `human_checkpoint`, `conditional_router`) are still accepted
+> for backward compatibility, but they run through the same agent pipeline.
 
 ---
 
-## Human Checkpoint Node
+## Unified Agent Node
 
-A node that always pauses the run and requires a human to act. There is no LLM involved. This is a **designed** step in the workflow, not a fallback.
+The `agent` node is the only first-class execution node type in current runtime design.
+Each node run is delegated to an adapter resolved from `agent_ref`:
 
-Use for: required approvals, sign-offs, quality gates that must always have human eyes.
+- `anthropic:<model>` -> `ClaudeAdapter`
+- `openai:<model>` -> `OpenAIAdapter`
+- `human` -> `HumanAdapter`
 
-### Configuration
+All adapters expose the same event contract:
 
-| Field | Description |
-|-------|-------------|
-| `name` | Display name |
-| `prompt` | Instructions shown to the human (what to review, what to decide) |
-| `context_fields` | Which state fields to display to the human |
-| `response_type` | `approve_reject`, `choice`, or `freetext` |
-| `choices` | If response_type is `choice`: list of options (each maps to a different next node) |
-| `timeout` | Duration to wait for response. If exceeded, run status → `stopped`. |
-| `notify` | Notification channels: `in_app`, `email`, `telegram`, `whatsapp` |
+- `log_entry`
+- `proposal`
+- `escalation`
+- `completed`
+- `failed`
 
-### Execution Flow
+The engine persists a `RunNodeState` attempt row for each execution attempt and updates status
+based on emitted events.
 
-```
-1. Pause run (status → paused)
-2. Send notification to assigned operator(s) with context
-3. Operator opens escalation in-app, reviews context fields
-4. Operator responds: approve / reject / edit / provide guidance
-5. Run resumes from this node with the human's response in state
-6. If timeout exceeded → run status → stopped
-```
+---
 
-### Human Response Options
+## Agent Resolution and Credentials
 
-- **Approve** — output is accepted as-is, run continues
-- **Reject** — run stops or routes to a configured fallback node
-- **Edit** — human modifies the current output, run continues with edited version
-- **Provide guidance** — human writes instructions; the previous LLM Agent node retries with the guidance added to its prompt
+Runtime resolution order:
+
+1. If node has `registered_agent_id`, load `RegisteredAgent` for the workspace.
+2. If found and active, use:
+   - `registered_agent.agent_ref` as effective model/provider
+   - `registered_agent.api_key` as per-workspace credential
+3. Otherwise, use node `agent_ref` (or <span style="color:#c1121f;font-weight:700">LEGACY</span> fallback from node type/model).
+
+This is why API keys are now workspace data (S7.1), not only env vars.
+
+---
+
+## Prompt and Input Assembly
+
+For each attempt, runtime builds prompt context from:
+
+- Handbook files: `config.knowledge_paths` (or <span style="color:#c1121f;font-weight:700">LEGACY</span> `knowledge_files`)
+- Run input: `state.input`
+- Optional context files: `state.context_files`
+- Prior node outputs: filtered by `config.input_sources` when set
+
+Prompt structure is produced by `runtime/prompt_builder.py` and then extended by
+`config.system_prompt` (or <span style="color:#c1121f;font-weight:700">LEGACY</span> `instructions`).
+
+---
+
+## Human-in-the-Loop Flow
+
+### Escalation from Any Agent
+
+If adapter emits `escalation`:
+
+1. Current `RunNodeState` attempt is marked `paused`
+2. Escalation record is created (`agent_question` for normal agents, `human_checkpoint` for `human` agent)
+3. Runtime interrupts execution
+4. Run status becomes `paused`
+
+When operator resolves escalation, supported resolutions are:
+
+- `accept_output`
+- `request_revision`
+- `override_output`
+- `abort_run`
+
+Backward-compatible aliases are accepted (`approved`, `guided`, `edited`, `aborted`) but should
+not be used in new clients.
+
+### Resume Behavior
+
+- `accept_output` or `request_revision`: runtime re-runs the same node attempt loop, appending human guidance
+  to system instructions as continuation context.
+- `override_output`: human-provided output is accepted as final node output (confidence forced to 1.0).
+- `abort_run`: run is stopped by escalation flow (no node resume).
+
+This is the current "chat-like" continuation behavior for agent-human handoff.
+
+---
+
+## Confidence and Checkpoints
+
+After node output is finalized (agent output or human override output), runtime applies:
+
+- `confidence_rules`
+- `checkpoints`
+- `confidence_threshold` (default `0.70`)
+
+If confidence/checkpoint rules fail:
+
+- node status is set to `escalated`
+- escalation record of type `confidence` is created
+- runtime interrupts again for human review
+
+---
+
+## <span style="color:#c1121f;font-weight:700">LEGACY</span> Node Compatibility
+
+<span style="color:#c1121f;font-weight:700">LEGACY</span> node types still compile through `make_agent_node()`:
+
+- <span style="color:#c1121f;font-weight:700">LEGACY</span> `llm_agent` -> provider inferred from <span style="color:#c1121f;font-weight:700">LEGACY</span> `config.model` or workspace default model
+- <span style="color:#c1121f;font-weight:700">LEGACY</span> `human_checkpoint` -> forced `agent_ref = "human"`
+- <span style="color:#c1121f;font-weight:700">LEGACY</span> `conditional_router` -> treated as a normal agent node
+
+<span style="color:#c1121f;font-weight:700">LEGACY</span> `tool_executor` is removed. Any graph containing it raises `RuntimeError` at compile time.
+
+---
+
+## Runtime Output Contract
+
+A successful node execution returns state updates:
+
+- `current_output`: final text for this step
+- `node_outputs[node_id]`: persisted node text output
+- `next_branch`: optional routing hint for multi-edge transitions
+- `messages`: assistant message entries for run timeline/chat UI
+
+`next_branch` is consumed by engine conditional edge routing when a node has multiple outgoing edges.

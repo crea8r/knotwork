@@ -22,9 +22,13 @@ class RunNodeStateOut(BaseModel):
     id: UUID
     run_id: UUID
     node_id: str
+    node_name: str | None = None
+    agent_ref: str | None = None
     status: str
     input: dict | None
     output: dict | None
+    agent_logs: list = []
+    next_branch: str | None = None
     knowledge_snapshot: dict | None
     resolved_token_count: int | None
     confidence_score: float | None
@@ -32,6 +36,57 @@ class RunNodeStateOut(BaseModel):
     error: str | None
     started_at: datetime | None
     completed_at: datetime | None
+
+    model_config = {"from_attributes": True}
+
+
+class RunWorklogEntryOut(BaseModel):
+    id: UUID
+    run_id: UUID
+    node_id: str
+    agent_ref: str | None = None
+    entry_type: str
+    content: str
+    metadata_: dict = {}
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class RunHandbookProposalOut(BaseModel):
+    id: UUID
+    run_id: UUID
+    node_id: str
+    agent_ref: str | None = None
+    path: str
+    proposed_content: str
+    reason: str
+    status: str
+    reviewed_by: UUID | None = None
+    reviewed_at: datetime | None = None
+    final_content: str | None = None
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class OpenAICallLogOut(BaseModel):
+    id: UUID
+    workspace_id: UUID
+    workflow_id: UUID | None = None
+    run_id: UUID
+    run_node_state_id: UUID | None = None
+    node_id: str
+    agent_ref: str | None = None
+    provider: str
+    openai_assistant_id: str | None = None
+    openai_thread_id: str | None = None
+    openai_run_id: str | None = None
+    request_payload: dict = {}
+    response_payload: dict | None = None
+    status: str
+    created_at: datetime
+    updated_at: datetime
 
     model_config = {"from_attributes": True}
 
@@ -48,6 +103,7 @@ class RunOut(BaseModel):
     context_files: list
     output: dict | None
     eta_seconds: int | None
+    error: str | None = None
     started_at: datetime | None
     completed_at: datetime | None
     created_at: datetime
@@ -61,6 +117,7 @@ class RunOut(BaseModel):
 
 class ResumeRun(BaseModel):
     """Payload when a human resolves an escalation and resumes the run."""
-    resolution: str  # approved | edited | guided | aborted
-    edited_output: str | None = None
+    resolution: str  # accept_output | override_output | request_revision | abort_run
+    override_output: dict | None = None
+    edited_output: str | None = None  # backward-compatible alias
     guidance: str | None = None

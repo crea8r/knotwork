@@ -9,7 +9,7 @@ Graph
   name              text
   description       text  nullable
   status            enum  [draft, active, archived]
-  default_model     text  nullable      -- overrides workspace default
+  default_model     text  nullable  -- fallback for _resolve_agent_ref() on unregistered nodes
   trigger_config    jsonb
     -- {
     --   manual: true,
@@ -19,6 +19,8 @@ Graph
   created_by        uuid  FK → User
   created_at        timestamptz
   updated_at        timestamptz
+
+  -- Note: input_schema is stored inside GraphVersion.definition JSON, not as a Graph column.
 
 GraphVersion
   id                uuid  PK
@@ -35,72 +37,51 @@ GraphVersion
 
 Nodes are stored as part of the graph definition JSON, not as separate DB rows. The schema below describes the structure within that JSON.
 
+As of S7 all execution nodes use the unified **Agent** type. <span style="color:#c1121f;font-weight:700">LEGACY</span> types (`llm_agent`, `human_checkpoint`) execute via backward-compatible fallbacks in `_resolve_agent_ref()` but should be migrated to `agent`. `tool_executor` raises a `RuntimeError` at graph compilation time.
+
 ```
 Node (within GraphVersion.definition)
-  id                string        -- unique within the graph
-  type              enum  [llm_agent, human_checkpoint, conditional_router, tool_executor, subgraph]
-  name              text
-  position          { x: float, y: float }
-  note              text  nullable
-  tags              string[]
+  id                    string        -- unique within the graph
+  type                  enum  [agent, conditional_router, start, end, subgraph]
+  name                  text
+  position              { x: float, y: float }
+  note                  text  nullable
 
-  -- LLM Agent fields
-  knowledge         string[]      -- knowledge fragment paths
-  model             text  nullable
-  tools             ToolRef[]
-  output_schema     object        -- JSON schema
-  confidence_field  string        -- field name in output
-  confidence_threshold  float     -- 0–1
-  confidence_rules  ConfidenceRule[]
-  checkpoints       Checkpoint[]
-  fail_safe         FailSafeConfig
-  retry_limit       int
-  input_mapping     { state_field: node_param }
-  output_mapping    { node_output: state_field }
+  -- Agent fields (type: agent)
+  agent_ref             string        -- "anthropic:claude-sonnet-4-6" | "openai:gpt-4o" | "human"
+  registered_agent_id   uuid | null   -- FK → RegisteredAgent; overrides env-var API key at runtime
+  trust_level           enum  [user_controlled, supervised, autonomous]
+  system_prompt         text  nullable   -- appended after GUIDELINES in the agent prompt
+  knowledge_paths       string[]         -- handbook fragment paths to load for this node
+  input_sources         string[] | null  -- ["run_input", <node_id>, ...]; null = all (default)
+  confidence_threshold  float            -- 0–1, default 0.70
+  confidence_rules      ConfidenceRule[]
+  checkpoints           Checkpoint[]
+  question              text  nullable   -- prompt shown to operator (human agent only)
 
-  -- Human Checkpoint fields
-  prompt            text
-  context_fields    string[]
-  response_type     enum  [approve_reject, choice, freetext]
-  choices           Choice[]  nullable
-  timeout_hours     int
-  notify            enum[]  [in_app, email, telegram, whatsapp]
+  -- LEGACY Conditional Router fields (type: conditional_router)
+  conditions            Condition[]
+  default               string  nullable  -- target node ID if no condition matches
 
-  -- Conditional Router fields
-  conditions        Condition[]
-  default_target    string  nullable
-
-  -- Tool Executor fields
-  tool              ToolRef
-  error_handling    enum  [retry, escalate, skip]
-
-  -- Sub-graph fields (Phase 2)
-  subgraph_id       uuid
-  timeout_minutes   int
-
-ToolRef
-  tool_id           uuid
-  version           string    -- version_id or "latest"
-  overrides         object    nullable
+  -- Sub-graph fields (type: subgraph, Phase 2)
+  graph_id              uuid
+  input_mapping         object
+  output_mapping        object
+  timeout               int
 
 Checkpoint
   id                string
   name              text
-  type              enum  [rule, llm]  -- llm is Phase 2
-  expression        text   -- for rule type
+  expression        text     -- evaluated against {"output": ...}
   fail_message      text
 
 ConfidenceRule
-  condition         text   -- expression
-  set               float  -- override value
+  if                text     -- expression evaluated against {"output": ...}
+  set               float    -- override confidence value
 
-FailSafeConfig
-  action            enum  [retry, escalate, skip, route]
-  route_to          string  nullable  -- node ID if action is route
-
-Choice
-  label             text
-  goto              string  -- node ID
+Condition
+  if                string   -- expression evaluated against run state
+  goto              string   -- target node ID
 ```
 
 ---
@@ -117,3 +98,15 @@ Edge (within GraphVersion.definition)
   type              enum  [direct, conditional]
   condition_label   text  nullable  -- display label for conditional edges
 ```
+
+---
+
+## Graph Validation Rules
+
+Every graph must pass these checks before a run can be triggered (enforced by `runtime/validation.py` and mirrored in `frontend/src/utils/validateGraph.ts`):
+
+- Exactly one `start` node
+- At least one `end` node
+- All node IDs referenced in edges exist in the node list
+- No isolated nodes (unreachable from start)
+- `tool_executor` nodes are rejected (RuntimeError)

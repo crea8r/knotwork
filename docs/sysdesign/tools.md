@@ -1,146 +1,78 @@
-# Tool Registry
+# Tools in Knotwork
 
-## Purpose
-
-Tools allow agents to act, not just reason. They also allow humans to inject known logic and data into workflows — making agents faster and cheaper by offloading deterministic decisions from LLM calls.
-
-A tool that answers "what is the current USD/VND exchange rate?" should not require an LLM to reason through it. It should just fetch the rate.
+> <span style="color:#c1121f;font-weight:700">LEGACY DESIGN REMOVED (S7)</span>: The tool registry has been removed. Agents bring their own tools.
+> Knotwork provides four built-in **Knotwork-native tools** injected into every adapter.
+> The tool registry UI and `tool_executor` node type no longer exist.
 
 ---
 
-## Tool Categories
+## Knotwork-Native Tools
 
-### Function Tool
+Every agent node — whether Claude, OpenAI, or a custom adapter — always has access to four
+**Knotwork-native tools**. These are defined in `runtime/adapters/tools.py` and injected by
+every adapter implementation. Agents decide when to call them.
 
-A Python function exposed to the LLM via tool-use (function calling). The LLM decides when to call it and with what arguments.
+| Tool | Purpose |
+|------|---------|
+| `write_worklog` | Record observations, findings, or intermediate reasoning to the run worklog. Persisted to `run_worklog_entries`. Visible in the operator run view. |
+| `propose_handbook_update` | Propose an improvement to a knowledge fragment. Saved as a `RunHandbookProposal` (status: pending). Requires human approval before any change is written. |
+| `escalate` | Request human intervention with a specific question. Creates an Escalation record and pauses the run. The operator resolves it in the escalation inbox. |
+| `complete_node` | Signal that the node has finished. Carries the output text and an optional `next_branch` value for conditional routing. Calling this exits the tool loop. |
 
-Use for: computations, data transformations, domain logic that can be expressed as code.
-
-```python
-@tool
-def calculate_irr(cash_flows: list[float], initial_investment: float) -> float:
-    """Calculate internal rate of return for a series of cash flows."""
-    ...
-```
-
-### HTTP Tool
-
-An external API call. No code required — configured entirely in the UI.
-
-Use for: third-party services, internal APIs, webhooks.
-
-```yaml
-name: exchange-rate
-method: GET
-url: "https://api.exchangerate.host/latest?base=USD&symbols=VND"
-output_mapping:
-  vnd_rate: "$.rates.VND"
-```
-
-### RAG Tool
-
-Retrieves semantically relevant chunks from a document collection. Used when the knowledge is too large to load in full, or when the relevant section depends on the query.
-
-Phase 1: built-in support for indexing uploaded documents (PDF, DOCX, TXT).
-
-```yaml
-name: contract-clauses-search
-index: contract-clause-library
-top_k: 5
-```
-
-### Lookup Tool
-
-Structured data queried by key. Faster and cheaper than LLM reasoning for known values.
-
-Use for: product catalogs, pricing tables, tax rates, country codes, classification schemes.
-
-```yaml
-name: hotel-category-lookup
-type: json_table
-data: "tools/data/hotel-categories.json"
-key_field: "category_code"
-```
-
-### Rule Tool
-
-Deterministic logic encoded as human-defined rules. The rules are written in plain language by operators and stored in the tool registry. The tool evaluates the rules against input and returns a result.
-
-Use for: approval conditions, classification logic, routing decisions that follow known business rules.
-
-```yaml
-name: contract-approval-required
-rules:
-  - if: "contract_value > 10000000000"
-    result: { approval_required: true, approver: "cfo" }
-  - if: "contract_type == 'land_purchase'"
-    result: { approval_required: true, approver: "asset_owner" }
-  - default:
-    result: { approval_required: false }
-```
+These tools are always present — they cannot be removed or disabled per node.
 
 ---
 
-## Tool Scoping
+## Agent-Managed Tools
 
-Tools exist at three scopes:
+Agents bring their own tools. Knotwork does not manage a tool registry.
 
-| Scope | Visible to |
-|-------|-----------|
-| **Workspace** | All graphs and nodes in the workspace |
-| **Graph** | Only nodes within that graph |
-| **Node** | Only that node (inline tool, not reusable) |
+When configuring an agent node, the agent's tool capabilities come from:
+1. Its own registered toolset (defined in the agent system, not in Knotwork)
+2. The `system_prompt` field in the node config, which can instruct the agent which capabilities to use
+3. MCP tool servers the agent is connected to
 
-Most tools should be workspace-scoped for reuse. Graph-scoped tools are useful for tools that are specific to one workflow's logic. Node-scoped tools are for one-off needs.
-
----
-
-## Tool Registry UI
-
-The tool registry screen (owner access) lets users:
-
-- Browse all tools by category and scope
-- Create new tools (form-based for HTTP, Lookup, Rule; code editor for Function)
-- Test a tool with sample inputs before attaching it to a node
-- View which nodes and graphs use each tool
-- Manage versions (tools are also versioned; a node references a tool at a specific version or "latest")
+This is an intentional architectural boundary: Knotwork provides structure, knowledge, and
+oversight — it does not own or manage tools.
 
 ---
 
-## Built-in Tools (Phase 1)
+## Handbook Proposals
 
-Knotwork ships with a set of built-in workspace tools available in every workspace:
+When an agent calls `propose_handbook_update`, the proposal is stored in `run_handbook_proposals`
+and surfaced in the **Handbook → Proposals** tab. The owner reviews and approves or rejects each
+proposal. Approval writes the proposed content to the knowledge file and creates a new version.
 
-| Tool | Category | Description |
-|------|----------|-------------|
-| `web.search` | HTTP | Web search (via configured search API) |
-| `web.fetch` | HTTP | Fetch and extract text from a URL |
-| `file.read` | Function | Read a file from the run's file attachments |
-| `text.extract` | Function | Extract structured fields from unstructured text |
-| `date.now` | Function | Current date and time in a specified timezone |
-| `math.calculate` | Function | Safe arithmetic expression evaluator |
-| `notify.send` | HTTP | Send a notification to a channel |
-
-Built-in tools cannot be deleted. They can be disabled at the workspace level.
+The knowledge improvement loop:
+1. Agent identifies a gap while working on a real case
+2. Agent calls `propose_handbook_update` with path + proposed content + reason
+3. Owner reviews in the Proposals panel
+4. On approval → knowledge file is updated, new version created
 
 ---
 
-## Tool Execution and Cost
+## Worklog
 
-| Category | Latency | LLM cost | Notes |
-|----------|---------|----------|-------|
-| Function | Low | None | Pure compute |
-| HTTP | Variable | None | Depends on external API |
-| Lookup | Very low | None | In-memory or DB query |
-| Rule | Very low | None | Pure evaluation |
-| RAG | Medium | Embedding only | No LLM generation |
+Every `write_worklog` call is persisted to `run_worklog_entries` and visible in the run detail
+view. The worklog gives operators visibility into what the agent was observing and reasoning
+about — not just the final output.
 
-Prefer Rule, Lookup, and Function tools for known business logic. Reserve LLM Agent nodes for reasoning tasks that genuinely require language understanding.
+Use cases:
+- Intermediate reasoning steps
+- Data fetched from external sources
+- Flags or warnings the agent wants to surface
+- Rationale for decisions made
 
 ---
 
-## Tools as Human Knowledge
+## <span style="color:#c1121f;font-weight:700">LEGACY</span>: Tool Registry (removed in S7)
 
-The tool registry is where human expertise is encoded as reusable logic. When an expert knows the answer — the pricing table, the approval matrix, the classification rules — that knowledge should live in a tool, not in a prompt.
+Prior to S7, Knotwork maintained a tool registry with built-in tools (`web.search`, `web.fetch`,
+`http.request`, `calc`). These were attached to `tool_executor` nodes.
 
-This is the primary cost-reduction lever in Knotwork. Every decision encoded as a Rule or Lookup tool is a decision the LLM does not need to reason through.
+As of S7:
+- The tool registry is removed
+- The Tools navigation link is removed
+- `tool_executor` nodes raise a `RuntimeError` and must be migrated to `agent` nodes
+- Built-in tools (`web.search`, `web.fetch`, etc.) are no longer provided by Knotwork — agents
+  call external APIs directly via their own tool systems

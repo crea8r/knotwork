@@ -1,0 +1,12 @@
+{
+  "name": "@knotwork/knotwork-bridge",
+  "version": "0.2.0",
+  "description": "Knotwork bridge plugin for OpenClaw",
+  "private": true,
+  "type": "module",
+  "openclaw": {
+    "extensions": [
+      "./index.ts"
+    ]
+  }
+}

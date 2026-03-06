@@ -1,6 +1,7 @@
-import { useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Trash2, Pencil, Check } from 'lucide-react'
+import { Trash2, Pencil, Check, Play } from 'lucide-react'
+import axios from 'axios'
 import { useRuns, useDeleteRun, useRenameRun } from '@/api/runs'
 import { useGraphs } from '@/api/graphs'
 import { useAuthStore } from '@/store/auth'
@@ -8,10 +9,13 @@ import PageHeader from '@/components/shared/PageHeader'
 import StatusBadge from '@/components/shared/StatusBadge'
 import EmptyState from '@/components/shared/EmptyState'
 import Spinner from '@/components/shared/Spinner'
-import type { Run, RunStatus } from '@/types'
+import RunTriggerModal from '@/components/operator/RunTriggerModal'
+import { validateGraph } from '@/utils/validateGraph'
+import type { Run, RunStatus, GraphDefinition } from '@/types'
 
 const DEV_WORKSPACE = import.meta.env.VITE_DEV_WORKSPACE_ID ?? 'dev-workspace'
-const DELETABLE = new Set<RunStatus>(['completed', 'failed', 'stopped', 'draft', 'queued', 'paused'])
+const ROW_DELETE_STATUSES = new Set<RunStatus>(['completed', 'failed', 'stopped'])
+const PAGE_SIZE = 10
 
 type Filter = 'all' | 'active' | 'completed' | 'failed'
 const FILTER_STATUSES: Record<Filter, RunStatus[] | null> = {
@@ -95,20 +99,76 @@ export default function RunsPage() {
   const { data: runs = [], isLoading } = useRuns(workspaceId)
   const { data: graphs = [] } = useGraphs(workspaceId)
   const deleteRun = useDeleteRun(workspaceId)
+  const [showNewRun, setShowNewRun] = useState(false)
+  const [selectedGraphId, setSelectedGraphId] = useState('')
+  const [runTrigger, setRunTrigger] = useState<{ graphId: string; definition: GraphDefinition } | null>(null)
+  const [search, setSearch] = useState('')
+  const [page, setPage] = useState(1)
+
+  const runnableGraphs = useMemo(
+    () =>
+      graphs.filter((g) => {
+        if (g.status === 'archived') return false
+        const def = g.latest_version?.definition
+        if (!def) return false
+        return validateGraph(def).length === 0
+      }),
+    [graphs],
+  )
 
   const graphNameById = Object.fromEntries(graphs.map((g) => [g.id, g.name]))
   const statuses = FILTER_STATUSES[filter]
-  const filtered = statuses ? runs.filter((r) => statuses.includes(r.status)) : runs
+  const filteredByStatus = statuses ? runs.filter((r) => statuses.includes(r.status)) : runs
+  const q = search.trim().toLowerCase()
+  const filtered = q
+    ? filteredByStatus.filter((r) => {
+        const graphName = (graphNameById[r.graph_id] ?? '').toLowerCase()
+        return (
+          (r.name ?? '').toLowerCase().includes(q)
+          || r.id.toLowerCase().includes(q)
+          || graphName.includes(q)
+          || r.status.toLowerCase().includes(q)
+        )
+      })
+    : filteredByStatus
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE))
+  const visibleRuns = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
+
+  useEffect(() => {
+    setPage(1)
+  }, [filter, search])
+
+  useEffect(() => {
+    if (page > totalPages) setPage(totalPages)
+  }, [page, totalPages])
 
   async function handleDelete(e: React.MouseEvent, runId: string) {
     e.stopPropagation()
     if (!confirm('Delete this run? This cannot be undone.')) return
-    await deleteRun.mutateAsync(runId)
+    try {
+      await deleteRun.mutateAsync(runId)
+    } catch (err) {
+      const message = axios.isAxiosError(err)
+        ? (err.response?.data?.detail ?? err.message)
+        : String(err)
+      alert(`Delete failed: ${message}`)
+    }
   }
 
   return (
     <div className="p-8 max-w-7xl mx-auto">
-      <PageHeader title="Runs" />
+      <PageHeader
+        title="Runs"
+        actions={(
+          <button
+            onClick={() => setShowNewRun(true)}
+            className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-brand-600 text-white text-sm"
+          >
+            <Play size={14} />
+            New run
+          </button>
+        )}
+      />
 
       <div className="flex gap-2 mb-6">
         {(['all', 'active', 'completed', 'failed'] as Filter[]).map((f) => (
@@ -123,6 +183,13 @@ export default function RunsPage() {
           </button>
         ))}
       </div>
+
+      <input
+        value={search}
+        onChange={(e) => setSearch(e.target.value)}
+        placeholder="Search runs by name, id, workflow, or status..."
+        className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm mb-6 outline-none focus:ring-2 focus:ring-brand-500"
+      />
 
       {isLoading ? (
         <div className="flex justify-center py-16"><Spinner size="lg" /></div>
@@ -145,7 +212,7 @@ export default function RunsPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
-              {filtered.map((run) => (
+              {visibleRuns.map((run) => (
                 <tr
                   key={run.id}
                   onClick={() => navigate(`/runs/${run.id}`)}
@@ -167,6 +234,11 @@ export default function RunsPage() {
                         </span>
                       )}
                     </div>
+                    {run.status === 'failed' && run.error && (
+                      <p className="text-[10px] text-red-500 mt-0.5 max-w-[180px] truncate" title={run.error}>
+                        {run.error}
+                      </p>
+                    )}
                   </td>
                   <td className="px-3 py-2 text-xs text-gray-500 max-w-[140px] truncate">
                     {inputSummary(run.input)}
@@ -186,14 +258,15 @@ export default function RunsPage() {
                     {duration(run.created_at, run.completed_at)}
                   </td>
                   <td className="px-3 py-2 text-right">
-                    {DELETABLE.has(run.status) && (
+                    {ROW_DELETE_STATUSES.has(run.status) && (
                       <button
                         onClick={(e) => handleDelete(e, run.id)}
                         disabled={deleteRun.isPending}
-                        className="text-gray-300 hover:text-red-500 p-1 rounded"
+                        className="inline-flex items-center gap-1 text-xs text-red-600 hover:text-red-700 p-1 rounded disabled:opacity-40"
                         title="Delete run"
                       >
                         <Trash2 size={14} />
+                        Delete
                       </button>
                     )}
                   </td>
@@ -202,6 +275,70 @@ export default function RunsPage() {
             </tbody>
           </table>
         </div>
+      )}
+
+      {!isLoading && filtered.length > PAGE_SIZE && (
+        <div className="flex items-center justify-end gap-2 mt-3">
+          <button
+            onClick={() => setPage((p) => Math.max(1, p - 1))}
+            disabled={page <= 1}
+            className="px-2 py-1 text-xs rounded border border-gray-200 text-gray-600 disabled:opacity-40"
+          >
+            Prev
+          </button>
+          <span className="text-xs text-gray-500">Page {page} / {totalPages}</span>
+          <button
+            onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+            disabled={page >= totalPages}
+            className="px-2 py-1 text-xs rounded border border-gray-200 text-gray-600 disabled:opacity-40"
+          >
+            Next
+          </button>
+        </div>
+      )}
+
+      {showNewRun && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6">
+            <h2 className="font-semibold text-gray-900 mb-3">Create run</h2>
+            <label className="block text-xs text-gray-500 mb-1">Runnable workflow</label>
+            <select
+              value={selectedGraphId}
+              onChange={(e) => setSelectedGraphId(e.target.value)}
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+            >
+              <option value="">Select workflow...</option>
+              {runnableGraphs.map((g) => (
+                <option key={g.id} value={g.id}>{g.name}</option>
+              ))}
+            </select>
+            <p className="text-xs text-gray-500 mt-2">Only eligible workflows are listed.</p>
+            <div className="flex justify-end gap-2 mt-4">
+              <button onClick={() => setShowNewRun(false)} className="px-3 py-2 text-sm text-gray-600">Cancel</button>
+              <button
+                onClick={() => {
+                  const graph = runnableGraphs.find((g) => g.id === selectedGraphId)
+                  const def = graph?.latest_version?.definition
+                  if (!graph || !def) return
+                  setShowNewRun(false)
+                  setRunTrigger({ graphId: graph.id, definition: def })
+                }}
+                disabled={!selectedGraphId}
+                className="px-3 py-2 rounded-lg bg-brand-600 text-white text-sm disabled:opacity-40"
+              >
+                Next
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {runTrigger && (
+        <RunTriggerModal
+          graphId={runTrigger.graphId}
+          definition={runTrigger.definition}
+          onClose={() => setRunTrigger(null)}
+        />
       )}
     </div>
   )

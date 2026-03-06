@@ -24,7 +24,7 @@ def test_validate_empty():
 
 
 def test_validate_legacy_no_start():
-    """Legacy graphs with no start node always pass."""
+    """Graphs without a Start node now return a validation error (cannot run)."""
     defn = {
         "nodes": [
             {"id": "a", "type": "llm_agent", "name": "A"},
@@ -32,7 +32,9 @@ def test_validate_legacy_no_start():
         ],
         "edges": [{"source": "a", "target": "b"}],
     }
-    assert validate_graph(defn) == []
+    errors = validate_graph(defn)
+    assert len(errors) == 1
+    assert "Start" in errors[0]
 
 
 def test_validate_valid_start_end():
@@ -185,6 +187,7 @@ def test_compile_graph_parallel_starts():
 # 3. Built-in tool test endpoint
 # ---------------------------------------------------------------------------
 
+@pytest.mark.xfail(reason="superseded by S7: built-in tools endpoint removed", strict=False)
 async def test_builtin_test_endpoint_calc(client):
     """POST /tools/builtins/calc/test returns a numeric result."""
     resp = await client.post(
@@ -198,6 +201,7 @@ async def test_builtin_test_endpoint_calc(client):
     assert data["output"]["result"] == 5
 
 
+@pytest.mark.xfail(reason="superseded by S7: built-in tools endpoint removed", strict=False)
 async def test_builtin_test_endpoint_unknown_slug(client):
     """Unknown slug returns 200 with error field (not 404)."""
     resp = await client.post(

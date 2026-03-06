@@ -26,7 +26,7 @@ JSON-only (no file attachments):
 }
 ```
 
-Files are stored per-run (not in the knowledge base) and are accessible to agents during execution via the `file.read` tool as Run Context.
+Files are stored per-run (not in the knowledge base) and are passed to agents as Run Context in the `THIS CASE` section of their prompt.
 
 Response (immediate, async):
 ```json
@@ -73,19 +73,19 @@ POST   /api/v1/workspaces/:workspace_id/escalations/:escalation_id/resolve
 
 Resolve request body:
 ```json
-{ "resolution": "approved" }
+{ "resolution": "accept_output" }
 ```
 or
 ```json
-{ "resolution": "edited", "output": { "irr": 0.12, "recommendation": "Proceed with conditions" } }
+{ "resolution": "override_output", "output": { "irr": 0.12, "recommendation": "Proceed with conditions" } }
 ```
 or
 ```json
-{ "resolution": "guided", "guidance": "Check the depreciation schedule in Appendix B..." }
+{ "resolution": "request_revision", "guidance": "Check the depreciation schedule in Appendix B..." }
 ```
 or
 ```json
-{ "resolution": "aborted", "reason": "Contract withdrawn by counterparty" }
+{ "resolution": "abort_run", "reason": "Contract withdrawn by counterparty" }
 ```
 
 ---

@@ -27,6 +27,19 @@ class EscalationOut(BaseModel):
 
 
 class EscalationResolve(BaseModel):
-    resolution: Literal["approved", "edited", "guided", "aborted"]
+    resolution: Literal[
+        "accept_output",
+        "override_output",
+        "request_revision",
+        "abort_run",
+        # Backward-compatible aliases:
+        "approved",
+        "edited",
+        "guided",
+        "aborted",
+    ]
+    override_output: dict | None = None
     edited_output: dict | None = None
     guidance: str | None = None
+    channel_id: UUID | None = None
+    actor_name: str | None = None

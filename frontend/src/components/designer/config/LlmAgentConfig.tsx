@@ -4,6 +4,7 @@
  *         fail_safe, confidence_rules, checkpoints.
  */
 import { useKnowledgeFiles } from '@/api/knowledge'
+import { SUPPORTED_MODELS } from '@/utils/models'
 
 interface Rule { condition: string; set: number }
 interface Checkpoint { type: 'expression' | 'human'; expression?: string }
@@ -91,10 +92,23 @@ export default function LlmAgentConfig({ config, onChange, predecessorNodes }: P
     <div className="space-y-4 text-sm">
       <div>
         <label className="block text-xs text-gray-500 mb-1">Model</label>
-        <input className="border rounded px-2 py-1 text-sm w-full"
+        <select
+          className="border rounded px-2 py-1 text-sm w-full bg-white"
           value={(config.model as string) ?? ''}
-          placeholder="openai/gpt-4o"
-          onChange={e => onChange({ model: e.target.value })} />
+          onChange={e => onChange({ model: e.target.value || undefined })}
+        >
+          <option value="">— workspace default —</option>
+          <optgroup label="OpenAI">
+            {SUPPORTED_MODELS.filter(m => m.provider === 'openai').map(m => (
+              <option key={m.value} value={m.value}>{m.label}</option>
+            ))}
+          </optgroup>
+          <optgroup label="Anthropic">
+            {SUPPORTED_MODELS.filter(m => m.provider === 'anthropic').map(m => (
+              <option key={m.value} value={m.value}>{m.label}</option>
+            ))}
+          </optgroup>
+        </select>
       </div>
       {allSourceIds.length > 1 && (
         <div>

@@ -34,10 +34,13 @@ An **Escalation** is a pause in a run that requires human input. It can be trigg
 - An explicit error in a node
 
 When escalated, the human receives a notification (in-app, email, Telegram, or WhatsApp) with a summary. They can then:
-- **Approve** the agent's output and continue
-- **Edit** the output and continue
-- **Provide guidance** for the agent to retry
+- **Accept output** and continue
+- **Override with human output** and continue
+- **Request revision** for the agent to retry with guidance
 - **Abort** the run
+
+Escalation handling is decision-based. Prior agent/human messages remain immutable; corrections
+are represented as new decision artifacts.
 
 See [human-in-loop/escalation.md](../human-in-loop/escalation.md) for full detail.
 

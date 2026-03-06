@@ -1,7 +1,7 @@
 import { useEffect, useId, useState } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
-import { AlertTriangle, MessageSquare, Play, Plus, Save } from 'lucide-react'
-import { useGraph, useSaveGraphVersion } from '@/api/graphs'
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
+import { AlertTriangle, Archive, Check, ChevronLeft, ChevronRight, MessageSquare, Play, Plus, Save, Trash2 } from 'lucide-react'
+import { useDeleteGraph, useGraph, useSaveGraphVersion } from '@/api/graphs'
 import { useTriggerRun, useRuns } from '@/api/runs'
 import GraphCanvas from '@/components/canvas/GraphCanvas'
 import NodeConfigPanel from '@/components/designer/NodeConfigPanel'
@@ -18,20 +18,19 @@ import { validateGraph } from '@/utils/validateGraph'
 const DEV_WORKSPACE = import.meta.env.VITE_DEV_WORKSPACE_ID ?? 'dev-workspace'
 
 const NODE_TYPES: { value: NodeType; label: string }[] = [
-  { value: 'llm_agent', label: 'LLM Agent' },
-  { value: 'human_checkpoint', label: 'Human Checkpoint' },
-  { value: 'conditional_router', label: 'Conditional Router' },
-  { value: 'tool_executor', label: 'Tool Executor' },
+  { value: 'agent', label: 'Agent' },
 ]
 
-type RightTab = 'node' | 'schema'
+type RightPanelMode = 'node' | 'schema'
 
 export default function GraphDetailPage() {
   const { graphId } = useParams<{ graphId: string }>()
+  const [searchParams] = useSearchParams()
   const navigate = useNavigate()
   const workspaceId = useAuthStore((s) => s.workspaceId) ?? DEV_WORKSPACE
 
   const { data: graph, isLoading } = useGraph(workspaceId, graphId!)
+  const deleteGraph = useDeleteGraph(workspaceId)
   const triggerRun = useTriggerRun(workspaceId, graphId!)
   const saveVersion = useSaveGraphVersion(workspaceId, graphId!)
   const { data: runs = [] } = useRuns(workspaceId)
@@ -43,21 +42,42 @@ export default function GraphDetailPage() {
   const addEdge = useCanvasStore((s) => s.addEdge)
   const isDirty = useCanvasStore((s) => s.isDirty)
   const storeDefinition = useCanvasStore((s) => s.definition)
+  const storeGraphId = useCanvasStore((s) => s.graphId)
   const setGraph = useCanvasStore((s) => s.setGraph)
   const updateNodeConfig = useCanvasStore((s) => s.updateNodeConfig)
   const removeNode = useCanvasStore((s) => s.removeNode)
   const removeEdge = useCanvasStore((s) => s.removeEdge)
   const setInputSchema = useCanvasStore((s) => s.setInputSchema)
 
+  // Initialize store when navigating to a different graph (eager, not lazy).
+  // This ensures empty graphs show start/end nodes immediately.
+  useEffect(() => {
+    if (!graph || storeGraphId === graphId) return
+    const def = graph.latest_version?.definition ?? { nodes: [], edges: [] }
+    setGraph(graphId!, def)
+  }, [graph, graphId]) // eslint-disable-line
+
   const sessionId = useId()
   const [inputJson, setInputJson] = useState('{}')
   const [inputError, setInputError] = useState('')
   const [addingNode, setAddingNode] = useState(false)
   const [newNodeName, setNewNodeName] = useState('')
-  const [newNodeType, setNewNodeType] = useState<NodeType>('llm_agent')
-  const [showChat, setShowChat] = useState(false)
+  const [newNodeType, setNewNodeType] = useState<NodeType>('agent')
+  const [showChat, setShowChat] = useState(searchParams.get('chat') === '1')
   const [showRunModal, setShowRunModal] = useState(false)
-  const [rightTab, setRightTab] = useState<RightTab>('node')
+  const [rightPanelMode, setRightPanelMode] = useState<RightPanelMode>('node')
+  const [rightPanelVisible, setRightPanelVisible] = useState(false)
+  const [justSaved, setJustSaved] = useState(false)
+
+  useEffect(() => {
+    if (searchParams.get('chat') === '1') setShowChat(true)
+  }, [searchParams])
+
+  useEffect(() => {
+    if (!selectedNodeId && rightPanelMode === 'node') {
+      setRightPanelVisible(false)
+    }
+  }, [selectedNodeId, rightPanelMode])
 
   // Unsaved changes warning
   useEffect(() => {
@@ -92,7 +112,10 @@ export default function GraphDetailPage() {
     const id = newNodeType === 'start' || newNodeType === 'end'
       ? newNodeType
       : `${newNodeType}-${Date.now()}`
-    const node: NodeDef = { id, type: newNodeType, name: newNodeName.trim(), config: {} }
+    const node: NodeDef = {
+      id, type: newNodeType, name: newNodeName.trim(), config: {},
+      ...(newNodeType === 'agent' ? { agent_ref: 'anthropic:claude-sonnet-4-6', trust_level: 'supervised' } : {}),
+    }
     addNode(node)
     const nodes = isDirty ? storeDefinition.nodes : serverDef.nodes
     if (nodes.length > 0) {
@@ -104,8 +127,30 @@ export default function GraphDetailPage() {
   }
 
   async function handleSave() {
+    const prevSelected = selectedNodeId
     await saveVersion.mutateAsync(definition)
     setGraph(graphId!, definition)
+    if (prevSelected) selectNode(prevSelected)
+    setJustSaved(true)
+    setTimeout(() => setJustSaved(false), 2000)
+  }
+
+  async function handleRetireWorkflow() {
+    if (!graph) return
+    const hasRuns = (graph.run_count ?? 0) > 0
+    const ok = window.confirm(
+      hasRuns
+        ? `Archive "${graph.name}"? It has ${graph.run_count} run(s), so it cannot be deleted.`
+        : `Delete "${graph.name}" permanently?`,
+    )
+    if (!ok) return
+    try {
+      await deleteGraph.mutateAsync(graph.id)
+      navigate('/graphs')
+    } catch (err: any) {
+      const msg = err?.response?.data?.detail ?? err?.message ?? 'Action failed'
+      window.alert(`Cannot update workflow: ${msg}`)
+    }
   }
 
   return (
@@ -117,13 +162,18 @@ export default function GraphDetailPage() {
       <div className="flex items-center justify-between px-6 py-3 border-b border-gray-200 bg-white" style={{ flexShrink: 0 }}>
         <h1 className="font-semibold text-gray-900">{graph.name}</h1>
         <div className="flex items-center gap-2">
-          {isDirty && (
+          {justSaved && (
+            <span className="flex items-center gap-1.5 px-3 py-2 text-sm text-green-600 font-medium">
+              <Check size={14} /> Saved
+            </span>
+          )}
+          {isDirty && !justSaved && (
             <button
               onClick={handleSave}
               disabled={saveVersion.isPending}
-              className="flex items-center gap-1.5 px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-700 hover:bg-gray-50"
+              className="flex items-center gap-1.5 px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-50"
             >
-              <Save size={14} /> Save
+              <Save size={14} /> {saveVersion.isPending ? 'Saving…' : 'Save'}
             </button>
           )}
           <button
@@ -133,6 +183,28 @@ export default function GraphDetailPage() {
             }`}
           >
             <MessageSquare size={14} /> Designer
+          </button>
+          <button
+            onClick={() => {
+              setRightPanelMode('schema')
+              setRightPanelVisible((v) => !v || rightPanelMode !== 'schema')
+            }}
+            className={`flex items-center gap-1.5 px-3 py-2 border rounded-lg text-sm hover:bg-gray-50 ${
+              rightPanelVisible && rightPanelMode === 'schema'
+                ? 'border-blue-400 text-blue-600'
+                : 'border-gray-300 text-gray-700'
+            }`}
+          >
+            Run Input
+          </button>
+          <button
+            onClick={() => setRightPanelVisible((v) => !v)}
+            className="flex items-center gap-1.5 px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-700 hover:bg-gray-50"
+            disabled={!selectedNode && rightPanelMode === 'node'}
+            title={!selectedNode && rightPanelMode === 'node' ? 'Select a node to open node config' : undefined}
+          >
+            {rightPanelVisible ? <ChevronRight size={14} /> : <ChevronLeft size={14} />}
+            {rightPanelVisible ? 'Hide panel' : 'Show panel'}
           </button>
           <button
             onClick={() => setAddingNode((v) => !v)}
@@ -147,6 +219,19 @@ export default function GraphDetailPage() {
             className="flex items-center gap-1.5 px-4 py-2 bg-brand-500 text-white rounded-lg text-sm font-medium hover:bg-brand-600 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <Play size={14} /> Run
+          </button>
+          <button
+            onClick={() => void handleRetireWorkflow()}
+            disabled={deleteGraph.isPending}
+            className={`flex items-center gap-1.5 px-3 py-2 border rounded-lg text-sm disabled:opacity-50 ${
+              (graph.run_count ?? 0) > 0
+                ? 'border-gray-300 text-gray-700 hover:bg-gray-50'
+                : 'border-red-300 text-red-700 hover:bg-red-50'
+            }`}
+            title={(graph.run_count ?? 0) > 0 ? 'Archive workflow' : 'Delete workflow'}
+          >
+            {(graph.run_count ?? 0) > 0 ? <Archive size={14} /> : <Trash2 size={14} />}
+            {deleteGraph.isPending ? 'Working…' : (graph.run_count ?? 0) > 0 ? 'Archive' : 'Delete'}
           </button>
         </div>
       </div>
@@ -197,7 +282,7 @@ export default function GraphDetailPage() {
         {showChat && (
           <div
             className="border-r border-gray-200 bg-white"
-            style={{ width: 288, flexShrink: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}
+            style={{ width: 440, flexShrink: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}
           >
             <div style={{ flex: 1, overflow: 'hidden' }}>
               <DesignerChat
@@ -216,62 +301,46 @@ export default function GraphDetailPage() {
             selectedNodeId={selectedNodeId}
             onSelectNode={(nodeId) => {
               selectNode(nodeId)
-              if (nodeId) setRightTab('node')
+              if (nodeId) {
+                setRightPanelMode('node')
+                setRightPanelVisible(true)
+              }
             }}
           />
         </div>
 
-        {/* Right: tabbed panel (Node config | Run Input) */}
-        <div
-          className="border-l border-gray-200 bg-white"
-          style={{ width: 320, flexShrink: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}
-        >
-          {/* Tab bar */}
-          <div className="flex border-b flex-shrink-0">
-            <button
-              className={`flex-1 py-2 text-xs font-medium ${rightTab === 'node' ? 'text-brand-600 border-b-2 border-brand-500' : 'text-gray-400 hover:text-gray-600'}`}
-              onClick={() => setRightTab('node')}
-            >
-              Node
-            </button>
-            <button
-              className={`flex-1 py-2 text-xs font-medium ${rightTab === 'schema' ? 'text-brand-600 border-b-2 border-brand-500' : 'text-gray-400 hover:text-gray-600'}`}
-              onClick={() => setRightTab('schema')}
-            >
-              Run Input
-            </button>
+        {/* Right panel */}
+        {rightPanelVisible && (rightPanelMode === 'schema' || selectedNode) && (
+          <div
+            className="border-l border-gray-200 bg-white"
+            style={{ width: 320, flexShrink: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}
+          >
+            <div className="px-3 py-2 border-b text-xs font-semibold text-gray-600 uppercase tracking-wide">
+              {rightPanelMode === 'schema' ? 'Run Input' : 'Node'}
+            </div>
+            <div style={{ flex: 1, overflow: 'hidden' }}>
+              {rightPanelMode === 'schema' ? (
+                <InputSchemaEditor
+                  fields={definition.input_schema ?? []}
+                  onChange={(fields: InputFieldDef[]) => {
+                    if (!isDirty) setGraph(graphId!, serverDef)
+                    setInputSchema(fields)
+                  }}
+                />
+              ) : selectedNode ? (
+                <NodeConfigPanel
+                  node={selectedNode}
+                  allNodes={definition.nodes}
+                  edges={definition.edges}
+                  onConfigChange={(nodeId, patch) => updateNodeConfig(nodeId, patch)}
+                  onRemove={(nodeId) => { removeNode(nodeId); selectNode(null) }}
+                  onAddEdge={(edge) => addEdge(edge)}
+                  onRemoveEdge={(edgeId) => removeEdge(edgeId)}
+                />
+              ) : null}
+            </div>
           </div>
-
-          {/* Tab content */}
-          <div style={{ flex: 1, overflow: 'hidden' }}>
-            {rightTab === 'node' && selectedNode ? (
-              <NodeConfigPanel
-                node={selectedNode}
-                allNodes={definition.nodes}
-                edges={definition.edges}
-                onConfigChange={(nodeId, patch) => {
-                  if (!isDirty) setGraph(graphId!, serverDef)
-                  updateNodeConfig(nodeId, patch)
-                }}
-                onRemove={(nodeId) => { removeNode(nodeId); selectNode(null) }}
-                onAddEdge={(edge) => { if (!isDirty) setGraph(graphId!, serverDef); addEdge(edge) }}
-                onRemoveEdge={(edgeId) => { if (!isDirty) setGraph(graphId!, serverDef); removeEdge(edgeId) }}
-              />
-            ) : rightTab === 'node' ? (
-              <div className="flex items-center justify-center h-full text-xs text-gray-400 p-4 text-center">
-                Click a node on the canvas to configure it.
-              </div>
-            ) : (
-              <InputSchemaEditor
-                fields={definition.input_schema ?? []}
-                onChange={(fields: InputFieldDef[]) => {
-                  if (!isDirty) setGraph(graphId!, serverDef)
-                  setInputSchema(fields)
-                }}
-              />
-            )}
-          </div>
-        </div>
+        )}
       </div>
 
       {/* Debug bar */}

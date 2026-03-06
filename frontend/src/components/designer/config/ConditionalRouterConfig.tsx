@@ -2,7 +2,7 @@
  * Config panel for conditional_router nodes.
  * Fields: routing_rules [{condition, target}], default_target.
  */
-import type { EdgeDef, NodeDef } from '@/types'
+import type { NodeDef } from '@/types'
 
 interface RoutingRule { condition: string; target: string }
 

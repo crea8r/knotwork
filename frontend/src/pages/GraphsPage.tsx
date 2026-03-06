@@ -1,7 +1,7 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Plus, GitBranch } from 'lucide-react'
-import { useCreateGraph, useGraphs } from '@/api/graphs'
+import { Archive, GitBranch, Plus, Trash2 } from 'lucide-react'
+import { useCreateGraph, useDeleteGraph, useGraphs } from '@/api/graphs'
 import { useAuthStore } from '@/store/auth'
 import PageHeader from '@/components/shared/PageHeader'
 import Card from '@/components/shared/Card'
@@ -9,8 +9,11 @@ import Badge from '@/components/shared/Badge'
 import Btn from '@/components/shared/Btn'
 import EmptyState from '@/components/shared/EmptyState'
 import Spinner from '@/components/shared/Spinner'
+import { validateGraph } from '@/utils/validateGraph'
+import type { Graph } from '@/types'
 
 const DEV_WORKSPACE = import.meta.env.VITE_DEV_WORKSPACE_ID ?? 'dev-workspace'
+const PAGE_SIZE = 10
 
 function NewGraphModal({ onClose, onCreated }: { onClose: () => void; onCreated: (id: string) => void }) {
   const workspaceId = useAuthStore((s) => s.workspaceId) ?? DEV_WORKSPACE
@@ -63,6 +66,7 @@ function NewGraphModal({ onClose, onCreated }: { onClose: () => void; onCreated:
 const STATUS_VARIANT: Record<string, 'gray' | 'green' | 'blue'> = {
   draft: 'gray',
   active: 'green',
+  runnable: 'green',
   archived: 'blue',
 }
 
@@ -70,18 +74,54 @@ export default function GraphsPage() {
   const navigate = useNavigate()
   const workspaceId = useAuthStore((s) => s.workspaceId) ?? DEV_WORKSPACE
   const { data: graphs, isLoading } = useGraphs(workspaceId)
+  const deleteGraph = useDeleteGraph(workspaceId)
   const [showModal, setShowModal] = useState(false)
   const [search, setSearch] = useState('')
+  const [page, setPage] = useState(1)
 
   const filtered = (graphs ?? []).filter((g) =>
     g.name.toLowerCase().includes(search.toLowerCase()),
   )
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE))
+  const visibleGraphs = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
+
+  useEffect(() => {
+    setPage(1)
+  }, [search])
+
+  useEffect(() => {
+    if (page > totalPages) setPage(totalPages)
+  }, [page, totalPages])
+
+  function computedStatus(g: Graph): string {
+    if (g.status === 'archived') return 'archived'
+    const def = g.latest_version?.definition
+    if (!def) return 'draft'
+    const errors = validateGraph(def)
+    return errors.length === 0 ? 'runnable' : 'draft'
+  }
+
+  async function handleRetireGraph(g: Graph, e: React.MouseEvent) {
+    e.stopPropagation()
+    const hasRuns = (g.run_count ?? 0) > 0
+    const confirmText = hasRuns
+      ? `Archive "${g.name}"? It has ${g.run_count} run(s), so it cannot be deleted.`
+      : `Delete "${g.name}" permanently?`
+    if (!window.confirm(confirmText)) return
+    try {
+      const result = await deleteGraph.mutateAsync(g.id)
+      window.alert(result.action === 'archived' ? 'Workflow archived.' : 'Workflow deleted.')
+    } catch (err: any) {
+      const msg = err?.response?.data?.detail ?? err?.message ?? 'Action failed'
+      window.alert(`Cannot update workflow: ${msg}`)
+    }
+  }
 
   return (
     <div className="p-8 max-w-4xl mx-auto">
       <PageHeader
-        title="Designer"
-        subtitle="Build and edit agent graphs."
+        title="Workflows"
+        subtitle="Build and edit agent workflows."
         actions={
           <Btn size="sm" onClick={() => setShowModal(true)}>
             <Plus size={14} /> New Graph
@@ -107,7 +147,7 @@ export default function GraphsPage() {
         />
       ) : (
         <div className="grid gap-3">
-          {filtered.map((g) => (
+          {visibleGraphs.map((g) => (
             <Card key={g.id} className="p-4" onClick={() => navigate(`/graphs/${g.id}`)}>
               <div className="flex items-start justify-between">
                 <div>
@@ -115,14 +155,49 @@ export default function GraphsPage() {
                   {g.description && (
                     <p className="text-xs text-gray-500 mt-0.5">{g.description}</p>
                   )}
+                  <p className="text-[11px] text-gray-400 mt-1">{g.run_count ?? 0} run(s)</p>
                 </div>
-                <Badge variant={STATUS_VARIANT[g.status] ?? 'gray'}>{g.status}</Badge>
+                <div className="flex items-center gap-2">
+                  <Badge variant={STATUS_VARIANT[(computedStatus(g) as keyof typeof STATUS_VARIANT)] ?? 'gray'}>
+                    {computedStatus(g)}
+                  </Badge>
+                  <Btn
+                    size="sm"
+                    variant={(g.run_count ?? 0) > 0 ? 'secondary' : 'danger'}
+                    onClick={(e) => void handleRetireGraph(g, e)}
+                    loading={deleteGraph.isPending}
+                    title={(g.run_count ?? 0) > 0 ? 'Archive workflow' : 'Delete workflow'}
+                  >
+                    {(g.run_count ?? 0) > 0 ? <Archive size={12} /> : <Trash2 size={12} />}
+                    {(g.run_count ?? 0) > 0 ? 'Archive' : 'Delete'}
+                  </Btn>
+                </div>
               </div>
               <p className="text-xs text-gray-400 mt-2">
                 Updated {new Date(g.updated_at).toLocaleDateString()}
               </p>
             </Card>
           ))}
+        </div>
+      )}
+
+      {!isLoading && filtered.length > PAGE_SIZE && (
+        <div className="flex items-center justify-end gap-2 mt-3">
+          <button
+            onClick={() => setPage((p) => Math.max(1, p - 1))}
+            disabled={page <= 1}
+            className="px-2 py-1 text-xs rounded border border-gray-200 text-gray-600 disabled:opacity-40"
+          >
+            Prev
+          </button>
+          <span className="text-xs text-gray-500">Page {page} / {totalPages}</span>
+          <button
+            onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+            disabled={page >= totalPages}
+            className="px-2 py-1 text-xs rounded border border-gray-200 text-gray-600 disabled:opacity-40"
+          >
+            Next
+          </button>
         </div>
       )}
 

@@ -102,7 +102,17 @@ export default function DesignerChat({ graphId, sessionId, onBeforeApplyDelta }:
     <div className="flex flex-col h-full">
       {/* Chat header with clear button */}
       <div className="flex items-center justify-between px-3 py-1.5 border-b flex-shrink-0">
-        <span className="text-xs text-gray-400">{messages.filter(m => m.role === 'user').length} messages</span>
+        <div className="flex items-center gap-2">
+          <div className="w-6 h-6 rounded-full bg-brand-100 text-brand-700 flex items-center justify-center text-[11px] font-semibold">
+            K
+          </div>
+          <div>
+            <p className="text-xs font-semibold text-gray-700 leading-none">Knotwork Agent</p>
+            <p className="text-[10px] text-gray-400 leading-none mt-0.5">
+              {messages.filter(m => m.role === 'user').length} messages
+            </p>
+          </div>
+        </div>
         <button
           onClick={handleClear}
           className="text-gray-300 hover:text-red-400 p-1 rounded"
@@ -117,6 +127,14 @@ export default function DesignerChat({ graphId, sessionId, onBeforeApplyDelta }:
       <div className="flex-1 overflow-y-auto px-3 py-3 space-y-3">
         {messages.map((m, i) => (
           <div key={i} className={`flex flex-col ${m.role === 'user' ? 'items-end' : 'items-start'}`}>
+            {m.role === 'assistant' && (
+              <div className="flex items-center gap-1.5 mb-1 pl-1">
+                <div className="w-5 h-5 rounded-full bg-brand-100 text-brand-700 flex items-center justify-center text-[10px] font-semibold">
+                  K
+                </div>
+                <span className="text-[10px] uppercase tracking-wide text-gray-500">Knotwork Agent</span>
+              </div>
+            )}
             <div
               className={`max-w-[85%] rounded-xl px-3 py-2 text-sm ${
                 m.role === 'user'
@@ -150,12 +168,17 @@ export default function DesignerChat({ graphId, sessionId, onBeforeApplyDelta }:
 
       {/* Input */}
       <div className="border-t p-3 flex gap-2 flex-shrink-0">
-        <input
-          className="flex-1 border rounded-lg px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-blue-400"
-          placeholder="Describe a change…"
+        <textarea
+          className="flex-1 border rounded-lg px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-blue-400 resize-none min-h-[86px]"
+          placeholder="Describe workflow changes for Knotwork Agent..."
           value={input}
           onChange={e => setInput(e.target.value)}
-          onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send() } }}
+          onKeyDown={e => {
+            if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+              e.preventDefault()
+              send()
+            }
+          }}
           disabled={chat.isPending}
         />
         <button

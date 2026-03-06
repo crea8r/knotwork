@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import type { Run, RunNodeState } from '@/types'
+import type { ChannelMessage, OpenAICallLog, Run, RunNodeState, RunWorklogEntry } from '@/types'
 import { api } from './client'
 
 export function useRuns(workspaceId: string, status?: string) {
@@ -47,11 +47,71 @@ export function useRunNodes(
   })
 }
 
+export function useRunOpenAILogs(
+  workspaceId: string,
+  runId: string,
+  options?: { refetchInterval?: number | false },
+) {
+  return useQuery({
+    queryKey: ['run-openai-logs', runId],
+    queryFn: () =>
+      api
+        .get<OpenAICallLog[]>(`/workspaces/${workspaceId}/runs/${runId}/openai-logs`)
+        .then((r) => r.data),
+    enabled: !!workspaceId && !!runId,
+    ...options,
+  })
+}
+
+export function useRunWorklog(
+  workspaceId: string,
+  runId: string,
+  options?: { refetchInterval?: number | false },
+) {
+  return useQuery({
+    queryKey: ['run-worklog', runId],
+    queryFn: () =>
+      api
+        .get<RunWorklogEntry[]>(`/workspaces/${workspaceId}/runs/${runId}/worklog`)
+        .then((r) => r.data),
+    enabled: !!workspaceId && !!runId,
+    ...options,
+  })
+}
+
+export function useRunChatMessages(
+  workspaceId: string,
+  runId: string,
+  options?: { refetchInterval?: number | false },
+) {
+  return useQuery({
+    queryKey: ['run-chat-messages', runId],
+    queryFn: () =>
+      api
+        .get<ChannelMessage[]>(`/workspaces/${workspaceId}/runs/${runId}/chat-messages`)
+        .then((r) => r.data),
+    enabled: !!workspaceId && !!runId,
+    ...options,
+  })
+}
+
 export function useTriggerRun(workspaceId: string, graphId: string) {
   return useMutation({
     mutationFn: (data: { input: Record<string, unknown>; name?: string }) =>
       api
         .post<Run>(`/workspaces/${workspaceId}/graphs/${graphId}/runs`, data)
+        .then((r) => r.data),
+  })
+}
+
+export function useTriggerRunAny(workspaceId: string) {
+  return useMutation({
+    mutationFn: (data: { graphId: string; input: Record<string, unknown>; name?: string }) =>
+      api
+        .post<Run>(`/workspaces/${workspaceId}/graphs/${data.graphId}/runs`, {
+          input: data.input,
+          name: data.name,
+        })
         .then((r) => r.data),
   })
 }
@@ -100,7 +160,12 @@ export function useDeleteRun(workspaceId: string) {
   return useMutation({
     mutationFn: (runId: string) =>
       api.delete(`/workspaces/${workspaceId}/runs/${runId}`),
-    onSuccess: () => {
+    onSuccess: (_, runId) => {
+      // Optimistic cache update so the row disappears immediately.
+      qc.setQueriesData<Run[]>(
+        { queryKey: ['runs', workspaceId] },
+        (current) => (current ?? []).filter((r) => r.id !== runId),
+      )
       qc.invalidateQueries({ queryKey: ['runs', workspaceId] })
     },
   })

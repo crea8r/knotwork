@@ -47,6 +47,18 @@ export function useKnowledgeFiles() {
   })
 }
 
+export function useSearchKnowledgeFiles(query: string) {
+  const q = query.trim()
+  return useQuery<KnowledgeFile[]>({
+    queryKey: ['knowledge-search', WS_ID, q],
+    queryFn: () =>
+      api
+        .get(`/workspaces/${WS_ID}/knowledge/search`, { params: { q } })
+        .then((r) => r.data),
+    enabled: q.length > 0,
+  })
+}
+
 export function useKnowledgeFile(path: string | null) {
   return useQuery<KnowledgeFileWithContent>({
     queryKey: ['knowledge', WS_ID, path],
@@ -109,12 +121,95 @@ export function useUpdateKnowledgeFile(path: string) {
   })
 }
 
+export function useSummarizeKnowledgeDiff(path: string) {
+  return useMutation({
+    mutationFn: (body: { content: string }) =>
+      api
+        .post(`/workspaces/${WS_ID}/knowledge/summarize-diff`, body, { params: { path } })
+        .then(r => r.data as { summary: string }),
+  })
+}
+
 export function useDeleteKnowledgeFile() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: (path: string) =>
       api.delete(`/workspaces/${WS_ID}/knowledge/file`, { params: { path } }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['knowledge', WS_ID] }),
+  })
+}
+
+export interface UploadPreview {
+  suggested_path: string
+  suggested_title: string
+  converted_content: string
+  format: string
+  original_filename: string
+}
+
+export function useUploadFile() {
+  return useMutation({
+    mutationFn: async ({ file, folder }: { file: File; folder?: string }) => {
+      const form = new FormData()
+      form.append('file', file)
+      const params = folder ? `?folder=${encodeURIComponent(folder)}` : ''
+      // Use fetch (not axios) so the browser sets Content-Type: multipart/form-data
+      // with the correct boundary. Axios's instance-level Content-Type: application/json
+      // default overrides FormData detection and causes a 422 from FastAPI.
+      const token = localStorage.getItem('knotwork_token')
+      const headers: HeadersInit = {}
+      if (token) headers['Authorization'] = `Bearer ${token}`
+      const res = await fetch(`/api/v1/workspaces/${WS_ID}/handbook/upload${params}`, {
+        method: 'POST',
+        body: form,
+        headers,
+      })
+      if (!res.ok) {
+        const detail = await res.text().catch(() => res.statusText)
+        throw new Error(detail)
+      }
+      return res.json() as Promise<UploadPreview>
+    },
+  })
+}
+
+// ── Handbook proposals (S7) ───────────────────────────────────────────────────
+
+export interface HandbookProposal {
+  id: string
+  run_id: string
+  node_id: string
+  agent_ref: string | null
+  path: string
+  proposed_content: string
+  reason: string
+  status: 'pending' | 'approved' | 'rejected'
+  created_at: string
+}
+
+export function useHandbookProposals(status?: string) {
+  return useQuery<HandbookProposal[]>({
+    queryKey: ['handbook-proposals', WS_ID, status],
+    queryFn: () =>
+      api.get(`/workspaces/${WS_ID}/handbook/proposals`, { params: status ? { status } : {} }).then(r => r.data),
+  })
+}
+
+export function useApproveProposal() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, final_content }: { id: string; final_content?: string }) =>
+      api.post(`/workspaces/${WS_ID}/handbook/proposals/${id}/approve`, { final_content }).then(r => r.data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['handbook-proposals', WS_ID] }),
+  })
+}
+
+export function useRejectProposal() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (id: string) =>
+      api.post(`/workspaces/${WS_ID}/handbook/proposals/${id}/reject`, {}).then(r => r.data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['handbook-proposals', WS_ID] }),
   })
 }
 

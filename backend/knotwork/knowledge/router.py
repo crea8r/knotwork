@@ -7,11 +7,12 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from knotwork.database import get_db
 from knotwork.knowledge import service as svc
+from knotwork.knowledge.change_summary import generate_change_summary
 from knotwork.knowledge.health import compute_health_score
 from knotwork.knowledge.schemas import (
     FileVersionOut,
@@ -34,6 +35,15 @@ async def list_knowledge_files(
     db: AsyncSession = Depends(get_db),
 ):
     return await svc.list_files(db, workspace_id)
+
+
+@router.get("/{workspace_id}/knowledge/search", response_model=list[KnowledgeFileOut])
+async def search_knowledge_files(
+    workspace_id: UUID,
+    q: str,
+    db: AsyncSession = Depends(get_db),
+):
+    return await svc.search_files(db, workspace_id, q)
 
 
 @router.post("/{workspace_id}/knowledge", response_model=KnowledgeFileOut, status_code=201)
@@ -138,6 +148,53 @@ async def get_knowledge_health(
     return {"path": path, "health_score": score}
 
 
+@router.post("/{workspace_id}/handbook/upload")
+async def upload_handbook_file(
+    workspace_id: UUID,
+    file: UploadFile = File(...),
+    folder: str = Query(default=""),
+):
+    """Convert an uploaded file to Markdown and return a preview for human review.
+
+    No file is saved — the frontend shows a preview and calls POST /knowledge to save.
+    """
+    from pathlib import Path as _Path
+    from knotwork.knowledge.conversion import VIDEO_EXTS, suggested_path
+    from knotwork.knowledge.conversion_vision import convert_with_vision
+
+    MAX_BYTES = 10 * 1024 * 1024  # 10 MB
+    content = await file.read()
+    if len(content) > MAX_BYTES:
+        raise HTTPException(400, "File is too large (max 10 MB)")
+
+    filename = file.filename or "upload.txt"
+    suffix = _Path(filename).suffix.lower()
+
+    if suffix in VIDEO_EXTS:
+        raise HTTPException(400, {
+            "error": "video_not_supported",
+            "message": "Video files aren't supported yet — we're working on it!",
+        })
+
+    try:
+        markdown, fmt = await convert_with_vision(filename, content)
+    except ValueError as exc:
+        raise HTTPException(422, f"Conversion failed: {exc}")
+    except Exception as exc:
+        raise HTTPException(422, f"Conversion failed: {exc}")
+
+    path = suggested_path(filename, folder)
+    title = _Path(filename).stem.replace("-", " ").replace("_", " ").title()
+
+    return {
+        "suggested_path": path,
+        "suggested_title": title,
+        "converted_content": markdown,
+        "format": fmt,
+        "original_filename": filename,
+    }
+
+
 @router.get("/{workspace_id}/knowledge/suggestions", response_model=SuggestionOut)
 async def get_knowledge_suggestions(
     workspace_id: UUID,
@@ -149,3 +206,24 @@ async def get_knowledge_suggestions(
         raise HTTPException(404, "File not found")
     suggestions = await generate_suggestions(kf.id, db)
     return SuggestionOut(suggestions=suggestions, health_score=kf.health_score)
+
+
+@router.post("/{workspace_id}/knowledge/summarize-diff")
+async def summarize_knowledge_diff(
+    workspace_id: UUID,
+    path: str,
+    body: KnowledgeFileUpdate,
+    db: AsyncSession = Depends(get_db),
+):
+    """Generate a concise change summary from current file content vs incoming content."""
+    kf = await svc.get_file_by_path(db, workspace_id, path)
+    if kf is None:
+        raise HTTPException(404, "File not found")
+    adapter = get_storage_adapter()
+    try:
+        fc = await adapter.read(str(workspace_id), path)
+    except FileNotFoundError:
+        raise HTTPException(404, "File content not found in storage")
+
+    summary = await generate_change_summary(path, fc.content, body.content)
+    return {"summary": summary}

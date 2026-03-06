@@ -91,7 +91,7 @@ knotwork_resolve_escalation
   Input: { escalation_id, resolution, output?, guidance?, reason? }
   Returns: updated escalation, resumed run status
 
--- resolution values: "approved" | "edited" | "guided" | "aborted"
+-- resolution values: "accept_output" | "override_output" | "request_revision" | "abort_run"
 ```
 
 ### Knowledge Management
@@ -119,20 +119,36 @@ knotwork_review_suggestion
   Returns: updated file or dismissed suggestion
 ```
 
-### Tool Registry
+### Agent Registry
 
 ```
-knotwork_list_tools
-  Input: { workspace_id?, category? }
-  Returns: tool list
+knotwork_list_agents
+  Input: { workspace_id }
+  Returns: registered agents with display_name, provider, agent_ref, api_key_hint
 
-knotwork_get_tool
-  Input: { tool_id }
-  Returns: tool definition and usage stats
+knotwork_register_agent
+  Input: { display_name, provider, agent_ref, api_key? }
+  Returns: registered agent record
 
-knotwork_test_tool
-  Input: { tool_id, input }
-  Returns: tool output
+knotwork_delete_agent
+  Input: { agent_id }
+  Returns: 204 No Content
+```
+
+### Worklog & Proposals
+
+```
+knotwork_list_worklog
+  Input: { run_id }
+  Returns: worklog entries for the run (content, entry_type, node_id, agent_ref)
+
+knotwork_list_proposals
+  Input: { workspace_id?, status? }
+  Returns: handbook proposals (path, proposed_content, reason, status, run_id)
+
+knotwork_review_proposal
+  Input: { proposal_id, action }  -- action: "approve" | "reject"
+  Returns: updated proposal; if approved, new knowledge file version created
 ```
 
 ### Ratings

@@ -1,149 +1,62 @@
-# Frontend Specification — Operator Mode
+# Frontend Specification — Operations UX (S7.2)
 
-## Run Trigger Form
+S7.2 unifies operations into a thread-first model: **runs and escalations are conversation artifacts with explicit decisions**.
 
-Accessed by tapping "▶ Run" on any graph. This is where case-specific material is attached — the counterpart to the Handbook.
+## Inbox (Needs Action)
 
-```
-┌────────────────────────────────────┐
-│  Start a task              [✕]     │
-│  Hotel Contract Review             │
-│  ──────────────────────────────    │
-│                                    │
-│  What are you working on today?    │
-│                                    │
-│  Contract type                     │
-│  [ Purchase  ▼ ]                   │
-│                                    │
-│  Upload files                      │
-│  ┌──────────────────────────────┐  │
-│  │  📎 Drop files here          │  │
-│  │     or tap to browse         │  │
-│  │                              │  │
-│  │  📄 acme-purchase-v3.pdf  ✕  │  │
-│  └──────────────────────────────┘  │
-│                                    │
-│  Notes (optional)                  │
-│  [Pay attention to clause 12...]   │
-│                                    │
-│  Estimated time: ~4 minutes        │
-│                                    │
-│  [ Start run ▶ ]                   │
-└────────────────────────────────────┘
-```
+Inbox is the default operations surface.
 
-Files uploaded here are **Run Context** — they are available to agents during this run only. They are never stored in the Handbook and never treated as guidelines.
+Shows items requiring action across channels/runs:
+- escalations
+- pending handbook proposal approvals
+- explicit mentions requiring response
+
+Each row shows:
+- source channel / workflow
+- run + node context
+- reason and urgency
+- SLA/timeout badge
+
+Tap opens the exact thread location.
 
 ---
 
-## Dashboard
+## Run Thread
 
-The default view for operators. Designed for quick scanning on a phone.
+Each run is rendered as a timeline mixing:
+- agent messages
+- human messages
+- system events (`node started`, `node completed`, `checkpoint failed`, `confidence low`)
+- decision cards
 
-```
-┌────────────────────────────────────┐
-│  Dashboard              Feb 2025   │
-│                                    │
-│  Escalations                       │
-│  ┌──────────────────────────────┐  │
-│  │ ⚠️ Financial Analysis         │  │
-│  │    Contract Review · 2m ago  │  │
-│  │    Confidence: 42%           │  │
-│  │                    [Review →]│  │
-│  └──────────────────────────────┘  │
-│                                    │
-│  Active Runs                       │
-│  ┌──────────────────────────────┐  │
-│  │ 🔄 Hotel Contract Review     │  │
-│  │    Node 3/5 · ~4 min left    │  │
-│  └──────────────────────────────┘  │
-│                                    │
-│  Recent                            │
-│  ✅ Construction RFP  · 1h ago     │
-│  ✅ Porcelain Product · 3h ago     │
-│  ⛔ Hotel Contract    · 5h ago     │
-└────────────────────────────────────┘
-```
+Sticky run header:
+- status
+- current node
+- ETA
+- `Graph view` toggle
+
+Graph view remains available for structural debugging; thread view remains primary for collaboration.
 
 ---
 
-## Run Detail (Live)
+## Escalation Decisions (No Message Editing)
 
-Shows the graph canvas with live node statuses during a run. Tap any completed node to inspect its output.
+Escalation handling uses decision actions attached to the escalation event:
 
-```
-┌────────────────────────────────────┐
-│  ← Runs   Contract Review  [⏹]     │
-│                                    │
-│   ✅ Contract Intake               │
-│          │                         │
-│   ✅ Asset Valuation               │
-│          │                         │
-│   ⚠️ Financial Analysis   [Review] │  ← escalation badge
-│          │                         │
-│   ⏳ Legal Risk Check              │
-│          │                         │
-│   ⏳ 3-Way Approval                │
-│                                    │
-│  Status: Paused                    │
-│  Started: 14:02 · ~6 min left      │
-└────────────────────────────────────┘
-```
+- **Accept output**: continue using agent output.
+- **Override with human output**: human posts a new authoritative output message; prior agent message remains unchanged.
+- **Request revision**: human posts guidance; same node retries and produces a new agent message.
+- **Abort run**: stop run with reason.
 
-Tap any completed node (✅):
-```
-┌────────────────────────────────────┐
-│  Asset Valuation          [✕]      │
-│  Completed · 14:04 · 0.87 conf     │
-│  ──────────────────────────────    │
-│  Output                            │
-│  {                                 │
-│    "estimated_value": 45000000,    │
-│    "method": "DCF",                │
-│    "confidence": 0.87              │
-│  }                                 │
-│                                    │
-│  Knowledge used                    │
-│  📄 valuation-checklist.md  v8     │
-│  📄 finance/ratios.md       v3     │
-│                                    │
-│  Rate this output: ★ ★ ★ ☆ ☆      │
-└────────────────────────────────────┘
-```
+Design rule: escalation resolution never mutates historical messages.
 
 ---
 
 ## Post-Run Knowledge Feedback
 
-After a run completes (or after a node is rated), the system surfaces a connection between the outcome and the knowledge used — not as a report, but as a contextual nudge in the flow the user is already in.
+Knowledge nudges remain in-flow but are phrased as follow-up actions in the same thread:
+- review fragment used in low-confidence decision
+- approve/reject handbook suggestion
+- acknowledge high-performing handbook fragments
 
-**After a low-confidence escalation is resolved:**
-```
-✅ Run resumed.
-
-  The knowledge driving Financial Analysis
-  has a health score of ●●○○○.
-
-  Improving it may reduce future escalations.
-  [ Review cfo-criteria.md → ]   [ Later ]
-```
-
-**After a low rating is submitted:**
-```
-  Thanks for the feedback.
-
-  This node used cfo-criteria.md (v4).
-  Would you like to review it for improvements?
-
-  [ Review fragment → ]   [ Skip ]
-```
-
-**After a high-confidence, well-rated run:**
-```
-  ✅ Contract Review completed in 3m 42s.
-
-  contract-review-guide.md is performing well
-  across 47 runs. Your team's process is solid.
-```
-
-These moments are how users learn that knowledge quality drives agent quality — not from a tutorial, but from their own work.
+This keeps improvement loops close to operational work.

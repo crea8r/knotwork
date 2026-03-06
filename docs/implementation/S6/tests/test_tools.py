@@ -147,6 +147,7 @@ async def test_get_tool_not_found(client, setup):
     assert resp.status_code == 404
 
 
+@pytest.mark.xfail(reason="superseded by S7: built-in tools endpoint removed", strict=False)
 @pytest.mark.asyncio
 async def test_list_builtin_tools(client, setup):
     ws_id = setup["workspace_id"]

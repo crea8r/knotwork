@@ -1,25 +1,28 @@
 """
-Runtime engine: compile GraphDefinition → LangGraph, execute runs.
+Runtime engine: compile GraphDefinition → LangGraph.
 
-Uses AsyncPostgresSaver when DATABASE_URL_SYNC is configured (production).
-Falls back to MemorySaver otherwise (tests / local dev without Postgres).
+S7: unified dispatch — all non-start/end nodes use make_agent_node().
+Legacy types (llm_agent, human_checkpoint, conditional_router) are
+auto-converted. tool_executor raises RuntimeError.
 
-NOTE: MemorySaver state is lost between process restarts, so cross-restart
-resume only works with AsyncPostgresSaver.
+Dynamic routing: nodes with >1 outgoing edge use add_conditional_edges
+driven by state["next_branch"].
+
+execute_run / resume_run live in runner.py and are re-exported here for
+backward compatibility with existing imports.
 """
-
 from __future__ import annotations
 
 import logging
-import traceback
 from contextlib import asynccontextmanager
 from operator import add
-from typing import TYPE_CHECKING, Annotated, Any, TypeAlias, TypedDict
+from typing import Annotated, Any, TypeAlias, TypedDict
 
 
 def _merge_outputs(a: dict, b: dict) -> dict:
     """Reducer: merge per-node output dicts as the run progresses."""
     return {**a, **b}
+
 
 try:
     from langgraph.graph.state import CompiledStateGraph
@@ -29,30 +32,38 @@ except ImportError:
 
 logger = logging.getLogger(__name__)
 
-if TYPE_CHECKING:
-    pass
-
 
 class RunState(TypedDict):
     run_id: str
     workspace_id: str
+    graph_id: str
     input: dict
     context_files: list
-    messages: Annotated[list, add]      # accumulated across nodes
+    messages: Annotated[list, add]
     current_output: str | None
     node_outputs: Annotated[dict, _merge_outputs]  # {node_id: output_text}
+    next_branch: str | None                         # routing hint from agent
 
 
 @asynccontextmanager
 async def _checkpointer():
     """
-    Async context manager that yields the best available checkpointer.
+    Yield AsyncPostgresSaver when possible, else MemorySaver.
 
-    Tries AsyncPostgresSaver (requires DATABASE_URL_SYNC + langgraph-checkpoint-postgres).
-    Falls back to MemorySaver.
+    Order:
+    1) DATABASE_URL_SYNC (explicit)
+    2) Derive from DATABASE_URL when it's Postgres async URL
+       (postgresql+asyncpg://... -> postgresql://...)
+    3) MemorySaver fallback
     """
     from knotwork.config import settings
     url = settings.database_url_sync
+    if not url:
+        db_url = settings.database_url
+        if db_url.startswith("postgresql+asyncpg://"):
+            url = db_url.replace("postgresql+asyncpg://", "postgresql://", 1)
+        elif db_url.startswith("postgresql://"):
+            url = db_url
     if url:
         try:
             from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver  # type: ignore[import]
@@ -61,18 +72,28 @@ async def _checkpointer():
                 yield saver
                 return
         except Exception as exc:
-            logger.warning("AsyncPostgresSaver unavailable (%s), using MemorySaver", exc)
+            logger.warning("AsyncPostgresSaver unavailable for URL '%s' (%s), using MemorySaver", url, exc)
 
     from langgraph.checkpoint.memory import MemorySaver
     yield MemorySaver()
+
+
+def _make_branch_router(targets: list[str]):
+    """Return a routing function that reads state['next_branch'] to select a target."""
+    first = targets[0]
+
+    def route(state: RunState) -> str:
+        branch = state.get("next_branch")
+        return branch if branch in targets else first
+
+    return route
 
 
 def compile_graph(graph_def: dict, checkpointer: Any = None) -> CompiledGraph:
     """Compile a stored graph definition into a runnable LangGraph object."""
     from langgraph.graph import END, START as LG_START, StateGraph
 
-    from knotwork.runtime.nodes.human_checkpoint import make_human_checkpoint_node
-    from knotwork.runtime.nodes.llm_agent import make_llm_agent_node
+    from knotwork.runtime.nodes.agent import make_agent_node
 
     if checkpointer is None:
         from langgraph.checkpoint.memory import MemorySaver
@@ -90,17 +111,20 @@ def compile_graph(graph_def: dict, checkpointer: Any = None) -> CompiledGraph:
         nid = node["id"]
         if nid in skip_ids:
             continue
-        ntype = node.get("type")
-        if ntype == "llm_agent":
-            workflow.add_node(nid, make_llm_agent_node(node))
-        elif ntype == "human_checkpoint":
-            workflow.add_node(nid, make_human_checkpoint_node(node))
-        elif ntype == "tool_executor":
-            from knotwork.runtime.nodes.tool_executor import make_tool_executor_node
-            workflow.add_node(nid, make_tool_executor_node(node))
-        else:
-            workflow.add_node(nid, lambda s: s)
+        if node.get("type") == "tool_executor":
+            raise RuntimeError(
+                f"Node '{nid}' has type 'tool_executor' which was removed in S7. "
+                "Delete this node or replace it with an agent node."
+            )
+        workflow.add_node(nid, make_agent_node(node))
         node_ids.add(nid)
+
+    # Pre-compute per-source outgoing targets for branch routing
+    outgoing: dict[str, list[str]] = {nid: [] for nid in node_ids}
+    for edge in graph_def.get("edges", []):
+        src, tgt = edge["source"], edge["target"]
+        if src in node_ids and tgt in node_ids and tgt not in outgoing.get(src, []):
+            outgoing[src].append(tgt)
 
     for edge in graph_def.get("edges", []):
         src, tgt = edge["source"], edge["target"]
@@ -110,144 +134,24 @@ def compile_graph(graph_def: dict, checkpointer: Any = None) -> CompiledGraph:
         elif tgt in end_ids:
             if src in node_ids:
                 workflow.add_edge(src, END)
-        else:
-            if src in node_ids and tgt in node_ids:
+        elif src in node_ids and tgt in node_ids:
+            targets = outgoing.get(src, [])
+            if len(targets) > 1:
+                workflow.add_conditional_edges(
+                    src, _make_branch_router(targets), {t: t for t in targets},
+                )
+            else:
                 workflow.add_edge(src, tgt)
-            elif src in node_ids:
-                workflow.add_edge(src, END)
+        elif src in node_ids:
+            workflow.add_edge(src, END)
 
-    # Legacy graph with no start node — fall back to entry_point
-    if not start_ids:
-        entry = graph_def.get("entry_point") or (
-            nodes[0]["id"] if nodes else None
-        )
+    if not start_ids:  # legacy graph with no start node
+        entry = graph_def.get("entry_point") or (nodes[0]["id"] if nodes else None)
         if entry and entry in node_ids:
             workflow.set_entry_point(entry)
 
     return workflow.compile(checkpointer=checkpointer)
 
 
-async def _load_run_definition(run_id: str) -> tuple | None:
-    """Return (run, workspace_id, definition) or None if not found / terminal."""
-    from uuid import UUID
-
-    from knotwork.database import AsyncSessionLocal
-    from knotwork.graphs.models import GraphVersion
-    from knotwork.runs.models import Run
-
-    async with AsyncSessionLocal() as db:
-        run = await db.get(Run, UUID(run_id))
-        if not run or run.status in ("completed", "failed", "stopped"):
-            return None
-        version = await db.get(GraphVersion, run.graph_version_id)
-        if not version:
-            return None
-        return (
-            str(run.workspace_id),
-            run.input,
-            run.context_files,
-            version.definition,
-        )
-
-
-async def _update_run_status(run_id: str, from_status: str, final_status: str) -> None:
-    from datetime import datetime, timezone
-    from uuid import UUID
-
-    from knotwork.database import AsyncSessionLocal
-    from knotwork.runs.models import Run
-
-    async with AsyncSessionLocal() as db:
-        run = await db.get(Run, UUID(run_id))
-        if run and run.status == from_status:
-            run.status = final_status
-            if final_status in ("completed", "failed"):
-                run.completed_at = datetime.now(timezone.utc)
-            await db.commit()
-
-
-async def execute_run(run_id: str) -> None:
-    """Drive a queued run to completion or until interrupted by a checkpoint."""
-    from datetime import datetime, timezone
-    from uuid import UUID
-
-    from knotwork.database import AsyncSessionLocal
-    from knotwork.runs.models import Run
-    from knotwork.runtime.events import publish_event
-
-    loaded = await _load_run_definition(run_id)
-    if not loaded:
-        return
-    workspace_id, run_input, context_files, definition = loaded
-
-    async with AsyncSessionLocal() as db:
-        run = await db.get(Run, UUID(run_id))
-        if run:
-            run.status = "running"
-            run.started_at = datetime.now(timezone.utc)
-            await db.commit()
-
-    await publish_event(run_id, {"type": "run_started", "run_id": run_id})
-
-    try:
-        async with _checkpointer() as saver:
-            graph = compile_graph(definition, checkpointer=saver)
-            config = {"configurable": {"thread_id": run_id}}
-            result = await graph.ainvoke(
-                {
-                    "run_id": run_id,
-                    "workspace_id": workspace_id,
-                    "input": run_input,
-                    "context_files": context_files,
-                    "messages": [],
-                    "current_output": None,
-                    "node_outputs": {},
-                },
-                config=config,
-            )
-        final_status = "paused" if (
-            isinstance(result, dict) and result.get("__interrupt__")
-        ) else "completed"
-    except Exception:
-        logger.error("execute_run %s failed:\n%s", run_id, traceback.format_exc())
-        final_status = "failed"
-
-    await _update_run_status(run_id, "running", final_status)
-    await publish_event(run_id, {"type": "run_status_changed", "status": final_status})
-
-
-async def resume_run(run_id: str, resolution: dict) -> None:
-    """Resume a paused run using LangGraph Command(resume=resolution)."""
-    from uuid import UUID
-
-    from knotwork.database import AsyncSessionLocal
-    from knotwork.graphs.models import GraphVersion
-    from knotwork.runs.models import Run
-    from knotwork.runtime.events import publish_event
-
-    async with AsyncSessionLocal() as db:
-        run = await db.get(Run, UUID(run_id))
-        if not run or run.status != "paused":
-            return
-        version = await db.get(GraphVersion, run.graph_version_id)
-        if not version:
-            return
-        definition = version.definition
-
-    try:
-        from langgraph.types import Command
-
-        async with _checkpointer() as saver:
-            graph = compile_graph(definition, checkpointer=saver)
-            config = {"configurable": {"thread_id": run_id}}
-            result = await graph.ainvoke(Command(resume=resolution), config=config)
-
-        final_status = "paused" if (
-            isinstance(result, dict) and result.get("__interrupt__")
-        ) else "completed"
-    except Exception:
-        logger.error("resume_run %s failed:\n%s", run_id, traceback.format_exc())
-        final_status = "failed"
-
-    await _update_run_status(run_id, "paused", final_status)
-    await publish_event(run_id, {"type": "run_status_changed", "status": final_status})
+# Re-export for backward compatibility — worker and runs/router import from here
+from knotwork.runtime.runner import execute_run, resume_run  # noqa: F401, E402

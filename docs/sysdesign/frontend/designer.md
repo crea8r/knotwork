@@ -1,141 +1,59 @@
-# Frontend Specification — Designer Mode
+# Frontend Specification — Workflow Authoring (S7.2)
 
-## Graph List
+S7.2 moves from strict "Designer mode" screens to a **workflow authoring surface embedded in channels**.
 
-```
-┌────────────────────────────────────┐
-│  Knotwork          [+ New Graph]   │
-│                                    │
-│  🔍 Search graphs...               │
-│                                    │
-│  ┌──────────────────────────────┐  │
-│  │ Hotel Contract Review    ▶   │  │
-│  │ Active · 12 runs this week   │  │
-│  └──────────────────────────────┘  │
-│  ┌──────────────────────────────┐  │
-│  │ Construction RFP Pipeline ▶  │  │
-│  │ Draft · Last edited 2d ago   │  │
-│  └──────────────────────────────┘  │
-└────────────────────────────────────┘
-```
+Workflow creation and management remain first-class capabilities. The conversational shell does not replace workflow assets; it broadens daily collaboration around them.
 
-Creating a new graph opens the Chat Designer.
+## Workflow Authoring Spaces
+
+Workflows are still first-class assets, but authoring can start from two entry points:
+
+1. **Workflow library** (`/workflows`) for deliberate process design.
+2. **Workflow-backed channel** (`/channels/:id`) for ongoing refinement while operating.
+
+Both entry points use the same building blocks: chat-based design, live canvas, node configuration panel.
 
 ---
 
-## Chat Designer
+## Design Thread (Primary Surface)
 
-The primary workflow design surface. Available at any time alongside the canvas.
+The design thread remains the primary authoring interface.
 
-```
-┌────────────────────────────────────┐
-│  ← Back    Chat Designer      [▣]  │  ← [▣] toggles canvas panel
-│                                    │
-│  ┌──────────────────────────────┐  │
-│  │                              │  │
-│  │  Hi! Describe the workflow   │  │
-│  │  you want to build.          │  │
-│  │                              │  │
-│  └──────────────────────────────┘  │
-│                                    │
-│  ┌──────────────────────────────┐  │
-│  │ I need a workflow to review  │  │
-│  │ hotel purchase contracts...  │  │
-│  └──────────────────────────────┘  │
-│                                    │
-│  ┌──────────────────────────────┐  │
-│  │ Got it. I'm seeing 5 nodes:  │  │
-│  │                              │  │
-│  │  1. Contract intake          │  │
-│  │  2. Asset valuation          │  │
-│  │  3. Financial analysis       │  │
-│  │  4. Legal risk check         │  │
-│  │  5. 3-way approval           │  │
-│  │                              │  │
-│  │ What contract types do you   │  │
-│  │ handle? (purchase / build /  │  │
-│  │ sale / all?)                 │  │
-│  └──────────────────────────────┘  │
-│                                    │
-│  ┌──────────────────────────────┐  │
-│  │ Type a message...  [📎] [▶]  │  │
-│  └──────────────────────────────┘  │
-└────────────────────────────────────┘
-```
+- Human messages describe process changes.
+- System designer agent proposes deltas.
+- Proposed graph changes are surfaced as **decision cards** (`Apply delta`, `Reject delta`, `Request revision`).
+- Applied changes update the canvas and graph version.
 
-The `[📎]` button allows attaching an existing `.md` file to import from.
-
-As the conversation progresses, the canvas updates live in the background. The `[▣]` button shows the canvas panel side-by-side (on tablet/desktop) or as a full-screen toggle (on mobile).
+Messages are immutable. Revisions are new messages and new decisions, never edits.
 
 ---
 
-## Canvas
+## Canvas and Node Configuration
 
-Custom SVG canvas with dagre auto-layout (read-only view; no drag-and-drop). Used to review, refine, and tinker after the chat designer has produced a draft.
+Canvas remains read-only for layout with tap-to-select interaction.
 
-```
-┌─────────────────────────────────────────────┐
-│  ← Back   Hotel Contract Review   [Chat] [▶]│
-│                                             │
-│   ┌──────────┐      ┌──────────────┐        │
-│   │ Contract │─────►│ Asset        │        │
-│   │ Intake   │      │ Valuation    │        │
-│   └──────────┘      └──────┬───────┘        │
-│                            │                │
-│                     ┌──────▼───────┐        │
-│                     │ Financial    │        │
-│                     │ Analysis     │        │
-│                     └──────┬───────┘        │
-│                            │                │
-│                     ┌──────▼───────┐        │
-│                     │ Legal Risk   │        │
-│                     │ Check        │        │
-│                     └──────┬───────┘        │
-│                            │                │
-│                     ┌──────▼───────┐        │
-│                     │ 3-Way        │        │
-│                     │ Approval  👤  │        │
-│                     └──────────────┘        │
-│                                             │
-│                                    [Save]   │
-└─────────────────────────────────────────────┘
-```
+- Desktop/tablet: split view (`thread` + `canvas/config`).
+- Mobile: thread-first with toggle into canvas and bottom-sheet config.
 
-Node icons indicate type: 🤖 LLM Agent, 👤 Human Checkpoint, ⑂ Router, ⚙ Tool Executor.
+Node config tabs remain:
+- General
+- Knowledge
+- Confidence
+- Checkpoints
 
-Tap a node to open its configuration panel (slides up from bottom on mobile).
+Agent selection uses registered agents by display name and stores both `agent_ref` and `registered_agent_id`.
 
 ---
 
-## Node Configuration Panel
+## Distillation Workflow (Ad-hoc to Structured)
 
-Slides up from the bottom on mobile. Full right panel on desktop.
+S7.2 does **not** require direct "convert this conversation" automation.
 
-Tabs: **General** / **Knowledge** / **Tools** / **Checkpoints** / **Advanced**
+Instead, workflow creation supports a practical distillation flow:
 
-```
-┌────────────────────────────────────┐
-│  Financial Analysis       [✕]      │
-│  ──────────────────────────────    │
-│  General  Knowledge  Tools  ...    │
-│                                    │
-│  Name                              │
-│  [Financial Analysis          ]    │
-│                                    │
-│  Model                             │
-│  [openai/gpt-4o          ▼]        │
-│                                    │
-│  Confidence threshold              │
-│  [────────●──────] 0.75            │
-│                                    │
-│  Knowledge                         │
-│  ┌──────────────────────────────┐  │
-│  │ 📄 finance/cfo-criteria.md   │  │
-│  │    ↳ 📄 finance/ratios.md    │  │
-│  │ ⚠️ Resolved: 7,240 tokens    │  │
-│  └──────────────────────────────┘  │
-│  [+ Add knowledge fragment]        │
-└────────────────────────────────────┘
-```
+1. User opens Workflow library.
+2. User selects relevant past runs/channels as references.
+3. Designer agent drafts a structured workflow from repeated patterns.
+4. User reviews and finalizes in the workflow editor.
 
-Token count warning is shown inline with the knowledge tree.
+This keeps workflow design a separate intentional activity while preserving evidence from real work.

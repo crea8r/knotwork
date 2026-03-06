@@ -1,4 +1,6 @@
-import { Outlet } from 'react-router-dom'
+import { useEffect, useState } from 'react'
+import { Outlet, useLocation } from 'react-router-dom'
+import { Menu } from 'lucide-react'
 import Sidebar from './Sidebar'
 
 /**
@@ -6,10 +8,49 @@ import Sidebar from './Sidebar'
  * GraphDetailPage overrides this with its own full-viewport layout.
  */
 export default function AppLayout() {
+  const [mobileNavOpen, setMobileNavOpen] = useState(false)
+  const location = useLocation()
+
+  useEffect(() => {
+    if (!mobileNavOpen) return
+    const previous = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => {
+      document.body.style.overflow = previous
+    }
+  }, [mobileNavOpen])
+
+  const mobileTitle = (() => {
+    if (location.pathname.startsWith('/inbox')) return 'Inbox'
+    if (location.pathname.startsWith('/channels')) return 'Channels'
+    if (location.pathname.startsWith('/runs')) return 'Runs'
+    if (location.pathname.startsWith('/graphs')) return 'Workflows'
+    if (location.pathname.startsWith('/handbook')) return 'Handbook'
+    if (location.pathname.startsWith('/settings')) return 'Settings'
+    return 'Knotwork'
+  })()
+
   return (
     <div className="flex h-screen overflow-hidden bg-gray-50">
-      <Sidebar />
-      <main className="flex-1 overflow-y-auto">
+      {mobileNavOpen && (
+        <button
+          className="fixed inset-0 bg-black/30 z-30 md:hidden"
+          onClick={() => setMobileNavOpen(false)}
+          aria-label="Close navigation overlay"
+        />
+      )}
+      <Sidebar mobileOpen={mobileNavOpen} onCloseMobile={() => setMobileNavOpen(false)} />
+      <main className="flex-1 overflow-y-auto relative">
+        <header className="md:hidden sticky top-0 z-20 flex items-center gap-3 border-b border-gray-200 bg-white px-4 py-3">
+          <button
+            className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-gray-300 text-gray-700"
+            onClick={() => setMobileNavOpen(true)}
+            aria-label="Open navigation"
+          >
+            <Menu size={16} />
+          </button>
+          <p className="text-sm font-semibold text-gray-900">{mobileTitle}</p>
+        </header>
         <Outlet />
       </main>
     </div>

@@ -3,9 +3,11 @@ import type { Escalation } from '@/types'
 import { api } from './client'
 
 export interface EscalationResolve {
-  resolution: 'approved' | 'edited' | 'guided' | 'aborted'
-  edited_output?: Record<string, unknown>
+  resolution: 'accept_output' | 'override_output' | 'request_revision' | 'abort_run'
+  override_output?: Record<string, unknown>
   guidance?: string
+  channel_id?: string
+  actor_name?: string
 }
 
 export function useEscalations(workspaceId: string, status?: string) {
@@ -46,6 +48,23 @@ export function useResolveEscalation(workspaceId: string, escalationId: string) 
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['escalations', workspaceId] })
       qc.invalidateQueries({ queryKey: ['escalation', escalationId] })
+    },
+  })
+}
+
+export function useResolveEscalationAny(workspaceId: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ escalationId, data }: { escalationId: string; data: EscalationResolve }) =>
+      api
+        .post<Escalation>(
+          `/workspaces/${workspaceId}/escalations/${escalationId}/resolve`,
+          data,
+        )
+        .then((r) => r.data),
+    onSuccess: (_, vars) => {
+      qc.invalidateQueries({ queryKey: ['escalations', workspaceId] })
+      qc.invalidateQueries({ queryKey: ['escalation', vars.escalationId] })
     },
   })
 }

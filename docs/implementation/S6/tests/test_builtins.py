@@ -3,7 +3,10 @@ S6 — Built-in tool unit tests (no network, no DB).
 """
 import pytest
 
+_XFAIL = pytest.mark.xfail(reason="superseded by S7: built-in tools removed", strict=False)
 
+
+@_XFAIL
 @pytest.mark.asyncio
 async def test_calc_basic():
     from knotwork.tools.builtins.calc import calc
@@ -11,6 +14,7 @@ async def test_calc_basic():
     assert result["result"] == 8.0
 
 
+@_XFAIL
 @pytest.mark.asyncio
 async def test_calc_float():
     from knotwork.tools.builtins.calc import calc
@@ -18,6 +22,7 @@ async def test_calc_float():
     assert result["result"] == 2.5
 
 
+@_XFAIL
 @pytest.mark.asyncio
 async def test_calc_power():
     from knotwork.tools.builtins.calc import calc
@@ -25,6 +30,7 @@ async def test_calc_power():
     assert result["result"] == 1024.0
 
 
+@_XFAIL
 @pytest.mark.asyncio
 async def test_calc_rejects_import():
     from knotwork.tools.builtins.calc import calc
@@ -32,6 +38,7 @@ async def test_calc_rejects_import():
         await calc("__import__('os').system('echo pwned')")
 
 
+@_XFAIL
 @pytest.mark.asyncio
 async def test_calc_rejects_string():
     from knotwork.tools.builtins.calc import calc
@@ -39,6 +46,7 @@ async def test_calc_rejects_string():
         await calc("'hello' + 'world'")
 
 
+@_XFAIL
 def test_builtin_registry_contains_expected_slugs():
     from knotwork.tools.builtins import list_builtins
     slugs = {b.slug for b in list_builtins()}
@@ -48,6 +56,7 @@ def test_builtin_registry_contains_expected_slugs():
     assert "calc" in slugs
 
 
+@_XFAIL
 @pytest.mark.asyncio
 async def test_execute_builtin_unknown_slug():
     from knotwork.tools.builtins import execute_builtin

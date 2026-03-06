@@ -1,117 +1,98 @@
-# Node Types — Router, Executor & Common Properties
+# Node Types — Routing and <span style="color:#c1121f;font-weight:700">LEGACY</span> Executor Migration
 
-## Conditional Router Node
-
-Evaluates conditions against the run state and routes to the appropriate next node. No LLM, no tools — pure logic.
-
-Use for: branching on contract type, routing by value or category, selecting paths based on previous node output.
-
-### Configuration
-
-| Field | Description |
-|-------|-------------|
-| `name` | Display name |
-| `conditions` | Ordered list of condition → target node mappings |
-| `default` | Target node if no condition matches |
-
-### Condition Format
-
-```yaml
-conditions:
-  - if: "state.contract_type == 'purchase'"
-    goto: purchase-review-node
-  - if: "state.contract_type == 'construction'"
-    goto: construction-review-node
-  - if: "state.contract_value > 5000000"
-    goto: high-value-escalation-node
-default: standard-review-node
-```
-
-Conditions are evaluated in order. The first match wins.
-
-### Supported Condition Expressions
-
-- Equality: `==`, `!=`
-- Comparison: `>`, `<`, `>=`, `<=`
-- Containment: `in`, `not in`
-- Boolean: `and`, `or`, `not`
-- String: `.contains()`, `.startsWith()`, `.endsWith()`
-- Null checks: `is null`, `is not null`
+> **S7 update:** <span style="color:#c1121f;font-weight:700">LEGACY</span> `tool_executor` is removed. Execution and tool-calling now happen inside `agent`
+> nodes through adapter loops. Existing `tool_executor` nodes fail at compile time with `RuntimeError`.
 
 ---
 
-## Tool Executor Node
+## Routing in Current Runtime
 
-Runs a tool directly without LLM reasoning. Used for deterministic operations where the logic is fully known.
+Routing is topology-driven in `runtime/engine.py`:
 
-Use for: fetching external data, transforming a document, calling an API, computing a value, looking up a record.
+- If a node has one outgoing edge -> direct transition
+- If a node has more than one outgoing edge -> engine installs conditional routing using
+  `_make_branch_router(targets)`
 
-### Configuration
+`_make_branch_router` reads `state["next_branch"]` and:
 
-| Field | Description |
-|-------|-------------|
-| `name` | Display name |
-| `tool` | Tool ID from the tool registry |
-| `input_mapping` | Map state fields to tool input parameters |
-| `output_mapping` | Map tool output to state fields |
-| `error_handling` | What to do on tool failure: `retry`, `escalate`, `skip` |
+- routes to that node when it matches a valid outgoing target
+- otherwise falls back to the first outgoing target
 
-### Execution Flow
-
-```
-1. Map state fields to tool inputs
-2. Invoke tool
-3. Map tool output to state fields
-4. On error: apply error_handling
-```
-
-Tool Executor nodes are fast and cheap — no LLM call. Use them generously to offload known logic from LLM Agent nodes.
+So branch selection is not tied to a special runtime node implementation; it is a generic behavior
+for any node with multiple outgoing edges.
 
 ---
 
-## Sub-graph Node *(Phase 2)*
+## How Nodes Choose a Branch
 
-Invokes another Knotwork graph as a nested workflow and waits for its result.
+Adapters can emit `completed` with `next_branch`.
 
-### Configuration
+The typical path is the built-in `complete_node` tool call:
 
-| Field | Description |
-|-------|-------------|
-| `name` | Display name |
-| `graph_id` | The graph to invoke |
-| `input_mapping` | State fields to pass as the sub-graph's input |
-| `output_mapping` | Sub-graph output fields to write to parent state |
-| `timeout` | Max time to wait for sub-graph completion |
+- `complete_node(output="...", next_branch="target-node-id")`
 
-The sub-graph runs as a full, independent run. Its state, logs, and knowledge snapshots are all recorded separately and linked to the parent run.
+Runtime writes this value to both:
 
----
+- `RunNodeState.next_branch`
+- shared run state `next_branch`
 
-## Common Node Properties
-
-All node types share these properties:
-
-| Property | Description |
-|----------|-------------|
-| `id` | Unique identifier within the graph |
-| `type` | Node type |
-| `position` | Canvas position `{x, y}` |
-| `note` | Optional designer note (visible on canvas, not used in execution) |
-| `tags` | Optional labels for filtering and organisation |
+The engine then uses it for the next transition.
 
 ---
 
-## Node Status in a Run
+## Conditional Router Node Status
 
-During a run, every node has a status:
+`conditional_router` currently exists as a <span style="color:#c1121f;font-weight:700">LEGACY</span>/editor-facing node type, but runtime does not use a
+special conditional evaluator for it.
 
-| Status | Meaning |
-|--------|---------|
-| `pending` | Not yet reached |
-| `running` | Currently executing |
-| `paused` | Waiting for human (checkpoint or escalation) |
-| `completed` | Successfully finished |
-| `failed` | Errored or exhausted retries |
-| `skipped` | Bypassed by a conditional route |
+Current behavior:
 
-The canvas in the operator view displays these statuses live during a run.
+- it executes via the same `make_agent_node()` pipeline as other agent nodes
+- branch choice still comes from `next_branch`
+- any rule config (for example `routing_rules/default_target` in UI or <span style="color:#c1121f;font-weight:700">LEGACY</span> `conditions/default`)
+  is advisory context for the agent prompt, not an enforced deterministic interpreter
+
+There is a stub file `runtime/nodes/conditional_router.py`, but it is not wired into
+`compile_graph()`.
+
+---
+
+## Tool Executor Migration
+
+Graphs with <span style="color:#c1121f;font-weight:700">LEGACY</span> `tool_executor` must be migrated:
+
+1. Remove the <span style="color:#c1121f;font-weight:700">LEGACY</span> `tool_executor` node.
+2. Replace it with an `agent` node.
+3. Set `agent_ref` or `registered_agent_id` to the intended agent.
+4. Move tool-use instructions into node `config.system_prompt` (or agent profile), and let the
+   adapter/tool loop drive execution.
+
+This keeps runtime architecture consistent: one execution node model, one event contract, one routing model.
+
+---
+
+## Common Node Fields (Current)
+
+All node objects in graph definition share:
+
+- `id`
+- `type`
+- `name`
+- `config`
+- `note` (optional)
+
+Current active runtime types:
+
+- `start`
+- `end`
+- `agent`
+
+Accepted for backward compatibility (<span style="color:#c1121f;font-weight:700">LEGACY</span>):
+
+- <span style="color:#c1121f;font-weight:700">LEGACY</span> `llm_agent`
+- <span style="color:#c1121f;font-weight:700">LEGACY</span> `human_checkpoint`
+- <span style="color:#c1121f;font-weight:700">LEGACY</span> `conditional_router`
+
+Rejected at compile time:
+
+- <span style="color:#c1121f;font-weight:700">LEGACY</span> `tool_executor`

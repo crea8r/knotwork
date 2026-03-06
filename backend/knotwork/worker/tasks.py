@@ -47,6 +47,7 @@ import knotwork.ratings.models       # noqa: F401
 import knotwork.audit.models         # noqa: F401
 import knotwork.notifications.models  # noqa: F401
 
+from arq import cron
 from arq.connections import RedisSettings
 
 from knotwork.config import settings
@@ -115,6 +116,6 @@ class WorkerSettings:
     functions = [execute_run, resume_run]
     cron_jobs = [
         # Run timeout check every 5 minutes
-        {"coroutine": check_escalation_timeouts, "minute": {0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55}},
+        cron(check_escalation_timeouts, minute={0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55}),
     ]
     redis_settings = RedisSettings.from_dsn(settings.redis_url)

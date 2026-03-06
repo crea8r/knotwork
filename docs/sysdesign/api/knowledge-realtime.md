@@ -36,21 +36,10 @@ POST   /api/v1/workspaces/:workspace_id/knowledge/file/suggestions/:suggestion_i
 
 ---
 
-## Tools
+## <span style="color:#c1121f;font-weight:700">LEGACY</span> Tool Registry *(removed in S7)*
 
-```
-GET    /api/v1/workspaces/:workspace_id/tools
-POST   /api/v1/workspaces/:workspace_id/tools
-GET    /api/v1/workspaces/:workspace_id/tools/:tool_id
-PATCH  /api/v1/workspaces/:workspace_id/tools/:tool_id
-DELETE /api/v1/workspaces/:workspace_id/tools/:tool_id
-
-POST   /api/v1/workspaces/:workspace_id/tools/:tool_id/test
-       -- body: { input: { ... } }
-       -- response: { output: { ... }, duration_ms: 42 }
-
-GET    /api/v1/workspaces/:workspace_id/tools/:tool_id/versions
-```
+The `/tools` endpoints were removed in S7. Agents bring their own tools.
+See `docs/sysdesign/tools.md` for the current tool model.
 
 ---
 
@@ -69,7 +58,7 @@ Events pushed to client:
 { "event": "node.failed",     "data": { "node_id": "...", "error": "..." } }
 
 { "event": "escalation.created", "data": { "escalation_id": "...", "node_id": "...", "type": "low_confidence" } }
-{ "event": "escalation.resolved","data": { "escalation_id": "...", "resolution": "approved" } }
+{ "event": "escalation.resolved","data": { "escalation_id": "...", "resolution": "accept_output" } }
 
 { "event": "run.completed",   "data": { "output": {...} } }
 { "event": "run.failed",      "data": { "error": "..." } }

@@ -72,8 +72,10 @@ async def resolve_escalation(
         raise ValueError(f"Escalation {escalation_id} not found")
     esc.status = "resolved"
     esc.resolution = data.resolution
+    override_output = data.override_output if data.override_output is not None else data.edited_output
     esc.resolution_data = {
-        "edited_output": data.edited_output,
+        "override_output": override_output,
+        "edited_output": override_output,  # backward-compatible key
         "guidance": data.guidance,
     }
     esc.resolved_at = datetime.now(timezone.utc)

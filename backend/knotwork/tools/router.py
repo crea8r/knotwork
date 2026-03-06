@@ -6,7 +6,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from knotwork.database import get_db
 from knotwork.tools import service
 from knotwork.tools.schemas import (
-    BuiltinToolInfo,
     ToolCreate,
     ToolResponse,
     ToolTestRequest,
@@ -16,26 +15,6 @@ from knotwork.tools.schemas import (
 
 router = APIRouter(prefix="/workspaces", tags=["tools"])
 
-
-@router.get("/{workspace_id}/tools/builtins", response_model=list[BuiltinToolInfo])
-async def list_builtin_tools(workspace_id: str):
-    from knotwork.tools.builtins import list_builtins
-    return list_builtins()
-
-
-@router.post("/{workspace_id}/tools/builtins/{slug}/test", response_model=ToolTestResponse)
-async def test_builtin_tool(workspace_id: str, slug: str, data: ToolTestRequest):
-    """Test a built-in tool by slug. Calls execute_builtin() directly."""
-    import time
-    from knotwork.tools.builtins import execute_builtin
-    start = time.monotonic()
-    try:
-        output = await execute_builtin(slug, data.input or {})
-        duration_ms = int((time.monotonic() - start) * 1000)
-        return ToolTestResponse(output=output, error=None, duration_ms=duration_ms)
-    except Exception as exc:
-        duration_ms = int((time.monotonic() - start) * 1000)
-        return ToolTestResponse(output={}, error=str(exc), duration_ms=duration_ms)
 
 
 @router.get("/{workspace_id}/tools", response_model=list[ToolResponse])

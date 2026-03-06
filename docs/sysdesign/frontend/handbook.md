@@ -4,6 +4,22 @@ Named "Handbook" in the UI — not "Knowledge Base." The name sets the mental mo
 
 File tree on the left, editor on the right (stacked on mobile).
 
+## Handbook Chat (S7.2)
+
+Handbook includes a chat panel where humans can ask an agent to help maintain knowledge structure and content.
+
+Supported intents:
+- reorder file/folder structure
+- move/rename fragments
+- merge/split fragments
+- draft edits to file content
+
+Interaction model:
+- agent proposes operations as structured proposal cards
+- no file mutation happens before approval
+- human can `Approve`, `Reject`, or `Edit then approve`
+- applied operations create normal handbook history/audit entries
+
 ## Empty State (new workspace)
 
 ```

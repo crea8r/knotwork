@@ -2,11 +2,11 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from knotwork.graphs.service import get_graph, get_latest_version
-from knotwork.runs.models import Run, RunNodeState
+from knotwork.runs.models import OpenAICallLog, Run, RunHandbookProposal, RunNodeState, RunWorklogEntry
 from knotwork.runs.schemas import RunCreate, RunUpdate
 
 DELETABLE_STATUSES = {"completed", "failed", "stopped", "draft", "queued", "paused"}
@@ -47,6 +47,29 @@ async def create_run(
     db.add(run)
     await db.commit()
     await db.refresh(run)
+
+    from knotwork.channels import service as channel_service
+    from knotwork.channels.schemas import ChannelMessageCreate
+
+    run_channel = await channel_service.get_or_create_run_channel(
+        db,
+        workspace_id=workspace_id,
+        run_id=run.id,
+        graph_id=graph_id,
+    )
+    await channel_service.create_message(
+        db,
+        workspace_id=workspace_id,
+        channel_id=run_channel.id,
+        data=ChannelMessageCreate(
+            role="user",
+            author_type="human",
+            author_name="You",
+            content=f"Run started.\nInput: {run.input}",
+            run_id=run.id,
+            metadata={"kind": "run_start"},
+        ),
+    )
 
     from arq import create_pool
     from arq.connections import RedisSettings
@@ -125,6 +148,7 @@ async def list_workspace_runs(db: AsyncSession, workspace_id: UUID) -> list[dict
             "total_tokens": tok_map.get(r.id),
             "output_summary": out_map.get(r.id),
             "needs_attention": r.status == "paused",
+            "error": r.error,
         })
     return result
 
@@ -151,17 +175,93 @@ async def clone_run_as_draft(db: AsyncSession, run_id: UUID) -> Run:
     return draft
 
 
+async def list_worklog(db: AsyncSession, run_id: UUID) -> list[RunWorklogEntry]:
+    result = await db.execute(
+        select(RunWorklogEntry)
+        .where(RunWorklogEntry.run_id == run_id)
+        .order_by(RunWorklogEntry.created_at)
+    )
+    return list(result.scalars())
+
+
+async def list_proposals(db: AsyncSession, run_id: UUID) -> list[RunHandbookProposal]:
+    result = await db.execute(
+        select(RunHandbookProposal)
+        .where(RunHandbookProposal.run_id == run_id)
+        .order_by(RunHandbookProposal.created_at)
+    )
+    return list(result.scalars())
+
+
+async def list_openai_logs(db: AsyncSession, run_id: UUID) -> list[OpenAICallLog]:
+    result = await db.execute(
+        select(OpenAICallLog)
+        .where(OpenAICallLog.run_id == run_id)
+        .order_by(OpenAICallLog.created_at.asc())
+    )
+    return list(result.scalars())
+
+
+async def list_run_chat_messages(db: AsyncSession, run_id: UUID):
+    from knotwork.channels.models import ChannelMessage
+
+    result = await db.execute(
+        select(ChannelMessage)
+        .where(ChannelMessage.run_id == run_id)
+        .order_by(ChannelMessage.created_at.asc())
+    )
+    return list(result.scalars())
+
+
 async def delete_run(db: AsyncSession, run_id: UUID) -> None:
-    """Hard-delete. Closes open escalations first to avoid FK violations."""
+    """Hard-delete run and dependent records in FK-safe order."""
     run = await db.get(Run, run_id)
     if not run:
         return
+    from knotwork.channels.models import ChannelMessage, DecisionEvent
     from knotwork.escalations.models import Escalation
-    escs_q = await db.execute(
-        select(Escalation).where(Escalation.run_id == run_id, Escalation.status == "open")
+    from knotwork.notifications.models import NotificationLog
+    from knotwork.ratings.models import Rating
+
+    escalation_ids = list(
+        (
+            await db.execute(
+                select(Escalation.id).where(Escalation.run_id == run_id)
+            )
+        ).scalars()
     )
-    for esc in escs_q.scalars():
-        esc.status = "timed_out"
-    await db.flush()
+
+    # Keep channel/decision history while removing hard FK links to the deleted run.
+    await db.execute(
+        update(ChannelMessage)
+        .where(ChannelMessage.run_id == run_id)
+        .values(run_id=None)
+    )
+    await db.execute(
+        update(DecisionEvent)
+        .where(DecisionEvent.run_id == run_id)
+        .values(run_id=None)
+    )
+
+    if escalation_ids:
+        await db.execute(
+            update(DecisionEvent)
+            .where(DecisionEvent.escalation_id.in_(escalation_ids))
+            .values(escalation_id=None)
+        )
+        await db.execute(
+            update(NotificationLog)
+            .where(NotificationLog.escalation_id.in_(escalation_ids))
+            .values(escalation_id=None)
+        )
+        await db.execute(
+            delete(Escalation).where(Escalation.id.in_(escalation_ids))
+        )
+
+    await db.execute(delete(OpenAICallLog).where(OpenAICallLog.run_id == run_id))
+    await db.execute(delete(Rating).where(Rating.run_id == run_id))
+    await db.execute(delete(RunHandbookProposal).where(RunHandbookProposal.run_id == run_id))
+    await db.execute(delete(RunWorklogEntry).where(RunWorklogEntry.run_id == run_id))
+    await db.execute(delete(RunNodeState).where(RunNodeState.run_id == run_id))
     await db.delete(run)
     await db.commit()

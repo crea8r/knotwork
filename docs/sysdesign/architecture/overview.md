@@ -36,8 +36,8 @@
 │   └────────────────────────────────────────────────────────┘     │
 │                                                                  │
 │   ┌────────────────┐    ┌─────────────────┐                      │
-│   │ Tool Registry  │    │ Notification     │                      │
-│   │ (sync/async)   │    │ Dispatcher       │                      │
+│   │ AgentAdapters  │    │ Notification     │                      │
+│   │ Claude/OAI/Hum │    │ Dispatcher       │                      │
 │   └────────────────┘    └─────────────────┘                      │
 └──────────────────────────────┬───────────────────────────────────┘
                                │
@@ -63,9 +63,9 @@
 Two primary modes:
 
 **Designer Mode** — For building and editing workflows
-- Chat interface: conversational graph design
-- Canvas: React Flow-based drag-and-drop for visual refinement
-- Knowledge editor: file/folder tree, markdown editor
+- Chat interface: conversational graph design (primary surface)
+- Canvas: custom SVG with dagre auto-layout (read-only; click-to-select nodes, no drag-and-drop)
+- Knowledge editor: file/folder tree, markdown editor (the Handbook)
 - Both modes always available; chat is the entry point
 
 **Operator Mode** — For running and monitoring workflows
@@ -93,7 +93,7 @@ The execution engine. Converts a Knotwork graph definition into a LangGraph grap
 Responsibilities:
 - Load graph and resolve node configurations at run time
 - Fetch and snapshot the knowledge tree for each node
-- Execute nodes (LLM calls, tool calls, human checkpoints, routers)
+- Execute nodes via AgentAdapter (Claude, OpenAI, Human)
 - Manage state passing between nodes
 - Evaluate confidence and trigger escalation
 - Run checkpoints and rating evaluation

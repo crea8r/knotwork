@@ -22,6 +22,7 @@ def make_human_checkpoint_node(node_def: dict):
     Node config keys:
       prompt_to_operator — instructions shown to the operator in the escalation UI
     """
+    node_name = node_def.get("name") or node_def["id"]
     config = node_def.get("config", {})
     prompt_to_operator: str = config.get(
         "prompt_to_operator",
@@ -44,6 +45,8 @@ def make_human_checkpoint_node(node_def: dict):
             ns = RunNodeState(
                 run_id=run_id,
                 node_id=node_def["id"],
+                node_name=node_name,
+                agent_ref="human",
                 status="paused",
                 output={"current_output": current_output},
                 started_at=datetime.now(timezone.utc),

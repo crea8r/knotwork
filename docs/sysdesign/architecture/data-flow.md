@@ -16,20 +16,22 @@
    │       Snapshot version IDs → log to RunNodeState
    │       Flag if token count outside configured range
    │
-   ├── 4b. Execute node
-   │       LLM Agent: call LLM with knowledge + state + tools
-   │       Human Checkpoint: pause, notify human, wait
-   │       Conditional Router: evaluate condition, select edge
-   │       Tool Executor: invoke tool, return result
+   ├── 4b. Execute node (dispatch to AgentAdapter)
+   │       Anthropic agent:  Claude tool-calling loop → NodeEvent stream
+   │       OpenAI agent:     Assistants API poll loop → NodeEvent stream
+   │       Human agent:      Emit escalation event → interrupt LangGraph
+   │       LEGACY Conditional Router type:
+   │                         executes via AgentAdapter and sets `next_branch`
    │
    ├── 4c. Evaluate output
    │       Run checkpoint rules
-   │       Score confidence (structured output + rule signals)
-   │       If checkpoint fails: apply fail-safe → retry → escalate
-   │       If confidence low: escalate to human
+   │       Score confidence (agent-reported + rule signals)
+   │       If checkpoint fails or confidence low → create escalation → interrupt
    │
    ├── 4d. Persist RunNodeState
-   │       input, output, knowledge_snapshot, confidence, status
+   │       input, output, knowledge_snapshot, confidence, status, agent_ref
+   │       Worklog entries → run_worklog_entries
+   │       Handbook proposals → run_handbook_proposals
    │
    └── 4e. Pass state to next node(s)
        │
@@ -79,4 +81,5 @@ Phase 1 targets a single-region cloud deployment. Self-hosted is a Phase 2 optio
 | Execution engine | LangGraph | Native support for conditional edges, parallel nodes, human interrupts, checkpointing |
 | API style | REST + WebSocket | REST for CRUD, WebSocket for real-time run progress |
 | Async runs | Queue + worker | Long runs don't block API; ETA returned on trigger |
-| Model abstraction | LangChain model interface | Any provider, swappable per node |
+| Agent abstraction | AgentAdapter ABC | Any agent provider (Claude, OpenAI, custom) pluggable per node |
+| Agent credentials | RegisteredAgent table | Per-workspace API keys; env-var fallback for <span style="color:#c1121f;font-weight:700">LEGACY</span> nodes |
