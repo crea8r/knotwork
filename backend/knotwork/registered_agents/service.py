@@ -1121,7 +1121,7 @@ def _main_chat_init_prompt(display_name: str, session_name: str) -> str:
 async def _wait_openclaw_task(
     db: AsyncSession,
     task_id: UUID,
-    timeout_seconds: int = 90,
+    timeout_seconds: int = 300,
 ) -> tuple[str, str | None, str | None]:
     deadline = asyncio.get_event_loop().time() + timeout_seconds
     while asyncio.get_event_loop().time() < deadline:
@@ -1250,7 +1250,7 @@ async def ensure_main_chat_ready(
             )
 
         if latest_init.status in ("pending", "claimed"):
-            hard_deadline = latest_init.created_at + timedelta(seconds=120)
+            hard_deadline = latest_init.created_at + timedelta(seconds=600)
             if _now() < hard_deadline:
                 return AgentMainChatEnsureResponse(
                     ready=False,
@@ -1260,7 +1260,7 @@ async def ensure_main_chat_ready(
                     message="Main chat is being initialized.",
                 )
             latest_init.status = "failed"
-            latest_init.error_message = "Main chat initialization hard timeout (120s)"
+            latest_init.error_message = "Main chat initialization hard timeout (600s)"
             latest_init.completed_at = _now()
             latest_init.updated_at = _now()
             await db.commit()
@@ -1381,7 +1381,7 @@ async def ask_main_chat(
     await db.commit()
 
     task_id = task.id
-    task_status, reply, question = await _wait_openclaw_task(db, task_id, timeout_seconds=90)
+    task_status, reply, question = await _wait_openclaw_task(db, task_id, timeout_seconds=300)
     await _append_openclaw_task_logs_to_main_channel(
         db,
         workspace_id=workspace_id,

@@ -13,6 +13,19 @@ This revision makes chat the source of truth for agent interaction.
 
 **Knotwork is chat-native: every agent interaction is a chat session, and users see the same transcript the agent sees.**
 
+### Session Execution Contract (explicit)
+
+Knotwork treats OpenClaw as a session runtime only. Execution is limited to 3 operations:
+
+1. `create_session`
+2. `send_message`
+3. `sync_session`
+
+Out of contract for Knotwork:
+- direct file/shell control in OpenClaw internals,
+- provider-specific orchestration outside session transport,
+- hidden state access outside session transcript + minimal status.
+
 ### Positioning
 
 - OpenClaw remains primary runtime path.

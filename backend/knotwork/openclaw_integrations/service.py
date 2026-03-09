@@ -30,6 +30,8 @@ from knotwork.openclaw_integrations.schemas import (
 )
 from knotwork.registered_agents.models import RegisteredAgent
 
+SESSION_EXECUTION_CONTRACT_OPERATIONS = ("create_session", "send_message", "sync_session")
+
 
 def _now() -> datetime:
     return datetime.now(timezone.utc)
@@ -430,7 +432,10 @@ async def plugin_pull_task(
     integration = await resolve_plugin_integration(db, plugin_instance_id, integration_secret)
 
     # Recover tasks stuck in claimed (plugin crashed or command hang) so UX does not stall forever.
-    stale_before = _now() - timedelta(minutes=3)
+    # Threshold is 15 min — 3× the adapter heartbeat interval (5 min). As long as the
+    # Knotwork adapter is alive it touches task.updated_at every 5 min, so this recovery
+    # only fires when both the adapter AND the plugin have been silent for 15 min.
+    stale_before = _now() - timedelta(minutes=15)
     stale_q = await db.execute(
         select(OpenClawExecutionTask)
         .where(OpenClawExecutionTask.integration_id == integration.id)
@@ -506,6 +511,10 @@ async def plugin_pull_task(
             "system_prompt": task.system_prompt,
             "user_prompt": task.user_prompt,
             "session_token": task.session_token,
+            "execution_contract": {
+                "type": "session",
+                "operations": list(SESSION_EXECUTION_CONTRACT_OPERATIONS),
+            },
         }
     }
 
@@ -544,11 +553,38 @@ async def plugin_submit_task_event(
         task.status = "escalated"
         task.escalation_question = str((payload or {}).get("question") or "")
         task.escalation_options_json = (payload or {}).get("options") or []
+        # Preserve the full agent message body so the debug panel can show it.
+        full_msg = (payload or {}).get("message")
+        if full_msg:
+            task.output_text = str(full_msg)
         task.completed_at = now
     elif event_type == "failed":
         task.status = "failed"
         task.error_message = str((payload or {}).get("error") or "plugin execution failed")
         task.completed_at = now
+        # Keep runtime state consistent even if the worker loop is stale or interrupted.
+        if task.run_id is not None:
+            from knotwork.runs.models import Run, RunNodeState
+
+            ns_q = await db.execute(
+                select(RunNodeState)
+                .where(RunNodeState.run_id == task.run_id)
+                .where(RunNodeState.node_id == task.node_id)
+                .where(RunNodeState.status == "running")
+                .order_by(RunNodeState.started_at.desc())
+                .limit(1)
+            )
+            ns = ns_q.scalar_one_or_none()
+            if ns is not None:
+                ns.status = "failed"
+                ns.error = ns.error or task.error_message
+                ns.completed_at = ns.completed_at or now
+
+            run = await db.get(Run, task.run_id)
+            if run is not None and run.status == "running":
+                run.status = "failed"
+                run.error = run.error or f"Node failed: {task.error_message}"
+                run.completed_at = run.completed_at or now
 
     task.updated_at = now
     await db.commit()

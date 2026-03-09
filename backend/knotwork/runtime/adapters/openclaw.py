@@ -27,7 +27,8 @@ from knotwork.runtime.adapters.base import AgentAdapter, NodeEvent
 if TYPE_CHECKING:
     from knotwork.runtime.knowledge_loader import KnowledgeTree
 
-_MAX_WAIT_SECONDS = 300
+_POLL_INTERVAL_SECONDS = 2
+_HEARTBEAT_SECONDS = 300  # log a progress entry every 5 minutes
 
 
 def _now() -> datetime:
@@ -65,15 +66,39 @@ class OpenClawAdapter(AgentAdapter):
             context_files=run_state.get("context_files", []),
             prior_outputs=prior_outputs,
         )
-        extra = config.get("system_prompt") or config.get("instructions", "")
+        # Per-run override takes precedence over design-time node config
+        _node_prompts = (run_state.get("input") or {}).get("_node_system_prompts") or {}
+        extra = str(_node_prompts[node_id]) if node_id in _node_prompts else (
+            config.get("system_prompt") or config.get("instructions", "")
+        )
         if extra:
             system_prompt = f"{system_prompt}\n\n{extra}"
+            # Also embed node instructions in the user message so they are always
+            # visible in OpenClaw's chat UI and applied even on shared sessions
+            # where extraSystemPrompt is only set at session-creation time.
+            user_prompt = f"=== TASK INSTRUCTIONS ===\n{extra}\n\n---\n\n{user_prompt}"
 
         system_prompt = (
             f"{system_prompt}\n\n"
             "=== TOOLING POLICY ===\n"
             "- Use available tools before escalating.\n"
-            "- If uncertain, provide best-effort output with unknowns clearly marked."
+            "- If uncertain, provide best-effort output with unknowns clearly marked.\n\n"
+            "=== COMPLETION PROTOCOL ===\n"
+            "When you have finished your work, end your FINAL message with a decision block.\n\n"
+            "If you are confident in your result:\n"
+            "```json-decision\n"
+            "{\"decision\": \"confident\", \"output\": \"<your complete answer>\", \"next_branch\": null}\n"
+            "```\n\n"
+            "If you need human review before the workflow can proceed:\n"
+            "```json-decision\n"
+            "{\"decision\": \"escalate\", \"question\": \"<specific question for the human>\", "
+            "\"options\": [\"Option A\", \"Option B\"]}\n"
+            "```\n\n"
+            "Rules:\n"
+            "- The json-decision block MUST be the very last thing in your message.\n"
+            "- `output` must contain your complete answer, not a summary.\n"
+            "- Only escalate if you genuinely cannot proceed without human input.\n"
+            "- `next_branch` is a routing hint (string) or null; set null if unsure."
         )
 
         integration_id: UUID | None = None
@@ -104,36 +129,66 @@ class OpenClawAdapter(AgentAdapter):
                 integration_id = remote.integration_id
                 remote_agent_id = remote.remote_agent_id
 
-            task = OpenClawExecutionTask(
-                id=uuid4(),
-                workspace_id=UUID(str(run_state["workspace_id"])),
-                integration_id=integration_id,
-                run_id=run_id,
-                node_id=node_id,
-                agent_ref=agent_ref,
-                remote_agent_id=remote_agent_id,
-                system_prompt=system_prompt,
-                user_prompt=user_prompt,
-                session_token=session_token,
-                status="pending",
-                created_at=_now(),
-                updated_at=_now(),
+            existing_q = await db.execute(
+                select(OpenClawExecutionTask)
+                .where(OpenClawExecutionTask.workspace_id == UUID(str(run_state["workspace_id"])))
+                .where(OpenClawExecutionTask.integration_id == integration_id)
+                .where(OpenClawExecutionTask.run_id == run_id)
+                .where(OpenClawExecutionTask.node_id == node_id)
+                .where(OpenClawExecutionTask.session_token == session_token)
+                .where(OpenClawExecutionTask.status.in_(("pending", "claimed")))
+                .order_by(OpenClawExecutionTask.created_at.desc())
+                .limit(1)
             )
-            db.add(task)
-            await db.commit()
-            task_id = task.id
+            existing = existing_q.scalar_one_or_none()
+            if existing is not None:
+                task_id = existing.id
+                resumed_existing_task = True
+            else:
+                task = OpenClawExecutionTask(
+                    id=uuid4(),
+                    workspace_id=UUID(str(run_state["workspace_id"])),
+                    integration_id=integration_id,
+                    run_id=run_id,
+                    node_id=node_id,
+                    agent_ref=agent_ref,
+                    remote_agent_id=remote_agent_id,
+                    system_prompt=system_prompt,
+                    user_prompt=user_prompt,
+                    session_token=session_token,
+                    status="pending",
+                    created_at=_now(),
+                    updated_at=_now(),
+                )
+                db.add(task)
+                await db.commit()
+                task_id = task.id
+                resumed_existing_task = False
 
-        yield NodeEvent("started", {"model": agent_ref, "bridge": "openclaw_plugin", "task_id": str(task_id)})
+        yield NodeEvent("started", {
+            "model": agent_ref,
+            "bridge": "openclaw_plugin",
+            "task_id": str(task_id),
+            "resumed_existing_task": resumed_existing_task,
+        })
 
         seen_event_ids: set[str] = set()
-        deadline = asyncio.get_event_loop().time() + _MAX_WAIT_SECONDS
+        last_heartbeat = asyncio.get_event_loop().time()
 
-        while asyncio.get_event_loop().time() < deadline:
-            await asyncio.sleep(1)
+        while True:
+            await asyncio.sleep(_POLL_INTERVAL_SECONDS)
+
             async with AsyncSessionLocal() as db:
                 task = await db.get(OpenClawExecutionTask, task_id)
                 if task is None:
                     yield NodeEvent("failed", {"error": "OpenClaw task disappeared"})
+                    return
+
+                # Exit if the run was stopped by an operator while we were waiting.
+                from knotwork.runs.models import Run
+                run_row = await db.get(Run, run_id)
+                if run_row and run_row.status == "stopped":
+                    yield NodeEvent("failed", {"error": "Run was stopped by operator"})
                     return
 
                 events_q = await db.execute(
@@ -167,6 +222,7 @@ class OpenClawAdapter(AgentAdapter):
                 yield NodeEvent("escalation", {
                     "question": task.escalation_question or "Need human input",
                     "options": task.escalation_options_json or [],
+                    "output": task.output_text or "",
                 })
                 return
 
@@ -174,4 +230,18 @@ class OpenClawAdapter(AgentAdapter):
                 yield NodeEvent("failed", {"error": task.error_message or "OpenClaw execution failed"})
                 return
 
-        yield NodeEvent("failed", {"error": "OpenClaw plugin execution timeout"})
+            now = asyncio.get_event_loop().time()
+            if now - last_heartbeat >= _HEARTBEAT_SECONDS:
+                last_heartbeat = now
+                yield NodeEvent("log_entry", {
+                    "entry_type": "progress",
+                    "content": f"OpenClaw task still running… (task_id={task_id})",
+                    "metadata": {"task_id": str(task_id)},
+                })
+                # Touch updated_at so the stale-recovery logic in plugin_pull_task
+                # knows this task is alive and should not be reaped.
+                async with AsyncSessionLocal() as db:
+                    t = await db.get(OpenClawExecutionTask, task_id)
+                    if t is not None and t.status == "claimed":
+                        t.updated_at = _now()
+                        await db.commit()

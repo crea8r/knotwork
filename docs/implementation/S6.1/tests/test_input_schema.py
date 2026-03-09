@@ -240,6 +240,7 @@ async def test_delete_terminal_run(client, setup):
 
 
 @pytest.mark.asyncio
+@pytest.mark.xfail(reason="superseded by S8: DELETABLE_STATUSES expanded to include 'running'; active runs can now be deleted directly")
 async def test_delete_active_run_rejected(client, setup):
     ws_id = setup["workspace_id"]
     run_id, _ = await _create_graph_and_run(client, ws_id, "running")

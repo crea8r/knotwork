@@ -1,1 +1,1 @@
-export { activate } from './src/main'
+export { activate } from './src/plugin'

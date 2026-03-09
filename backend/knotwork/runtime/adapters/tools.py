@@ -4,7 +4,6 @@ Knotwork-native tool definitions shared across all adapters.
 Four tools are always available to every agent:
   write_worklog           — log observations/thoughts/actions to the run worklog
   propose_handbook_update — propose a file change (requires human approval)
-  web_search              — query the public web for external facts
   escalate                — pause the run and ask a human operator
   complete_node           — signal step completion with output + optional branch
 """
@@ -42,24 +41,6 @@ KNOTWORK_TOOLS: list[dict] = [
                 "reason": {"type": "string", "description": "Why this change improves the Handbook."},
             },
             "required": ["path", "proposed_content", "reason"],
-        },
-    },
-    {
-        "name": "web_search",
-        "description": (
-            "Search the public web and return top result titles/snippets/URLs. "
-            "Use this before escalating when external facts are needed."
-        ),
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "query": {"type": "string", "description": "Search query keywords."},
-                "max_results": {
-                    "type": "integer",
-                    "description": "Number of results to return (1-10).",
-                },
-            },
-            "required": ["query"],
         },
     },
     {

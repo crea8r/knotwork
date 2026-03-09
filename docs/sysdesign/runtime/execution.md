@@ -7,6 +7,19 @@
 
 ---
 
+## OpenClaw Session Execution Contract
+
+OpenClaw integration is session-oriented by contract. Knotwork interacts as a third-party runtime only through:
+
+1. `create_session`
+2. `send_message`
+3. `sync_session`
+
+This boundary is intentional to reduce integration/security risk and preserve provider portability.
+Knotwork does not assume direct access to OpenClaw internal subsystems beyond session I/O and status.
+
+---
+
 ## Agent Node Dispatch
 
 `make_agent_node()` (`runtime/nodes/agent.py`) returns an async LangGraph node function:

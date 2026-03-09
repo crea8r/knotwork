@@ -139,6 +139,7 @@ async def test_delete_queued_run(client):
 
 
 @pytest.mark.asyncio
+@pytest.mark.xfail(reason="superseded by S8: DELETABLE_STATUSES expanded to include 'running'; active runs can now be deleted directly")
 async def test_delete_running_run_rejected(client, db_session):
     s = await _setup(client)
     run_id = await _create_run(client, s["ws_id"], s["graph_id"])

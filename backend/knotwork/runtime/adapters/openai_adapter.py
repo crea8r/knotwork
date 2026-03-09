@@ -3,7 +3,7 @@ OpenAI adapter — uses the Assistants API (openai >= 1.0).
 
 Creates a fresh Assistant + Thread per node execution (stateless for Phase 1).
 Polls the run until completion or requires_action (tool calls).
-Uses Knotwork-native tools (including web_search).
+Uses Knotwork-native tools.
 """
 from __future__ import annotations
 
@@ -12,7 +12,6 @@ from typing import TYPE_CHECKING, AsyncGenerator
 
 from knotwork.runtime.adapters.base import AgentAdapter, NodeEvent
 from knotwork.runtime.adapters.tools import KNOTWORK_TOOLS
-from knotwork.runtime.adapters.web_search import web_search
 
 if TYPE_CHECKING:
     from knotwork.runtime.knowledge_loader import KnowledgeTree
@@ -83,14 +82,6 @@ class OpenAIAdapter(AgentAdapter):
         extra = config.get("system_prompt") or config.get("instructions", "")
         if extra:
             system_prompt = f"{system_prompt}\n\n{extra}"
-        system_prompt = (
-            f"{system_prompt}\n\n"
-            "=== TOOLING POLICY ===\n"
-            "- Use web_search before escalating when external info is needed.\n"
-            "- Escalate only if search results are insufficient after at least one search attempt.\n"
-            "- If uncertain, still return best-effort output and clearly mark unknown fields."
-        )
-
         effective_key = self._api_key or settings.openai_api_key or None
         client = AsyncOpenAI(api_key=effective_key)
         yield NodeEvent("started", {"model": model})
@@ -127,8 +118,6 @@ class OpenAIAdapter(AgentAdapter):
         })
 
         # Poll loop
-        web_search_calls = 0
-        deferred_escalations = 0
         for _ in range(_MAX_POLL):
             await asyncio.sleep(1)
             oai_run = await client.beta.threads.runs.retrieve(
@@ -178,51 +167,6 @@ class OpenAIAdapter(AgentAdapter):
                         tool_outputs.append({"tool_call_id": tc.id, "output": '{"ok":true}'})
 
                     elif name == "escalate":
-                        if web_search_calls == 0:
-                            blocked_output = {
-                                "ok": False,
-                                "message": (
-                                    "Do not escalate yet. Call web_search at least once, then decide."
-                                ),
-                            }
-                            yield NodeEvent("log_entry", {
-                                "entry_type": "tool_call",
-                                "content": "tool:escalate (blocked_no_search)",
-                                "metadata": {
-                                    "tool": "escalate",
-                                    "input": inp,
-                                    "output": blocked_output,
-                                },
-                            })
-                            tool_outputs.append({
-                                "tool_call_id": tc.id,
-                                "output": json.dumps(blocked_output),
-                            })
-                            continue
-                        if deferred_escalations < 1:
-                            deferred_escalations += 1
-                            blocked_output = {
-                                "ok": False,
-                                "message": (
-                                    "Do not escalate yet. Use available web_search results "
-                                    "to produce a best-effort output, clearly marking unknowns, "
-                                    "then call complete_node."
-                                ),
-                            }
-                            yield NodeEvent("log_entry", {
-                                "entry_type": "tool_call",
-                                "content": "tool:escalate (deferred)",
-                                "metadata": {
-                                    "tool": "escalate",
-                                    "input": inp,
-                                    "output": blocked_output,
-                                },
-                            })
-                            tool_outputs.append({
-                                "tool_call_id": tc.id,
-                                "output": json.dumps(blocked_output),
-                            })
-                            continue
                         yield NodeEvent("log_entry", {
                             "entry_type": "tool_call",
                             "content": "tool:escalate",
@@ -254,27 +198,6 @@ class OpenAIAdapter(AgentAdapter):
                         await client.beta.threads.runs.cancel(thread_id=thread.id, run_id=oai_run.id)
                         await client.beta.assistants.delete(assistant.id)
                         return
-
-                    elif name == "web_search":
-                        web_search_calls += 1
-                        result = await asyncio.to_thread(
-                            web_search,
-                            str(inp.get("query", "")),
-                            int(inp.get("max_results", 5) or 5),
-                        )
-                        yield NodeEvent("log_entry", {
-                            "entry_type": "tool_call",
-                            "content": "tool:web_search",
-                            "metadata": {
-                                "tool": "web_search",
-                                "input": inp,
-                                "output": result,
-                            },
-                        })
-                        tool_outputs.append({
-                            "tool_call_id": tc.id,
-                            "output": json.dumps(result, ensure_ascii=False),
-                        })
 
                     elif name == "complete_node":
                         completed_payload = {

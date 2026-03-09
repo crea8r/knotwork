@@ -32,6 +32,25 @@ def _resolve_agent_ref(node_def: dict, default_model: str) -> str:
     return f"anthropic:{default_model}" if "claude" in default_model else f"openai:{default_model}"
 
 
+def _strip_trailing_decision_block(text: str) -> str:
+    """Remove trailing ```json-decision fenced block if present."""
+    if not text:
+        return text
+    fence = "```json-decision"
+    start = text.rfind(fence)
+    if start == -1:
+        return text
+    newline = text.find("\n", start)
+    if newline == -1:
+        return text
+    end = text.find("```", newline + 1)
+    if end == -1:
+        return text
+    if text[end + 3 :].strip():
+        return text
+    return text[:start].rstrip()
+
+
 def make_agent_node(node_def: dict):
     """
     Factory returning an async LangGraph node function for any agent node.
@@ -63,6 +82,7 @@ def make_agent_node(node_def: dict):
         run_id = UUID(state["run_id"])
         workspace_id = state["workspace_id"]
         agent_ref = _resolve_agent_ref(node_def, settings.default_model)
+        is_openclaw_agent = agent_ref.startswith("openclaw:")
 
         # S7.1: if a registered_agent_id is set, fetch the per-workspace API key
         api_key: str | None = None
@@ -115,28 +135,35 @@ def make_agent_node(node_def: dict):
                 context_files=state.get("context_files", []),
                 prior_outputs=prior_outputs,
             )
-            extra = config.get("system_prompt") or config.get("instructions", "")
+            # Per-run override (from RunTriggerModal) takes precedence over design-time config
+            _node_prompts = (state.get("input") or {}).get("_node_system_prompts") or {}
+            extra = str(_node_prompts[node_id]) if node_id in _node_prompts else (
+                config.get("system_prompt") or config.get("instructions", "")
+            )
             if extra:
                 system_prompt = f"{system_prompt}\n\n{extra}"
             system_prompt = (
                 f"{system_prompt}\n\n"
                 "=== RUNTIME CONSTRAINTS ===\n"
-                "Available tools are limited to: write_worklog, propose_handbook_update, web_search, escalate, complete_node.\n"
-                "When web_search is available, use it before escalating.\n"
+                "Available tools: write_worklog, propose_handbook_update, escalate, complete_node.\n"
                 "If the request is understandable, produce a best-effort answer with clear unknowns and call complete_node.\n"
                 "Use escalate only when a critical blocker prevents any useful output."
             )
             if retry_guidance:
-                system_prompt = (
-                    f"{system_prompt}\n\n"
-                    "=== HUMAN GUIDANCE (from escalation resolution) ===\n"
-                    f"{retry_guidance}"
-                )
-                user_prompt = (
-                    f"{user_prompt}\n\n"
-                    "### Human Guidance (latest)\n"
-                    f"{retry_guidance}"
-                )
+                if is_openclaw_agent:
+                    # Continue the existing OpenClaw session with only the operator guidance.
+                    user_prompt = retry_guidance
+                else:
+                    system_prompt = (
+                        f"{system_prompt}\n\n"
+                        "=== HUMAN GUIDANCE (from escalation resolution) ===\n"
+                        f"{retry_guidance}"
+                    )
+                    user_prompt = (
+                        f"{user_prompt}\n\n"
+                        "### Human Guidance (latest)\n"
+                        f"{retry_guidance}"
+                    )
 
             session_token = create_session_token(
                 str(run_id), node_id, workspace_id, settings.jwt_secret
@@ -144,8 +171,10 @@ def make_agent_node(node_def: dict):
 
             # Feed adapter the augmented prompt instructions for this attempt.
             attempt_node_def = {**node_def, "config": dict(config)}
-            if retry_guidance:
-                merged_extra = config.get("system_prompt") or config.get("instructions", "")
+            if retry_guidance and not is_openclaw_agent:
+                merged_extra = str(_node_prompts[node_id]) if node_id in _node_prompts else (
+                    config.get("system_prompt") or config.get("instructions", "")
+                )
                 guidance_block = (
                     "=== HUMAN GUIDANCE (from escalation resolution) ===\n"
                     f"{retry_guidance}"
@@ -179,6 +208,7 @@ def make_agent_node(node_def: dict):
 
             escalated = False
             retry_guidance = None
+            _fail_error: str | None = None  # set on "failed" event; raised after generator closes cleanly
 
             async for event in adapter.run_node(attempt_node_def, state, tree, session_token):
                 if event.type == "log_entry":
@@ -189,6 +219,33 @@ def make_agent_node(node_def: dict):
                             entry_type=p.get("entry_type", "observation"),
                             content=p.get("content", ""), metadata_=p.get("metadata", {}),
                         ))
+                        progress_text = str(p.get("content") or "").strip()
+                        if progress_text:
+                            run_channel = await channel_service.get_or_create_run_channel(
+                                db,
+                                workspace_id=UUID(workspace_id),
+                                run_id=run_id,
+                                graph_id=UUID(str(state["graph_id"])) if state.get("graph_id") else None,
+                            )
+                            await channel_service.create_message(
+                                db,
+                                workspace_id=UUID(workspace_id),
+                                channel_id=run_channel.id,
+                                data=ChannelMessageCreate(
+                                    role="system",
+                                    author_type="system",
+                                    author_name=node_name,
+                                    content=progress_text,
+                                    run_id=run_id,
+                                    node_id=node_id,
+                                    metadata={
+                                        "kind": "agent_progress",
+                                        "entry_type": p.get("entry_type", "observation"),
+                                        "agent_ref": agent_ref,
+                                        "details": p.get("metadata", {}),
+                                    },
+                                ),
+                            )
                         await db.commit()
 
                 elif event.type == "proposal":
@@ -205,6 +262,15 @@ def make_agent_node(node_def: dict):
                     escalated = True
                     q = event.payload.get("question", "")
                     opts = event.payload.get("options", [])
+                    # Store the full agent message body in the node state output so the
+                    # debug panel can show the complete response, not just the question.
+                    full_output = event.payload.get("output", "")
+                    if full_output:
+                        async with AsyncSessionLocal() as db:
+                            ns2 = await db.get(RunNodeState, ns_id)
+                            if ns2:
+                                ns2.output = {"text": full_output}
+                                await db.commit()
                     await _handle_escalation(ns_id, run_id, node_id, workspace_id, event.payload, agent_ref)
                     await publish_event(state["run_id"], {"type": "escalation_created", "node_id": node_id})
 
@@ -247,7 +313,7 @@ def make_agent_node(node_def: dict):
                     raise RuntimeError("Run resumed with unsupported escalation resolution")
 
                 elif event.type == "completed":
-                    output_text = event.payload.get("output", "")
+                    output_text = _strip_trailing_decision_block(str(event.payload.get("output", "")))
                     next_branch_val = event.payload.get("next_branch")
                     break
 
@@ -259,7 +325,11 @@ def make_agent_node(node_def: dict):
                             ns2.error = event.payload.get("error", "adapter error")
                             ns2.completed_at = datetime.now(timezone.utc)
                             await db.commit()
-                    raise RuntimeError(event.payload.get("error", "adapter failed"))
+                    # Break instead of raise so the async generator closes cleanly before
+                    # we propagate the error. Raising inside async for can cause
+                    # "RuntimeError: generator didn't stop" to mask the real error.
+                    _fail_error = event.payload.get("error", "adapter failed")
+                    break
 
                 elif event.type == "provider_started":
                     if event.payload.get("provider") != "openai":
@@ -323,6 +393,10 @@ def make_agent_node(node_def: dict):
                             row.response_payload = event.payload.get("response", {})
                             row.updated_at = datetime.now(timezone.utc)
                             await db.commit()
+
+            # Propagate adapter failure now that the generator is fully closed.
+            if _fail_error:
+                raise RuntimeError(_fail_error)
 
             if escalated:
                 # accept/request_revision retry same node; override_output completes it.

@@ -105,6 +105,33 @@ export default function NodeInspectorPanel({ nodeId, nodeName, nodeState, worksp
             )}
           </div>
 
+          {/* Execution policy — visible only while the node is actively running */}
+          {nodeState.status === 'running' && (
+            <div className="rounded-md border border-gray-100 bg-gray-50 px-3 py-2">
+              <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400 mb-1.5">
+                Execution policy
+              </p>
+              <ul className="space-y-1 text-[10px] text-gray-400 leading-snug">
+                <li className="flex items-start gap-1.5">
+                  <span className="mt-px shrink-0">⏱</span>
+                  <span>Auto-fail if the agent goes silent for &gt; 15 min</span>
+                </li>
+                <li className="flex items-start gap-1.5">
+                  <span className="mt-px shrink-0">🛡</span>
+                  <span>24 h hard limit — safety net for stuck jobs</span>
+                </li>
+                <li className="flex items-start gap-1.5">
+                  <span className="mt-px shrink-0">📐</span>
+                  <span>Design each node to finish within ~1 h on the happy path</span>
+                </li>
+                <li className="flex items-start gap-1.5">
+                  <span className="mt-px shrink-0">✋</span>
+                  <span>Stop the run anytime for a clean cancel</span>
+                </li>
+              </ul>
+            </div>
+          )}
+
           {/* Error display */}
           {nodeState.status === 'failed' && nodeState.error && (
             <div className="bg-red-50 border border-red-200 rounded-lg p-3">

@@ -8,13 +8,11 @@ signal completion.
 """
 from __future__ import annotations
 
-import asyncio
 import json
 from typing import TYPE_CHECKING, Any, AsyncGenerator
 
 from knotwork.runtime.adapters.base import AgentAdapter, NodeEvent
 from knotwork.runtime.adapters.tools import KNOTWORK_TOOLS
-from knotwork.runtime.adapters.web_search import web_search
 
 if TYPE_CHECKING:
     from knotwork.runtime.knowledge_loader import KnowledgeTree
@@ -57,13 +55,6 @@ def _build_prompts(run_state: dict, config: dict, knowledge_tree: "KnowledgeTree
     extra = config.get("system_prompt") or config.get("instructions", "")
     if extra:
         system_p = f"{system_p}\n\n{extra}"
-    system_p = (
-        f"{system_p}\n\n"
-        "=== TOOLING POLICY ===\n"
-        "- Use web_search before escalating when external info is needed.\n"
-        "- Escalate only if search results are insufficient after at least one search attempt.\n"
-        "- If uncertain, still return best-effort output and clearly mark unknown fields."
-    )
     return system_p, user_p
 
 
@@ -93,8 +84,6 @@ class ClaudeAdapter(AgentAdapter):
         effective_key = self._api_key or settings.anthropic_api_key or None
         client = AsyncAnthropic(api_key=effective_key)
         messages: list[dict] = [{"role": "user", "content": user_prompt}]
-        web_search_calls = 0
-        deferred_escalations = 0
 
         yield NodeEvent("started", {"model": model})
 
@@ -151,45 +140,6 @@ class ClaudeAdapter(AgentAdapter):
                     tool_results.append(_tool_result(tid, {"ok": True, "status": "pending_review"}))
 
                 elif tool_name == "escalate":
-                    if web_search_calls == 0:
-                        blocked_output = {
-                            "ok": False,
-                            "message": "Do not escalate yet. Call web_search at least once, then decide.",
-                        }
-                        yield NodeEvent("log_entry", {
-                            "entry_type": "tool_call",
-                            "content": "tool:escalate (blocked_no_search)",
-                            "metadata": {
-                                "tool": "escalate",
-                                "input": inp,
-                                "output": blocked_output,
-                            },
-                        })
-                        tool_results.append(_tool_result(tid, blocked_output))
-                        continue
-                    if deferred_escalations < 1:
-                        deferred_escalations += 1
-                        blocked_output = {
-                            "ok": False,
-                            "message": (
-                                "Do not escalate yet. Use available web_search results "
-                                "to produce a best-effort output with explicit unknowns, "
-                                "then call complete_node."
-                            ),
-                        }
-                        yield NodeEvent("log_entry", {
-                            "entry_type": "tool_call",
-                            "content": "tool:escalate (deferred)",
-                            "metadata": {
-                                "tool": "escalate",
-                                "input": inp,
-                                "output": blocked_output,
-                            },
-                        })
-                        tool_results.append(_tool_result(tid, {
-                            **blocked_output,
-                        }))
-                        continue
                     yield NodeEvent("log_entry", {
                         "entry_type": "tool_call",
                         "content": "tool:escalate",
@@ -207,24 +157,6 @@ class ClaudeAdapter(AgentAdapter):
                         "options": inp.get("options", []),
                     })
                     return  # run pauses; escalation event triggers interrupt
-
-                elif tool_name == "web_search":
-                    web_search_calls += 1
-                    result = await asyncio.to_thread(
-                        web_search,
-                        str(inp.get("query", "")),
-                        int(inp.get("max_results", 5) or 5),
-                    )
-                    yield NodeEvent("log_entry", {
-                        "entry_type": "tool_call",
-                        "content": "tool:web_search",
-                        "metadata": {
-                            "tool": "web_search",
-                            "input": inp,
-                            "output": result,
-                        },
-                    })
-                    tool_results.append(_tool_result(tid, result))
 
                 elif tool_name == "complete_node":
                     completed_payload = {

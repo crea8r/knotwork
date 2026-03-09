@@ -113,6 +113,11 @@ async def check_escalation_timeouts(ctx: dict) -> None:
 class WorkerSettings:
     """arq worker configuration. Discovered via `arq knotwork.worker.tasks.WorkerSettings`."""
 
+    # 24-hour safety net: kills genuinely hung jobs (DB deadlock, infinite-loop bug)
+    # without affecting normal long-running OpenClaw tasks. Node-level liveness is
+    # maintained by the adapter heartbeat (updates task.updated_at every 5 min).
+    job_timeout = 86400
+
     functions = [execute_run, resume_run]
     cron_jobs = [
         # Run timeout check every 5 minutes

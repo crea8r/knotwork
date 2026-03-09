@@ -9,7 +9,7 @@ from knotwork.graphs.service import get_graph, get_latest_version
 from knotwork.runs.models import OpenAICallLog, Run, RunHandbookProposal, RunNodeState, RunWorklogEntry
 from knotwork.runs.schemas import RunCreate, RunUpdate
 
-DELETABLE_STATUSES = {"completed", "failed", "stopped", "draft", "queued", "paused"}
+DELETABLE_STATUSES = {"completed", "failed", "stopped", "draft", "queued", "paused", "running"}
 
 
 async def create_run(

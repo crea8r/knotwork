@@ -226,6 +226,17 @@ Returns `integration_secret` used by plugin for runtime bridge calls.
 
 Header: `X-Knotwork-Integration-Secret: <integration_secret>`
 
+Task payload follows Session Execution Contract input:
+- `session_name` (target session key/name)
+- `system_prompt`
+- `user_prompt`
+- agent identity fields (`agent_ref`, `remote_agent_id`)
+
+The plugin must execute this task only via:
+1. `create_session`
+2. `send_message`
+3. `sync_session`
+
 ## 6.2) Plugin submits execution event
 
 `POST /openclaw-plugin/tasks/:task_id/event`
@@ -237,6 +248,8 @@ Event types:
 - `completed`
 - `escalation`
 - `failed`
+
+`completed` payload should be derived from `sync_session` output (assistant-visible message content).
 
 ## 7) Register legacy direct agent
 

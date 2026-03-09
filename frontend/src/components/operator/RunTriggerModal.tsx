@@ -69,7 +69,6 @@ export default function RunTriggerModal({ graphId, definition, onClose }: Props)
     let input: Record<string, unknown>
 
     if (hasSchema) {
-      // Validate required fields
       for (const f of schema) {
         if (f.required && !formValues[f.name]?.trim()) {
           setErr(`"${f.label}" is required`)

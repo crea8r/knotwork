@@ -1,46 +1,45 @@
 # Knotwork OpenClaw Plugin
 
-Plugin-first bridge between OpenClaw and Knotwork.
+Bridge between OpenClaw and Knotwork. Polls Knotwork for agent execution tasks, runs them through OpenClaw, and reports results back.
 
-## What it does
+## File structure
 
-1. Calls Knotwork handshake endpoint with a one-time token.
-2. Syncs available OpenClaw agents (`agents.list`) and tool metadata.
-3. Polls Knotwork for execution tasks and executes them through session-oriented OpenClaw actions.
-4. Sends execution events back to Knotwork (`completed`, `escalation`, `failed`, `log`).
-5. Exposes gateway methods for status, manual re-sync, and manual task processing.
-
-## Architecture
-
-The plugin is split into 3 explicit layers:
-
-1. Handshake (run once)
-- Establishes trust and obtains `integration_secret`.
-- Files: `src/handshake.ts`, `src/config.ts`.
-
-2. Comm (polling now, WebSocket-ready)
-- Current transport is polling (`pull_task` + `submit_task_event`).
-- Abstraction is isolated so WebSocket can replace polling later.
-- Files: `src/comm/polling.ts`, `src/comm/types.ts`, `src/comm/ws.ts` (placeholder).
-
-3. Execution (session-oriented)
-- Converts each Knotwork task into session actions only:
-  - create/continue session
-  - send message to session
-  - sync/receive messages from session history
-- Files: `src/execution/session.ts`, `src/execution/modes.ts`, `src/execution/history.ts`, `src/execution/index.ts`.
-
-`src/main.ts` orchestrates these layers and does not contain execution internals.
-
-## Install (local path)
-
-From your OpenClaw environment:
-
-```bash
-openclaw plugins install /absolute/path/to/openclaw-plugin-knotwork
+```
+src/
+  types.ts    — shared type declarations (no logic)
+  bridge.ts   — config resolution, agent discovery, Knotwork HTTP calls
+  session.ts  — task execution (Session Execution Contract)
+  plugin.ts   — activate(), polling loop, gateway RPC methods
+index.ts      — re-exports activate()
 ```
 
-Then enable plugin in your OpenClaw config (`openclaw.config.json`), under `plugins.entries`:
+Four files, each under 200 lines.
+
+## Session Execution Contract
+
+Every task is executed as three logical operations:
+
+| Operation | What happens |
+|---|---|
+| `create_session` | Implicit — OpenClaw auto-creates on first message. Identity = deterministic scoped key from `task.session_name`. |
+| `send_message` | `POST /v1/responses` (primary) or `gateway.call('agent', ...)` (fallback). Idempotency key = `knotwork:task:<taskId>` — deterministic, retry-safe. |
+| `sync_session` | `agent.wait(runId)` as completion signal; `chat.history` reads output. `runId` is the correlation token. |
+
+**Execution paths (in order):**
+1. HTTP `POST /v1/responses` — synchronous, session-persistent via `x-openclaw-session-key` + `user` field. No polling.
+2. `gateway.call('agent')` + `agent.wait` — for environments with HTTP endpoint disabled.
+
+Both paths use the same deterministic idempotency key so retries never produce duplicate agent runs.
+
+## Setup
+
+**1. Generate a handshake token in Knotwork**
+
+Settings > Agents > Generate Handshake Token → copies `kw_oc_...` token.
+
+**2. Configure the plugin**
+
+In your OpenClaw config (`openclaw.config.json`):
 
 ```json
 {
@@ -52,7 +51,7 @@ Then enable plugin in your OpenClaw config (`openclaw.config.json`), under `plug
         "config": {
           "knotworkBaseUrl": "http://host.docker.internal:8000",
           "handshakeToken": "kw_oc_...",
-          "pluginInstanceId": "openclaw-main-1",
+          "pluginInstanceId": "my-openclaw-1",
           "autoHandshakeOnStart": true,
           "taskPollIntervalMs": 2000
         }
@@ -62,34 +61,76 @@ Then enable plugin in your OpenClaw config (`openclaw.config.json`), under `plug
 }
 ```
 
-## Required config
+Or via env vars: `KNOTWORK_BASE_URL`, `KNOTWORK_HANDSHAKE_TOKEN`, `KNOTWORK_PLUGIN_INSTANCE_ID`.
 
-- `knotworkBaseUrl`: Knotwork URL reachable from Docker/OpenClaw runtime.
-- `handshakeToken`: generated from Knotwork Settings > Agents.
+**3. Start/restart OpenClaw**
 
-## Recommended config
+Plugin handshakes automatically. In Knotwork Settings > Agents you'll see the discovered agents. Register one, then trigger a run — the plugin picks it up from the task queue.
 
-- `pluginInstanceId`: stable value per OpenClaw installation (do not rotate per restart).
-- `taskPollIntervalMs`: start with `2000` and tune if needed.
+## Config reference
 
-## Optional config
+| Key | Required | Default | Notes |
+|---|---|---|---|
+| `knotworkBaseUrl` | ✓ | — | URL reachable from OpenClaw runtime |
+| `handshakeToken` | ✓ | — | One-time token from Knotwork Settings |
+| `pluginInstanceId` | — | auto | Keep stable across restarts |
+| `autoHandshakeOnStart` | — | `true` | Handshake on plugin load |
+| `taskPollIntervalMs` | — | `2000` | Min 500ms |
 
-- `autoHandshakeOnStart`: keep `true` for normal operation.
+## Debugging
 
-## Handshake flow
+### Live status (no restart needed)
 
-1. In Knotwork Settings > Agents, generate handshake token.
-2. Put token in plugin config (`handshakeToken`).
-3. Start/restart OpenClaw.
-4. Plugin handshakes to `POST /openclaw-plugin/handshake`.
-5. In Knotwork Settings > Agents, open discovered agents and register one.
-6. Trigger a run with the registered `openclaw:*` agent. Plugin will poll task queue and execute.
+```bash
+# Plugin health, config, current task
+openclaw gateway call knotwork.status
 
-## Gateway methods
+# Last 200 log lines from in-memory buffer
+openclaw gateway call knotwork.logs
 
-- `knotwork.status`
-- `knotwork.handshake`
-- `knotwork.sync_agents`
-- `knotwork.process_once`
+# Re-handshake and re-sync agents on demand
+openclaw gateway call knotwork.handshake
 
-You can call these from OpenClaw Gateway RPC tooling to verify integration.
+# Pull and execute exactly one task right now (useful for testing)
+openclaw gateway call knotwork.process_once
+```
+
+### Docker logs (persistent, survives restarts)
+
+All log lines are written to stdout with `[knotwork-bridge]` prefix:
+
+```bash
+docker logs <container> 2>&1 | grep knotwork-bridge
+docker logs -f <container> 2>&1 | grep knotwork-bridge   # follow
+```
+
+### Log format
+
+```
+2026-01-15T10:23:01.123Z handshake:start instanceId=my-openclaw-1 agents=2
+2026-01-15T10:23:01.456Z handshake:ok secret=...ab12
+2026-01-15T10:23:03.789Z task:start id=<uuid> node=classify session=agent:main:ws:run:<uuid>
+2026-01-15T10:23:08.123Z task:done id=<uuid> type=completed
+```
+
+### Code changes in Docker
+
+OpenClaw loads plugins at startup. After editing plugin source:
+
+```bash
+docker restart <openclaw-container>
+```
+
+No gateway restart needed — the gateway is part of the same process.
+
+To avoid restarts during development: mount the plugin directory as a volume and configure OpenClaw with `"watchPlugins": true` if supported by your OpenClaw version.
+
+## Gateway RPC methods
+
+| Method | Description |
+|---|---|
+| `knotwork.status` | Live state: handshake status, running task, config |
+| `knotwork.logs` | Last 200 log lines from memory buffer |
+| `knotwork.handshake` | Re-handshake and re-sync agents |
+| `knotwork.sync_agents` | Alias for `knotwork.handshake` |
+| `knotwork.process_once` | Pull and execute one task immediately |
