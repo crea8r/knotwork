@@ -49,23 +49,25 @@ operations, while gradually distilling repeated work into reusable workflows.
 | **S7.1** | **Agent Registration.** `registered_agents` table + CRUD API. Settings → Agents tab: register Claude / ChatGPT agents with display name + API key + model. Designer dropdown shows registered agents by display name (replaces hardcoded list). Runtime looks up per-workspace API key by `registered_agent_id`; falls back to env vars for <span style="color:#c1121f;font-weight:700">LEGACY</span> nodes. OpenClaw registration UI placeholder (adapter deferred). | S7.2 | ✅ Done — 14 tests |
 | **S7.2** | **Conversational Shell + Decision Model.** Global nav fixed mental model. Timeline-first run chat UX with explicit decisions (`accept_output`, `override_output`, `request_revision`, `abort_run`). Message immutability and override artifact semantics. Handbook chat + proposal-based edits. Gap distilled: provider/toolbox transparency remains unresolved and is promoted to S8. | S8 | ✅ Done — Completed |
 | **S8** | **Chat-first agent runtime.** Plugin-first OpenClaw connectivity remains, with split chat domains: agent main session chat for preflight, separate workflow chat for design consultation, and run-per-session chat timeline for execution. Capability is derived from chat-visible skills/tools, escalation continuity is preserved in run chat, and run detail uses persisted chat as source of truth. | S8.1 | ✅ Done — OpenClaw connected; chat domains live |
-| **S8.1** | **Early adopter sharing.** Full-stack Docker (dev hot-reload + prod profiles). Magic-link auth (no passwords, uses own SMTP). Workspace invitations (owner invites by email → magic link). JWT middleware wired to all workspace routes. Settings → Members tab (real data + invite form). OpenClaw plugin install URL (agent-triggered setup). Agent description field flows from OpenClaw → Knotwork on handshake. **Public workflow run trigger MVP:** owner-only publish links with required markdown description, token-protected public workflow/run pages, public trigger + redirect, final-output-only public run view, pending + email notify, basic rate limit, explicit "test / future paid" notice. Git flow guide. | S8.2 | Planned |
-| **S8.2** | **Private cloud deployment.** VPS/fly.io/render deployment guide. Production Docker images. Env secrets management. Reverse proxy (nginx/caddy). TLS. CI/CD pipeline (GitHub Actions). | S9 | Planned |
-| **S9** | MCP server (SSE + stdio): exposes graphs, runs, escalations, handbook, worklog as MCP tools + resources. Desktop integrations. Mobile polish. | — (Phase 1 complete) | Planned |
+| **S8.1** | **Early adopter sharing.** Full-stack Docker (dev hot-reload + prod profiles). Magic-link auth (no passwords, uses own SMTP). Workspace invitations (owner invites by email → magic link). JWT middleware wired to all workspace routes. Settings → Members tab (real data + invite form). OpenClaw plugin install URL (agent-triggered setup). Agent description field flows from OpenClaw → Knotwork on handshake. **Public workflow run trigger MVP:** owner-only publish links with required markdown description, token-protected public workflow/run pages, public trigger + redirect, final-output-only public run view, pending + email notify, basic rate limit, explicit "test / future paid" notice. Git flow guide. | S8.2 | ✅ Done — Early-adopter sharing + public trigger pages live |
+| **S8.2** | **Clean cloud deployment milestone (remote server).** Deploy Knotwork on a remote server with production docker profile, migration runbook, env/secrets checklist, reverse proxy + TLS guidance, and smoke-test checklist. **Explicitly out of scope in S8.2:** workspace creation flow and notification system implementation. | S9 | Planned |
+| **S9** | **Human-usable Knotwork release.** Add workspace creation flow, implement notification system, refine core UI, refine node branching UX/logic, upgrade OpenClaw transport from polling to WebSocket (or equivalent efficient push), and deliver mobile-ready UI. | S10 | Planned |
+| **S10** | **Agent-usable Knotwork release.** Product mode where users can operate Knotwork through their own agents. Finalize access/trust model (including option where user-provided agent has full workspace access), agent-first interaction contract, and security boundaries for agent-driven operations. | — (Phase 1 complete) | Planned |
 
 ---
 
-## Phase 2 (post-S9, not in scope for Phase 1)
+## Phase 2 (post-S10, not in scope for Phase 1)
 
-- LLM provider OAuth PKCE — users connect their own OpenAI / Anthropic account directly
 - Scheduled / cron run triggers
+- Slack integration
+- Advanced roles (beyond owner / operator)
+- Per-node conversation threads
+- Auto-improvement loop for workflows and handbook docs
 - Sub-graph nodes (compose workflows from workflows)
 - LLM judge checkpoints + auto-ratings
-- Handbook Mode C — agent writes directly without human approval (opt-in per file)
-- Slack integration
-- Self-hosted deployment option
 - Run replay from checkpoint
-- Advanced roles (beyond owner / operator)
+- Self-hosted deployment option
+- LLM provider OAuth PKCE — users connect their own OpenAI / Anthropic account directly
 
 ---
 

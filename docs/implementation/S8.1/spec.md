@@ -49,7 +49,7 @@ The backend entrypoint runs `alembic upgrade head` before starting uvicorn, so m
 - `backend/knotwork/auth/models.py` — added `UserMagicToken` model (id, user_id FK, token, expires_at, used)
 
 **Updated `auth/router.py`:**
-- `POST /api/v1/auth/magic-link-request` — `{ email }` → sends magic link email (202 always, no enumeration)
+- `POST /api/v1/auth/magic-link-request` — `{ email }` → sends magic link email for existing users; unknown email returns 404
 - `POST /api/v1/auth/magic-link-verify` — `{ token }` → JWT
 - `GET /api/v1/auth/me` — current user (requires JWT)
 - `POST /api/v1/auth/logout` — no-op (JWT discarded client-side)

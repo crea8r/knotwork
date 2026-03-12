@@ -169,12 +169,12 @@ async def test_magic_link_request_existing_user_returns_202(client, user):
 
 
 @pytest.mark.asyncio
-async def test_magic_link_request_unknown_email_returns_202(client):
-    """POST /api/v1/auth/magic-link-request for an unknown email still returns 202 (no enumeration)."""
+async def test_magic_link_request_unknown_email_returns_404(client):
+    """POST /api/v1/auth/magic-link-request for an unknown email returns 404."""
     resp = await client.post(
         "/api/v1/auth/magic-link-request", json={"email": "nobody@example.com"}
     )
-    assert resp.status_code == 202
+    assert resp.status_code == 404
 
 
 @pytest.mark.asyncio
