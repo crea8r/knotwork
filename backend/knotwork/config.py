@@ -37,8 +37,14 @@ class Settings(BaseSettings):
 
     # Notifications
     telegram_bot_token: str = ""
-    sendgrid_api_key: str = ""
+    resend_api: str = ""              # env var: RESEND_API
     email_from: str = "noreply@knotwork.io"
+
+    # App base URL used in magic link / invite emails
+    app_base_url: str = "http://localhost:3000"
+    # Dev-only: if set, all requests authenticate as this user UUID without JWT.
+    # Leave empty in production.
+    auth_dev_bypass_user_id: str = ""
 
     # Knowledge health thresholds (workspace defaults)
     token_count_min: int = 300

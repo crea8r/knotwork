@@ -12,7 +12,7 @@ Run
   trigger           enum  [manual, api, schedule]
   trigger_meta      jsonb         -- e.g. { api_key_id: "...", caller_ip: "..." }
   input             jsonb         -- initial run state (structured fields)
-  context_files     jsonb         -- Run Context attachments: [{name, storage_path, mime_type, size}]
+  context_files     jsonb         -- Run attachments refs: [{type, key, url, filename, mime_type, size, attachment_id}]
   output            jsonb  nullable  -- final run state on completion
   eta_seconds       int    nullable  -- estimated seconds to completion
   started_at        timestamptz  nullable

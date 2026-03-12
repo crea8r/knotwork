@@ -48,6 +48,13 @@ Escalation handling uses decision actions attached to the escalation event:
 - **Request revision**: human posts guidance; same node retries and produces a new agent message.
 - **Abort run**: stop run with reason.
 
+Current UI note:
+- In Run Detail escalation cards, `accept_output` is intentionally hidden for now.
+- Exposed actions are `request_revision` and `override_output`.
+- `request_revision` is a continuation of the same paused node session (no node rerun).
+- A future `start_over` action may be added; it would require node-level conversation isolation and would reset
+  context to run input + new guidance.
+
 Design rule: escalation resolution never mutates historical messages.
 
 ---

@@ -12,6 +12,7 @@ env/
 .env
 backend/.env
 *.env.local
+.claude
 
 # Alembic
 backend/alembic/versions/*.pyc
@@ -43,6 +44,7 @@ Thumbs.db
 
 # Local storage (dev data)
 backend/data/
+data/
 
 # Docker
 *.pid

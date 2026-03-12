@@ -1,4 +1,13 @@
+networks:
+  # Shared bridge network — external containers (e.g. OpenClaw) can join this
+  # network to reach Knotwork services by name.
+  # Create once: `docker network create knotwork-network` (compose does it
+  # automatically on first `docker compose up`).
+  knotwork-network:
+    name: knotwork-network
+
 services:
+  # ── Infrastructure ────────────────────────────────────────────────────────────
   postgres:
     image: postgres:16
     environment:
@@ -9,11 +18,161 @@ services:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U knotwork -d knotwork"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - knotwork-network
 
   redis:
     image: redis:7-alpine
     ports:
       - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks:
+      - knotwork-network
+
+  # ── Backend (API server) ──────────────────────────────────────────────────────
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+    env_file: .env
+    environment:
+      # Docker-internal DB/Redis URLs override .env if set
+      DATABASE_URL: postgresql+asyncpg://knotwork:knotwork@postgres:5432/knotwork
+      DATABASE_URL_SYNC: postgresql://knotwork:knotwork@postgres:5432/knotwork
+      REDIS_URL: redis://redis:6379
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command: >
+      sh -c "alembic upgrade head && uvicorn knotwork.main:app --host 0.0.0.0 --port 8000"
+    profiles: ["prod"]
+    networks:
+      knotwork-network:
+        aliases:
+          - backend
+          - knotwork-backend
+
+  # Dev backend: volume mounts for hot reload
+  backend-dev:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://knotwork:knotwork@postgres:5432/knotwork
+      DATABASE_URL_SYNC: postgresql://knotwork:knotwork@postgres:5432/knotwork
+      REDIS_URL: redis://redis:6379
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./backend:/app
+    command: >
+      sh -c "alembic upgrade head && uvicorn knotwork.main:app --host 0.0.0.0 --port 8000 --reload"
+    profiles: ["dev"]
+    networks:
+      knotwork-network:
+        aliases:
+          - backend-dev
+          - knotwork-backend
+
+  # ── Worker (arq background tasks) ─────────────────────────────────────────────
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://knotwork:knotwork@postgres:5432/knotwork
+      DATABASE_URL_SYNC: postgresql://knotwork:knotwork@postgres:5432/knotwork
+      REDIS_URL: redis://redis:6379
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      backend:
+        condition: service_started
+    command: arq knotwork.worker.tasks.WorkerSettings
+    profiles: ["prod"]
+    networks:
+      - knotwork-network
+
+  worker-dev:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://knotwork:knotwork@postgres:5432/knotwork
+      DATABASE_URL_SYNC: postgresql://knotwork:knotwork@postgres:5432/knotwork
+      REDIS_URL: redis://redis:6379
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      backend-dev:
+        condition: service_started
+    volumes:
+      - ./backend:/app
+    command: arq knotwork.worker.tasks.WorkerSettings
+    profiles: ["dev"]
+    networks:
+      - knotwork-network
+
+  # ── Frontend (dev: Vite HMR) ──────────────────────────────────────────────────
+  frontend-dev:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+      target: dev
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./frontend/src:/app/src
+      - ./frontend/public:/app/public
+    environment:
+      # Used by vite.config.ts server-side proxy (NOT browser env vars).
+      # Must point to the backend Docker service name, not localhost.
+      BACKEND_URL: http://backend-dev:8000
+      BACKEND_WS_URL: ws://backend-dev:8000
+    profiles: ["dev"]
+    networks:
+      - knotwork-network
+
+  # ── Frontend (prod: nginx static) ─────────────────────────────────────────────
+  frontend-prod:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+      target: prod
+      args:
+        VITE_API_URL: http://localhost:8000
+    ports:
+      - "3000:80"
+    depends_on:
+      - backend
+    profiles: ["prod"]
+    networks:
+      - knotwork-network
 
 volumes:
   postgres_data:

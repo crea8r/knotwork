@@ -36,6 +36,7 @@ async def _update_run_status(
     from uuid import UUID
     from knotwork.database import AsyncSessionLocal
     from knotwork.runs.models import Run
+    from knotwork.public_workflows.service import notify_public_run_completion
 
     async with AsyncSessionLocal() as db:
         run = await db.get(Run, UUID(run_id))
@@ -46,6 +47,8 @@ async def _update_run_status(
             if error:
                 run.error = error[:2000]
             await db.commit()
+            if final_status == "completed":
+                await notify_public_run_completion(db, run.id)
 
 
 async def execute_run(run_id: str) -> None:
@@ -91,6 +94,8 @@ async def execute_run(run_id: str) -> None:
     else:
         error_msg = None
 
+    if final_status == "completed":
+        await _persist_run_output_from_result(run_id, result)
     await _update_run_status(run_id, "running", final_status, error=error_msg)
     await publish_event(run_id, {"type": "run_status_changed", "status": final_status})
 
@@ -136,5 +141,46 @@ async def resume_run(run_id: str, resolution: dict) -> None:
     else:
         error_msg = None
 
+    if final_status == "completed":
+        await _persist_run_output_from_result(run_id, result)
     await _update_run_status(run_id, "paused", final_status, error=error_msg)
     await publish_event(run_id, {"type": "run_status_changed", "status": final_status})
+
+
+def _extract_current_output(result: object) -> str | None:
+    if not isinstance(result, dict):
+        return None
+    value = result.get("current_output")
+    if value is None:
+        return None
+    if isinstance(value, str):
+        return value
+    return str(value)
+
+
+async def _persist_run_output_from_result(
+    run_id: str,
+    result: object,
+    db: "AsyncSession | None" = None,
+) -> None:
+    from uuid import UUID
+    from sqlalchemy.ext.asyncio import AsyncSession
+    from knotwork.database import AsyncSessionLocal
+    from knotwork.runs.models import Run
+
+    final_text = _extract_current_output(result)
+    if final_text is None:
+        return
+
+    async def _apply(session: AsyncSession) -> None:
+        run = await session.get(Run, UUID(run_id))
+        if run is None:
+            return
+        run.output = {"text": final_text}
+        await session.commit()
+
+    if db is not None:
+        await _apply(db)
+        return
+    async with AsyncSessionLocal() as session:
+        await _apply(session)

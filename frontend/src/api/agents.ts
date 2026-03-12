@@ -189,6 +189,7 @@ export interface OpenClawRemoteAgent {
   remote_agent_id: string
   slug: string
   display_name: string
+  description?: string | null
   tools: Array<Record<string, unknown>>
   constraints: Record<string, unknown>
   is_active: boolean
@@ -460,10 +461,18 @@ export function useAgentMainChatMessages(agentId: string) {
   })
 }
 
+export interface ChatAttachmentRef {
+  key: string
+  url: string
+  filename: string
+  mime_type: string
+  size: number
+}
+
 export function useAskAgentMainChat(agentId: string) {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: async (payload: { message: string }) => {
+    mutationFn: async (payload: { message: string; attachments?: ChatAttachmentRef[] }) => {
       const { data } = await api.post(`/workspaces/${WS}/agents/${agentId}/main-chat/ask`, payload)
       return data as AgentMainChatAskResponse
     },

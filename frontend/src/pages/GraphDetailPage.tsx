@@ -1,6 +1,6 @@
 import { useEffect, useId, useState } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
-import { AlertTriangle, Archive, Check, ChevronLeft, ChevronRight, MessageSquare, Play, Plus, Save, Trash2 } from 'lucide-react'
+import { AlertTriangle, Archive, Check, ChevronLeft, ChevronRight, Globe, MessageSquare, Play, Plus, Save, Trash2 } from 'lucide-react'
 import { useDeleteGraph, useGraph, useSaveGraphVersion } from '@/api/graphs'
 import { useTriggerRun, useRuns } from '@/api/runs'
 import GraphCanvas from '@/components/canvas/GraphCanvas'
@@ -8,6 +8,7 @@ import NodeConfigPanel from '@/components/designer/NodeConfigPanel'
 import InputSchemaEditor from '@/components/designer/InputSchemaEditor'
 import DesignerChat from '@/components/designer/DesignerChat'
 import RunTriggerModal from '@/components/operator/RunTriggerModal'
+import PublicLinksModal from '@/components/operator/PublicLinksModal'
 import DebugBar from '@/components/operator/DebugBar'
 import Sidebar from '@/components/layout/Sidebar'
 import { useCanvasStore } from '@/store/canvas'
@@ -28,6 +29,7 @@ export default function GraphDetailPage() {
   const [searchParams] = useSearchParams()
   const navigate = useNavigate()
   const workspaceId = useAuthStore((s) => s.workspaceId) ?? DEV_WORKSPACE
+  const role = useAuthStore((s) => s.role)
 
   const { data: graph, isLoading } = useGraph(workspaceId, graphId!)
   const deleteGraph = useDeleteGraph(workspaceId)
@@ -68,6 +70,7 @@ export default function GraphDetailPage() {
   const [rightPanelMode, setRightPanelMode] = useState<RightPanelMode>('node')
   const [rightPanelVisible, setRightPanelVisible] = useState(false)
   const [justSaved, setJustSaved] = useState(false)
+  const [showPublicLinks, setShowPublicLinks] = useState(false)
 
   useEffect(() => {
     if (searchParams.get('chat') === '1') setShowChat(true)
@@ -220,6 +223,14 @@ export default function GraphDetailPage() {
           >
             <Play size={14} /> Run
           </button>
+          {role === 'owner' && (
+            <button
+              onClick={() => setShowPublicLinks(true)}
+              className="flex items-center gap-1.5 px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-700 hover:bg-gray-50"
+            >
+              <Globe size={14} /> Public links
+            </button>
+          )}
           <button
             onClick={() => void handleRetireWorkflow()}
             disabled={deleteGraph.isPending}
@@ -359,6 +370,15 @@ export default function GraphDetailPage() {
           graphId={graphId!}
           definition={definition}
           onClose={() => setShowRunModal(false)}
+        />
+      )}
+
+      {showPublicLinks && (
+        <PublicLinksModal
+          workspaceId={workspaceId}
+          graphId={graphId!}
+          currentVersionId={graph.latest_version?.id ?? null}
+          onClose={() => setShowPublicLinks(false)}
         />
       )}
     </div>

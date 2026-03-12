@@ -102,7 +102,10 @@ async def plugin_handshake(
     if token is None:
         raise HTTPException(status_code=401, detail="Invalid handshake token")
     now = _now()
-    if token.expires_at < now:
+    # Timezone-safe: SQLite may return naive datetimes even for timezone=True columns.
+    expires_at = token.expires_at
+    cmp_now = now if expires_at.tzinfo is not None else now.replace(tzinfo=None)
+    if expires_at < cmp_now:
         raise HTTPException(status_code=401, detail="Handshake token expired")
 
     integration_q = await db.execute(
@@ -164,6 +167,7 @@ async def plugin_handshake(
                 remote_agent_id=ra.remote_agent_id,
                 slug=ra.slug,
                 display_name=ra.display_name,
+                description=ra.description,
                 tools_json=ra.tools,
                 constraints_json=ra.constraints,
                 is_active=True,
@@ -173,6 +177,7 @@ async def plugin_handshake(
         else:
             existing.slug = ra.slug
             existing.display_name = ra.display_name
+            existing.description = ra.description
             existing.tools_json = ra.tools
             existing.constraints_json = ra.constraints
             existing.is_active = True
@@ -325,6 +330,7 @@ async def list_remote_agents(
             remote_agent_id=r.remote_agent_id,
             slug=r.slug,
             display_name=r.display_name,
+            description=r.description,
             tools=r.tools_json or [],
             constraints=r.constraints_json or {},
             is_active=r.is_active,
@@ -511,6 +517,7 @@ async def plugin_pull_task(
             "system_prompt": task.system_prompt,
             "user_prompt": task.user_prompt,
             "session_token": task.session_token,
+            "attachments": task.attachments_json or [],
             "execution_contract": {
                 "type": "session",
                 "operations": list(SESSION_EXECUTION_CONTRACT_OPERATIONS),

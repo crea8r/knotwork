@@ -109,12 +109,15 @@ def make_agent_node(node_def: dict):
         from knotwork.runtime.prompt_builder import build_agent_prompt
 
         # If human guidance is provided while resuming an agent question,
-        # re-run the same node with this guidance appended to system instructions.
+        # continue the same paused node session with guidance context.
         retry_guidance: str | None = None
         handled_by_human = False
         output_text = ""
         next_branch_val: str | None = None
         ns_id: UUID | None = None
+        session_token: str | None = None
+        continue_same_attempt = False
+        accept_without_retry = False
         openai_log_row_id: UUID | None = None
         openai_ids: dict[str, str] | None = None
 
@@ -165,9 +168,12 @@ def make_agent_node(node_def: dict):
                         f"{retry_guidance}"
                     )
 
-            session_token = create_session_token(
-                str(run_id), node_id, workspace_id, settings.jwt_secret
-            )
+            if not (continue_same_attempt and session_token):
+                session_token = create_session_token(
+                    str(run_id), node_id, workspace_id, settings.jwt_secret
+                )
+            if session_token is None:
+                raise RuntimeError("Session token not set")
 
             # Feed adapter the augmented prompt instructions for this attempt.
             attempt_node_def = {**node_def, "config": dict(config)}
@@ -185,29 +191,52 @@ def make_agent_node(node_def: dict):
 
             adapter = get_adapter(agent_ref, api_key=api_key)
 
-            # New attempt row each time the node is (re)run.
-            async with AsyncSessionLocal() as db:
-                ns = RunNodeState(
-                    id=uuid4(), run_id=run_id, node_id=node_id, node_name=node_name,
-                    agent_ref=agent_ref, status="running",
-                    input={
-                        "model": agent_ref,
-                        "system_prompt": system_prompt,
-                        "user_prompt": user_prompt,
-                        "run_input": state.get("input"),
-                        "prior_outputs": prior_outputs,
-                        "human_guidance": retry_guidance,
-                        "session_token": session_token,
-                    },
-                    knowledge_snapshot=tree.version_snapshot,
-                    started_at=datetime.now(timezone.utc),
-                )
-                db.add(ns)
-                await db.commit()
-                ns_id = ns.id
+            # request_revision continues the same paused node/session. Do not create a
+            # new RunNodeState row in that path; update the existing row and keep going.
+            if continue_same_attempt and ns_id is not None:
+                async with AsyncSessionLocal() as db:
+                    ns = await db.get(RunNodeState, ns_id)
+                    if ns:
+                        ns.status = "running"
+                        ns.completed_at = None
+                        merged = dict(ns.input or {})
+                        merged.update({
+                            "model": agent_ref,
+                            "system_prompt": system_prompt,
+                            "user_prompt": user_prompt,
+                            "run_input": state.get("input"),
+                            "prior_outputs": prior_outputs,
+                            "human_guidance": retry_guidance,
+                            "session_token": session_token,
+                        })
+                        ns.input = merged
+                        await db.commit()
+                continue_same_attempt = False
+            else:
+                # New attempt row each time the node is (re)run, except request_revision continuation above.
+                async with AsyncSessionLocal() as db:
+                    ns = RunNodeState(
+                        id=uuid4(), run_id=run_id, node_id=node_id, node_name=node_name,
+                        agent_ref=agent_ref, status="running",
+                        input={
+                            "model": agent_ref,
+                            "system_prompt": system_prompt,
+                            "user_prompt": user_prompt,
+                            "run_input": state.get("input"),
+                            "prior_outputs": prior_outputs,
+                            "human_guidance": retry_guidance,
+                            "session_token": session_token,
+                        },
+                        knowledge_snapshot=tree.version_snapshot,
+                        started_at=datetime.now(timezone.utc),
+                    )
+                    db.add(ns)
+                    await db.commit()
+                    ns_id = ns.id
 
             escalated = False
             retry_guidance = None
+            accept_without_retry = False
             _fail_error: str | None = None  # set on "failed" event; raised after generator closes cleanly
 
             async for event in adapter.run_node(attempt_node_def, state, tree, session_token):
@@ -303,10 +332,17 @@ def make_agent_node(node_def: dict):
                         handled_by_human = True
                         break
 
-                    # accept/request_revision continue same node as a chat continuation.
+                    # request_revision continues the same paused session without creating
+                    # a new node attempt row. accept_output accepts the current output.
                     if resolution_type in ("accept_output", "request_revision"):
-                        g = resolution.get("guidance")
-                        retry_guidance = str(g).strip() if g else None
+                        if resolution_type == "accept_output":
+                            output_text = _strip_trailing_decision_block(str(full_output or output_text))
+                            accept_without_retry = True
+                            continue_same_attempt = False
+                        else:
+                            g = resolution.get("guidance")
+                            retry_guidance = str(g).strip() if g else None
+                            continue_same_attempt = True
                         break
 
                     # abort path should be handled by escalation router (no resume call).
@@ -399,8 +435,8 @@ def make_agent_node(node_def: dict):
                 raise RuntimeError(_fail_error)
 
             if escalated:
-                # accept/request_revision retry same node; override_output completes it.
-                if handled_by_human:
+                # request_revision continues same node session; override/accept complete it.
+                if handled_by_human or accept_without_retry:
                     break
                 continue
             break

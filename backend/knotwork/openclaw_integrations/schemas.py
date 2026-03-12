@@ -21,6 +21,7 @@ class OpenClawRemoteAgentIn(BaseModel):
     remote_agent_id: str = Field(..., min_length=1, max_length=200)
     slug: str = Field(..., min_length=1, max_length=200)
     display_name: str = Field(..., min_length=1, max_length=200)
+    description: str | None = Field(default=None, max_length=500)
     tools: list[dict[str, Any]] = []
     constraints: dict[str, Any] = {}
 
@@ -54,6 +55,7 @@ class OpenClawRemoteAgentOut(BaseModel):
     remote_agent_id: str
     slug: str
     display_name: str
+    description: str | None = None
     tools: list[dict[str, Any]] = []
     constraints: dict[str, Any] = {}
     is_active: bool

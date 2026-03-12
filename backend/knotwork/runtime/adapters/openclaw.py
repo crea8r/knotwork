@@ -35,6 +35,32 @@ def _now() -> datetime:
     return datetime.now(timezone.utc)
 
 
+def _extract_run_attachments(context_files: list[dict]) -> list[dict]:
+    out: list[dict] = []
+    for item in context_files or []:
+        if not isinstance(item, dict):
+            continue
+        key = str(item.get("key") or "").strip()
+        url = str(item.get("url") or "").strip()
+        filename = str(item.get("filename") or item.get("name") or "").strip()
+        attachment_id = str(item.get("attachment_id") or "").strip()
+        if not key or not url or not filename or not attachment_id:
+            continue
+        try:
+            size = int(item.get("size") or 0)
+        except (TypeError, ValueError):
+            size = 0
+        out.append({
+            "key": key,
+            "url": url,
+            "filename": filename,
+            "mime_type": str(item.get("mime_type") or "application/octet-stream"),
+            "size": size,
+            "attachment_id": attachment_id,
+        })
+    return out
+
+
 class OpenClawAdapter(AgentAdapter):
     async def run_node(
         self,
@@ -66,6 +92,13 @@ class OpenClawAdapter(AgentAdapter):
             context_files=run_state.get("context_files", []),
             prior_outputs=prior_outputs,
         )
+        attachments_json = _extract_run_attachments(run_state.get("context_files", []))
+        if attachments_json:
+            attach_lines = "\n".join(
+                f"- {a['filename']} ({a['mime_type']}, {a['size']} bytes)\n  URL: {a['url']}"
+                for a in attachments_json
+            )
+            user_prompt = f"{user_prompt}\n\n[Attached files]\n{attach_lines}"
         # Per-run override takes precedence over design-time node config
         _node_prompts = (run_state.get("input") or {}).get("_node_system_prompts") or {}
         extra = str(_node_prompts[node_id]) if node_id in _node_prompts else (
@@ -156,6 +189,7 @@ class OpenClawAdapter(AgentAdapter):
                     system_prompt=system_prompt,
                     user_prompt=user_prompt,
                     session_token=session_token,
+                    attachments_json=attachments_json,
                     status="pending",
                     created_at=_now(),
                     updated_at=_now(),

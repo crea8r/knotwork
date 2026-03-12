@@ -4,9 +4,11 @@
  * Structured assets: /runs, /runs/:id, /graphs, /graphs/:id
  * Handbook: /handbook (Files + Proposals tabs)
  * Settings: /settings
+ * Auth: /login, /accept-invite
  */
 import { Routes, Route, Navigate } from 'react-router-dom'
 import AppLayout from './components/layout/AppLayout'
+import RequireAuth from './components/shared/RequireAuth'
 import GraphsPage from './pages/GraphsPage'
 import GraphDetailPage from './pages/GraphDetailPage'
 import RunDetailPage from './pages/RunDetailPage'
@@ -20,16 +22,40 @@ import EscalationsPage from './pages/EscalationsPage'
 import EscalationDetailPage from './pages/EscalationDetailPage'
 import SettingsPage from './pages/SettingsPage'
 import AgentProfilePage from './pages/AgentProfilePage'
+import LoginPage from './pages/LoginPage'
+import AcceptInvitePage from './pages/AcceptInvitePage'
+import PublicWorkflowPage from './pages/PublicWorkflowPage'
+import PublicRunPage from './pages/PublicRunPage'
 
 export default function App() {
   return (
     <Routes>
+      {/* Public auth routes */}
+      <Route path="/login" element={<LoginPage />} />
+      <Route path="/accept-invite" element={<AcceptInvitePage />} />
+      <Route path="/public/workflows/:token" element={<PublicWorkflowPage />} />
+      <Route path="/public/runs/:token" element={<PublicRunPage />} />
+
+      {/* Protected routes */}
       <Route path="/" element={<Navigate to="/inbox" replace />} />
       <Route path="/dashboard" element={<Navigate to="/inbox" replace />} />
       {/* GraphDetailPage uses its own full-viewport layout */}
-      <Route path="/graphs/:graphId" element={<GraphDetailPage />} />
+      <Route
+        path="/graphs/:graphId"
+        element={
+          <RequireAuth>
+            <GraphDetailPage />
+          </RequireAuth>
+        }
+      />
       {/* All other routes get the app shell */}
-      <Route element={<AppLayout />}>
+      <Route
+        element={
+          <RequireAuth>
+            <AppLayout />
+          </RequireAuth>
+        }
+      >
         <Route path="/inbox" element={<InboxPage />} />
         <Route path="/channels" element={<ChannelsPage />} />
         <Route path="/channels/:channelId" element={<ChannelDetailPage />} />

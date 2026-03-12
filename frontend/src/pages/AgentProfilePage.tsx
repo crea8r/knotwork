@@ -1,533 +1,627 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
-import { Pencil, PlayCircle, Power, RefreshCw, Star, X } from 'lucide-react'
+import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
+import { ChevronLeft, ChevronRight, Pencil, Power, RefreshCw, X } from 'lucide-react'
 import Spinner from '@/components/shared/Spinner'
-import Card from '@/components/shared/Card'
 import Badge from '@/components/shared/Badge'
+import AgentChatTab from '@/components/agents/AgentChatTab'
 import {
   useActivateAgent,
   useAgent,
-  useAgentCapabilities,
   useAgentCapabilityLatest,
   useAgentDebugLinks,
-  useAgentHistory,
-  useAgentPreflightRuns,
   useAgentUsage,
+  useAgentMainChatMessages,
+  useAskAgentMainChat,
+  useEnsureAgentMainChat,
   useDeactivateAgent,
-  usePromotePreflightBaseline,
+  useOpenClawDebugState,
   useRefreshCapabilities,
-  useRunPreflight,
   useUpdateAgent,
 } from '@/api/agents'
 import { AVATAR_OPTIONS } from '@/utils/agentAvatars'
 
+type ProfileTab = 'chat' | 'skills' | 'history' | 'debug'
+const USAGE_PAGE_SIZE = 15
+const SKILLS_REPLY_KEY = (id: string) => `knotwork:skills-reply:${id}`
+
+interface StoredSkillsReply { reply: string; timestamp: string }
+
 function initials(name: string) {
-  const parts = name.trim().split(/\s+/).slice(0, 2)
-  return parts.map((p) => p[0]?.toUpperCase() ?? '').join('') || 'A'
+  return name.trim().split(/\s+/).slice(0, 2).map((p) => p[0]?.toUpperCase() ?? '').join('') || 'A'
 }
 
-function variantByStatus(status?: string): 'green' | 'gray' | 'red' | 'orange' | 'purple' {
-  if (status === 'active' || status === 'pass') return 'green'
-  if (status === 'fail') return 'red'
-  if (status === 'warning') return 'orange'
-  if (status === 'inactive' || status === 'never_run') return 'gray'
+function variantByStatus(s?: string): 'green' | 'gray' | 'red' | 'orange' | 'purple' {
+  if (s === 'active' || s === 'pass') return 'green'
+  if (s === 'fail') return 'red'
+  if (s === 'warning') return 'orange'
+  if (s === 'inactive' || s === 'never_run') return 'gray'
   return 'purple'
+}
+
+function PageButtons({ page, total, onChange }: { page: number; total: number; onChange: (p: number) => void }) {
+  if (total <= 1) return null
+  const pages = Array.from({ length: total }, (_, i) => i + 1)
+  const visible = pages.filter((p) => p === 1 || p === total || Math.abs(p - page) <= 1)
+  const withGaps: (number | '…')[] = []
+  visible.forEach((p, i) => {
+    if (i > 0 && (p as number) - (visible[i - 1] as number) > 1) withGaps.push('…')
+    withGaps.push(p)
+  })
+  return (
+    <div className="flex items-center gap-1">
+      <button onClick={() => onChange(page - 1)} disabled={page <= 1}
+        className="w-7 h-7 rounded-lg border border-gray-200 flex items-center justify-center disabled:opacity-30 hover:bg-gray-50">
+        <ChevronLeft size={13} />
+      </button>
+      {withGaps.map((p, i) =>
+        p === '…' ? (
+          <span key={`gap-${i}`} className="w-7 h-7 flex items-center justify-center text-xs text-gray-400">…</span>
+        ) : (
+          <button key={p} onClick={() => onChange(p as number)}
+            className={`w-7 h-7 rounded-lg text-xs border transition-colors ${
+              p === page
+                ? 'bg-brand-600 text-white border-brand-600'
+                : 'border-gray-200 text-gray-600 hover:bg-gray-50'
+            }`}>
+            {p}
+          </button>
+        )
+      )}
+      <button onClick={() => onChange(page + 1)} disabled={page >= total}
+        className="w-7 h-7 rounded-lg border border-gray-200 flex items-center justify-center disabled:opacity-30 hover:bg-gray-50">
+        <ChevronRight size={13} />
+      </button>
+    </div>
+  )
 }
 
 export default function AgentProfilePage() {
   const { agentId = '' } = useParams<{ agentId: string }>()
   const navigate = useNavigate()
   const { data: agent, isLoading } = useAgent(agentId)
-  const { data: history = [], isLoading: historyLoading } = useAgentHistory(agentId)
   const { data: usage = [] } = useAgentUsage(agentId)
   const { data: capabilityLatest, isLoading: capabilityLoading } = useAgentCapabilityLatest(agentId)
-  const { data: capabilitySnapshots = [] } = useAgentCapabilities(agentId)
-  const { data: preflightRuns = [], isLoading: preflightLoading } = useAgentPreflightRuns(agentId)
-  const { data: debugLinks = [], isLoading: debugLoading } = useAgentDebugLinks(agentId)
+  const { data: debugLinks = [] } = useAgentDebugLinks(agentId)
+  const { data: debugState } = useOpenClawDebugState()
 
+  const ensureMainChat = useEnsureAgentMainChat(agentId)
+  const { data: chatMessages = [], isLoading: chatMsgLoading } = useAgentMainChatMessages(agentId)
+  const ask = useAskAgentMainChat(agentId)
   const update = useUpdateAgent(agentId)
   const refresh = useRefreshCapabilities(agentId)
-  const runPreflight = useRunPreflight(agentId)
   const activate = useActivateAgent(agentId)
   const deactivate = useDeactivateAgent(agentId)
-  const promoteBaseline = usePromotePreflightBaseline(agentId)
 
+  const [tab, setTab] = useState<ProfileTab>('chat')
   const [displayName, setDisplayName] = useState('')
   const [avatarUrl, setAvatarUrl] = useState('')
   const [showAvatarPanel, setShowAvatarPanel] = useState(false)
-  const [cropSource, setCropSource] = useState<string | null>(null)
+  const [editingName, setEditingName] = useState(false)
+
+  const [chatReady, setChatReady] = useState(false)
+  const [chatStatusMsg, setChatStatusMsg] = useState('Connecting…')
+  const [sessionName, setSessionName] = useState<string | null>(null)
+
+  const [skillsReply, setSkillsReply] = useState<string | null>(null)
+  const [skillsReplyAt, setSkillsReplyAt] = useState<string | null>(null)
+  const [askingSkills, setAskingSkills] = useState(false)
+  const [usagePage, setUsagePage] = useState(1)
+
+  const [cropSrc, setCropSrc] = useState<string | null>(null)
   const [zoom, setZoom] = useState(1)
   const [offsetX, setOffsetX] = useState(0)
   const [offsetY, setOffsetY] = useState(0)
   const fileRef = useRef<HTMLInputElement | null>(null)
-
   const allAvatars = useMemo(() => AVATAR_OPTIONS, [])
+
+  // Load persisted skills reply from localStorage
+  useEffect(() => {
+    if (!agentId) return
+    const raw = localStorage.getItem(SKILLS_REPLY_KEY(agentId))
+    if (raw) {
+      try {
+        const stored: StoredSkillsReply = JSON.parse(raw)
+        setSkillsReply(stored.reply)
+        setSkillsReplyAt(stored.timestamp)
+      } catch {}
+    }
+  }, [agentId])
 
   useEffect(() => {
     if (!agent) return
     setDisplayName(agent.display_name)
     setAvatarUrl(agent.avatar_url ?? '')
-  }, [agent])
+    if (agent.provider !== 'openclaw') setTab('skills')
+  }, [agent?.id, agent?.provider])
 
-  if (isLoading) {
-    return <div className="flex justify-center py-16"><Spinner size="lg" /></div>
-  }
-  if (!agent) {
-    return <div className="p-8 text-red-500">Agent not found.</div>
-  }
+  // Bootstrap main chat for OpenClaw agents
+  useEffect(() => {
+    if (agent?.provider !== 'openclaw') return
+    let cancelled = false
+    const deadline = Date.now() + 120_000
+    async function boot() {
+      while (!cancelled && Date.now() < deadline) {
+        try {
+          const r = await ensureMainChat.mutateAsync()
+          if (r.ready) {
+            if (!cancelled) { setChatReady(true); if (r.session_name) setSessionName(r.session_name) }
+            return
+          }
+          if (r.status === 'timeout') { if (!cancelled) setChatStatusMsg('Initialization timed out.'); return }
+          if (!cancelled) setChatStatusMsg(r.message || 'Connecting…')
+        } catch (e: any) {
+          if (!cancelled) setChatStatusMsg(e?.response?.data?.detail ?? 'Connection failed.')
+          return
+        }
+        await new Promise((r) => setTimeout(r, 2000))
+      }
+      if (!cancelled) setChatStatusMsg('Initialization timed out.')
+    }
+    void boot()
+    return () => { cancelled = true }
+  }, [agent?.id, agent?.provider])
 
-  async function cropAndCompressAvatar(src: string): Promise<string> {
+  if (isLoading) return <div className="flex justify-center py-16"><Spinner size="lg" /></div>
+  if (!agent) return <div className="p-8 text-red-500">Agent not found.</div>
+
+  const isOpenClaw = agent.provider === 'openclaw'
+  const totalPages = Math.ceil(usage.length / USAGE_PAGE_SIZE)
+  const pagedUsage = usage.slice((usagePage - 1) * USAGE_PAGE_SIZE, usagePage * USAGE_PAGE_SIZE)
+
+  // Bridge debug filtered for this agent
+  const agentTasks = debugState?.recent_tasks.filter((t) => t.agent_ref === agent.agent_ref) ?? []
+  const agentIntegrationIds = new Set(agentTasks.map((t) => t.integration_id))
+  const agentIntegrations = debugState?.integrations.filter((i) => agentIntegrationIds.has(i.integration_id)) ?? []
+
+  async function cropAndCompress(src: string): Promise<string> {
     const img = new Image()
     img.src = src
-    await new Promise<void>((resolve, reject) => {
-      img.onload = () => resolve()
-      img.onerror = () => reject(new Error('Failed to load image'))
-    })
-
-    const iw = img.naturalWidth
-    const ih = img.naturalHeight
+    await new Promise<void>((ok, fail) => { img.onload = () => ok(); img.onerror = () => fail(new Error('load')) })
+    const iw = img.naturalWidth, ih = img.naturalHeight
     const base = Math.max(64, Math.min(iw, ih) / zoom)
-    const maxX = Math.max(0, (iw - base) / 2)
-    const maxY = Math.max(0, (ih - base) / 2)
-    const srcX = Math.min(iw - base, Math.max(0, (iw - base) / 2 + (offsetX / 100) * maxX))
-    const srcY = Math.min(ih - base, Math.max(0, (ih - base) / 2 + (offsetY / 100) * maxY))
-
-    const canvas = document.createElement('canvas')
-    canvas.width = 256
-    canvas.height = 256
-    const ctx = canvas.getContext('2d')
-    if (!ctx) throw new Error('Canvas unavailable')
-
-    ctx.drawImage(img, srcX, srcY, base, base, 0, 0, 256, 256)
-    return canvas.toDataURL('image/webp', 0.82)
+    const mx = Math.max(0, (iw - base) / 2), my = Math.max(0, (ih - base) / 2)
+    const sx = Math.min(iw - base, Math.max(0, (iw - base) / 2 + (offsetX / 100) * mx))
+    const sy = Math.min(ih - base, Math.max(0, (ih - base) / 2 + (offsetY / 100) * my))
+    const c = document.createElement('canvas'); c.width = 256; c.height = 256
+    c.getContext('2d')!.drawImage(img, sx, sy, base, base, 0, 0, 256, 256)
+    return c.toDataURL('image/webp', 0.82)
   }
 
-  return (
-    <div className="p-6 md:p-8 max-w-6xl mx-auto space-y-6">
-      <div className="flex items-center justify-between gap-3 flex-wrap">
-        <div>
-          <p className="text-xs text-gray-400">Agent profile</p>
-          <h1 className="text-xl font-semibold text-gray-900">{agent.display_name}</h1>
-        </div>
-        <button
-          onClick={() => navigate('/settings?tab=agents')}
-          className="text-xs px-3 py-1.5 border border-gray-200 rounded-lg hover:border-gray-400 text-gray-600"
-        >
-          Back to Settings
-        </button>
-      </div>
+  function saveSkillsReply(reply: string) {
+    const entry: StoredSkillsReply = { reply, timestamp: new Date().toISOString() }
+    localStorage.setItem(SKILLS_REPLY_KEY(agentId), JSON.stringify(entry))
+    setSkillsReply(reply)
+    setSkillsReplyAt(entry.timestamp)
+  }
 
-      <Card className="p-5 space-y-4">
-        <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Identity & lifecycle</p>
-        <div className="flex items-center justify-between flex-wrap gap-3">
-          <div className="flex items-center gap-3">
-            <div className="relative">
+  async function handleAskSkills() {
+    if (askingSkills) return
+    setAskingSkills(true)
+    if (isOpenClaw && chatReady) {
+      try {
+        const res = await ask.mutateAsync({
+          message: 'What skills and tools do you have? Please list each one with a short description of what it does. Exclude file and shell skills from your response.',
+        })
+        if (res.status === 'completed' && res.reply) {
+          saveSkillsReply(res.reply)
+          refresh.mutate({ save_snapshot: true })
+        } else if (res.status === 'timeout') {
+          saveSkillsReply(
+            `⏱ Request timed out — the OpenClaw plugin did not respond within 5 minutes.\n\nTask ID: ${res.task_id}\nCheck that the plugin is running and polling.`
+          )
+        } else if (res.status === 'failed') {
+          saveSkillsReply(`❌ Agent returned an error: ${res.reply ?? 'Unknown error'}\n\nTask ID: ${res.task_id}`)
+        } else if (res.status === 'escalated') {
+          saveSkillsReply(`🙋 Agent needs input: ${res.question ?? ''}`)
+        } else {
+          saveSkillsReply(res.reply ?? 'No reply received.')
+        }
+      } catch (e: any) {
+        saveSkillsReply(`❌ ${e?.response?.data?.detail ?? e?.message ?? 'Request failed'}`)
+      }
+    } else {
+      refresh.mutate({ save_snapshot: true })
+    }
+    setAskingSkills(false)
+  }
+
+  const TABS: { key: ProfileTab; label: string }[] = [
+    { key: 'chat', label: 'Chat' },
+    { key: 'skills', label: 'Skills & Tools' },
+    { key: 'history', label: 'History' },
+    { key: 'debug', label: 'Debug' },
+  ]
+
+  return (
+    <div className="flex flex-col">
+      {/* ── Identity header ── */}
+      <div className="border-b bg-white px-6 py-4 space-y-3">
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+          <div className="flex items-center gap-3 min-w-0">
+            {/* Avatar */}
+            <div className="relative flex-shrink-0">
               {avatarUrl ? (
-                <img src={avatarUrl} alt={displayName} className="w-14 h-14 rounded-full object-cover border border-gray-200" />
+                <img src={avatarUrl} alt={displayName} className="w-10 h-10 rounded-full object-cover border border-gray-200" />
               ) : (
-                <div className="w-14 h-14 rounded-full bg-brand-100 text-brand-700 flex items-center justify-center font-semibold">
+                <div className="w-10 h-10 rounded-full bg-brand-100 text-brand-700 flex items-center justify-center font-semibold text-sm">
                   {initials(displayName || agent.display_name)}
                 </div>
               )}
-              <button
-                type="button"
-                onClick={() => setShowAvatarPanel((v) => !v)}
-                className="absolute -right-1 -bottom-1 w-6 h-6 rounded-full border border-gray-200 bg-white text-gray-600 flex items-center justify-center hover:text-brand-700 hover:border-brand-300"
-                title="Edit avatar"
-              >
-                <Pencil size={12} />
+              <button type="button" onClick={() => setShowAvatarPanel((v) => !v)}
+                className="absolute -right-1 -bottom-1 w-5 h-5 rounded-full border border-gray-200 bg-white text-gray-600 flex items-center justify-center hover:text-brand-700">
+                <Pencil size={10} />
               </button>
             </div>
-            <div className="space-y-1">
-              <div className="flex items-center gap-2 flex-wrap">
-                <Badge variant={agent.provider === 'openclaw' ? 'purple' : 'gray'}>{agent.provider}</Badge>
-                {agent.provider !== 'openclaw' ? <Badge variant="orange">legacy</Badge> : null}
-                <Badge variant={variantByStatus(agent.status)}>{agent.status}</Badge>
-                <Badge variant={variantByStatus(agent.preflight_status)}>{agent.preflight_status}</Badge>
-              </div>
-              <p className="text-xs text-gray-500 font-mono">{agent.agent_ref}</p>
+
+            {/* Name */}
+            {editingName ? (
+              <input autoFocus value={displayName} onChange={(e) => setDisplayName(e.target.value)}
+                onBlur={() => { setEditingName(false); if (displayName.trim()) update.mutate({ display_name: displayName.trim(), avatar_url: avatarUrl || null }) }}
+                onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur() }}
+                className="text-base font-semibold text-gray-900 border-b border-brand-400 outline-none bg-transparent min-w-0" />
+            ) : (
+              <button type="button" onClick={() => setEditingName(true)}
+                className="text-base font-semibold text-gray-900 hover:text-brand-700 truncate text-left">
+                {agent.display_name}
+              </button>
+            )}
+
+            <div className="flex items-center gap-1.5 flex-shrink-0">
+              <Badge variant={isOpenClaw ? 'purple' : 'gray'}>{agent.provider}</Badge>
+              <Badge variant={variantByStatus(agent.status)}>{agent.status}</Badge>
             </div>
           </div>
 
-          <div className="flex items-center gap-2 flex-wrap">
-            <button
-              onClick={() => refresh.mutate({ save_snapshot: true })}
-              className="text-xs px-2.5 py-1.5 border border-gray-200 rounded-lg bg-white text-gray-700 inline-flex items-center gap-1"
-            >
-              <RefreshCw size={12} /> Refresh
-            </button>
-            <button
-              onClick={() => runPreflight.mutate({ suite: 'default', include_optional: true })}
-              className="text-xs px-2.5 py-1.5 border border-gray-200 rounded-lg bg-white text-gray-700 inline-flex items-center gap-1"
-            >
-              <PlayCircle size={12} /> Preflight
-            </button>
+          <div className="flex items-center gap-2">
             {agent.status === 'active' ? (
-              <button
-                onClick={() => deactivate.mutate({ reason: 'manual' })}
-                className="text-xs px-2.5 py-1.5 border border-gray-200 rounded-lg bg-white text-gray-700 inline-flex items-center gap-1"
-              >
-                <Power size={12} /> Deactivate
+              <button onClick={() => deactivate.mutate({ reason: 'manual' })}
+                className="text-xs px-2.5 py-1.5 border border-gray-200 rounded-lg bg-white text-gray-700 inline-flex items-center gap-1">
+                <Power size={11} /> Deactivate
               </button>
             ) : (
-              <button
-                onClick={() => activate.mutate({ allow_warning: false })}
-                className="text-xs px-2.5 py-1.5 border border-gray-200 rounded-lg bg-white text-gray-700 inline-flex items-center gap-1"
-              >
-                <Power size={12} /> Activate
+              <button onClick={() => activate.mutate({ allow_warning: false })}
+                className="text-xs px-2.5 py-1.5 border border-gray-200 rounded-lg bg-white text-gray-700 inline-flex items-center gap-1">
+                <Power size={11} /> Activate
               </button>
             )}
+            <button onClick={() => navigate('/settings?tab=agents')}
+              className="text-xs px-3 py-1.5 border border-gray-200 rounded-lg hover:border-gray-400 text-gray-500">
+              ← Settings
+            </button>
           </div>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          <label className="block">
-            <span className="block text-xs text-gray-500 mb-1">Display name</span>
-            <input
-              value={displayName}
-              onChange={(e) => setDisplayName(e.target.value)}
-              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-brand-500"
-            />
-          </label>
-          <div className="text-xs text-gray-500 space-y-1 pt-1">
-            <p>Capability version: <span className="font-mono">{agent.capability_version ?? '—'}</span></p>
-            <p>Last refresh: {agent.capability_refreshed_at ? new Date(agent.capability_refreshed_at).toLocaleString() : 'never'}</p>
-            <p>Last used: {agent.last_used_at ? new Date(agent.last_used_at).toLocaleString() : 'never'}</p>
-          </div>
-        </div>
-
+        {/* Avatar edit panel */}
         {showAvatarPanel && (
           <div className="border border-gray-200 rounded-xl p-3 space-y-3 bg-gray-50">
-            <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center justify-between">
               <p className="text-xs text-gray-500">Choose avatar</p>
-              <button type="button" onClick={() => setShowAvatarPanel(false)} className="text-gray-400 hover:text-gray-700">
-                <X size={14} />
-              </button>
+              <button type="button" onClick={() => { setShowAvatarPanel(false); setCropSrc(null) }} className="text-gray-400 hover:text-gray-700"><X size={13} /></button>
             </div>
-
-            {!cropSource && (
+            {!cropSrc ? (
               <>
                 <div className="flex items-center gap-2">
-                  <input
-                    ref={fileRef}
-                    type="file"
-                    accept="image/png,image/jpeg,image/webp,image/gif"
-                    className="hidden"
+                  <input ref={fileRef} type="file" accept="image/png,image/jpeg,image/webp,image/gif" className="hidden"
                     onChange={(e) => {
-                      const file = e.target.files?.[0]
-                      if (!file) return
-                      if (file.size > 6 * 1024 * 1024) {
-                        alert('Please upload an image smaller than 6MB.')
-                        return
-                      }
-                      const reader = new FileReader()
-                      reader.onload = () => {
-                        const val = String(reader.result || '')
-                        if (val) {
-                          setCropSource(val)
-                          setZoom(1)
-                          setOffsetX(0)
-                          setOffsetY(0)
-                        }
-                      }
-                      reader.readAsDataURL(file)
+                      const f = e.target.files?.[0]
+                      if (!f) return
+                      if (f.size > 6 * 1024 * 1024) { alert('Max 6 MB'); return }
+                      const r = new FileReader()
+                      r.onload = () => { const v = String(r.result || ''); if (v) { setCropSrc(v); setZoom(1); setOffsetX(0); setOffsetY(0) } }
+                      r.readAsDataURL(f)
                     }}
                   />
-                  <button
-                    type="button"
-                    onClick={() => fileRef.current?.click()}
-                    className="text-xs px-2.5 py-1.5 border border-gray-200 rounded-lg text-gray-600 hover:border-gray-400 bg-white"
-                  >
-                    Upload
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setAvatarUrl('')}
-                    className="text-xs px-2.5 py-1.5 border border-gray-200 rounded-lg text-gray-600 hover:border-gray-400 bg-white"
-                  >
-                    Text avatar
-                  </button>
+                  <button type="button" onClick={() => fileRef.current?.click()} className="text-xs px-2.5 py-1.5 border border-gray-200 rounded-lg bg-white text-gray-600">Upload</button>
+                  <button type="button" onClick={() => { setAvatarUrl(''); update.mutate({ display_name: displayName, avatar_url: null }) }} className="text-xs px-2.5 py-1.5 border border-gray-200 rounded-lg bg-white text-gray-600">Clear avatar</button>
                 </div>
-
-                <div className="grid grid-cols-5 sm:grid-cols-7 gap-2">
-                  {allAvatars.map((opt) => {
-                    const selected = avatarUrl === opt.url
-                    return (
-                      <button
-                        key={opt.id}
-                        type="button"
-                        onClick={() => setAvatarUrl(opt.url)}
-                        title={opt.label}
-                        className={`rounded-full p-0.5 border transition-colors bg-white ${
-                          selected ? 'border-brand-600 ring-2 ring-brand-300' : 'border-gray-200 hover:border-gray-400'
-                        }`}
-                      >
-                        <img src={opt.url} alt={opt.label} className="w-11 h-11 rounded-full object-cover" />
-                      </button>
-                    )
-                  })}
+                <div className="grid grid-cols-7 gap-1.5">
+                  {allAvatars.map((opt) => (
+                    <button key={opt.id} type="button" onClick={() => { setAvatarUrl(opt.url); update.mutate({ display_name: displayName, avatar_url: opt.url }) }} title={opt.label}
+                      className={`rounded-full p-0.5 border ${avatarUrl === opt.url ? 'border-brand-500 ring-2 ring-brand-200' : 'border-gray-200 hover:border-gray-400'}`}>
+                      <img src={opt.url} alt={opt.label} className="w-9 h-9 rounded-full object-cover" />
+                    </button>
+                  ))}
                 </div>
               </>
-            )}
-
-            {cropSource && (
-              <div className="space-y-3">
-                <p className="text-xs text-gray-500">Crop</p>
-                <div className="w-44 h-44 rounded-full overflow-hidden border border-gray-200 bg-white mx-auto relative">
-                  <img
-                    src={cropSource}
-                    alt="Crop preview"
-                    className="absolute inset-0 w-full h-full object-cover"
-                    style={{ transform: `translate(${offsetX}%, ${offsetY}%) scale(${zoom})`, transformOrigin: 'center center' }}
-                  />
+            ) : (
+              <div className="space-y-2">
+                <div className="w-36 h-36 rounded-full overflow-hidden border border-gray-200 mx-auto relative">
+                  <img src={cropSrc} alt="crop" className="absolute inset-0 w-full h-full object-cover"
+                    style={{ transform: `translate(${offsetX}%, ${offsetY}%) scale(${zoom})`, transformOrigin: 'center' }} />
                 </div>
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                  <label className="text-xs text-gray-500">Zoom
-                    <input type="range" min={1} max={3} step={0.01} value={zoom} onChange={(e) => setZoom(parseFloat(e.target.value))} className="w-full" />
-                  </label>
-                  <label className="text-xs text-gray-500">X
-                    <input type="range" min={-100} max={100} step={1} value={offsetX} onChange={(e) => setOffsetX(parseInt(e.target.value))} className="w-full" />
-                  </label>
-                  <label className="text-xs text-gray-500">Y
-                    <input type="range" min={-100} max={100} step={1} value={offsetY} onChange={(e) => setOffsetY(parseInt(e.target.value))} className="w-full" />
-                  </label>
+                <div className="grid grid-cols-3 gap-2 text-xs text-gray-500">
+                  <label>Zoom<input type="range" min={1} max={3} step={0.01} value={zoom} onChange={(e) => setZoom(parseFloat(e.target.value))} className="w-full" /></label>
+                  <label>X<input type="range" min={-100} max={100} value={offsetX} onChange={(e) => setOffsetX(+e.target.value)} className="w-full" /></label>
+                  <label>Y<input type="range" min={-100} max={100} value={offsetY} onChange={(e) => setOffsetY(+e.target.value)} className="w-full" /></label>
                 </div>
                 <div className="flex gap-2">
-                  <button
-                    type="button"
-                    onClick={async () => {
-                      try {
-                        const compressed = await cropAndCompressAvatar(cropSource)
-                        setAvatarUrl(compressed)
-                        setCropSource(null)
-                      } catch {
-                        alert('Could not crop this image. Try another file.')
-                      }
-                    }}
-                    className="text-xs px-3 py-1.5 bg-brand-600 text-white rounded-lg"
-                  >
-                    Apply crop
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setCropSource(null)}
-                    className="text-xs px-3 py-1.5 border border-gray-200 rounded-lg text-gray-600 bg-white"
-                  >
-                    Cancel
-                  </button>
+                  <button type="button" onClick={async () => { try { const u = await cropAndCompress(cropSrc); setAvatarUrl(u); update.mutate({ display_name: displayName, avatar_url: u }); setCropSrc(null) } catch { alert('Crop failed.') } }} className="text-xs px-3 py-1.5 bg-brand-600 text-white rounded-lg">Apply</button>
+                  <button type="button" onClick={() => setCropSrc(null)} className="text-xs px-3 py-1.5 border border-gray-200 rounded-lg bg-white text-gray-600">Cancel</button>
                 </div>
               </div>
             )}
           </div>
         )}
 
-        <button
-          onClick={() => update.mutate({ display_name: displayName.trim(), avatar_url: avatarUrl.trim() || null })}
-          disabled={!displayName.trim() || update.isPending}
-          className="px-4 py-2 bg-brand-600 text-white text-sm rounded-lg disabled:opacity-50"
-        >
-          {update.isPending ? 'Saving…' : 'Save profile'}
-        </button>
-      </Card>
+        {/* Tab bar */}
+        <div className="flex gap-1 -mb-4">
+          {TABS.map(({ key, label }) => (
+            <button key={key} onClick={() => setTab(key)}
+              className={`px-4 py-2 text-sm rounded-t-lg border-x border-t transition-colors ${
+                tab === key
+                  ? 'bg-white border-gray-200 text-brand-600 font-medium'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-50'
+              }`}>
+              {label}
+              {key === 'chat' && !isOpenClaw && <span className="ml-1 text-[10px] text-gray-400">(OpenClaw)</span>}
+            </button>
+          ))}
+        </div>
+      </div>
 
-      <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
-        <Card className="p-5 space-y-3">
-          <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Skills & Tools</p>
-          {capabilityLoading ? (
-            <Spinner />
-          ) : !capabilityLatest ? (
-            <p className="text-sm text-gray-400 italic">No capability snapshot yet. Click Refresh.</p>
-          ) : (
-            <>
-              <div className="text-xs text-gray-500 space-y-1">
-                <p>Version: <span className="font-mono">{capabilityLatest.version ?? '—'}</span></p>
-                <p>Hash: <span className="font-mono break-all">{capabilityLatest.hash}</span></p>
-                <p>Refreshed: {new Date(capabilityLatest.refreshed_at).toLocaleString()}</p>
+      {/* ── Tab content ── */}
+      <div>
+
+        {/* Chat */}
+        {tab === 'chat' && (
+          <div className="flex flex-col" style={{ height: 'calc(100vh - 220px)' }}>
+            {!isOpenClaw ? (
+              <div className="flex-1 flex items-center justify-center">
+                <p className="text-sm text-gray-400 italic">Main chat is available for OpenClaw agents only.</p>
               </div>
-              <div className="text-xs text-gray-600 bg-gray-50 border border-gray-200 rounded-lg p-2">
-                {capabilityLatest.tools.length > 0
-                  ? `Available: ${capabilityLatest.tools.map((t) => t.name).join(', ')}`
-                  : 'No skills/tools discovered yet.'}
+            ) : (
+              <AgentChatTab
+                agent={agent}
+                chatReady={chatReady}
+                chatStatusMsg={chatStatusMsg}
+                sessionName={sessionName}
+                chatMessages={chatMessages}
+                chatMsgLoading={chatMsgLoading}
+                isPending={ask.isPending}
+                onSend={async (message, attachments) => {
+                  const res = await ask.mutateAsync({ message, attachments })
+                  return res
+                }}
+              />
+            )}
+          </div>
+        )}
+
+        {/* Skills & Tools */}
+        {tab === 'skills' && (
+          <div className="p-6 space-y-4 max-w-3xl">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <p className="text-sm font-medium text-gray-800">Skills & Tools</p>
+                <p className="text-xs text-gray-400 mt-0.5">
+                  {isOpenClaw ? 'Ask the agent directly what it can do.' : "Fetched from the agent's capability contract."}
+                </p>
               </div>
+              <button onClick={handleAskSkills} disabled={askingSkills || (!chatReady && isOpenClaw)}
+                className="text-sm px-4 py-2 bg-brand-600 text-white rounded-lg inline-flex items-center gap-2 disabled:opacity-50">
+                <RefreshCw size={13} className={askingSkills ? 'animate-spin' : ''} />
+                {askingSkills ? 'Asking…' : isOpenClaw ? 'Ask agent' : 'Refresh'}
+              </button>
+            </div>
+
+            {isOpenClaw && (
+              <div className={`rounded-xl border p-4 space-y-2 transition-colors ${
+                skillsReply
+                  ? skillsReply.startsWith('❌') || skillsReply.startsWith('⏱')
+                    ? 'border-red-200 bg-red-50'
+                    : 'border-brand-200 bg-brand-50'
+                  : 'border-gray-200 bg-gray-50'
+              }`}>
+                {askingSkills ? (
+                  <div className="flex items-center gap-2 text-sm text-gray-500">
+                    <Spinner /> Asking {agent.display_name}…
+                  </div>
+                ) : skillsReply ? (
+                  <>
+                    <div className="flex items-center justify-between gap-2">
+                      <p className={`text-[11px] font-semibold uppercase tracking-wide ${
+                        skillsReply.startsWith('❌') || skillsReply.startsWith('⏱') ? 'text-red-600' : 'text-brand-600'
+                      }`}>
+                        {skillsReply.startsWith('❌') || skillsReply.startsWith('⏱') ? 'Error' : `${agent.display_name} replied`}
+                      </p>
+                      {skillsReplyAt && (
+                        <p className="text-[10px] text-gray-400">
+                          {new Date(skillsReplyAt).toLocaleString()}
+                        </p>
+                      )}
+                    </div>
+                    <div className="prose prose-sm max-w-none text-gray-800">
+                      <ReactMarkdown remarkPlugins={[remarkGfm]}>{skillsReply}</ReactMarkdown>
+                    </div>
+                  </>
+                ) : (
+                  <p className="text-sm text-gray-400 italic">
+                    {chatReady
+                      ? `Click "Ask agent" to find out what ${agent.display_name} can do.`
+                      : `Waiting for chat connection… (${chatStatusMsg})`}
+                  </p>
+                )}
+              </div>
+            )}
+
+            {/* Structured capability contract */}
+            {capabilityLoading ? (
+              <div className="pt-2"><Spinner /></div>
+            ) : capabilityLatest && capabilityLatest.tools.length > 0 ? (
               <div className="space-y-2">
+                <p className="text-xs text-gray-400">
+                  Structured contract · last updated {new Date(capabilityLatest.refreshed_at).toLocaleString()}
+                  {capabilityLatest.version ? ` · v${capabilityLatest.version}` : ''}
+                </p>
                 {capabilityLatest.tools.map((tool) => (
-                  <div key={tool.name} className="border border-gray-200 rounded-lg p-2">
-                    <p className="text-sm font-medium text-gray-800">{tool.name}</p>
-                    <p className="text-xs text-gray-500">{tool.description}</p>
+                  <div key={tool.name} className="border border-gray-200 rounded-lg p-3 bg-white flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium text-gray-800">{tool.name}</p>
+                      <p className="text-xs text-gray-500 mt-0.5">{tool.description}</p>
+                    </div>
+                    {tool.risk_class && <span className="flex-shrink-0"><Badge variant="gray">{tool.risk_class}</Badge></span>}
                   </div>
                 ))}
+                {(capabilityLatest.policy_notes ?? []).length > 0 && (
+                  <ul className="list-disc pl-5 text-xs text-gray-500 space-y-1 pt-1">
+                    {capabilityLatest.policy_notes.map((n, i) => <li key={i}>{n}</li>)}
+                  </ul>
+                )}
               </div>
-              {(capabilityLatest.policy_notes ?? []).length > 0 && (
-                <ul className="list-disc pl-5 text-xs text-gray-600 space-y-1">
-                  {capabilityLatest.policy_notes.map((note, idx) => (
-                    <li key={idx}>{note}</li>
+            ) : capabilityLatest ? (
+              <p className="text-sm text-gray-400 italic">No structured tools in capability contract.</p>
+            ) : !isOpenClaw ? (
+              <p className="text-sm text-gray-400 italic">No capability contract yet. Click Refresh.</p>
+            ) : null}
+          </div>
+        )}
+
+        {/* History */}
+        {tab === 'history' && (
+          <div className="p-6 space-y-3 max-w-3xl">
+            {usage.length === 0 ? (
+              <p className="text-sm text-gray-400 italic">No usage history yet.</p>
+            ) : (
+              <>
+                <div className="flex items-center justify-between">
+                  <p className="text-xs text-gray-400">{usage.length} entries</p>
+                  <PageButtons page={usagePage} total={totalPages} onChange={setUsagePage} />
+                </div>
+                <ul className="space-y-2">
+                  {pagedUsage.map((u, idx) => (
+                    <li key={`${u.type}-${u.run_id ?? u.workflow_id ?? idx}`}
+                      className="border border-gray-100 rounded-lg p-3 bg-white flex items-center justify-between gap-2 flex-wrap">
+                      <div>
+                        <p className="text-sm text-gray-800">
+                          {u.type === 'run' && u.run_id ? (
+                            <Link to={`/runs/${u.run_id}`} className="text-brand-700 hover:underline">
+                              {u.workflow_name ?? u.run_id.slice(0, 8)}
+                            </Link>
+                          ) : u.workflow_name ?? 'Workflow'}
+                        </p>
+                        <p className="text-xs text-gray-400 mt-0.5">
+                          {new Date(u.timestamp).toLocaleString()}
+                        </p>
+                      </div>
+                      <Badge variant={variantByStatus(u.status ?? 'inactive')}>{u.status ?? u.type}</Badge>
+                    </li>
+                  ))}
+                </ul>
+                {totalPages > 1 && (
+                  <div className="flex items-center justify-between pt-1">
+                    <p className="text-xs text-gray-400">
+                      {(usagePage - 1) * USAGE_PAGE_SIZE + 1}–{Math.min(usagePage * USAGE_PAGE_SIZE, usage.length)} of {usage.length}
+                    </p>
+                    <PageButtons page={usagePage} total={totalPages} onChange={setUsagePage} />
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+        )}
+
+        {/* Debug */}
+        {tab === 'debug' && (
+          <div className="p-6 space-y-5 max-w-3xl">
+
+            {/* Bridge debug — OpenClaw only */}
+            {isOpenClaw && (
+              <div className="space-y-3">
+                <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Bridge debug</p>
+                {agentIntegrations.length === 0 && agentTasks.length === 0 ? (
+                  <p className="text-sm text-gray-400 italic">No bridge activity for this agent yet.</p>
+                ) : (
+                  <div className="space-y-3">
+                    {agentIntegrations.map((it) => {
+                      const ageSec = Math.max(0, Math.floor((Date.now() - new Date(it.last_seen_at).getTime()) / 1000))
+                      return (
+                        <div key={it.integration_id} className="rounded-lg border border-gray-200 bg-white p-3 text-xs space-y-2">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <Badge variant={ageSec < 20 ? 'green' : ageSec < 120 ? 'orange' : 'red'}>
+                              heartbeat {ageSec}s ago
+                            </Badge>
+                            <span className="font-mono text-gray-600">{it.plugin_instance_id}</span>
+                          </div>
+                          <div className="grid grid-cols-3 gap-x-4 text-gray-500">
+                            <span>pending: <strong className="text-gray-700">{it.pending_count}</strong></span>
+                            <span>completed: <strong className="text-gray-700">{it.completed_count}</strong></span>
+                            <span>failed: <strong className="text-gray-700">{it.failed_count}</strong></span>
+                          </div>
+                        </div>
+                      )
+                    })}
+
+                    {agentTasks.length > 0 && (
+                      <div className="border border-gray-200 rounded-lg overflow-hidden text-xs">
+                        <div className="px-3 py-2 bg-gray-50 border-b font-semibold text-gray-500 text-[11px] uppercase tracking-wide">
+                          Recent tasks
+                        </div>
+                        <div className="max-h-60 overflow-auto">
+                          <table className="w-full">
+                            <thead className="bg-white sticky top-0 border-b border-gray-100">
+                              <tr className="text-left text-gray-500">
+                                <th className="px-3 py-2">Task</th>
+                                <th className="px-3 py-2">Node</th>
+                                <th className="px-3 py-2">Status</th>
+                                <th className="px-3 py-2">Events</th>
+                                <th className="px-3 py-2">Created</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {agentTasks.map((t) => (
+                                <tr key={t.task_id} className="border-t border-gray-50">
+                                  <td className="px-3 py-2 font-mono text-gray-700">{t.task_id.slice(0, 8)}</td>
+                                  <td className="px-3 py-2 text-gray-600">{t.node_id}</td>
+                                  <td className="px-3 py-2">
+                                    <Badge variant={t.status === 'completed' ? 'green' : t.status === 'failed' ? 'red' : t.status === 'pending' ? 'orange' : 'gray'}>
+                                      {t.status}
+                                    </Badge>
+                                  </td>
+                                  <td className="px-3 py-2 text-gray-600">{t.event_count}</td>
+                                  <td className="px-3 py-2 text-gray-400">{new Date(t.created_at).toLocaleTimeString()}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Provider debug links */}
+            <div className="space-y-3">
+              <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Provider debug links</p>
+              {debugLinks.length === 0 ? (
+                <p className="text-sm text-gray-400 italic">No provider debug links yet.</p>
+              ) : (
+                <ul className="space-y-2">
+                  {debugLinks.map((d, idx) => (
+                    <li key={`${d.run_id}-${d.node_id ?? ''}-${idx}`}
+                      className="border border-gray-100 rounded-lg p-3 bg-white text-xs text-gray-600 space-y-1">
+                      <p>
+                        <Link to={`/runs/${d.run_id}`} className="text-brand-700 hover:underline font-medium">
+                          Run {d.run_id.slice(0, 8)}
+                        </Link>
+                        {d.node_id ? <span className="text-gray-400"> · {d.node_id}</span> : null}
+                      </p>
+                      {d.provider_request_id && <p className="font-mono text-gray-500 break-all">req: {d.provider_request_id}</p>}
+                      {d.provider_trace_id && <p className="font-mono text-gray-500 break-all">trace: {d.provider_trace_id}</p>}
+                      <p className="text-gray-400">{new Date(d.created_at).toLocaleString()}</p>
+                    </li>
                   ))}
                 </ul>
               )}
-            </>
-          )}
-        </Card>
-
-        <Card className="p-5 space-y-3">
-          <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Preflight History</p>
-          {runPreflight.data && (
-            <div className="border border-gray-200 rounded-lg p-3 bg-gray-50 space-y-2">
-              <div className="flex items-center justify-between gap-2 flex-wrap">
-                <p className="text-xs text-gray-500">Latest preflight detail</p>
-                <Badge variant={variantByStatus(runPreflight.data.status)}>{runPreflight.data.status}</Badge>
-              </div>
-              <ul className="space-y-1">
-                {runPreflight.data.tests.map((t) => (
-                  <li key={t.test_id} className="text-xs text-gray-700 border border-gray-100 bg-white rounded p-2">
-                    <div className="flex items-center justify-between gap-2">
-                      <p className="font-mono">{t.test_id}</p>
-                      <Badge variant={variantByStatus(t.status)}>{t.status}</Badge>
-                    </div>
-                        {(() => {
-                          const preview = t.response_preview as { items?: string[]; skills?: string[]; tools?: string[] }
-                          const items = preview.items ?? preview.skills ?? preview.tools
-                          if (!Array.isArray(items)) return null
-                          return (
-                            <p className="mt-1 text-gray-500">
-                              Skills & tools: {items.join(', ') || '—'}
-                            </p>
-                          )
-                        })()}
-                        {t.error_message && <p className="mt-1 text-red-500">{t.error_message}</p>}
-                      </li>
-                ))}
-              </ul>
             </div>
-          )}
-          {preflightLoading ? (
-            <Spinner />
-          ) : preflightRuns.length === 0 ? (
-            <p className="text-sm text-gray-400 italic">No preflight runs yet.</p>
-          ) : (
-            <ul className="space-y-2">
-              {preflightRuns.map((run) => (
-                <li key={run.id} className="border border-gray-200 rounded-lg p-2">
-                  <div className="flex items-center justify-between gap-2 flex-wrap">
-                    <div className="text-xs text-gray-500">
-                      <p>Pass rate: {(run.pass_rate * 100).toFixed(0)}%</p>
-                      <p>{new Date(run.started_at).toLocaleString()}</p>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Badge variant={variantByStatus(run.status)}>{run.status}</Badge>
-                      {run.is_baseline ? (
-                        <Badge variant="purple">baseline</Badge>
-                      ) : (
-                        <button
-                          onClick={() => promoteBaseline.mutate(run.id)}
-                          className="text-xs px-2 py-1 border border-gray-200 rounded-lg bg-white inline-flex items-center gap-1"
-                        >
-                          <Star size={12} /> Set baseline
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                </li>
-              ))}
-            </ul>
-          )}
 
-          {(capabilitySnapshots ?? []).length > 1 && (
-            <div className="pt-2 border-t border-gray-100">
-              <p className="text-xs text-gray-500 mb-2">Capability snapshots</p>
-              <ul className="space-y-1 text-xs text-gray-500">
-                {capabilitySnapshots.slice(0, 5).map((snap) => (
-                  <li key={snap.id}>
-                    {new Date(snap.refreshed_at).toLocaleString()} · {snap.version ?? '—'} · {snap.changed_from_previous ? 'changed' : 'same'}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
-        </Card>
-
-        <Card className="p-5 space-y-3">
-          <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Usage History</p>
-          {(usage.length === 0 && historyLoading) ? (
-            <Spinner />
-          ) : usage.length === 0 ? (
-            <p className="text-sm text-gray-400 italic">No usage yet.</p>
-          ) : (
-            <ul className="space-y-2">
-              {usage.slice(0, 20).map((u, idx) => (
-                <li key={`${u.type}-${u.run_id ?? u.workflow_id ?? idx}`} className="border border-gray-100 rounded-lg p-3 bg-gray-50">
-                  <div className="flex items-center justify-between gap-2 flex-wrap">
-                    <p className="text-sm text-gray-800">
-                      {u.type === 'run' && u.run_id ? (
-                        <Link to={`/runs/${u.run_id}`} className="text-brand-700 hover:underline">
-                          {u.workflow_name ?? u.run_id.slice(0, 8)}
-                        </Link>
-                      ) : (
-                        u.workflow_name ?? 'Workflow'
-                      )}
-                    </p>
-                    <Badge variant={variantByStatus(u.status ?? 'inactive')}>{u.status ?? u.type}</Badge>
-                  </div>
-                  <p className="text-xs text-gray-500 mt-1">{new Date(u.timestamp).toLocaleString()}</p>
-                </li>
-              ))}
-            </ul>
-          )}
-        </Card>
-
-        <Card className="p-5 space-y-3">
-          <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Debug Links</p>
-          {debugLoading ? (
-            <Spinner />
-          ) : debugLinks.length === 0 ? (
-            <p className="text-sm text-gray-400 italic">No provider debug links yet.</p>
-          ) : (
-            <ul className="space-y-2">
-              {debugLinks.slice(0, 20).map((d, idx) => (
-                <li key={`${d.run_id}-${d.node_id ?? ''}-${idx}`} className="border border-gray-100 rounded-lg p-2 bg-gray-50 text-xs text-gray-600">
-                  <p>
-                    <Link to={`/runs/${d.run_id}`} className="text-brand-700 hover:underline">Run {d.run_id.slice(0, 8)}</Link>
-                    {d.node_id ? ` · ${d.node_id}` : ''}
-                  </p>
-                  <p className="font-mono break-all">request:{d.provider_request_id ?? '—'}</p>
-                  <p className="font-mono break-all">response:{d.provider_response_id ?? '—'}</p>
-                  <p className="font-mono break-all">trace:{d.provider_trace_id ?? '—'}</p>
-                  <p>{new Date(d.created_at).toLocaleString()}</p>
-                </li>
-              ))}
-            </ul>
-          )}
-        </Card>
-      </div>
-
-      <Card className="p-5 space-y-3">
-        <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Legacy run history (node mapping)</p>
-        {historyLoading ? (
-          <Spinner />
-        ) : history.length === 0 ? (
-          <p className="text-sm text-gray-400 italic">No run history yet.</p>
-        ) : (
-          <ul className="space-y-2">
-            {history.slice(0, 10).map((h) => (
-              <li key={h.run_id} className="border border-gray-100 rounded-lg p-3 bg-gray-50">
-                <div className="flex items-center justify-between gap-2 flex-wrap">
-                  <div>
-                    <p className="text-sm font-medium text-gray-800">
-                      <Link to={`/graphs/${h.graph_id}`} className="text-brand-700 hover:underline">{h.graph_name}</Link>
-                      {' · '}
-                      <Link to={`/runs/${h.run_id}`} className="text-gray-700 hover:underline">{h.run_name ?? h.run_id.slice(0, 8)}</Link>
-                    </p>
-                    <p className="text-xs text-gray-500 mt-0.5">Nodes: {h.involved_nodes.join(', ')}</p>
-                  </div>
-                  <div className="text-right">
-                    <Badge variant={h.run_status === 'completed' ? 'green' : h.run_status === 'failed' ? 'red' : 'gray'}>{h.run_status}</Badge>
-                    <p className="text-[11px] text-gray-400 mt-1">{new Date(h.run_created_at).toLocaleString()}</p>
-                  </div>
-                </div>
-              </li>
-            ))}
-          </ul>
+          </div>
         )}
-      </Card>
+
+      </div>
     </div>
   )
 }

@@ -44,10 +44,16 @@ def test_state_fields_in_user_prompt():
 
 def test_context_files_in_user_prompt():
     tree = KnowledgeTree()
-    files = [{"name": "contract.pdf", "content": "Clause 1: ..."}]
+    files = [{
+        "filename": "contract.pdf",
+        "mime_type": "application/pdf",
+        "size": 1234,
+        "url": "https://example.test/file.pdf",
+    }]
     _, user = build_agent_prompt(tree, {}, context_files=files)
     assert "contract.pdf" in user
-    assert "Clause 1:" in user
+    assert "application/pdf" in user
+    assert "1234 bytes" in user
 
 
 def test_empty_tree_has_fallback_message():

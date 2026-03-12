@@ -2,6 +2,15 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import type { ChannelMessage, OpenAICallLog, Run, RunNodeState, RunWorklogEntry } from '@/types'
 import { api } from './client'
 
+export interface RunAttachmentRef {
+  key: string
+  url: string
+  filename: string
+  mime_type: string
+  size: number
+  attachment_id: string
+}
+
 export function useRuns(workspaceId: string, status?: string) {
   return useQuery({
     queryKey: ['runs', workspaceId, status],
@@ -97,7 +106,7 @@ export function useRunChatMessages(
 
 export function useTriggerRun(workspaceId: string, graphId: string) {
   return useMutation({
-    mutationFn: (data: { input: Record<string, unknown>; name?: string }) =>
+    mutationFn: (data: { input: Record<string, unknown>; name?: string; context_files?: RunAttachmentRef[] }) =>
       api
         .post<Run>(`/workspaces/${workspaceId}/graphs/${graphId}/runs`, data)
         .then((r) => r.data),
@@ -106,13 +115,29 @@ export function useTriggerRun(workspaceId: string, graphId: string) {
 
 export function useTriggerRunAny(workspaceId: string) {
   return useMutation({
-    mutationFn: (data: { graphId: string; input: Record<string, unknown>; name?: string }) =>
+    mutationFn: (data: { graphId: string; input: Record<string, unknown>; name?: string; context_files?: RunAttachmentRef[] }) =>
       api
         .post<Run>(`/workspaces/${workspaceId}/graphs/${data.graphId}/runs`, {
           input: data.input,
           name: data.name,
+          context_files: data.context_files ?? [],
         })
         .then((r) => r.data),
+  })
+}
+
+export function useUploadRunAttachment(workspaceId: string) {
+  return useMutation({
+    mutationFn: async (file: File) => {
+      const form = new FormData()
+      form.append('file', file)
+      const { data } = await api.post<RunAttachmentRef>(
+        `/workspaces/${workspaceId}/runs/attachments`,
+        form,
+        { headers: { 'Content-Type': 'multipart/form-data' } },
+      )
+      return data
+    },
   })
 }
 
@@ -129,6 +154,20 @@ export function useExecuteRunInline(workspaceId: string) {
   return useMutation({
     mutationFn: (runId: string) =>
       api.post(`/workspaces/${workspaceId}/runs/${runId}/execute`).then((r) => r.data),
+  })
+}
+
+export function useAbortRun(workspaceId: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (runId: string) =>
+      api.post(`/workspaces/${workspaceId}/runs/${runId}/abort`).then((r) => r.data),
+    onSuccess: (_, runId) => {
+      qc.invalidateQueries({ queryKey: ['run', runId] })
+      qc.invalidateQueries({ queryKey: ['run-nodes', runId] })
+      qc.invalidateQueries({ queryKey: ['run-chat-messages', runId] })
+      qc.invalidateQueries({ queryKey: ['runs', workspaceId] })
+    },
   })
 }
 

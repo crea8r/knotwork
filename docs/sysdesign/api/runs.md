@@ -8,25 +8,58 @@
 POST /api/v1/workspaces/:workspace_id/graphs/:graph_id/runs
 ```
 
-Accepts `multipart/form-data` or `application/json`.
+Accepts `application/json`.
 
-With file attachments (`multipart/form-data`):
-```
-input          (JSON field)   -- structured run state: { "contract_type": "purchase" }
-files[]        (file fields)  -- one or more case-specific files (PDF, DOCX, images, etc.)
-```
+Use a two-step flow for run attachments:
+1. Upload files first via `POST /api/v1/workspaces/:workspace_id/runs/attachments` (multipart, one file per call).
+2. Trigger the run with the returned attachment refs in `context_files`.
 
-JSON-only (no file attachments):
+Trigger payload:
 ```json
 {
+  "name": "optional run name",
   "input": {
     "contract_type": "purchase",
     "contract_text": "..."
-  }
+  },
+  "context_files": [
+    {
+      "key": "runs/<workspace_id>/<attachment_id>/contract.pdf",
+      "url": "https://.../api/v1/workspaces/<workspace_id>/runs/attachments/<attachment_id>/contract.pdf?token=...",
+      "filename": "contract.pdf",
+      "mime_type": "application/pdf",
+      "size": 123456,
+      "attachment_id": "<attachment_id>"
+    }
+  ]
 }
 ```
 
-Files are stored per-run (not in the knowledge base) and are passed to agents as Run Context in the `THIS CASE` section of their prompt.
+Constraints:
+- Max 10 files per run.
+- Max 10 MB per file.
+- No MIME/extension allowlist at Knotwork layer.
+- Knotwork does not parse/process file contents; it stores opaque bytes and forwards attachment refs/URLs to OpenClaw.
+- Deleting a run also deletes its uploaded run attachments.
+
+Attachment upload endpoint:
+```
+POST /api/v1/workspaces/:workspace_id/runs/attachments
+Content-Type: multipart/form-data
+file=<binary>
+```
+
+Upload response:
+```json
+{
+  "key": "runs/<workspace_id>/<attachment_id>/contract.pdf",
+  "url": "https://.../api/v1/workspaces/<workspace_id>/runs/attachments/<attachment_id>/contract.pdf?token=...",
+  "filename": "contract.pdf",
+  "mime_type": "application/pdf",
+  "size": 123456,
+  "attachment_id": "<attachment_id>"
+}
+```
 
 Response (immediate, async):
 ```json
@@ -46,7 +79,8 @@ Response (immediate, async):
 ```
 GET    /api/v1/workspaces/:workspace_id/runs
 GET    /api/v1/workspaces/:workspace_id/runs/:run_id
-DELETE /api/v1/workspaces/:workspace_id/runs/:run_id    -- abort a queued/running run
+POST   /api/v1/workspaces/:workspace_id/runs/:run_id/abort
+DELETE /api/v1/workspaces/:workspace_id/runs/:run_id    -- hard delete (non-running runs only)
 POST   /api/v1/workspaces/:workspace_id/runs/:run_id/resume
 ```
 

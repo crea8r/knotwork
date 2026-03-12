@@ -6,6 +6,24 @@ from uuid import UUID
 from pydantic import BaseModel
 
 
+class RunAttachmentRef(BaseModel):
+    key: str
+    url: str
+    filename: str
+    mime_type: str
+    size: int
+    attachment_id: str
+
+
+class RunAttachmentUploadOut(BaseModel):
+    key: str
+    url: str
+    filename: str
+    mime_type: str
+    size: int
+    attachment_id: str
+
+
 class RunCreate(BaseModel):
     name: str | None = None
     input: dict = {}

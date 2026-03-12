@@ -9,7 +9,49 @@ from knotwork.graphs.service import get_graph, get_latest_version
 from knotwork.runs.models import OpenAICallLog, Run, RunHandbookProposal, RunNodeState, RunWorklogEntry
 from knotwork.runs.schemas import RunCreate, RunUpdate
 
-DELETABLE_STATUSES = {"completed", "failed", "stopped", "draft", "queued", "paused", "running"}
+# Hard-delete is allowed for non-running runs.
+# Active execution must be stopped via POST /runs/{run_id}/abort first.
+DELETABLE_STATUSES = {"completed", "failed", "stopped", "draft", "queued", "paused"}
+MAX_RUN_ATTACHMENTS = 10
+MAX_RUN_ATTACHMENT_SIZE_BYTES = 10 * 1024 * 1024
+
+
+def _normalize_context_files(context_files: list) -> list[dict]:
+    normalized: list[dict] = []
+    for raw in context_files or []:
+        if not isinstance(raw, dict):
+            raise ValueError("Invalid context_files payload")
+        filename = str(raw.get("filename") or "").strip()
+        key = str(raw.get("key") or "").strip()
+        url = str(raw.get("url") or "").strip()
+        mime_type = str(raw.get("mime_type") or "").strip() or "application/octet-stream"
+        attachment_id = str(raw.get("attachment_id") or "").strip()
+        size_raw = raw.get("size")
+        try:
+            size = int(size_raw)
+        except (TypeError, ValueError):
+            raise ValueError(f"Invalid size for attachment '{filename or key or 'unknown'}'")
+
+        if not filename or not key or not url or not attachment_id:
+            raise ValueError("Each attachment must include key, url, filename, and attachment_id")
+        if size <= 0:
+            raise ValueError(f"Attachment '{filename}' is empty")
+        if size > MAX_RUN_ATTACHMENT_SIZE_BYTES:
+            raise ValueError(f"Attachment '{filename}' exceeds 10 MB limit")
+
+        normalized.append({
+            "type": "run_attachment",
+            "key": key,
+            "url": url,
+            "filename": filename,
+            "mime_type": mime_type,
+            "size": size,
+            "attachment_id": attachment_id,
+        })
+
+    if len(normalized) > MAX_RUN_ATTACHMENTS:
+        raise ValueError("Too many attachments (max 10)")
+    return normalized
 
 
 async def create_run(
@@ -18,6 +60,8 @@ async def create_run(
     graph_id: UUID,
     data: RunCreate,
     created_by: UUID | None = None,
+    force_graph_version_id: UUID | None = None,
+    trigger_meta: dict | None = None,
 ) -> Run:
     from knotwork.runtime.validation import validate_graph
 
@@ -25,13 +69,22 @@ async def create_run(
     if not graph:
         raise ValueError("Graph not found")
 
-    version = await get_latest_version(db, graph_id)
-    if not version:
-        raise ValueError("Graph has no versions")
+    if force_graph_version_id is not None:
+        from knotwork.graphs.models import GraphVersion
+
+        version = await db.get(GraphVersion, force_graph_version_id)
+        if version is None or version.graph_id != graph_id:
+            raise ValueError("Invalid graph version")
+    else:
+        version = await get_latest_version(db, graph_id)
+        if not version:
+            raise ValueError("Graph has no versions")
 
     errors = validate_graph(version.definition)
     if errors:
         raise ValueError("; ".join(errors))
+
+    context_files = _normalize_context_files(data.context_files)
 
     run = Run(
         workspace_id=workspace_id,
@@ -39,8 +92,9 @@ async def create_run(
         graph_version_id=version.id,
         name=data.name,
         input=data.input,
-        context_files=data.context_files,
+        context_files=context_files,
         trigger=data.trigger,
+        trigger_meta=trigger_meta,
         created_by=created_by,
         status="queued",
     )
@@ -74,9 +128,15 @@ async def create_run(
     from arq import create_pool
     from arq.connections import RedisSettings
     from knotwork.config import settings
-    redis = await create_pool(RedisSettings.from_dsn(settings.redis_url))
-    await redis.enqueue_job("execute_run", run_id=str(run.id))
-    await redis.aclose()
+
+    try:
+        redis = await create_pool(RedisSettings.from_dsn(settings.redis_url))
+        await redis.enqueue_job("execute_run", run_id=str(run.id))
+        await redis.aclose()
+    except Exception:
+        # Keep API successful even if queue is temporarily unavailable.
+        # Run stays queued until worker/queue recovers or execute endpoint is used.
+        pass
 
     return run
 
@@ -222,6 +282,24 @@ async def delete_run(db: AsyncSession, run_id: UUID) -> None:
     from knotwork.escalations.models import Escalation
     from knotwork.notifications.models import NotificationLog
     from knotwork.ratings.models import Rating
+
+    # Best-effort cleanup of uploaded run attachments.
+    from knotwork.knowledge.storage import get_storage_adapter
+    storage = get_storage_adapter()
+    for item in run.context_files or []:
+        if not isinstance(item, dict):
+            continue
+        if str(item.get("type") or "") != "run_attachment":
+            continue
+        key = str(item.get("key") or "").strip()
+        if not key:
+            continue
+        try:
+            await storage.delete("_run_attachments", key)
+        except Exception:
+            # Keep delete_run robust: stale/missing attachment blobs should not
+            # block removing the run itself.
+            pass
 
     escalation_ids = list(
         (

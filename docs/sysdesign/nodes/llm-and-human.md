@@ -80,10 +80,17 @@ not be used in new clients.
 
 ### Resume Behavior
 
-- `accept_output` or `request_revision`: runtime re-runs the same node attempt loop, appending human guidance
-  to system instructions as continuation context.
+- `request_revision`: runtime continues the same paused node session (no new node rerun row). Human guidance is
+  sent as continuation context and the node remains on the same conversational path.
+- `accept_output`: runtime continues without requesting a new answer from the agent.
 - `override_output`: human-provided output is accepted as final node output (confidence forced to 1.0).
 - `abort_run`: run is stopped by escalation flow (no node resume).
+
+Future direction (`start_over`, not implemented yet):
+- A separate `start_over` action may be added later.
+- `start_over` only makes sense if node-level conversation is separated from run-level conversation.
+- `start_over` would reset node context and run a fresh attempt using only run input + new human guidance to avoid
+  carrying forward a corrupted path.
 
 This is the current "chat-like" continuation behavior for agent-human handoff.
 

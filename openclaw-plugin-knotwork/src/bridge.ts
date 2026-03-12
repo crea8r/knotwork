@@ -74,10 +74,13 @@ function normalizeAgent(raw: unknown): RemoteAgent | null {
       input_schema: (to.input_schema ?? to.schema ?? { type: 'object' }) as AnyObj,
     }
   })
+  const rawDesc = a.description ?? a.about ?? a.shortDescription ?? a.summary
+  const description = typeof rawDesc === 'string' && rawDesc.trim() ? rawDesc.trim() : undefined
   return {
     remote_agent_id: sid,
     slug: String(a.slug ?? sid),
     display_name: String(a.displayName ?? a.name ?? sid),
+    description,
     tools,
     constraints: {
       model: a.model ?? null,

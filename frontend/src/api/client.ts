@@ -1,9 +1,10 @@
 /**
  * Axios instance for all API calls.
- * Automatically attaches JWT from auth store.
- * Handles 401 by redirecting to login.
+ * Reads JWT from the Zustand auth store (persisted to localStorage under 'knotwork_auth').
+ * Handles 401 by redirecting to /login.
  */
 import axios from 'axios'
+import { useAuthStore } from '@/store/auth'
 
 export const api = axios.create({
   baseURL: '/api/v1',
@@ -11,7 +12,7 @@ export const api = axios.create({
 })
 
 api.interceptors.request.use((config) => {
-  const token = localStorage.getItem('knotwork_token')
+  const token = useAuthStore.getState().token
   if (token) config.headers.Authorization = `Bearer ${token}`
   return config
 })
@@ -20,7 +21,7 @@ api.interceptors.response.use(
   (res) => res,
   (err) => {
     if (err.response?.status === 401) {
-      localStorage.removeItem('knotwork_token')
+      useAuthStore.getState().clearAuth()
       window.location.href = '/login'
     }
     return Promise.reject(err)

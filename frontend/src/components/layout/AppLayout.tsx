@@ -4,20 +4,27 @@ import { Menu } from 'lucide-react'
 import Sidebar from './Sidebar'
 
 /**
- * App shell: sidebar + scrollable main area.
+ * App shell: collapsible sidebar + scrollable main area.
  * GraphDetailPage overrides this with its own full-viewport layout.
  */
 export default function AppLayout() {
   const [mobileNavOpen, setMobileNavOpen] = useState(false)
+  const [navCollapsed, setNavCollapsed] = useState(() => localStorage.getItem('kw-nav-collapsed') === 'true')
   const location = useLocation()
+
+  function toggleNav() {
+    setNavCollapsed((v) => {
+      const next = !v
+      localStorage.setItem('kw-nav-collapsed', String(next))
+      return next
+    })
+  }
 
   useEffect(() => {
     if (!mobileNavOpen) return
     const previous = document.body.style.overflow
     document.body.style.overflow = 'hidden'
-    return () => {
-      document.body.style.overflow = previous
-    }
+    return () => { document.body.style.overflow = previous }
   }, [mobileNavOpen])
 
   const mobileTitle = (() => {
@@ -33,20 +40,19 @@ export default function AppLayout() {
   return (
     <div className="flex h-screen overflow-hidden bg-gray-50">
       {mobileNavOpen && (
-        <button
-          className="fixed inset-0 bg-black/30 z-30 md:hidden"
-          onClick={() => setMobileNavOpen(false)}
-          aria-label="Close navigation overlay"
-        />
+        <button className="fixed inset-0 bg-black/30 z-30 md:hidden"
+          onClick={() => setMobileNavOpen(false)} aria-label="Close navigation overlay" />
       )}
-      <Sidebar mobileOpen={mobileNavOpen} onCloseMobile={() => setMobileNavOpen(false)} />
-      <main className="flex-1 overflow-y-auto relative">
+      <Sidebar
+        mobileOpen={mobileNavOpen}
+        onCloseMobile={() => setMobileNavOpen(false)}
+        collapsed={navCollapsed}
+        onToggleCollapse={toggleNav}
+      />
+      <main className="flex-1 overflow-y-auto relative min-w-0">
         <header className="md:hidden sticky top-0 z-20 flex items-center gap-3 border-b border-gray-200 bg-white px-4 py-3">
-          <button
-            className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-gray-300 text-gray-700"
-            onClick={() => setMobileNavOpen(true)}
-            aria-label="Open navigation"
-          >
+          <button className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-gray-300 text-gray-700"
+            onClick={() => setMobileNavOpen(true)} aria-label="Open navigation">
             <Menu size={16} />
           </button>
           <p className="text-sm font-semibold text-gray-900">{mobileTitle}</p>

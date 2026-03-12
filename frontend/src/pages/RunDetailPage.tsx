@@ -2,9 +2,18 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import axios from 'axios'
 import {
-  Play, Trash2, Pencil, Check, Send, CheckCircle2, Map as MapIcon, X, Bug,
+  Play, Trash2, Pencil, Check, Send, Map as MapIcon, X, Bug, Loader2,
 } from 'lucide-react'
-import { useRun, useRunNodes, useDeleteRun, useExecuteRunInline, useRenameRun, useRunChatMessages } from '@/api/runs'
+import {
+  useRun,
+  useRunNodes,
+  useRunWorklog,
+  useDeleteRun,
+  useExecuteRunInline,
+  useRenameRun,
+  useRunChatMessages,
+  useAbortRun,
+} from '@/api/runs'
 import { useGraphVersion } from '@/api/graphs'
 import { useEscalations, useResolveEscalationAny } from '@/api/escalations'
 import { useRegisteredAgents } from '@/api/agents'
@@ -19,7 +28,7 @@ import type { Escalation, NodeStatus } from '@/types'
 const DEV_WORKSPACE = import.meta.env.VITE_DEV_WORKSPACE_ID ?? 'dev-workspace'
 const TERMINAL = new Set(['completed', 'failed', 'stopped'])
 const ACTIVE = new Set(['queued', 'running'])
-const DELETABLE = new Set(['completed', 'failed', 'stopped', 'draft', 'queued', 'paused', 'running'])
+const DELETABLE = new Set(['completed', 'failed', 'stopped', 'draft', 'queued', 'paused'])
 
 type ChatRole = 'assistant' | 'user' | 'system'
 type ChatItem = {
@@ -139,6 +148,10 @@ function pickRandomPhrase(phrases: string[], previous?: string): string {
   let next = phrases[Math.floor(Math.random() * phrases.length)]
   while (next === previous) next = phrases[Math.floor(Math.random() * phrases.length)]
   return next
+}
+
+function isHeartbeatProgress(text: string): boolean {
+  return /(heartbeat|still working|still running)/i.test(text)
 }
 
 function InlineRename({ runId, workspaceId, currentName }: { runId: string; workspaceId: string; currentName: string | null }) {
@@ -273,6 +286,12 @@ function MessageBubble({
         } ${highlighted ? 'ring-4 ring-blue-600 shadow-[0_8px_18px_rgba(37,99,235,0.28)] scale-[1.04]' : ''} select-text`}
         style={highlighted ? { boxShadow: '0 0 0 10px rgba(37,99,235,0.32), 0 8px 18px rgba(37,99,235,0.28)' } : undefined}
       >
+        {item.kind === 'loading' && (
+          <div className="mb-1 inline-flex items-center gap-1.5 text-[11px] text-gray-500">
+            <Loader2 size={12} className="animate-spin" />
+            <span>Working</span>
+          </div>
+        )}
         {images.length > 0 && (
           <div className="mb-2 space-y-2">
             {images.map((img, idx) => (
@@ -339,6 +358,7 @@ function DecisionCard({
   const esc = item.escalation
   const [guidance, setGuidance] = useState('')
   const [overrideOutput, setOverrideOutput] = useState('')
+  const [activeTab, setActiveTab] = useState<'revision' | 'override'>('revision')
   const isOpen = esc?.status === 'open'
 
   if (item.kind === 'decision_confident') {
@@ -372,65 +392,78 @@ function DecisionCard({
 
       {isOpen && (
         <>
-          <div className="flex flex-wrap gap-2">
-            <button
-              onClick={() => resolveEscalation.mutate(
-                { escalationId: esc.id, data: { resolution: 'accept_output' } },
-                { onSuccess: onAfterResolve },
-              )}
-              disabled={disabled}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-green-300 text-green-700 text-xs hover:bg-green-50 disabled:opacity-50"
-            >
-              <CheckCircle2 size={13} />
-              Approve current output
-            </button>
-          </div>
           <div className="flex gap-2">
-            <input
-              value={guidance}
-              onChange={(e) => setGuidance(e.target.value)}
-              placeholder="Request revision comments…"
-              className="flex-1 border border-amber-200 rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-amber-400"
-            />
             <button
-              onClick={() => {
-                const trimmed = guidance.trim()
-                if (!trimmed) return
-                resolveEscalation.mutate(
-                  { escalationId: esc.id, data: { resolution: 'request_revision', guidance: trimmed } },
-                  { onSuccess: () => { setGuidance(''); onAfterResolve() } },
-                )
-              }}
-              disabled={disabled || !guidance.trim()}
-              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-amber-600 text-white text-sm disabled:opacity-40"
+              onClick={() => setActiveTab('revision')}
+              className={`px-3 py-1.5 rounded-lg text-xs border ${
+                activeTab === 'revision'
+                  ? 'border-amber-400 bg-amber-100 text-amber-800'
+                  : 'border-amber-200 text-amber-700 hover:bg-amber-50'
+              }`}
             >
-              <Send size={14} />
               Request revision
             </button>
-          </div>
-          <div className="space-y-2">
-            <textarea
-              value={overrideOutput}
-              onChange={(e) => setOverrideOutput(e.target.value)}
-              rows={3}
-              placeholder="Edit answer and use this for next step…"
-              className="w-full border border-amber-200 rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-amber-400"
-            />
             <button
-              onClick={() => {
-                const trimmed = overrideOutput.trim()
-                if (!trimmed) return
-                resolveEscalation.mutate(
-                  { escalationId: esc.id, data: { resolution: 'override_output', override_output: { text: trimmed } } },
-                  { onSuccess: () => { setOverrideOutput(''); onAfterResolve() } },
-                )
-              }}
-              disabled={disabled || !overrideOutput.trim()}
-              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-blue-300 text-blue-700 text-xs hover:bg-blue-50 disabled:opacity-50"
+              onClick={() => setActiveTab('override')}
+              className={`px-3 py-1.5 rounded-lg text-xs border ${
+                activeTab === 'override'
+                  ? 'border-blue-400 bg-blue-100 text-blue-800'
+                  : 'border-blue-200 text-blue-700 hover:bg-blue-50'
+              }`}
             >
-              Use edited answer
+              Override output
             </button>
           </div>
+
+          {activeTab === 'revision' ? (
+            <div className="flex gap-2">
+              <input
+                value={guidance}
+                onChange={(e) => setGuidance(e.target.value)}
+                placeholder="Request revision comments…"
+                className="flex-1 border border-amber-200 rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-amber-400"
+              />
+              <button
+                onClick={() => {
+                  const trimmed = guidance.trim()
+                  if (!trimmed) return
+                  resolveEscalation.mutate(
+                    { escalationId: esc.id, data: { resolution: 'request_revision', guidance: trimmed } },
+                    { onSuccess: () => { setGuidance(''); onAfterResolve() } },
+                  )
+                }}
+                disabled={disabled || !guidance.trim()}
+                className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-amber-600 text-white text-sm disabled:opacity-40"
+              >
+                <Send size={14} />
+                Request revision
+              </button>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              <textarea
+                value={overrideOutput}
+                onChange={(e) => setOverrideOutput(e.target.value)}
+                rows={3}
+                placeholder="Edit answer and use this for next step…"
+                className="w-full border border-blue-200 rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-400"
+              />
+              <button
+                onClick={() => {
+                  const trimmed = overrideOutput.trim()
+                  if (!trimmed) return
+                  resolveEscalation.mutate(
+                    { escalationId: esc.id, data: { resolution: 'override_output', override_output: { text: trimmed } } },
+                    { onSuccess: () => { setOverrideOutput(''); onAfterResolve() } },
+                  )
+                }}
+                disabled={disabled || !overrideOutput.trim()}
+                className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-blue-300 text-blue-700 text-xs hover:bg-blue-50 disabled:opacity-50"
+              >
+                Use edited answer
+              </button>
+            </div>
+          )}
         </>
       )}
     </div>
@@ -455,10 +488,14 @@ export default function RunDetailPage() {
   const { data: runMessages = [], refetch: refetchRunMessages } = useRunChatMessages(workspaceId, runId!, {
     refetchInterval: run && (ACTIVE.has(run.status) || run.status === 'paused') ? 2000 : false,
   })
+  const { data: worklog = [] } = useRunWorklog(workspaceId, runId!, {
+    refetchInterval: run && (ACTIVE.has(run.status) || run.status === 'paused') ? 3000 : false,
+  })
   const { data: escalations = [], refetch: refetchEscalations } = useEscalations(workspaceId)
   const { data: agents = [] } = useRegisteredAgents()
   const deleteRun = useDeleteRun(workspaceId)
   const executeInline = useExecuteRunInline(workspaceId)
+  const abortRun = useAbortRun(workspaceId)
   const resolveEscalation = useResolveEscalationAny(workspaceId)
 
   const definition = graphVersion?.definition ?? { nodes: [], edges: [] }
@@ -494,6 +531,15 @@ export default function RunDetailPage() {
   const [lockedEscalationId, setLockedEscalationId] = useState<string | null>(null)
   const thinkingPhrases = useMemo(() => buildThinkingPhrases(), [])
   const [thinkingText, setThinkingText] = useState(() => pickRandomPhrase(thinkingPhrases))
+  const latestProgress = useMemo(() => {
+    const progressMessages = runMessages.filter((m) => {
+      const meta = m.metadata_ as Record<string, unknown>
+      return meta.kind === 'agent_progress'
+    })
+    if (!progressMessages.length) return null
+    const latest = progressMessages[progressMessages.length - 1]
+    return { id: latest.id, text: latest.content }
+  }, [runMessages])
 
   const runEscalations = useMemo(
     () =>
@@ -579,18 +625,16 @@ export default function RunDetailPage() {
           : 'system'
       const meta = m.metadata_ as Record<string, unknown>
       const kind = typeof meta.kind === 'string' ? meta.kind : ''
-      const text = kind === 'agent_progress'
-        ? friendlyProgressText(m.id, m.content, thinkingPhrases)
-        : m.content
+      if (kind === 'agent_progress') continue
       items.push({
         id: m.id,
         role,
-        kind: kind === 'agent_progress' ? 'loading' : 'message',
+        kind: 'message',
         speaker: m.author_name || (m.author_type === 'human' ? 'You' : m.author_type === 'agent' ? 'Agent' : 'Knotwork'),
         nodeId: m.node_id ?? undefined,
         nodeName: m.node_id ? (nodeNameMap[m.node_id] ?? m.node_id) : undefined,
-        text,
-        markdown: role === 'assistant' && kind !== 'agent_progress',
+        text: m.content,
+        markdown: role === 'assistant',
         raw: m.metadata_ ?? {},
         ts: m.created_at,
       })
@@ -639,12 +683,15 @@ export default function RunDetailPage() {
         return a.id.localeCompare(b.id)
       })
       if (run.status === 'running') {
+        const liveText = latestProgress
+          ? friendlyProgressText(latestProgress.id, latestProgress.text, thinkingPhrases)
+          : thinkingText
         items.push({
           id: `run-live-${run.id}`,
           role: 'system',
           kind: 'loading',
           speaker: 'Knotwork',
-          text: thinkingText,
+          text: liveText,
           raw: { status: run.status },
           ts: null,
         })
@@ -748,11 +795,15 @@ export default function RunDetailPage() {
     })
 
     if (run.status === 'running') {
+      const liveText = latestProgress
+        ? friendlyProgressText(latestProgress.id, latestProgress.text, thinkingPhrases)
+        : thinkingText
       items.push({
         id: `run-live-${run.id}`,
         role: 'system',
+        kind: 'loading',
         speaker: 'Knotwork',
-        text: thinkingText,
+        text: liveText,
         raw: { status: run.status },
         ts: null,
       })
@@ -769,30 +820,126 @@ export default function RunDetailPage() {
     }
 
     return items
-  }, [run, runMessages, nodeStates, nodeNameMap, nodeSpeakerMap, runEscalations, awaitingAgentAfterReply, openEscalation, thinkingText, thinkingPhrases])
+  }, [run, runMessages, nodeStates, nodeNameMap, nodeSpeakerMap, runEscalations, awaitingAgentAfterReply, openEscalation, thinkingText, thinkingPhrases, latestProgress])
 
-  const promptAttempts = useMemo(() => {
-    return nodeStates
-      .map((ns) => {
-        const input = (ns.input ?? {}) as Record<string, unknown>
-        const systemPrompt = typeof input.system_prompt === 'string' ? input.system_prompt : ''
-        const userPrompt = typeof input.user_prompt === 'string' ? input.user_prompt : ''
-        const humanGuidance = typeof input.human_guidance === 'string' ? input.human_guidance : ''
-        return {
-          id: ns.id,
-          nodeId: ns.node_id,
-          nodeName: nodeNameMap[ns.node_id] ?? ns.node_name ?? ns.node_id,
-          startedAt: ns.started_at,
-          systemPrompt,
-          userPrompt,
-          humanGuidance,
-          runInput: input.run_input ?? null,
-          priorOutputs: input.prior_outputs ?? null,
-        }
+  const debugTimeline = useMemo(() => {
+    type Row = {
+      id: string
+      ts: number
+      iso: string | null
+      kind: 'in' | 'out' | 'progress'
+      nodeName: string
+      label: string
+      content: string
+      heartbeatCount?: number
+    }
+
+    const rows: Row[] = []
+    for (const ns of nodeStates) {
+      const inp = (ns.input ?? {}) as Record<string, unknown>
+      const out = (ns.output ?? {}) as Record<string, unknown>
+      const nodeName = nodeNameMap[ns.node_id] ?? ns.node_name ?? ns.node_id
+      const startedIso = ns.started_at ?? null
+      const completedIso = ns.completed_at ?? ns.started_at ?? null
+      const startedTs = startedIso ? new Date(startedIso).getTime() : 0
+      const completedTs = completedIso ? new Date(completedIso).getTime() : startedTs
+      const systemPrompt = typeof inp.system_prompt === 'string' ? inp.system_prompt.trim() : ''
+      const userPrompt = typeof inp.user_prompt === 'string' ? inp.user_prompt.trim() : ''
+      const humanGuidance = typeof inp.human_guidance === 'string' ? inp.human_guidance.trim() : ''
+      const outputText = typeof out.text === 'string' ? out.text.trim() : ''
+
+      if (systemPrompt) {
+        rows.push({
+          id: `${ns.id}-in-system`,
+          ts: startedTs,
+          iso: startedIso,
+          kind: 'in',
+          nodeName,
+          label: 'System prompt',
+          content: systemPrompt,
+        })
+      }
+      if (userPrompt) {
+        rows.push({
+          id: `${ns.id}-in-user`,
+          ts: startedTs,
+          iso: startedIso,
+          kind: 'in',
+          nodeName,
+          label: 'Message',
+          content: userPrompt,
+        })
+      }
+      if (humanGuidance) {
+        rows.push({
+          id: `${ns.id}-in-guidance`,
+          ts: startedTs,
+          iso: startedIso,
+          kind: 'in',
+          nodeName,
+          label: 'Human guidance',
+          content: humanGuidance,
+        })
+      }
+      if (outputText) {
+        rows.push({
+          id: `${ns.id}-out-output`,
+          ts: completedTs,
+          iso: completedIso,
+          kind: 'out',
+          nodeName,
+          label: 'Output',
+          content: outputText,
+        })
+      } else if (ns.status === 'failed' && ns.error) {
+        rows.push({
+          id: `${ns.id}-out-error`,
+          ts: completedTs,
+          iso: completedIso,
+          kind: 'out',
+          nodeName,
+          label: 'Error',
+          content: ns.error,
+        })
+      }
+    }
+
+    for (const entry of worklog) {
+      if (entry.entry_type !== 'progress' && entry.entry_type !== 'action') continue
+      const ts = new Date(entry.created_at).getTime()
+      rows.push({
+        id: `worklog-${entry.id}`,
+        ts,
+        iso: entry.created_at,
+        kind: 'progress',
+        nodeName: nodeNameMap[entry.node_id] ?? entry.node_id,
+        label: entry.entry_type,
+        content: entry.content,
       })
-      .filter((x) => x.systemPrompt || x.userPrompt || x.humanGuidance)
-      .sort((a, b) => new Date(a.startedAt ?? 0).getTime() - new Date(b.startedAt ?? 0).getTime())
-  }, [nodeStates, nodeNameMap])
+    }
+
+    rows.sort((a, b) => (a.ts - b.ts) || a.id.localeCompare(b.id))
+
+    const merged: Row[] = []
+    for (const row of rows) {
+      const last = merged[merged.length - 1]
+      const heartbeat = row.kind === 'progress' && isHeartbeatProgress(row.content)
+      if (
+        heartbeat
+        && last
+        && last.kind === 'progress'
+        && isHeartbeatProgress(last.content)
+      ) {
+        last.heartbeatCount = (last.heartbeatCount ?? 1) + 1
+        last.content = row.content
+        last.iso = row.iso
+        last.ts = row.ts
+        continue
+      }
+      merged.push({ ...row, heartbeatCount: heartbeat ? 1 : undefined })
+    }
+    return merged
+  }, [nodeStates, nodeNameMap, worklog])
 
   useEffect(() => {
     const el = chatScrollRef.current
@@ -810,6 +957,22 @@ export default function RunDetailPage() {
         ? (err.response?.data?.detail ?? err.message)
         : String(err)
       alert(`Delete failed: ${message}`)
+    }
+  }
+
+  async function handleAbort() {
+    if (!confirm('Abort this run?\n\nUse this only when the agent appears stuck with no response. This will stop the run immediately.')) return
+    try {
+      await abortRun.mutateAsync(runId!)
+      refetchRun()
+      refetchNodes()
+      refetchRunMessages()
+      refetchEscalations()
+    } catch (err) {
+      const message = axios.isAxiosError(err)
+        ? (err.response?.data?.detail ?? err.message)
+        : String(err)
+      alert(`Abort failed: ${message}`)
     }
   }
 
@@ -857,6 +1020,16 @@ export default function RunDetailPage() {
             <Play size={12} /> {executeInline.isPending || executeInline.isSuccess ? 'Starting…' : 'Run now'}
           </button>
         )}
+        {run.status === 'running' && (
+          <button
+            onClick={handleAbort}
+            disabled={abortRun.isPending}
+            title="Use only to cancel a stuck run with no agent response."
+            className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg border border-amber-300 text-amber-800 bg-amber-50 hover:bg-amber-100 disabled:opacity-50"
+          >
+            {abortRun.isPending ? 'Aborting…' : 'Abort run (stuck only)'}
+          </button>
+        )}
         {wsConnected && run.status === 'running' && (
           <span className="text-xs text-blue-500 animate-pulse">live</span>
         )}
@@ -887,109 +1060,50 @@ export default function RunDetailPage() {
       <div className="flex-1 min-h-0 grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_400px]">
         <div className="flex flex-col min-h-0 border-r border-gray-200 bg-[#f7f8fb]">
           <div className="px-4 md:px-5 pt-3">
-            <details className="rounded-xl border border-gray-200 bg-white">
+            <details className="rounded-xl border border-gray-200 bg-white max-h-[80vh] overflow-hidden">
               <summary className="cursor-pointer list-none px-3 py-2 text-xs text-gray-700 font-medium flex items-center justify-between">
-                <span>OpenClaw Debug ({promptAttempts.length} messages)</span>
+                <span>OpenClaw Debug ({debugTimeline.length} events)</span>
                 <span className="text-[11px] text-gray-400">Expand</span>
               </summary>
-              <div className="px-3 pb-3 space-y-4 border-t border-gray-100">
-
-                {/* Per-node IN → OUT */}
-                <div>
-                  <p className="text-[11px] uppercase tracking-wide text-gray-500 mt-2 mb-1">Messages In / Out</p>
-                  <div className="space-y-2">
-                    {nodeStates
-                      .filter((ns) => ns.input || ns.output)
-                      .slice()
-                      .sort((a, b) => new Date(a.started_at ?? 0).getTime() - new Date(b.started_at ?? 0).getTime())
-                      .map((ns) => {
-                        const inp = (ns.input ?? {}) as Record<string, unknown>
-                        const out = (ns.output ?? {}) as Record<string, unknown>
-                        const logs = Array.isArray(ns.agent_logs) ? ns.agent_logs : []
-                        const name = nodeNameMap[ns.node_id] ?? ns.node_name ?? ns.node_id
-                        const agentRef = ns.agent_ref ?? (typeof inp.agent_ref === 'string' ? inp.agent_ref : null)
-                        const systemPrompt = typeof inp.system_prompt === 'string' ? inp.system_prompt : ''
-                        const userPrompt = typeof inp.user_prompt === 'string' ? inp.user_prompt : ''
-                        const humanGuidance = typeof inp.human_guidance === 'string' ? inp.human_guidance : ''
-                        const outputText = typeof out.text === 'string' ? out.text : null
-                        return (
-                          <details key={ns.id} className="rounded-lg border border-gray-200 bg-gray-50">
-                            <summary className="cursor-pointer list-none px-3 py-2 text-[11px] text-gray-700 flex items-center justify-between gap-2">
-                              <span className="font-mono truncate">
-                                {ns.started_at ? new Date(ns.started_at).toLocaleTimeString() : '-'} · {name}
+              <div className="px-3 pb-3 border-t border-gray-100 max-h-[calc(80vh-2.25rem)] overflow-y-auto">
+                <p className="text-[11px] uppercase tracking-wide text-gray-500 mt-2 mb-2">Timeline</p>
+                <div className="space-y-2">
+                  {debugTimeline.map((entry) => {
+                    const kindStyle = entry.kind === 'in'
+                      ? 'border-green-200 bg-green-50 text-green-700'
+                      : entry.kind === 'out'
+                        ? 'border-blue-200 bg-blue-50 text-blue-700'
+                        : 'border-amber-200 bg-amber-50 text-amber-700'
+                    return (
+                      <div key={entry.id} className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2">
+                        <div className="flex items-center justify-between gap-2 mb-1">
+                          <div className="flex items-center gap-1.5 min-w-0">
+                            <span className={`px-1.5 py-0.5 rounded-full border text-[10px] uppercase tracking-wide ${kindStyle}`}>
+                              {entry.kind}
+                            </span>
+                            <span className="text-[11px] text-gray-700 truncate">{entry.nodeName} • {entry.label}</span>
+                            {entry.heartbeatCount && entry.heartbeatCount > 1 && (
+                              <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700">
+                                merged x{entry.heartbeatCount}
                               </span>
-                              <span className="shrink-0 flex items-center gap-2 text-gray-400">
-                                {agentRef && <span className="font-mono text-brand-600">{agentRef}</span>}
-                                <span className={`px-1.5 py-0.5 rounded-full border text-[10px] ${
-                                  ns.status === 'completed' ? 'border-green-200 text-green-700 bg-green-50'
-                                  : ns.status === 'failed' ? 'border-red-200 text-red-700 bg-red-50'
-                                  : ns.status === 'running' ? 'border-blue-200 text-blue-700 bg-blue-50'
-                                  : 'border-gray-200 text-gray-500 bg-white'
-                                }`}>{ns.status}</span>
-                              </span>
-                            </summary>
-                            <div className="px-3 pb-3 border-t border-gray-200 space-y-3">
-                              {/* IN */}
-                              <div>
-                                <p className="text-[10px] uppercase tracking-wide text-green-600 mt-2 mb-1 flex items-center gap-1">
-                                  <span>▶ IN</span>
-                                  <span className="text-gray-400 normal-case tracking-normal">→ OpenClaw agent</span>
-                                </p>
-                                {systemPrompt && (
-                                  <div className="mb-1.5">
-                                    <p className="text-[10px] text-gray-400 mb-0.5">Extra system prompt</p>
-                                    <pre className="bg-black text-green-200 rounded-lg p-3 text-[10px] overflow-auto max-h-48 whitespace-pre-wrap">{systemPrompt}</pre>
-                                  </div>
-                                )}
-                                <div>
-                                  <p className="text-[10px] text-gray-400 mb-0.5">Message</p>
-                                  <pre className="bg-black text-green-200 rounded-lg p-3 text-[10px] overflow-auto max-h-72 whitespace-pre-wrap">{userPrompt || '(empty)'}</pre>
-                                </div>
-                                {humanGuidance && (
-                                  <div className="mt-1.5">
-                                    <p className="text-[10px] text-amber-600 mb-0.5">Human guidance</p>
-                                    <pre className="bg-black text-amber-200 rounded-lg p-3 text-[10px] overflow-auto max-h-32 whitespace-pre-wrap">{humanGuidance}</pre>
-                                  </div>
-                                )}
-                              </div>
-                              {/* OUT */}
-                              {(outputText || ns.status === 'failed') && (
-                                <div>
-                                  <p className="text-[10px] uppercase tracking-wide text-blue-600 mb-1 flex items-center gap-1">
-                                    <span>◀ OUT</span>
-                                    <span className="text-gray-400 normal-case tracking-normal">← OpenClaw response</span>
-                                    {ns.status === 'paused' && (
-                                      <span className="text-amber-500 normal-case tracking-normal">(paused — awaiting human)</span>
-                                    )}
-                                  </p>
-                                  {outputText ? (
-                                    <pre className="bg-black text-blue-200 rounded-lg p-3 text-[10px] overflow-auto max-h-72 whitespace-pre-wrap">{outputText}</pre>
-                                  ) : (
-                                    <pre className="bg-black text-red-300 rounded-lg p-3 text-[10px] overflow-auto max-h-32 whitespace-pre-wrap">{ns.error ?? '(failed — no output)'}</pre>
-                                  )}
-                                </div>
-                              )}
-                              {/* Agent logs */}
-                              {logs.length > 0 && (
-                                <details>
-                                  <summary className="cursor-pointer text-[10px] text-gray-500 hover:text-gray-700">
-                                    Agent logs ({logs.length} entries)
-                                  </summary>
-                                  <pre className="mt-1 bg-black text-yellow-200 rounded-lg p-3 text-[10px] overflow-auto max-h-52 whitespace-pre-wrap">
-                                    {JSON.stringify(logs, null, 2)}
-                                  </pre>
-                                </details>
-                              )}
-                            </div>
-                          </details>
-                        )
-                      })}
-                    {nodeStates.filter((ns) => ns.input || ns.output).length === 0 && (
-                      <p className="text-[11px] text-gray-400 italic">No node messages yet.</p>
-                    )}
-                  </div>
+                            )}
+                          </div>
+                          <span className="text-[10px] text-gray-400 shrink-0">
+                            {entry.iso ? new Date(entry.iso).toLocaleTimeString() : '-'}
+                          </span>
+                        </div>
+                        <pre className="bg-black text-gray-100 rounded-lg p-2.5 text-[10px] overflow-auto max-h-56 whitespace-pre-wrap">
+                          {entry.heartbeatCount && entry.heartbeatCount > 1
+                            ? `Heartbeat updates merged (${entry.heartbeatCount})\nLatest: ${entry.content}`
+                            : entry.content}
+                        </pre>
+                      </div>
+                    )
+                  })}
+                  {debugTimeline.length === 0 && (
+                    <p className="text-[11px] text-gray-400 italic">No debug events yet.</p>
+                  )}
                 </div>
-
               </div>
             </details>
           </div>

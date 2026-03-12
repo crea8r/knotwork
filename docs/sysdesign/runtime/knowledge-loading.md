@@ -103,10 +103,11 @@ def build_agent_prompt(
 
     system_prompt = f"=== GUIDELINES (how to work) ===\n\n{guidelines}"
 
-    # Build case section — run state fields + attached files
+    # Build case section — run state fields + attached file metadata
     case_data = extract_input(run_state, input_mapping)
     case_files = "\n\n".join(
-        f"[File: {f['name']}]\n{f['content']}" for f in run_context_files
+        f"[File: {f['filename']}] ({f['mime_type']}, {f['size']} bytes)"
+        for f in run_context_files
     )
 
     user_prompt = (
@@ -118,4 +119,4 @@ def build_agent_prompt(
     return system_prompt, user_prompt
 ```
 
-The LLM always knows: guidelines describe how to work; the case is what it is working on. This distinction prevents the agent from confusing a specific client's contract with a general procedure.
+The LLM always knows: guidelines describe how to work; the case is what it is working on. File bytes are not inlined in prompts. For OpenClaw, Knotwork forwards attachment URLs in the execution task so OpenClaw handles file retrieval/processing itself.

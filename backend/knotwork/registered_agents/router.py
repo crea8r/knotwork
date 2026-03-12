@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Query, status
+from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from knotwork.channels.schemas import ChannelMessageOut
@@ -315,3 +315,82 @@ async def ask_main_chat(
     db: AsyncSession = Depends(get_db),
 ):
     return await service.ask_main_chat(db, workspace_id, agent_id, data)
+
+
+@router.post(
+    "/workspaces/{workspace_id}/agents/{agent_id}/main-chat/attach",
+)
+async def upload_chat_attachment(
+    workspace_id: UUID,
+    agent_id: UUID,
+    file: UploadFile = File(...),
+    request: Request = None,
+):
+    """Store a raw file and return a URL that OpenClaw can fetch.
+
+    Knotwork does zero processing — bytes are base64-stored via StorageAdapter.
+    OpenClaw receives the URL in task.attachments and handles the file itself.
+    """
+    import base64
+    import mimetypes
+    from uuid import uuid4 as _uuid4
+    from knotwork.knowledge.storage import get_storage_adapter
+
+    content = await file.read()
+    if len(content) == 0:
+        raise HTTPException(status_code=400, detail="Empty file")
+    if len(content) > 50 * 1024 * 1024:
+        raise HTTPException(status_code=413, detail="File too large — max 50 MB")
+
+    filename = file.filename or "attachment"
+    mime_type = file.content_type or mimetypes.guess_type(filename)[0] or "application/octet-stream"
+    attachment_id = str(_uuid4())
+    storage_path = f"{attachment_id}/{filename}"
+
+    # Store binary file as base64 text via StorageAdapter (workspace = "_chat_attachments")
+    adapter = get_storage_adapter()
+    encoded = base64.b64encode(content).decode("ascii")
+    await adapter.write(
+        workspace_id="_chat_attachments",
+        path=storage_path,
+        content=encoded,
+        saved_by="chat_attach",
+        change_summary=f"chat attachment {filename}",
+    )
+
+    # Build the download URL from the request base URL so OpenClaw can reach it
+    base = str(request.base_url).rstrip("/") if request else ""
+    download_url = f"{base}/api/v1/chat-attachments/{attachment_id}/{filename}"
+
+    return {
+        "key": storage_path,
+        "url": download_url,
+        "filename": filename,
+        "mime_type": mime_type,
+        "size": len(content),
+        "attachment_id": attachment_id,
+    }
+
+
+@router.get("/chat-attachments/{attachment_id}/{filename}")
+async def serve_chat_attachment(attachment_id: str, filename: str):
+    """Serve a raw chat attachment. Called by the OpenClaw plugin to fetch file bytes."""
+    import base64
+    import mimetypes
+    from fastapi.responses import Response
+    from knotwork.knowledge.storage import get_storage_adapter
+
+    storage_path = f"{attachment_id}/{filename}"
+    adapter = get_storage_adapter()
+    try:
+        file_content = await adapter.read("_chat_attachments", storage_path)
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="Attachment not found")
+
+    raw_bytes = base64.b64decode(file_content.content)
+    mime_type = mimetypes.guess_type(filename)[0] or "application/octet-stream"
+    return Response(
+        content=raw_bytes,
+        media_type=mime_type,
+        headers={"Content-Disposition": f'inline; filename="{filename}"'},
+    )

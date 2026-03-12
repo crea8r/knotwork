@@ -1,11 +1,14 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
+import { Loader2, Paperclip, X } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
-import { useTriggerRun } from '@/api/runs'
+import { useTriggerRun, useUploadRunAttachment, type RunAttachmentRef } from '@/api/runs'
 import { useAuthStore } from '@/store/auth'
 import Btn from '@/components/shared/Btn'
 import type { GraphDefinition, InputFieldDef } from '@/types'
 
 const DEV_WORKSPACE = import.meta.env.VITE_DEV_WORKSPACE_ID ?? 'dev-workspace'
+const MAX_ATTACHMENTS = 10
+const MAX_FILE_BYTES = 10 * 1024 * 1024
 
 interface Props {
   graphId: string
@@ -49,6 +52,8 @@ export default function RunTriggerModal({ graphId, definition, onClose }: Props)
   const navigate = useNavigate()
   const workspaceId = useAuthStore((s) => s.workspaceId) ?? DEV_WORKSPACE
   const triggerRun = useTriggerRun(workspaceId, graphId)
+  const uploadAttachment = useUploadRunAttachment(workspaceId)
+  const fileInputRef = useRef<HTMLInputElement | null>(null)
 
   const schema = definition.input_schema ?? []
   const hasSchema = schema.length > 0
@@ -59,9 +64,88 @@ export default function RunTriggerModal({ graphId, definition, onClose }: Props)
   )
   const [inputJson, setInputJson] = useState('{}')
   const [err, setErr] = useState('')
+  const [attachments, setAttachments] = useState<Array<{
+    localId: string
+    filename: string
+    size: number
+    status: 'uploading' | 'uploaded' | 'failed'
+    ref?: RunAttachmentRef
+    error?: string
+  }>>([])
 
   function setField(name: string, value: string) {
     setFormValues((prev) => ({ ...prev, [name]: value }))
+  }
+
+  async function uploadFile(file: File, localId: string) {
+    try {
+      const uploaded = await uploadAttachment.mutateAsync(file)
+      setAttachments((prev) =>
+        prev.map((a) => (
+          a.localId === localId
+            ? { ...a, status: 'uploaded', ref: uploaded, error: undefined }
+            : a
+        )),
+      )
+    } catch (e: any) {
+      const message = e?.response?.data?.detail ?? 'Upload failed'
+      setAttachments((prev) =>
+        prev.map((a) => (
+          a.localId === localId
+            ? { ...a, status: 'failed', error: String(message) }
+            : a
+        )),
+      )
+    }
+  }
+
+  function handleSelectFiles(files: FileList | null) {
+    if (!files || files.length === 0) return
+    const existing = attachments.length
+    const remaining = Math.max(0, MAX_ATTACHMENTS - existing)
+    if (remaining <= 0) {
+      setErr(`Maximum ${MAX_ATTACHMENTS} files`)
+      return
+    }
+
+    const incoming = Array.from(files).slice(0, remaining)
+    if (incoming.length < files.length) {
+      setErr(`Only first ${remaining} file(s) were added (max ${MAX_ATTACHMENTS})`)
+    } else {
+      setErr('')
+    }
+
+    const staged = incoming.map((f) => {
+      const localId = `${Date.now()}-${Math.random()}-${f.name}`
+      if (f.size > MAX_FILE_BYTES) {
+        return {
+          localId,
+          filename: f.name,
+          size: f.size,
+          status: 'failed' as const,
+          error: 'File too large (max 10 MB)',
+        }
+      }
+      return {
+        localId,
+        filename: f.name,
+        size: f.size,
+        status: 'uploading' as const,
+      }
+    })
+
+    setAttachments((prev) => [...prev, ...staged])
+    for (let i = 0; i < incoming.length; i += 1) {
+      const f = incoming[i]
+      const row = staged[i]
+      if (row.status === 'uploading') {
+        void uploadFile(f, row.localId)
+      }
+    }
+  }
+
+  function removeAttachment(localId: string) {
+    setAttachments((prev) => prev.filter((a) => a.localId !== localId))
   }
 
   async function handleRun() {
@@ -90,9 +174,28 @@ export default function RunTriggerModal({ graphId, definition, onClose }: Props)
       }
     }
 
-    const run = await triggerRun.mutateAsync({ input, name: runName.trim() || undefined })
+    if (attachments.some((a) => a.status === 'uploading')) {
+      setErr('Please wait for file uploads to finish before running')
+      return
+    }
+    if (attachments.some((a) => a.status === 'failed')) {
+      setErr('Remove failed uploads before running')
+      return
+    }
+    const contextFiles = attachments
+      .filter((a) => a.status === 'uploaded' && a.ref)
+      .map((a) => a.ref as RunAttachmentRef)
+    const run = await triggerRun.mutateAsync({
+      input,
+      name: runName.trim() || undefined,
+      context_files: contextFiles,
+    })
     navigate(`/runs/${run.id}`)
   }
+
+  const isUploading = attachments.some((a) => a.status === 'uploading')
+  const hasFailedUploads = attachments.some((a) => a.status === 'failed')
+  const canRun = !isUploading && !hasFailedUploads && !triggerRun.isPending
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
@@ -114,6 +217,67 @@ export default function RunTriggerModal({ graphId, definition, onClose }: Props)
               onChange={e => setRunName(e.target.value)}
               className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
             />
+          </div>
+
+          <div>
+            <label className="block text-xs font-medium text-gray-500 mb-1">
+              Attach files <span className="font-normal text-gray-400">(max 10 files, 10 MB each)</span>
+            </label>
+            <input
+              ref={fileInputRef}
+              type="file"
+              multiple
+              className="hidden"
+              onChange={(e) => {
+                handleSelectFiles(e.target.files)
+                e.target.value = ''
+              }}
+            />
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              className="w-full border border-dashed border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-600 hover:border-brand-400 hover:text-brand-700 flex items-center justify-center gap-2"
+              disabled={attachments.length >= MAX_ATTACHMENTS}
+            >
+              <Paperclip size={14} />
+              Add files
+            </button>
+            {attachments.length > 0 && (
+              <div className="mt-2 space-y-2 max-h-40 overflow-y-auto">
+                {attachments.map((a) => (
+                  <div key={a.localId} className="flex items-center justify-between rounded-lg border border-gray-200 px-2 py-1.5 text-xs">
+                    <div className="min-w-0">
+                      <p className="truncate text-gray-700">{a.filename}</p>
+                      <p className={`${
+                        a.status === 'failed'
+                          ? 'text-red-500'
+                          : a.status === 'uploading'
+                            ? 'text-amber-600'
+                            : 'text-gray-400'
+                      }`}>
+                        {a.status === 'uploading' ? 'Uploading...' : a.status === 'failed' ? a.error : `${Math.round(a.size / 1024)} KB`}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      {a.status === 'uploading' && <Loader2 size={12} className="animate-spin text-amber-600" />}
+                      <button
+                        type="button"
+                        className="text-gray-400 hover:text-gray-700"
+                        onClick={() => removeAttachment(a.localId)}
+                      >
+                        <X size={12} />
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+            {isUploading && (
+              <p className="mt-1 text-xs text-amber-600">Uploading in progress. Run is disabled until all uploads finish.</p>
+            )}
+            {hasFailedUploads && (
+              <p className="mt-1 text-xs text-red-500">Remove failed uploads before running.</p>
+            )}
           </div>
 
           {hasSchema ? (
@@ -154,7 +318,7 @@ export default function RunTriggerModal({ graphId, definition, onClose }: Props)
         {/* Fixed footer */}
         <div className="px-6 pt-4 pb-5 border-t flex-shrink-0 flex justify-end gap-2">
           <Btn variant="ghost" size="sm" onClick={onClose}>Cancel</Btn>
-          <Btn size="sm" loading={triggerRun.isPending} onClick={handleRun}>Run ▶</Btn>
+          <Btn size="sm" loading={triggerRun.isPending} onClick={handleRun} disabled={!canRun}>Run ▶</Btn>
         </div>
       </div>
     </div>

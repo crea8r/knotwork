@@ -1,18 +1,42 @@
-from uuid import UUID
+import base64
+import hashlib
+import hmac
+import mimetypes
+from pathlib import Path
+from uuid import UUID, uuid4
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile
+from fastapi.responses import Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from knotwork.config import settings
 from knotwork.database import get_db
+from knotwork.knowledge.storage import get_storage_adapter
 from knotwork.runs import service
 from knotwork.runs.schemas import (
     OpenAICallLogOut, ResumeRun, RunCreate, RunHandbookProposalOut, RunNodeStateOut, RunOut,
-    RunUpdate, RunWorklogEntryOut,
+    RunAttachmentUploadOut, RunUpdate, RunWorklogEntryOut,
 )
 from knotwork.channels.schemas import ChannelMessageOut
 
 
 router = APIRouter(prefix="/workspaces", tags=["runs"])
+MAX_RUN_ATTACHMENT_SIZE_BYTES = 10 * 1024 * 1024
+
+
+def _build_download_token(workspace_id: UUID, key: str) -> str:
+    msg = f"{workspace_id}:{key}".encode("utf-8")
+    return hmac.new(settings.jwt_secret.encode("utf-8"), msg, hashlib.sha256).hexdigest()
+
+
+def _safe_filename(name: str) -> str:
+    # Keep only the final path segment so uploads cannot escape storage prefixes.
+    cleaned = Path(name or "attachment").name
+    return cleaned or "attachment"
+
+
+def _build_attachment_key(workspace_id: UUID, attachment_id: str, filename: str) -> str:
+    return f"runs/{workspace_id}/{attachment_id}/{filename}"
 
 
 @router.post("/{workspace_id}/graphs/{graph_id}/runs", response_model=RunOut, status_code=201)
@@ -27,6 +51,74 @@ async def trigger_run(
     except ValueError as e:
         raise HTTPException(400, str(e))
     return RunOut.model_validate(run)
+
+
+@router.post(
+    "/{workspace_id}/runs/attachments",
+    response_model=RunAttachmentUploadOut,
+    status_code=201,
+)
+async def upload_run_attachment(
+    workspace_id: UUID,
+    request: Request,
+    file: UploadFile = File(...),
+):
+    content = await file.read()
+    if len(content) == 0:
+        raise HTTPException(status_code=400, detail="Empty file")
+    if len(content) > MAX_RUN_ATTACHMENT_SIZE_BYTES:
+        raise HTTPException(status_code=413, detail="File too large — max 10 MB")
+
+    filename = _safe_filename(file.filename or "attachment")
+    mime_type = file.content_type or mimetypes.guess_type(filename)[0] or "application/octet-stream"
+    attachment_id = uuid4().hex
+    key = _build_attachment_key(workspace_id, attachment_id, filename)
+    encoded = base64.b64encode(content).decode("ascii")
+    await get_storage_adapter().write(
+        workspace_id="_run_attachments",
+        path=key,
+        content=encoded,
+        saved_by="run_attachment",
+        change_summary=f"run attachment {filename}",
+    )
+    token = _build_download_token(workspace_id, key)
+    base = str(request.base_url).rstrip("/")
+    url = f"{base}/api/v1/workspaces/{workspace_id}/runs/attachments/{attachment_id}/{filename}?token={token}"
+    return RunAttachmentUploadOut(
+        key=key,
+        url=url,
+        filename=filename,
+        mime_type=mime_type,
+        size=len(content),
+        attachment_id=attachment_id,
+    )
+
+
+@router.get("/{workspace_id}/runs/attachments/{attachment_id}/{filename}")
+async def serve_run_attachment(
+    workspace_id: UUID,
+    attachment_id: str,
+    filename: str,
+    token: str = Query(...),
+):
+    safe_name = _safe_filename(filename)
+    key = _build_attachment_key(workspace_id, attachment_id, safe_name)
+    expected = _build_download_token(workspace_id, key)
+    if not hmac.compare_digest(token, expected):
+        raise HTTPException(status_code=403, detail="Invalid attachment token")
+
+    try:
+        file_content = await get_storage_adapter().read("_run_attachments", key)
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="Attachment not found")
+
+    raw_bytes = base64.b64decode(file_content.content)
+    mime_type = mimetypes.guess_type(safe_name)[0] or "application/octet-stream"
+    return Response(
+        content=raw_bytes,
+        media_type=mime_type,
+        headers={"Content-Disposition": f'inline; filename="{safe_name}"'},
+    )
 
 
 @router.get("/{workspace_id}/runs", response_model=list[RunOut])
@@ -113,6 +205,7 @@ async def abort_run(
     workspace_id: UUID, run_id: UUID, db: AsyncSession = Depends(get_db)
 ):
     from datetime import datetime, timezone
+    from knotwork.public_workflows.service import notify_public_run_aborted
     from knotwork.runtime.events import publish_event
     run = await service.get_run(db, run_id)
     if not run or run.workspace_id != workspace_id:
@@ -122,6 +215,7 @@ async def abort_run(
     run.status = "stopped"
     run.completed_at = datetime.now(timezone.utc)
     await db.commit()
+    await notify_public_run_aborted(db, run_id)
     await publish_event(str(run_id), {"type": "run_status_changed", "status": "stopped"})
     return {"status": "stopped", "run_id": str(run_id)}
 

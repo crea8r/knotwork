@@ -1,8 +1,20 @@
+import logging
+import sys
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from time import monotonic
 
 from fastapi import FastAPI
+
+# Attach a stdout handler to the knotwork logger so INFO+ messages are always
+# visible in docker compose logs, regardless of uvicorn's root-logger config.
+_kw_logger = logging.getLogger("knotwork")
+_kw_logger.setLevel(logging.INFO)
+if not _kw_logger.handlers:
+    _h = logging.StreamHandler(sys.stdout)
+    _h.setFormatter(logging.Formatter("%(levelname)s  [%(name)s] %(message)s"))
+    _kw_logger.addHandler(_h)
+_kw_logger.propagate = False  # avoid double-printing via root logger
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
@@ -11,6 +23,7 @@ from sqlalchemy import text
 # Without these imports, FK resolution fails at flush time.
 import knotwork.auth.models          # noqa: F401
 import knotwork.workspaces.models    # noqa: F401
+import knotwork.workspaces.invitations.models  # noqa: F401
 import knotwork.graphs.models        # noqa: F401
 import knotwork.runs.models          # noqa: F401
 import knotwork.knowledge.models     # noqa: F401
@@ -23,6 +36,7 @@ import knotwork.designer.models       # noqa: F401
 import knotwork.registered_agents.models  # noqa: F401
 import knotwork.channels.models  # noqa: F401
 import knotwork.openclaw_integrations.models  # noqa: F401
+import knotwork.public_workflows.models  # noqa: F401
 
 # Import new S6.5 models so they are registered with Base.metadata
 from knotwork.runs.models import RunHandbookProposal, RunWorklogEntry  # noqa: F401
@@ -45,6 +59,11 @@ from knotwork.openclaw_integrations.router import (
     plugin_router as openclaw_plugin_router,
 )
 from knotwork.openclaw_integrations.router import router as openclaw_router
+from knotwork.workspaces.invitations.router import router as invitations_router
+from knotwork.workspaces.invitations.router import public_router as invitations_public_router
+from knotwork.openclaw_integrations.install_router import router as openclaw_install_router
+from knotwork.public_workflows.router import router as public_workflows_router
+from knotwork.public_workflows.router import public_router as public_workflows_public_router
 from knotwork.database import AsyncSessionLocal
 
 _STARTED_AT = datetime.now(timezone.utc)
@@ -84,8 +103,13 @@ def create_app() -> FastAPI:
     app.include_router(registered_agents_router, prefix=prefix)
     app.include_router(channels_router, prefix=prefix)
     app.include_router(openclaw_router, prefix=prefix)
+    app.include_router(invitations_router, prefix=prefix)
+    app.include_router(invitations_public_router, prefix=prefix)
+    app.include_router(public_workflows_router, prefix=prefix)
+    app.include_router(public_workflows_public_router, prefix=prefix)
     app.include_router(agent_api_router)  # no /api/v1 prefix — agents use /agent-api
     app.include_router(openclaw_plugin_router)  # no /api/v1 prefix — plugin callback
+    app.include_router(openclaw_install_router)  # no /api/v1 prefix — plugin install
 
     @app.get("/health")
     async def healthcheck():

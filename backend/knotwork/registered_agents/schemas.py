@@ -191,8 +191,18 @@ class DebugLinkItem(BaseModel):
     created_at: datetime
 
 
+class ChatAttachmentRef(BaseModel):
+    """A file attachment referenced by its storage key. Knotwork stores; OpenClaw fetches."""
+    key: str            # storage key, e.g. "chat-attachments/{uuid}/{filename}"
+    url: str            # full URL the OpenClaw plugin can GET to download the raw bytes
+    filename: str
+    mime_type: str
+    size: int           # bytes
+
+
 class AgentMainChatAskRequest(BaseModel):
-    message: str = Field(..., min_length=1, max_length=20000)
+    message: str = Field(..., min_length=0, max_length=50_000)
+    attachments: list[ChatAttachmentRef] = []
 
 
 class AgentMainChatAskResponse(BaseModel):

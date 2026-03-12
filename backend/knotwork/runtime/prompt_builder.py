@@ -52,7 +52,7 @@ def _render_case(
     context_files: list[dict],
     prior_outputs: dict[str, str] | None = None,
 ) -> str:
-    """Render the run state, prior node outputs, and attached files."""
+    """Render run state, prior outputs, and attachment metadata (never file content)."""
     parts = []
 
     if state_fields:
@@ -62,10 +62,19 @@ def _render_case(
         for node_id, text in prior_outputs.items():
             parts.append(f"### Output from node: {node_id}\n{text}")
 
-    for f in context_files:
-        name = f.get("name", "file")
-        content = f.get("content", "")
-        parts.append(f"### Attached file: {name}\n{content}")
+    if context_files:
+        lines = []
+        for f in context_files:
+            filename = str(f.get("filename") or f.get("name") or "file")
+            mime = str(f.get("mime_type") or "application/octet-stream")
+            size = f.get("size")
+            size_label = f"{size} bytes" if isinstance(size, int) else "size unknown"
+            lines.append(f"- {filename} ({mime}, {size_label})")
+        parts.append(
+            "### Attached files\n"
+            "Files are available to the agent via attachment URLs in the execution task.\n"
+            + "\n".join(lines)
+        )
 
     return "\n\n".join(parts) if parts else "(No case data provided.)"
 
@@ -82,7 +91,7 @@ def build_agent_prompt(
     Args:
         tree:           Loaded knowledge tree from load_knowledge_tree().
         state_fields:   The subset of run state this node receives (input_mapping applied).
-        context_files:  Run Context files: [{"name": "contract.pdf", "content": "..."}].
+        context_files:  Run attachments metadata and URLs (no file content).
 
     Returns:
         (system_prompt, user_prompt) — pass directly to the LLM.

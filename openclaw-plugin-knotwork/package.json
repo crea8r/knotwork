@@ -1,9 +1,21 @@
 {
   "name": "@knotwork/knotwork-bridge",
   "version": "0.2.0",
-  "description": "Knotwork bridge plugin for OpenClaw",
-  "private": true,
+  "description": "Knotwork bridge plugin for OpenClaw — connects OpenClaw agents to Knotwork workflows",
+  "private": false,
   "type": "module",
+  "publishConfig": {
+    "access": "public"
+  },
+  "files": [
+    "dist",
+    "openclaw.plugin.json",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc --outDir dist --declaration",
+    "prepublishOnly": "npm run build"
+  },
   "openclaw": {
     "extensions": [
       "./index.ts"

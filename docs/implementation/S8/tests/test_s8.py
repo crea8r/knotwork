@@ -265,6 +265,7 @@ async def _seed_capability_snapshot(db, workspace, agent):
     return snap
 
 
+@pytest.mark.xfail(reason="superseded: preflight no longer sends LLM prompts to the main chat channel (removed in S8.2)")
 async def test_preflight_via_api_writes_agent_main_channel(
     client, db, workspace, registered_agent
 ):
@@ -293,6 +294,7 @@ async def test_preflight_via_api_writes_agent_main_channel(
     assert len(prompt_msgs) >= 1
 
 
+@pytest.mark.xfail(reason="superseded: preflight prompt removed in S8.2 — capability check is now contract-only, no LLM message")
 async def test_preflight_prompt_excludes_hidden_skills(
     client, db, workspace, registered_agent
 ):

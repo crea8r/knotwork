@@ -6,12 +6,14 @@ import Badge from '@/components/shared/Badge'
 import MockWrap from '@/components/shared/MockWrap'
 import Spinner from '@/components/shared/Spinner'
 import AgentsTab from '@/components/settings/AgentsTab'
-import { MOCK_WORKSPACE, MOCK_MEMBERS } from '@/mocks'
+import MembersTab from '@/components/settings/MembersTab'
+import AccountTab from '@/components/settings/AccountTab'
+import { MOCK_WORKSPACE } from '@/mocks'
 import { useNotifPreferences, useUpdateNotifPreferences, useNotifLog } from '@/api/notifications'
 
 const DEV_WORKSPACE = import.meta.env.VITE_DEV_WORKSPACE_ID ?? 'dev-workspace'
 
-type Tab = 'workspace' | 'members' | 'agents' | 'notifications'
+type Tab = 'account' | 'workspace' | 'members' | 'agents' | 'notifications'
 
 function Field({ label, value }: { label: string; value: string }) {
   return (
@@ -139,12 +141,9 @@ function NotificationsTab() {
 export default function SettingsPage() {
   const [searchParams, setSearchParams] = useSearchParams()
   const tabFromUrl = searchParams.get('tab') as Tab | null
-  const initialTab: Tab =
-    tabFromUrl === 'workspace' || tabFromUrl === 'members' || tabFromUrl === 'agents' || tabFromUrl === 'notifications'
-      ? tabFromUrl
-      : 'workspace'
+  const TABS: Tab[] = ['account', 'workspace', 'members', 'agents', 'notifications']
+  const initialTab: Tab = TABS.includes(tabFromUrl as Tab) ? (tabFromUrl as Tab) : 'account'
   const [tab, setTab] = useState<Tab>(initialTab)
-  const TABS: Tab[] = ['workspace', 'members', 'agents', 'notifications']
 
   useEffect(() => {
     setTab(initialTab)
@@ -173,6 +172,8 @@ export default function SettingsPage() {
         ))}
       </div>
 
+      {tab === 'account' && <AccountTab />}
+
       {tab === 'workspace' && (
         <MockWrap label="settings S8">
           <Card className="p-6 space-y-4">
@@ -183,32 +184,7 @@ export default function SettingsPage() {
         </MockWrap>
       )}
 
-      {tab === 'members' && (
-        <MockWrap label="settings S8">
-          <Card className="overflow-hidden">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="text-xs text-gray-500 uppercase bg-gray-50 border-b">
-                  <th className="text-left px-4 py-3">Name</th>
-                  <th className="text-left px-4 py-3">Email</th>
-                  <th className="text-left px-4 py-3">Role</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100">
-                {MOCK_MEMBERS.map((m) => (
-                  <tr key={m.id}>
-                    <td className="px-4 py-3 font-medium text-gray-800">{m.name}</td>
-                    <td className="px-4 py-3 text-gray-500">{m.email}</td>
-                    <td className="px-4 py-3">
-                      <Badge variant={m.role === 'owner' ? 'blue' : 'gray'}>{m.role}</Badge>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </Card>
-        </MockWrap>
-      )}
+      {tab === 'members' && <MembersTab />}
 
       {tab === 'agents' && <AgentsTab />}
 

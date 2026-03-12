@@ -54,6 +54,7 @@ export type RemoteAgent = {
   remote_agent_id: string
   slug: string
   display_name: string
+  description?: string   // short human-readable description of what the agent does
   tools: AnyObj[]
   constraints: AnyObj
 }

@@ -99,6 +99,41 @@ export interface Run {
   needs_attention: boolean
 }
 
+export interface PublicWorkflowLink {
+  id: string
+  workspace_id: string
+  graph_id: string
+  graph_version_id: string | null
+  token: string
+  description_md: string
+  status: 'active' | 'disabled'
+  created_at: string
+  updated_at: string
+}
+
+export interface PublicWorkflowView {
+  description_md: string
+  input_schema: InputFieldDef[]
+  rate_limit_max_requests: number
+  rate_limit_window_seconds: number
+  notice_test_only: boolean
+  notice_future_paid: boolean
+}
+
+export interface PublicRunTriggerOut {
+  run_id: string
+  run_token: string
+  run_public_url: string
+}
+
+export interface PublicRunView {
+  description_md: string
+  input: Record<string, unknown>
+  final_output: string | null
+  status: 'processing' | 'completed'
+  email_subscribed: boolean
+}
+
 export interface RunNodeState {
   id: string
   run_id: string

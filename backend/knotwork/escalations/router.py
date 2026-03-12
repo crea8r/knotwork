@@ -125,12 +125,14 @@ async def _enqueue_resume(run_id: str, data: EscalationResolve) -> None:
 
 
 async def _abort_run(db: AsyncSession, run_id: UUID) -> None:
+    from knotwork.public_workflows.service import notify_public_run_aborted
     from knotwork.runs.models import Run
 
     run = await db.get(Run, run_id)
     if run and run.status in ("paused", "running"):
         run.status = "stopped"
         await db.commit()
+        await notify_public_run_aborted(db, run_id)
 
 
 def _normalize_resolution(value: str) -> str:
