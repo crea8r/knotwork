@@ -48,7 +48,7 @@ These roles can overlap. A small team may have one person doing all three.
 
 5. **LLMs are replaceable.** The platform is model-agnostic. Switching providers is a configuration change, not a rewrite.
 
-6. **Mobile and tablet first.** Business operators are not at desks. Every action — designing, operating, escalating — must work on a phone.
+6. **Mobile-ready by S9.** Business operators are not at desks. The product must reach full mobile-ready operation in the S9 milestone.
 
 7. **The platform is its own best user.** Knotwork uses its own patterns internally: the workflow designer is an agent graph, knowledge is stored as knowledge fragments.
 
@@ -84,7 +84,32 @@ Knotwork occupies a gap no current tool fills:
 
 > **An operations platform for continuously improvable, human-supervised agent workflows — designed for the people who run the business, not the people who build the software.**
 
-## Phase 1 Scope
+## Release Milestones
+
+### S8.2 — Cloud deployable milestone
+
+- Deploy Knotwork to a remote server with production docker setup.
+- Provide operational runbook (env, migrations, restart, smoke tests).
+- Keep scope intentionally narrow for deployment hardening.
+
+Not included in S8.2:
+- Workspace creation flow.
+- Notification system implementation.
+
+### S9 — Human-usable milestone
+
+- Workspace creation enabled.
+- Notification system implemented.
+- Core UI and branching experience refined.
+- OpenClaw transport improved (polling replaced by WebSocket or equivalent push model).
+- Mobile-ready UI.
+
+### S10 — Agent-usable milestone
+
+- Users can interact with Knotwork through their own agents.
+- Agent access model and workspace trust boundaries are explicitly defined and enforced.
+
+## Phase 1 Scope (current baseline)
 
 | Feature | Included |
 |---------|----------|
@@ -98,20 +123,21 @@ Knotwork occupies a gap no current tool fills:
 | Knowledge system (MD files, wiki-links, versioning) | Yes |
 | Knowledge size / token flagging | Yes |
 | Run execution with per-node state inspection | Yes |
-| Human escalation: in-app + Telegram + WhatsApp + email | Yes |
+| Human escalation + notification system | Planned (S9) |
 | Human rating + improvement suggestions (A+B loop) | Yes |
 | Built-in tool registry (core tools) | Yes |
 | Role-based access (owner + operator) | Yes |
 | Async runs with ETA | Yes |
-| Cloud-first deployment | Yes |
+| Cloud deployment (remote server) | Planned (S8.2) |
 
 ## Phase 2 Scope
 
 - Scheduled (cron) runs
+- Slack integration
+- Advanced roles and permissions
+- Per-node conversation threads
+- Auto-improvement on workflows and handbook docs
 - Sub-graph nodes
 - LLM judge for automated rating
-- Autonomous knowledge improvement (opt-in)
 - Full MCP surface
-- Slack integration
 - Self-hosted deployment option
-- Advanced roles and permissions
