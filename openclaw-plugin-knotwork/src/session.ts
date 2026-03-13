@@ -10,6 +10,7 @@ import type { AnyObj, OpenClawApi, TaskResult } from './types'
 
 const AGENT_WAIT_TIMEOUT_MS = 900_000
 const AGENT_WAIT_RPC_TIMEOUT_MS = AGENT_WAIT_TIMEOUT_MS + 10_000
+const OPERATOR_SCOPES = ['operator.read', 'operator.write']
 
 type WsFrame = {
   type: string; id?: string; event?: string
@@ -64,8 +65,11 @@ async function gatewayRpc(
           displayName: 'knotwork-bridge',
           version: '0.2.0',
           platform: typeof process !== 'undefined' ? process.platform : 'linux',
-          mode: 'backend',            // one of GATEWAY_CLIENT_MODES
+          mode: 'backend',
         },
+        role: 'operator',
+        scopes: OPERATOR_SCOPES,
+        permissions: {},
       }
       if (token) connectParams.auth = { token }
       ws.send(JSON.stringify({ type: 'req', id: 'kw-connect', method: 'connect', params: connectParams }))
@@ -196,15 +200,28 @@ export async function executeTask(api: OpenClawApi, task: AnyObj): Promise<TaskR
   const taskId = String(task.task_id ?? '')
   if (!taskId) throw new Error('task missing task_id')
 
+  const gatewayCall = api.gateway?.call
   const { port, token } = getGatewayConfig(api)
   const sKey = buildSessionKey(task)
   const iKey = idempotencyKey(taskId)
   const agentId = String(task.remote_agent_id ?? task.agent_id ?? 'main')
 
+  async function rpc(method: string, params: AnyObj, timeoutMs = 90_000): Promise<unknown> {
+    if (typeof gatewayCall === 'function') {
+      try {
+        return await gatewayCall(method, params)
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error)
+        if (!/missing scope:/i.test(message)) throw error
+      }
+    }
+    return gatewayRpc(port, token, method, params, timeoutMs)
+  }
+
   // 1. Send message — gateway auto-creates session on first call.
   let started: AnyObj
   try {
-    started = (await gatewayRpc(port, token, 'agent', {
+    started = (await rpc('agent', {
       agentId, sessionKey: sKey, idempotencyKey: iKey,
       message: String(task.user_prompt ?? ''),
       extraSystemPrompt: String(task.system_prompt ?? ''),
@@ -217,16 +234,14 @@ export async function executeTask(api: OpenClawApi, task: AnyObj): Promise<TaskR
   const runId = [started.runId, started.run_id, started.id].find((v) => typeof v === 'string' && v)
   if (!runId) return parseResult(started)
 
-  const waited = (await gatewayRpc(
-    port,
-    token,
+  const waited = (await rpc(
     'agent.wait',
     { runId, timeoutMs: AGENT_WAIT_TIMEOUT_MS },
     AGENT_WAIT_RPC_TIMEOUT_MS,
   )) as AnyObj
   const status = String(waited.status ?? '')
   if (status === 'ok') {
-    const history = (await gatewayRpc(port, token, 'chat.history', { sessionKey: sKey, limit: 50 }, 10_000)) as AnyObj
+    const history = (await rpc('chat.history', { sessionKey: sKey, limit: 50 }, 10_000)) as AnyObj
     const lastMsg = latestAssistantMessage(history)
     // Prefer the agent's explicit decision block; fall back to treating the full message as output.
     return parseDecisionBlock(lastMsg) ?? { type: 'completed', output: lastMsg, next_branch: null }
@@ -236,7 +251,7 @@ export async function executeTask(api: OpenClawApi, task: AnyObj): Promise<TaskR
     // Fallback: query chat transcript before failing. In some environments
     // wait can timeout while the response is already present in session history.
     try {
-      const history = (await gatewayRpc(port, token, 'chat.history', { sessionKey: sKey, limit: 50 }, 10_000)) as AnyObj
+      const history = (await rpc('chat.history', { sessionKey: sKey, limit: 50 }, 10_000)) as AnyObj
       const lastMsg = latestAssistantMessage(history)
       if (lastMsg) {
         return parseDecisionBlock(lastMsg) ?? { type: 'completed', output: lastMsg, next_branch: null }

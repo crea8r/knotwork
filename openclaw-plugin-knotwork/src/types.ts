@@ -8,6 +8,9 @@ export type AnyObj = Record<string, any>
 export type OpenClawApi = {
   config?: AnyObj
   pluginConfig?: AnyObj
+  gateway?: {
+    call?: (method: string, params?: AnyObj) => Promise<unknown>
+  }
   runtime?: {
     system?: {
       runCommandWithTimeout?: (
@@ -17,8 +20,6 @@ export type OpenClawApi = {
     }
   }
   registerGatewayMethod?: (name: string, handler: (ctx: AnyObj) => Promise<void> | void) => void
-  // Note: api.gateway does NOT exist in the real OpenClawPluginApi — plugin IS the gateway.
-  // Agent/session calls go via raw WebSocket on the gateway port (see session.ts).
   agents?: { list?: (params?: AnyObj) => Promise<unknown> }
 }
 
