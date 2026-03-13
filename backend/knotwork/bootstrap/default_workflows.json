@@ -1,0 +1,116 @@
+[
+  {
+    "id": "landing-page-builder",
+    "name": "Building landing page",
+    "source_graph_id": "4e97e3dc-b57b-44ed-903a-565b4259c2b7",
+    "source_workspace_id": "5b2ada74-d965-4948-8a7a-48b3bafa6111",
+    "description": "Research business info, draft marketing copy, define brand guideline, then build a landing page.",
+    "definition": {
+      "nodes": [
+        {"id": "start", "type": "start", "name": "Start", "config": {}, "note": null},
+        {"id": "end", "type": "end", "name": "End", "config": {}, "note": null},
+        {
+          "id": "agent-1772526654710",
+          "type": "agent",
+          "name": "Crawl business info",
+          "config": {
+            "system_prompt": "Crawl the internet for additional information. The output shoud including name, social presence, photos, contact info, products & services, selling points, and customer reviews.\n\nShow the top 3 information you found on the internet about this business IF you want to ask me anything.\n\nIf you are not confident about the detail, just ask.",
+            "knowledge_paths": ["marketing/crawl"]
+          },
+          "note": null,
+          "agent_ref": "openclaw:main",
+          "registered_agent_id": "d5f9c83e-659e-4cf0-95d2-62f4a0dcf15f"
+        },
+        {
+          "id": "agent-1772526710793",
+          "type": "agent",
+          "name": "Marketing text",
+          "config": {
+            "system_prompt": "Create a marketing text for the business including a hook, selling points, trust elements, brand message, and a call to action.",
+            "knowledge_paths": ["marketing/cmo-profile.md", "marketing/hssbc.md", "marketing/copywriting-skill.md"],
+            "input_sources": ["agent-1772526654710"]
+          },
+          "note": null,
+          "agent_ref": "openclaw:main",
+          "registered_agent_id": "d5f9c83e-659e-4cf0-95d2-62f4a0dcf15f"
+        },
+        {
+          "id": "agent-1772526725280",
+          "type": "agent",
+          "name": "Brand guideline",
+          "config": {
+            "system_prompt": "Develop a brand guideline for the business, starting with color palette, font choices, do's and don'ts of photos, and explanations.",
+            "knowledge_paths": ["marketing/design"],
+            "input_sources": ["agent-1772526710793"]
+          },
+          "note": null,
+          "agent_ref": "openclaw:main",
+          "registered_agent_id": "d5f9c83e-659e-4cf0-95d2-62f4a0dcf15f"
+        },
+        {
+          "id": "agent-1772526752958",
+          "type": "agent",
+          "name": "Build landing page",
+          "config": {
+            "system_prompt": "Based on the marketing text and brand guideline, build a landing page and send me the link",
+            "knowledge_paths": ["marketing/hssbc", "marketing/design"],
+            "input_sources": ["agent-1772526725280"]
+          },
+          "note": null,
+          "agent_ref": "openclaw:main",
+          "registered_agent_id": "d5f9c83e-659e-4cf0-95d2-62f4a0dcf15f"
+        }
+      ],
+      "edges": [
+        {"id": "e-start-agent-1772526654710-1772526670947", "source": "start", "target": "agent-1772526654710", "type": "direct", "condition_label": null},
+        {"id": "e-agent-1772526654710-agent-1772526710793", "source": "agent-1772526654710", "target": "agent-1772526710793", "type": "direct", "condition_label": null},
+        {"id": "e-agent-1772526710793-agent-1772526725280", "source": "agent-1772526710793", "target": "agent-1772526725280", "type": "direct", "condition_label": null},
+        {"id": "e-agent-1772526725280-agent-1772526752958", "source": "agent-1772526725280", "target": "agent-1772526752958", "type": "direct", "condition_label": null},
+        {"id": "e-agent-1772526752958-end-1772526764366", "source": "agent-1772526752958", "target": "end", "type": "direct", "condition_label": null}
+      ],
+      "entry_point": null,
+      "input_schema": [
+        {
+          "name": "business_info",
+          "label": "Basic info like name, address and anything you have",
+          "description": "",
+          "required": true,
+          "type": "text"
+        }
+      ]
+    }
+  },
+  {
+    "id": "simple-writing",
+    "name": "Simple Writing",
+    "source_graph_id": "49552a7c-a337-49b4-b18a-089ef3e3e6b1",
+    "source_workspace_id": "5b2ada74-d965-4948-8a7a-48b3bafa6111",
+    "description": "Structured copywriting flow from request framing to CTA validation.",
+    "definition": {
+      "nodes": [
+        {"id": "start", "type": "start", "name": "Start", "config": {}, "note": null},
+        {"id": "end", "type": "end", "name": "End", "config": {}, "note": null},
+        {"id": "understand-request", "type": "llm_agent", "name": "Understand Request", "config": {"model": "gpt-3.5-turbo", "system_prompt": "Determine if the user wants to write from scratch or rewrite existing copy.", "confidence_threshold": 0.7, "fail_safe": "retry", "tools": [], "knowledge_paths": ["writing/noslop.md"]}, "note": null},
+        {"id": "gather-specifics", "type": "llm_agent", "name": "Gather Specifics", "config": {"model": "gpt-3.5-turbo", "system_prompt": "Ask for specifics about the product, audience, and differentiators.", "confidence_threshold": 0.7, "fail_safe": "retry", "tools": [], "knowledge_paths": ["writing/noslop.md"]}, "note": null},
+        {"id": "write-copy", "type": "llm_agent", "name": "Write Copy", "config": {"model": "gpt-3.5-turbo", "system_prompt": "Write specific copy with options and rankings.", "confidence_threshold": 0.7, "fail_safe": "retry", "tools": [], "knowledge_paths": ["writing/noslop.md"]}, "note": null},
+        {"id": "self-test", "type": "llm_agent", "name": "Self-Test", "config": {"model": "gpt-3.5-turbo", "system_prompt": "Test the copy for genericness by swapping names.", "confidence_threshold": 0.7, "fail_safe": "retry", "tools": [], "knowledge_paths": ["writing/noslop.md"]}, "note": null},
+        {"id": "cta-check", "type": "llm_agent", "name": "CTA Check", "config": {"model": "gpt-3.5-turbo", "system_prompt": "Ask for the appropriate call to action based on the business model.", "confidence_threshold": 0.7, "fail_safe": "retry", "tools": [], "knowledge_paths": ["writing/noslop.md"]}, "note": null}
+      ],
+      "edges": [
+        {"id": "e-start-understand-request", "source": "start", "target": "understand-request", "type": "direct", "condition_label": null},
+        {"id": "e-understand-request-gather-specifics", "source": "understand-request", "target": "gather-specifics", "type": "direct", "condition_label": null},
+        {"id": "e-gather-specifics-write-copy", "source": "gather-specifics", "target": "write-copy", "type": "direct", "condition_label": null},
+        {"id": "e-write-copy-self-test", "source": "write-copy", "target": "self-test", "type": "direct", "condition_label": null},
+        {"id": "e-self-test-cta-check", "source": "self-test", "target": "cta-check", "type": "direct", "condition_label": null},
+        {"id": "e-cta-check-end", "source": "cta-check", "target": "end", "type": "direct", "condition_label": null}
+      ],
+      "entry_point": "start",
+      "input_schema": [
+        {"name": "request_type", "label": "Request Type", "description": "Specify if it's a write from scratch or a rewrite.", "required": true, "type": "text"},
+        {"name": "product", "label": "Product/Service", "description": "What the thing is (product, event, service, feature).", "required": true, "type": "text"},
+        {"name": "audience", "label": "Target Audience", "description": "Who it's for (specific audience).", "required": true, "type": "text"},
+        {"name": "differentiator", "label": "Differentiator", "description": "What makes it different from competitors.", "required": true, "type": "textarea"}
+      ]
+    }
+  }
+]
