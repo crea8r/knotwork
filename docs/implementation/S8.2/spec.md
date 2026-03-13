@@ -11,6 +11,7 @@ Deploy Knotwork as a clean install on a remote server with a reproducible operat
 3. Migration/upgrade procedure (`alembic upgrade head`) for first install and updates.
 4. Reverse proxy and TLS guidance.
 5. Smoke-test checklist after deployment.
+6. Settings IA cleanup for scope clarity: hide `Workspace` and `Notifications` tabs until S9.
 
 ## Explicitly Out of Scope
 
@@ -23,6 +24,7 @@ Deploy Knotwork as a clean install on a remote server with a reproducible operat
 2. Existing S8.1 features work after deploy (auth, workflow runs, public trigger pages).
 3. Restarting services does not require manual DB patching.
 4. Documentation is sufficient for another operator to reproduce without tribal knowledge.
+5. Settings page only exposes tabs backed by shipped features in S8.2 (`Account`, `Members`, `Agents`).
 
 ## Risks
 

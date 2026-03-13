@@ -4,6 +4,7 @@
  */
 import { useState } from 'react'
 import { useRequestMagicLink } from '@/api/auth'
+import knotworkLogo from '@/assets/knotwork-logo.svg'
 
 export default function LoginPage() {
   const [email, setEmail] = useState('')
@@ -29,9 +30,7 @@ export default function LoginPage() {
       <div className="w-full max-w-sm">
         {/* Logo / name */}
         <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-12 h-12 rounded-xl bg-brand-500 text-white text-xl font-bold mb-3">
-            K
-          </div>
+          <img src={knotworkLogo} alt="Knotwork" className="mx-auto mb-3 h-12 w-12" />
           <h1 className="text-xl font-semibold text-gray-900">Knotwork</h1>
           <p className="text-sm text-gray-500 mt-1">Sign in with a magic link</p>
         </div>

@@ -10,6 +10,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useAcceptInvitation, useGetInvitation, useVerifyMagicLink, useMe } from '@/api/auth'
 import { useAuthStore } from '@/store/auth'
 import { api } from '@/api/client'
+import knotworkLogo from '@/assets/knotwork-logo.svg'
 
 export default function AcceptInvitePage() {
   const [searchParams] = useSearchParams()
@@ -144,9 +145,7 @@ function InviteAcceptFlow({ token }: { token: string | null }) {
     <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
       <div className="w-full max-w-sm">
         <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-12 h-12 rounded-xl bg-brand-500 text-white text-xl font-bold mb-3">
-            K
-          </div>
+          <img src={knotworkLogo} alt="Knotwork" className="mx-auto mb-3 h-12 w-12" />
           <h1 className="text-xl font-semibold text-gray-900">Join {inv.workspace_name}</h1>
           <p className="text-sm text-gray-500 mt-1">
             You've been invited as <strong>{inv.role}</strong>

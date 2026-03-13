@@ -6,7 +6,8 @@
   "author": "Knotwork",
   "entry": "./index.ts",
   "permissions": [
-    "network"
+    "network",
+    "operator.write"
   ],
   "configSchema": {
     "type": "object",

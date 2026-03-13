@@ -1,0 +1,16 @@
+<svg width="256" height="256" viewBox="0 0 256 256" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="knotwork-logo-title">
+  <title id="knotwork-logo-title">Knotwork box logo</title>
+  <text
+    x="130"
+    y="132"
+    fill="rgb(2 132 199 / var(--tw-text-opacity, 1))"
+    font-family="ui-sans-serif, system-ui, sans-serif"
+    font-size="300"
+    font-weight="700"
+    text-anchor="middle"
+    dominant-baseline="middle"
+    style="--tw-text-opacity: 1;"
+  >
+    ⊞
+  </text>
+</svg>

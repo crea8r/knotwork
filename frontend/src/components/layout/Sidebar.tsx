@@ -10,6 +10,7 @@ import {
   Settings,
   X,
 } from 'lucide-react'
+import knotworkLogo from '@/assets/knotwork-logo.svg'
 
 // ── Full nav item ─────────────────────────────────────────────────────────────
 
@@ -71,14 +72,14 @@ export default function Sidebar({
       <div className={`flex items-center border-b border-gray-100 ${collapsed ? 'justify-center py-[13px]' : 'justify-between'}`}>
         {collapsed ? (
           <button onClick={() => navigate('/inbox')}
-            className="text-lg font-bold text-brand-600 hover:bg-gray-50 p-1.5 rounded-lg transition-colors" title="Knotwork">
-            ⊞
+            className="hover:bg-gray-50 p-1.5 rounded-lg transition-colors" title="Knotwork">
+            <img src={knotworkLogo} alt="Knotwork" className="h-6 w-6" />
           </button>
         ) : (
           <>
             <button onClick={() => { navigate('/inbox'); onCloseMobile?.() }}
               className="flex items-center gap-2 px-4 py-4 hover:bg-gray-50 transition-colors flex-1 text-left">
-              <span className="text-lg font-bold text-brand-600">⊞</span>
+              <img src={knotworkLogo} alt="Knotwork" className="h-6 w-6 flex-shrink-0" />
               <span className="font-semibold text-gray-900 text-sm">Knotwork</span>
             </button>
             <button onClick={onCloseMobile} className="md:hidden px-3 text-gray-400 hover:text-gray-700" aria-label="Close navigation">
