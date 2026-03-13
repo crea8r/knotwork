@@ -16,6 +16,31 @@ require_cmd() {
   command -v "$1" >/dev/null 2>&1 || die "Missing required command: $1"
 }
 
+port_in_use() {
+  local port="$1"
+  if command -v lsof >/dev/null 2>&1; then
+    lsof -nP -iTCP:"$port" -sTCP:LISTEN >/dev/null 2>&1
+    return $?
+  fi
+  if command -v ss >/dev/null 2>&1; then
+    ss -ltn "( sport = :$port )" | grep -q ":$port"
+    return $?
+  fi
+  return 1
+}
+
+next_free_port() {
+  local start="$1"
+  local p="$start"
+  while port_in_use "$p"; do
+    p=$((p + 1))
+    if [[ "$p" -gt 65535 ]]; then
+      die "No free port found starting from $start"
+    fi
+  done
+  echo "$p"
+}
+
 prompt_required() {
   local var_name="$1"
   local prompt_text="$2"
@@ -75,6 +100,15 @@ install_host_packages() {
   fi
 }
 
+ensure_nginx_port_available() {
+  if port_in_use 80; then
+    if command -v systemctl >/dev/null 2>&1 && systemctl is-active --quiet nginx; then
+      return
+    fi
+    die "Host port 80 is already in use by another process. Free it before installer runs nginx."
+  fi
+}
+
 resolve_server_ip() {
   local ip
   ip="$(curl -4 -s --max-time 3 ifconfig.me || true)"
@@ -105,6 +139,8 @@ wait_for_dns() {
 
 write_nginx_config() {
   local domain="$1"
+  local backend_port="$2"
+  local frontend_port="$3"
   local conf_path="/etc/nginx/sites-available/knotwork.conf"
   log "Writing nginx config: $conf_path"
   $SUDO tee "$conf_path" >/dev/null <<EOF
@@ -114,15 +150,25 @@ server {
 
     client_max_body_size 25M;
 
+    location /api/v1/ws/ {
+        proxy_pass http://127.0.0.1:${backend_port};
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade \$http_upgrade;
+        proxy_set_header Connection "Upgrade";
+        proxy_set_header Host \$host;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+    }
+
     location /api/ {
-        proxy_pass http://127.0.0.1:8000;
+        proxy_pass http://127.0.0.1:${backend_port};
         proxy_set_header Host \$host;
         proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto \$scheme;
     }
 
     location /ws/ {
-        proxy_pass http://127.0.0.1:8000;
+        proxy_pass http://127.0.0.1:${backend_port};
         proxy_http_version 1.1;
         proxy_set_header Upgrade \$http_upgrade;
         proxy_set_header Connection "Upgrade";
@@ -130,26 +176,26 @@ server {
     }
 
     location /agent-api/ {
-        proxy_pass http://127.0.0.1:8000;
+        proxy_pass http://127.0.0.1:${backend_port};
         proxy_set_header Host \$host;
         proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto \$scheme;
     }
 
     location /openclaw-plugin/ {
-        proxy_pass http://127.0.0.1:8000;
+        proxy_pass http://127.0.0.1:${backend_port};
         proxy_set_header Host \$host;
         proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto \$scheme;
     }
 
     location /health {
-        proxy_pass http://127.0.0.1:8000;
+        proxy_pass http://127.0.0.1:${backend_port};
         proxy_set_header Host \$host;
     }
 
     location / {
-        proxy_pass http://127.0.0.1:3000;
+        proxy_pass http://127.0.0.1:${frontend_port};
         proxy_set_header Host \$host;
         proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto \$scheme;
@@ -173,9 +219,10 @@ request_tls() {
 }
 
 wait_backend_health() {
+  local backend_port="$1"
   log "Waiting for backend health..."
   for _ in $(seq 1 60); do
-    if curl -fsS "http://127.0.0.1:8000/health" >/dev/null 2>&1; then
+    if curl -fsS "http://127.0.0.1:${backend_port}/health" >/dev/null 2>&1; then
       echo "Backend is healthy."
       return
     fi
@@ -213,8 +260,22 @@ if [[ -z "$JWT_SECRET" ]]; then
   JWT_SECRET="$(gen_secret)"
 fi
 
+DEFAULT_BACKEND_PORT="$(next_free_port 8000)"
+DEFAULT_FRONTEND_PORT="$(next_free_port 3000)"
+DEFAULT_POSTGRES_PORT="$(next_free_port 5432)"
+DEFAULT_REDIS_PORT="$(next_free_port 6379)"
+prompt_with_default BACKEND_HOST_PORT "Backend host port" "$DEFAULT_BACKEND_PORT"
+prompt_with_default FRONTEND_HOST_PORT "Frontend host port" "$DEFAULT_FRONTEND_PORT"
+prompt_with_default POSTGRES_HOST_PORT "Postgres host port" "$DEFAULT_POSTGRES_PORT"
+prompt_with_default REDIS_HOST_PORT "Redis host port" "$DEFAULT_REDIS_PORT"
+port_in_use "$BACKEND_HOST_PORT" && die "Backend host port ${BACKEND_HOST_PORT} is already in use."
+port_in_use "$FRONTEND_HOST_PORT" && die "Frontend host port ${FRONTEND_HOST_PORT} is already in use."
+port_in_use "$POSTGRES_HOST_PORT" && die "Postgres host port ${POSTGRES_HOST_PORT} is already in use."
+port_in_use "$REDIS_HOST_PORT" && die "Redis host port ${REDIS_HOST_PORT} is already in use."
+[[ "$BACKEND_HOST_PORT" == "$FRONTEND_HOST_PORT" ]] && die "Backend and frontend host ports cannot be the same."
+
 if [[ "$DOMAIN" == "localhost" ]]; then
-  prompt_with_default APP_BASE_URL "APP_BASE_URL" "http://localhost:3000"
+  prompt_with_default APP_BASE_URL "APP_BASE_URL" "http://localhost"
   prompt_with_default RESEND_API "Resend API key (optional for local)" ""
   prompt_with_default EMAIL_FROM "Email from address (local default)" "noreply@localhost"
   prompt_with_default ENABLE_LOCAL_BYPASS "Enable localhost auth bypass for bootstrapped owner? (yes/no)" "yes"
@@ -224,6 +285,8 @@ else
   prompt_required EMAIL_FROM "From email (verified on Resend)"
   ENABLE_LOCAL_BYPASS="no"
 fi
+
+VITE_API_URL="${APP_BASE_URL%/}/api/v1"
 
 if [[ -f ".env" ]]; then
   cp .env ".env.backup.$(date +%Y%m%d%H%M%S)"
@@ -239,13 +302,21 @@ set_env_key "APP_BASE_URL" "$APP_BASE_URL" .env
 set_env_key "AUTH_DEV_BYPASS_USER_ID" "" .env
 set_env_key "RESEND_API" "$RESEND_API" .env
 set_env_key "EMAIL_FROM" "$EMAIL_FROM" .env
+set_env_key "BACKEND_HOST_PORT" "$BACKEND_HOST_PORT" .env
+set_env_key "FRONTEND_HOST_PORT" "$FRONTEND_HOST_PORT" .env
+set_env_key "POSTGRES_HOST_PORT" "$POSTGRES_HOST_PORT" .env
+set_env_key "REDIS_HOST_PORT" "$REDIS_HOST_PORT" .env
+set_env_key "VITE_API_URL" "$VITE_API_URL" .env
+
+COMPOSE_CMD=(docker compose)
 
 log "Starting Docker prod stack..."
-docker compose --profile prod up -d --build
-wait_backend_health
+"${COMPOSE_CMD[@]}" --profile prod up -d --build
+wait_backend_health "$BACKEND_HOST_PORT"
 
 install_host_packages
-write_nginx_config "$DOMAIN"
+ensure_nginx_port_available
+write_nginx_config "$DOMAIN" "$BACKEND_HOST_PORT" "$FRONTEND_HOST_PORT"
 
 if [[ "$DOMAIN" != "localhost" ]]; then
   SERVER_IP="$(resolve_server_ip)"
@@ -255,7 +326,7 @@ fi
 
 log "Bootstrapping owner + workspace..."
 BOOTSTRAP_JSON="$(
-  docker compose --profile prod exec -T backend \
+  "${COMPOSE_CMD[@]}" --profile prod exec -T backend \
     python scripts/bootstrap_owner.py \
       --owner-name "$OWNER_NAME" \
       --owner-email "$OWNER_EMAIL"
@@ -269,8 +340,8 @@ if [[ "$DOMAIN" == "localhost" ]]; then
     y|yes|true|1)
       log "Enabling localhost auth bypass for owner user ${OWNER_USER_ID}..."
       set_env_key "AUTH_DEV_BYPASS_USER_ID" "$OWNER_USER_ID" .env
-      docker compose --profile prod up -d --force-recreate backend worker
-      wait_backend_health
+      "${COMPOSE_CMD[@]}" --profile prod up -d --force-recreate backend worker
+      wait_backend_health "$BACKEND_HOST_PORT"
       ;;
     *)
       log "Local auth bypass disabled; magic-link login requires working email setup."
@@ -279,7 +350,7 @@ if [[ "$DOMAIN" == "localhost" ]]; then
 fi
 
 log "Importing default workflows (preselected: 2)..."
-docker compose --profile prod exec -T backend \
+"${COMPOSE_CMD[@]}" --profile prod exec -T backend \
   python scripts/import_default_workflows.py \
     --workspace-id "$WORKSPACE_ID" \
     --workflow-id landing-page-builder \
@@ -289,6 +360,10 @@ echo
 echo "Install complete."
 echo "Domain: $DOMAIN"
 echo "App URL: $APP_BASE_URL"
+echo "Backend host port: $BACKEND_HOST_PORT"
+echo "Frontend host port: $FRONTEND_HOST_PORT"
+echo "Postgres host port: $POSTGRES_HOST_PORT"
+echo "Redis host port: $REDIS_HOST_PORT"
 echo "Workspace ID: $WORKSPACE_ID"
 echo "Owner user ID: $OWNER_USER_ID"
 echo "Owner email: $OWNER_EMAIL"

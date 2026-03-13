@@ -71,13 +71,15 @@ Installer behavior:
 1. Prompt owner `name` + `email`.
 2. Prompt server domain (`localhost` supported for local installs).
 3. Write `.env` from `.env.docker.example` and inject required production values.
-4. Start Docker stack with `docker compose --profile prod up -d --build`.
-5. Configure host nginx reverse proxy for:
-   - `/` -> frontend (`127.0.0.1:3000`)
-   - `/api`, `/ws`, `/agent-api`, `/openclaw-plugin`, `/health` -> backend (`127.0.0.1:8000`)
-6. For non-local domains, gate on DNS readiness and run Let's Encrypt (`certbot --nginx`).
-7. Create/reuse owner user + owner workspace membership directly in DB bootstrap script.
-8. Import both default workflows by default:
+4. Ask operator-selected host ports for backend/frontend (no hardcoded `8000`/`3000` assumption).
+5. Ask operator-selected host ports for postgres/redis (no hardcoded `5432`/`6379` assumption).
+6. Start Docker stack with `docker compose --profile prod up -d --build`.
+7. Configure host nginx reverse proxy for:
+   - `/` -> frontend (`127.0.0.1:<FRONTEND_HOST_PORT>`)
+   - `/api`, `/api/v1/ws`, `/ws`, `/agent-api`, `/openclaw-plugin`, `/health` -> backend (`127.0.0.1:<BACKEND_HOST_PORT>`)
+8. For non-local domains, gate on DNS readiness and run Let's Encrypt (`certbot --nginx`).
+9. Create/reuse owner user + owner workspace membership directly in DB bootstrap script.
+10. Import both default workflows by default:
    - `landing-page-builder`
    - `simple-writing`
-9. Import handbook dependencies for selected workflows.
+11. Import handbook dependencies for selected workflows.

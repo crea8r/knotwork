@@ -15,7 +15,7 @@ services:
       POSTGRES_USER: knotwork
       POSTGRES_PASSWORD: knotwork
     ports:
-      - "5432:5432"
+      - "${POSTGRES_HOST_PORT:-5432}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -29,7 +29,7 @@ services:
   redis:
     image: redis:7-alpine
     ports:
-      - "6379:6379"
+      - "${REDIS_HOST_PORT:-6379}:6379"
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
@@ -50,7 +50,7 @@ services:
       DATABASE_URL_SYNC: postgresql://knotwork:knotwork@postgres:5432/knotwork
       REDIS_URL: redis://redis:6379
     ports:
-      - "8000:8000"
+      - "${BACKEND_HOST_PORT:-8000}:8000"
     depends_on:
       postgres:
         condition: service_healthy
@@ -76,7 +76,7 @@ services:
       DATABASE_URL_SYNC: postgresql://knotwork:knotwork@postgres:5432/knotwork
       REDIS_URL: redis://redis:6379
     ports:
-      - "8000:8000"
+      - "${BACKEND_DEV_HOST_PORT:-8000}:8000"
     depends_on:
       postgres:
         condition: service_healthy
@@ -145,7 +145,7 @@ services:
       dockerfile: Dockerfile.frontend
       target: dev
     ports:
-      - "3000:3000"
+      - "${FRONTEND_DEV_HOST_PORT:-3000}:3000"
     volumes:
       - ./frontend/src:/app/src
       - ./frontend/public:/app/public
@@ -165,9 +165,9 @@ services:
       dockerfile: Dockerfile.frontend
       target: prod
       args:
-        VITE_API_URL: http://localhost:8000
+        VITE_API_URL: ${VITE_API_URL:-http://localhost:8000/api/v1}
     ports:
-      - "3000:80"
+      - "${FRONTEND_HOST_PORT:-3000}:80"
     depends_on:
       - backend
     profiles: ["prod"]
