@@ -4,6 +4,7 @@
  */
 import { useEffect, useRef, useState } from 'react'
 import { Trash2 } from 'lucide-react'
+import axios from 'axios'
 import { useDesignChat, useDesignerMessages, useClearDesignerHistory } from '@/api/designer'
 import { useCanvasStore, type GraphDelta } from '@/store/canvas'
 import { useAuthStore } from '@/store/auth'
@@ -38,7 +39,7 @@ export default function DesignerChat({ graphId, sessionId, onBeforeApplyDelta }:
   const [messages, setMessages] = useState<Message[]>([])
   const [historyLoaded, setHistoryLoaded] = useState(false)
   const [input, setInput] = useState('')
-  const chat = useDesignChat(graphId)
+  const chat = useDesignChat(workspaceId, graphId)
   const applyDelta = useCanvasStore(s => s.applyDelta)
   const endRef = useRef<HTMLDivElement>(null)
 
@@ -79,10 +80,15 @@ export default function DesignerChat({ graphId, sessionId, onBeforeApplyDelta }:
         onBeforeApplyDelta?.()
         applyDelta(res.graph_delta as unknown as GraphDelta)
       }
-    } catch {
+    } catch (error) {
+      const detail = axios.isAxiosError(error)
+        ? error.response?.data?.detail ?? error.message
+        : error instanceof Error
+          ? error.message
+          : null
       setMessages(prev => [...prev, {
         role: 'assistant',
-        content: 'Something went wrong. Please try again.',
+        content: detail ? `Something went wrong: ${detail}` : 'Something went wrong. Please try again.',
       }])
     }
   }

@@ -136,3 +136,36 @@ async def test_design_graph_passes_existing_graph(db):
     # System message should contain the graph JSON
     system_content = captured[0].content
     assert '"n1"' in system_content
+
+
+async def test_design_graph_normalizes_invalid_response_shape(db):
+    """Malformed field types should not bubble into response validation errors."""
+    payload = json.dumps({
+        "reply": None,
+        "graph_delta": [],
+        "questions": None,
+    })
+
+    with patch("langchain_openai.ChatOpenAI") as mock_cls:
+        mock_cls.return_value = await _mock_llm(payload)
+        result = await design_graph("s7", "anything", "ws1", None, db)
+
+    assert result == {
+        "reply": "",
+        "graph_delta": {},
+        "questions": [],
+    }
+
+
+async def test_design_graph_ignores_history_persistence_failures(db, graph):
+    """History write errors should log and return the assistant response."""
+    payload = json.dumps({"reply": "ok", "graph_delta": {}, "questions": []})
+
+    with (
+        patch("langchain_openai.ChatOpenAI") as mock_cls,
+        patch("knotwork.designer.agent._save_messages", new=AsyncMock(side_effect=RuntimeError("db down"))),
+    ):
+        mock_cls.return_value = await _mock_llm(payload)
+        result = await design_graph("s8", "anything", "ws1", None, db, graph_id=str(graph.id))
+
+    assert result == {"reply": "ok", "graph_delta": {}, "questions": []}

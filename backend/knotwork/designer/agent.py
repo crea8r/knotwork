@@ -89,6 +89,21 @@ async def _save_messages(graph_id: UUID, db: AsyncSession, user_msg: str, assist
     await db.commit()
 
 
+def _normalize_result(result: dict | None) -> dict:
+    if not isinstance(result, dict):
+        return _FALLBACK.copy()
+
+    reply = result.get("reply")
+    graph_delta = result.get("graph_delta")
+    questions = result.get("questions")
+
+    return {
+        "reply": reply if isinstance(reply, str) else "",
+        "graph_delta": graph_delta if isinstance(graph_delta, dict) else {},
+        "questions": [str(q) for q in questions] if isinstance(questions, list) else [],
+    }
+
+
 async def design_graph(
     session_id: str,
     message: str,
@@ -103,26 +118,27 @@ async def design_graph(
     Returns {reply, graph_delta, questions}.
     graph_id is used to load/save DB history. Falls back to in-memory if None.
     """
-    from langchain_openai import ChatOpenAI
-    from langchain_core.messages import HumanMessage, AIMessage, SystemMessage
-
     graph_json = json.dumps(existing_graph or {}, indent=2)
     system_content = _SYSTEM + f"\n\nCurrent graph:\n{graph_json}"
 
-    # Load history from DB if graph_id is provided, else use no history
-    if graph_id:
-        history = await _load_history(UUID(graph_id), db)
-    else:
-        history = []
-
-    messages = [SystemMessage(content=system_content)]
-    for m in history:
-        cls = HumanMessage if m["role"] == "user" else AIMessage
-        messages.append(cls(content=m["content"]))
-    messages.append(HumanMessage(content=message))
-
     try:
+        from langchain_openai import ChatOpenAI
+        from langchain_core.messages import HumanMessage, AIMessage, SystemMessage
         from knotwork.config import settings
+
+        # Load history from DB if graph_id is provided, else use no history.
+        # Any failure here should degrade to a safe assistant reply, not a 500.
+        if graph_id:
+            history = await _load_history(UUID(graph_id), db)
+        else:
+            history = []
+
+        messages = [SystemMessage(content=system_content)]
+        for m in history:
+            cls = HumanMessage if m["role"] == "user" else AIMessage
+            messages.append(cls(content=m["content"]))
+        messages.append(HumanMessage(content=message))
+
         llm = ChatOpenAI(
             model="gpt-4o-mini",
             temperature=0,
@@ -135,19 +151,18 @@ async def design_graph(
         raw = re.sub(r'^```(?:json)?\s*', '', raw)
         raw = re.sub(r'\s*```$', '', raw).strip()
         logger.debug("LLM raw response: %s", raw)
-        result = json.loads(raw)
-        if not isinstance(result, dict):
-            raise ValueError("not a dict")
-        result.setdefault("reply", "")
-        result.setdefault("graph_delta", {})
-        result.setdefault("questions", [])
+        result = _normalize_result(json.loads(raw))
 
     except Exception as exc:
         logger.error("design_graph failed: %s", exc, exc_info=True)
         result = _FALLBACK.copy()
 
-    # Persist turn in DB history
+    # Persist turn in DB history, but never fail the request because of it.
     if graph_id:
-        await _save_messages(UUID(graph_id), db, message, result["reply"])
+        try:
+            await _save_messages(UUID(graph_id), db, message, result["reply"])
+        except Exception as exc:
+            logger.error("designer history persistence failed: %s", exc, exc_info=True)
+            await db.rollback()
 
     return result

@@ -4,6 +4,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from './client'
 import type { Graph } from '@/types'
+import { useAuthStore } from '@/store/auth'
 
 const WS_ID = import.meta.env.VITE_DEV_WORKSPACE_ID ?? 'dev-workspace'
 
@@ -23,11 +24,16 @@ export interface DesignChatResponse {
   questions: string[]
 }
 
-export function useDesignChat(graphId: string) {
+function resolveWorkspaceId(workspaceId?: string) {
+  return workspaceId ?? useAuthStore.getState().workspaceId ?? WS_ID
+}
+
+export function useDesignChat(workspaceId: string | undefined, graphId: string) {
+  const resolvedWorkspaceId = resolveWorkspaceId(workspaceId)
   return useMutation<DesignChatResponse, Error, { session_id: string; message: string }>({
     mutationFn: (body) =>
       api
-        .post(`/workspaces/${WS_ID}/graphs/design/chat`, {
+        .post(`/workspaces/${resolvedWorkspaceId}/graphs/design/chat`, {
           ...body,
           graph_id: graphId,
         })
@@ -35,12 +41,13 @@ export function useDesignChat(graphId: string) {
   })
 }
 
-export function useImportMd() {
+export function useImportMd(workspaceId?: string) {
+  const resolvedWorkspaceId = resolveWorkspaceId(workspaceId)
   const qc = useQueryClient()
   return useMutation<Graph, Error, { content: string; name: string }>({
     mutationFn: (body) =>
-      api.post(`/workspaces/${WS_ID}/graphs/import-md`, body).then((r) => r.data),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['graphs', WS_ID] }),
+      api.post(`/workspaces/${resolvedWorkspaceId}/graphs/import-md`, body).then((r) => r.data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['graphs', resolvedWorkspaceId] }),
   })
 }
 
