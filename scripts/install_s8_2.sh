@@ -217,10 +217,12 @@ if [[ "$DOMAIN" == "localhost" ]]; then
   prompt_with_default APP_BASE_URL "APP_BASE_URL" "http://localhost:3000"
   prompt_with_default RESEND_API "Resend API key (optional for local)" ""
   prompt_with_default EMAIL_FROM "Email from address (local default)" "noreply@localhost"
+  prompt_with_default ENABLE_LOCAL_BYPASS "Enable localhost auth bypass for bootstrapped owner? (yes/no)" "yes"
 else
   prompt_with_default APP_BASE_URL "APP_BASE_URL" "https://${DOMAIN}"
   prompt_required RESEND_API "Resend API key (re_...)"
   prompt_required EMAIL_FROM "From email (verified on Resend)"
+  ENABLE_LOCAL_BYPASS="no"
 fi
 
 if [[ -f ".env" ]]; then
@@ -260,6 +262,21 @@ BOOTSTRAP_JSON="$(
 )"
 echo "$BOOTSTRAP_JSON"
 WORKSPACE_ID="$(printf "%s" "$BOOTSTRAP_JSON" | python3 -c 'import json,sys; print(json.load(sys.stdin)["workspace_id"])')"
+OWNER_USER_ID="$(printf "%s" "$BOOTSTRAP_JSON" | python3 -c 'import json,sys; print(json.load(sys.stdin)["owner_user_id"])')"
+
+if [[ "$DOMAIN" == "localhost" ]]; then
+  case "${ENABLE_LOCAL_BYPASS,,}" in
+    y|yes|true|1)
+      log "Enabling localhost auth bypass for owner user ${OWNER_USER_ID}..."
+      set_env_key "AUTH_DEV_BYPASS_USER_ID" "$OWNER_USER_ID" .env
+      docker compose --profile prod up -d --force-recreate backend worker
+      wait_backend_health
+      ;;
+    *)
+      log "Local auth bypass disabled; magic-link login requires working email setup."
+      ;;
+  esac
+fi
 
 log "Importing default workflows (preselected: 2)..."
 docker compose --profile prod exec -T backend \
@@ -273,6 +290,7 @@ echo "Install complete."
 echo "Domain: $DOMAIN"
 echo "App URL: $APP_BASE_URL"
 echo "Workspace ID: $WORKSPACE_ID"
+echo "Owner user ID: $OWNER_USER_ID"
 echo "Owner email: $OWNER_EMAIL"
 echo
 echo "Next:"
