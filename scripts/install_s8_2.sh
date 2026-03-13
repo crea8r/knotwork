@@ -11,9 +11,45 @@ fi
 
 log() { printf "\n[%s] %s\n" "$(date +'%H:%M:%S')" "$*"; }
 die() { echo "ERROR: $*" >&2; exit 1; }
+warn() { echo "WARN: $*" >&2; }
 
 require_cmd() {
   command -v "$1" >/dev/null 2>&1 || die "Missing required command: $1"
+}
+
+run_with_retry() {
+  local attempts="$1"
+  local delay="$2"
+  shift 2
+  local n=1
+  while true; do
+    if "$@"; then
+      return 0
+    fi
+    if [[ "$n" -ge "$attempts" ]]; then
+      return 1
+    fi
+    warn "Command failed (attempt $n/$attempts): $*"
+    sleep "$delay"
+    n=$((n + 1))
+  done
+}
+
+is_valid_email() {
+  [[ "$1" =~ ^[^[:space:]@]+@[^[:space:]@]+\.[^[:space:]@]+$ ]]
+}
+
+is_valid_domain() {
+  local d="$1"
+  if [[ "$d" == "localhost" ]]; then
+    return 0
+  fi
+  [[ "$d" =~ ^[A-Za-z0-9.-]+$ ]] && [[ "$d" == *.* ]]
+}
+
+is_valid_port() {
+  local p="$1"
+  [[ "$p" =~ ^[0-9]+$ ]] && (( p >= 1 && p <= 65535 ))
 }
 
 port_in_use() {
@@ -88,13 +124,26 @@ gen_secret() {
 }
 
 install_host_packages() {
+  local install_nginx=0
+  local install_certbot=0
+  command -v nginx >/dev/null 2>&1 || install_nginx=1
+  command -v certbot >/dev/null 2>&1 || install_certbot=1
+  if [[ "$install_nginx" -eq 0 && "$install_certbot" -eq 0 ]]; then
+    log "nginx and certbot are already installed."
+    return
+  fi
+
   if command -v apt-get >/dev/null 2>&1; then
-    log "Installing host packages (nginx, certbot)..."
-    $SUDO apt-get update -y
-    $SUDO apt-get install -y nginx certbot python3-certbot-nginx
+    log "Installing host packages (nginx/certbot if missing)..."
+    run_with_retry 3 3 $SUDO apt-get update -y || die "apt-get update failed"
+    DEBIAN_FRONTEND=noninteractive run_with_retry 3 3 \
+      $SUDO apt-get install -y nginx certbot python3-certbot-nginx \
+      || die "apt-get install failed"
   elif command -v dnf >/dev/null 2>&1; then
-    log "Installing host packages (nginx, certbot)..."
-    $SUDO dnf install -y nginx certbot python3-certbot-nginx
+    log "Installing host packages (nginx/certbot if missing)..."
+    run_with_retry 3 3 \
+      $SUDO dnf install -y nginx certbot python3-certbot-nginx \
+      || die "dnf install failed"
   else
     die "Unsupported package manager. Install nginx + certbot manually."
   fi
@@ -107,6 +156,25 @@ ensure_nginx_port_available() {
     fi
     die "Host port 80 is already in use by another process. Free it before installer runs nginx."
   fi
+  if port_in_use 443; then
+    if command -v systemctl >/dev/null 2>&1 && systemctl is-active --quiet nginx; then
+      return
+    fi
+    die "Host port 443 is already in use by another process. Free it before installer runs nginx TLS."
+  fi
+}
+
+restart_nginx_service() {
+  if command -v systemctl >/dev/null 2>&1; then
+    $SUDO systemctl enable nginx || true
+    $SUDO systemctl restart nginx
+    return
+  fi
+  if command -v service >/dev/null 2>&1; then
+    $SUDO service nginx restart
+    return
+  fi
+  die "No service manager found to restart nginx."
 }
 
 resolve_server_ip() {
@@ -118,13 +186,30 @@ resolve_server_ip() {
   echo "$ip"
 }
 
+resolve_domain_ipv4() {
+  local domain="$1"
+  if command -v getent >/dev/null 2>&1; then
+    getent ahostsv4 "$domain" 2>/dev/null | awk '{print $1}' | sort -u | tr '\n' ' '
+    return
+  fi
+  if command -v dig >/dev/null 2>&1; then
+    dig +short A "$domain" 2>/dev/null | sort -u | tr '\n' ' '
+    return
+  fi
+  if command -v nslookup >/dev/null 2>&1; then
+    nslookup "$domain" 2>/dev/null | awk '/^Address: /{print $2}' | sort -u | tr '\n' ' '
+    return
+  fi
+  echo ""
+}
+
 wait_for_dns() {
   local domain="$1"
   local server_ip="$2"
   log "Checking DNS for $domain (expected server IP: ${server_ip:-unknown})"
   while true; do
     local resolved
-    resolved="$(getent ahostsv4 "$domain" 2>/dev/null | awk '{print $1}' | sort -u | tr '\n' ' ')"
+    resolved="$(resolve_domain_ipv4 "$domain")"
     echo "Resolved IPv4: ${resolved:-<none>}"
     if [[ -n "$server_ip" && "$resolved" == *"$server_ip"* ]]; then
       echo "DNS looks correct."
@@ -207,15 +292,20 @@ EOF
     $SUDO rm -f /etc/nginx/sites-enabled/default
   fi
   $SUDO nginx -t
-  $SUDO systemctl enable nginx
-  $SUDO systemctl restart nginx
+  restart_nginx_service
 }
 
 request_tls() {
   local domain="$1"
   local email="$2"
+  if $SUDO test -f "/etc/letsencrypt/live/${domain}/fullchain.pem"; then
+    log "TLS certificate already exists for ${domain}; skipping certbot request."
+    return
+  fi
   log "Requesting Let's Encrypt certificate for ${domain}..."
-  $SUDO certbot --nginx --non-interactive --agree-tos -m "$email" -d "$domain" --redirect
+  run_with_retry 2 5 \
+    $SUDO certbot --nginx --non-interactive --agree-tos -m "$email" -d "$domain" --redirect \
+    || die "Let's Encrypt request failed for ${domain}. Check DNS/ports and retry."
 }
 
 wait_backend_health() {
@@ -237,13 +327,16 @@ require_cmd python3
 if ! docker compose version >/dev/null 2>&1; then
   die "Docker Compose plugin is required (docker compose ...)."
 fi
+docker info >/dev/null 2>&1 || die "Docker daemon is not reachable. Start Docker first."
 [[ -f ".env.docker.example" ]] || die "Missing .env.docker.example"
 [[ -f "docker-compose.yml" ]] || die "Missing docker-compose.yml"
 
 echo "Knotwork S8.2 installer (single host, host nginx, auto TLS)"
 prompt_required OWNER_NAME "Owner full name"
 prompt_required OWNER_EMAIL "Owner email"
+is_valid_email "$OWNER_EMAIL" || die "Invalid owner email format: $OWNER_EMAIL"
 prompt_with_default DOMAIN "Server domain (use localhost for local install)" "localhost"
+is_valid_domain "$DOMAIN" || die "Invalid domain: $DOMAIN"
 prompt_with_default STORAGE_ADAPTER "Storage adapter" "local_fs"
 prompt_with_default LOCAL_FS_ROOT "Local handbook storage path inside container" "/app/data/knowledge"
 prompt_with_default DEFAULT_MODEL "Default model id" "openai/gpt-4o"
@@ -262,16 +355,12 @@ fi
 
 DEFAULT_BACKEND_PORT="$(next_free_port 8000)"
 DEFAULT_FRONTEND_PORT="$(next_free_port 3000)"
-DEFAULT_POSTGRES_PORT="$(next_free_port 5432)"
-DEFAULT_REDIS_PORT="$(next_free_port 6379)"
 prompt_with_default BACKEND_HOST_PORT "Backend host port" "$DEFAULT_BACKEND_PORT"
 prompt_with_default FRONTEND_HOST_PORT "Frontend host port" "$DEFAULT_FRONTEND_PORT"
-prompt_with_default POSTGRES_HOST_PORT "Postgres host port" "$DEFAULT_POSTGRES_PORT"
-prompt_with_default REDIS_HOST_PORT "Redis host port" "$DEFAULT_REDIS_PORT"
+is_valid_port "$BACKEND_HOST_PORT" || die "Invalid backend port: $BACKEND_HOST_PORT"
+is_valid_port "$FRONTEND_HOST_PORT" || die "Invalid frontend port: $FRONTEND_HOST_PORT"
 port_in_use "$BACKEND_HOST_PORT" && die "Backend host port ${BACKEND_HOST_PORT} is already in use."
 port_in_use "$FRONTEND_HOST_PORT" && die "Frontend host port ${FRONTEND_HOST_PORT} is already in use."
-port_in_use "$POSTGRES_HOST_PORT" && die "Postgres host port ${POSTGRES_HOST_PORT} is already in use."
-port_in_use "$REDIS_HOST_PORT" && die "Redis host port ${REDIS_HOST_PORT} is already in use."
 [[ "$BACKEND_HOST_PORT" == "$FRONTEND_HOST_PORT" ]] && die "Backend and frontend host ports cannot be the same."
 
 if [[ "$DOMAIN" == "localhost" ]]; then
@@ -284,6 +373,7 @@ else
   prompt_required RESEND_API "Resend API key (re_...)"
   prompt_required EMAIL_FROM "From email (verified on Resend)"
   ENABLE_LOCAL_BYPASS="no"
+  [[ "$APP_BASE_URL" =~ ^https:// ]] || die "APP_BASE_URL must use https:// for non-local domain"
 fi
 
 VITE_API_URL="${APP_BASE_URL%/}/api/v1"
@@ -304,14 +394,12 @@ set_env_key "RESEND_API" "$RESEND_API" .env
 set_env_key "EMAIL_FROM" "$EMAIL_FROM" .env
 set_env_key "BACKEND_HOST_PORT" "$BACKEND_HOST_PORT" .env
 set_env_key "FRONTEND_HOST_PORT" "$FRONTEND_HOST_PORT" .env
-set_env_key "POSTGRES_HOST_PORT" "$POSTGRES_HOST_PORT" .env
-set_env_key "REDIS_HOST_PORT" "$REDIS_HOST_PORT" .env
 set_env_key "VITE_API_URL" "$VITE_API_URL" .env
 
 COMPOSE_CMD=(docker compose)
 
 log "Starting Docker prod stack..."
-"${COMPOSE_CMD[@]}" --profile prod up -d --build
+run_with_retry 2 3 "${COMPOSE_CMD[@]}" --profile prod up -d --build || die "docker compose up failed"
 wait_backend_health "$BACKEND_HOST_PORT"
 
 install_host_packages
@@ -362,8 +450,6 @@ echo "Domain: $DOMAIN"
 echo "App URL: $APP_BASE_URL"
 echo "Backend host port: $BACKEND_HOST_PORT"
 echo "Frontend host port: $FRONTEND_HOST_PORT"
-echo "Postgres host port: $POSTGRES_HOST_PORT"
-echo "Redis host port: $REDIS_HOST_PORT"
 echo "Workspace ID: $WORKSPACE_ID"
 echo "Owner user ID: $OWNER_USER_ID"
 echo "Owner email: $OWNER_EMAIL"

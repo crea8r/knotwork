@@ -72,7 +72,7 @@ Installer behavior:
 2. Prompt server domain (`localhost` supported for local installs).
 3. Write `.env` from `.env.docker.example` and inject required production values.
 4. Ask operator-selected host ports for backend/frontend (no hardcoded `8000`/`3000` assumption).
-5. Ask operator-selected host ports for postgres/redis (no hardcoded `5432`/`6379` assumption).
+5. Keep postgres/redis internal to Docker network (no host port exposure in installer path).
 6. Start Docker stack with `docker compose --profile prod up -d --build`.
 7. Configure host nginx reverse proxy for:
    - `/` -> frontend (`127.0.0.1:<FRONTEND_HOST_PORT>`)
