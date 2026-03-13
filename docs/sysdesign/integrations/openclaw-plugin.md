@@ -86,6 +86,12 @@ When LangGraph executes an agent node with `agent_ref: "openclaw:*"`, the `OpenC
 
 The plugin calls `POST /openclaw-plugin/pull-task` every 2 seconds (`taskPollIntervalMs`). The backend returns the oldest pending task for this integration.
 
+**Current concurrency model (S8/S8.1):**
+- One OpenClaw plugin instance claims and executes **one task at a time**.
+- This limit is per `openclaw_integration` / plugin instance, **not** per remote agent.
+- If one plugin instance reports multiple agents, they still share the same single-task consumer today.
+- Additional tasks remain `pending` in `openclaw_execution_tasks` until the currently claimed task completes.
+
 On claiming, the task transitions: `pending → claimed`. The response includes:
 
 ```json
