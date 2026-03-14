@@ -14,6 +14,10 @@ export default function MembersTab() {
   const workspaceId = useAuthStore((s) => s.workspaceId)
   const role = useAuthStore((s) => s.role)
   const isOwner = role === 'owner'
+  const isLocalhostApp =
+    typeof window !== 'undefined' &&
+    ['localhost', '127.0.0.1', '::1'].includes(window.location.hostname)
+  const invitesEnabled = isOwner && !isLocalhostApp
 
   // Members list
   const [membersPage, setMembersPage] = useState(1)
@@ -139,7 +143,7 @@ export default function MembersTab() {
             Invitations
             {loadingInv && <span className="ml-2 inline-flex align-middle"><Spinner size="sm" /></span>}
           </p>
-          {isOwner && !showForm && (
+          {invitesEnabled && !showForm && (
             <button
               onClick={() => { setShowForm(true); setSent(null) }}
               className="text-xs bg-brand-500 text-white px-3 py-1.5 rounded-lg hover:bg-brand-600 transition-colors"
@@ -149,8 +153,14 @@ export default function MembersTab() {
           )}
         </div>
 
+        {isOwner && isLocalhostApp && (
+          <div className="px-4 py-2 bg-amber-50 text-amber-800 text-xs border-b">
+            Invitations are disabled on localhost installs. Promote this install to a public domain with email delivery before inviting members.
+          </div>
+        )}
+
         {/* Invite form */}
-        {showForm && isOwner && (
+        {showForm && invitesEnabled && (
           <form onSubmit={submit} className="p-4 bg-gray-50 border-b">
             <div className="flex gap-2 items-end">
               <div className="flex-1">
@@ -206,7 +216,7 @@ export default function MembersTab() {
           <div className="p-6 text-center"><Spinner /></div>
         ) : !invitations || invitations.length === 0 ? (
           <p className="px-4 py-6 text-sm text-gray-400 text-center">
-            {isOwner ? 'No invitations yet. Invite a member above.' : 'No pending invitations.'}
+            {invitesEnabled ? 'No invitations yet. Invite a member above.' : 'No pending invitations.'}
           </p>
         ) : (
           <table className="w-full text-sm">

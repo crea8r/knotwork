@@ -1,4 +1,5 @@
 from enum import StrEnum
+from urllib.parse import urlparse
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -54,6 +55,19 @@ class Settings(BaseSettings):
     confidence_threshold_default: float = 0.70
     retry_limit_default: int = 2
     escalation_timeout_hours_default: int = 24
+
+    @property
+    def is_local_app(self) -> bool:
+        host = (urlparse(self.app_base_url).hostname or "").lower()
+        return host in {"localhost", "127.0.0.1", "::1"}
+
+    @property
+    def email_delivery_enabled(self) -> bool:
+        return bool(self.resend_api.strip()) and bool(self.email_from.strip())
+
+    @property
+    def invitations_enabled(self) -> bool:
+        return (not self.is_local_app) and self.email_delivery_enabled
 
 
 settings = Settings()  # type: ignore[call-arg]

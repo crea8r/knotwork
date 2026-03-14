@@ -14,6 +14,9 @@ export default function AccountTab() {
   const { clearAuth, login, token, workspaceId, role } = useAuthStore()
   const { data: me, isLoading } = useMe()
   const update = useUpdateMe()
+  const isLocalhostApp =
+    typeof window !== 'undefined' &&
+    ['localhost', '127.0.0.1', '::1'].includes(window.location.hostname)
 
   const [name, setName] = useState('')
   const [bio, setBio] = useState('')
@@ -142,12 +145,25 @@ export default function AccountTab() {
       {/* Sign out */}
       <Card className="p-6">
         <p className="text-sm font-medium text-gray-700 mb-1">Sign out</p>
-        <p className="text-xs text-gray-400 mb-4">
-          You'll be redirected to the login page. Your session token will be cleared.
-        </p>
-        <Btn variant="danger" onClick={handleLogout}>
-          Sign out
-        </Btn>
+        {isLocalhostApp ? (
+          <>
+            <p className="text-xs text-amber-700 mb-2">
+              Sign out is disabled on localhost installs that rely on local auth bypass.
+            </p>
+            <p className="text-xs text-gray-400">
+              Promote this install to a public domain with email delivery before using normal login/logout flows.
+            </p>
+          </>
+        ) : (
+          <>
+            <p className="text-xs text-gray-400 mb-4">
+              You'll be redirected to the login page. Your session token will be cleared.
+            </p>
+            <Btn variant="danger" onClick={handleLogout}>
+              Sign out
+            </Btn>
+          </>
+        )}
       </Card>
     </div>
   )

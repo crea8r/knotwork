@@ -4,6 +4,7 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 PARENT_DIR="$(dirname "$ROOT_DIR")"
 cd "$ROOT_DIR"
+TEMP_DIR=""
 
 SUDO=""
 if [[ "${EUID}" -ne 0 ]]; then
@@ -34,6 +35,10 @@ run_with_retry() {
     sleep "$delay"
     n=$((n + 1))
   done
+}
+
+json_escape() {
+  python3 -c 'import json,sys; print(json.dumps(sys.argv[1]))' "$1"
 }
 
 prompt_with_default() {
@@ -114,14 +119,95 @@ backup_database() {
     > "$dump_path" || die "pg_dump failed"
 }
 
+local_fs_root_from_env() {
+  if [[ -f "$ROOT_DIR/.env" ]]; then
+    awk -F= '$1=="LOCAL_FS_ROOT" {print substr($0, index($0,$2)); exit}' "$ROOT_DIR/.env"
+    return
+  fi
+  echo "/app/data/knowledge"
+}
+
+detect_backend_service() {
+  local service=""
+  service="$(docker compose ps --services --status running 2>/dev/null | awk '$1=="backend"{print; exit}')"
+  [[ -n "$service" ]] && { echo "$service"; return; }
+  service="$(docker compose ps --services --status running 2>/dev/null | awk '$1=="backend-dev"{print; exit}')"
+  [[ -n "$service" ]] && { echo "$service"; return; }
+  service="$(docker compose ps --services 2>/dev/null | awk '$1=="backend"{print; exit}')"
+  [[ -n "$service" ]] && { echo "$service"; return; }
+  service="$(docker compose ps --services 2>/dev/null | awk '$1=="backend-dev"{print; exit}')"
+  [[ -n "$service" ]] && { echo "$service"; return; }
+  echo ""
+}
+
+ensure_backend_running_for_backup() {
+  local service="$1"
+  case "$service" in
+    backend)
+      run_with_retry 2 3 docker compose --profile prod up -d postgres backend \
+        || die "Failed to start backend service for handbook backup"
+      ;;
+    backend-dev)
+      run_with_retry 2 3 docker compose --profile dev up -d postgres backend-dev \
+        || die "Failed to start backend-dev service for handbook backup"
+      ;;
+    *)
+      die "Could not determine backend service for handbook backup."
+      ;;
+  esac
+}
+
+backup_handbook() {
+  local archive_path="$1"
+  local service
+  local container_root
+
+  service="$(detect_backend_service)"
+  [[ -n "$service" ]] || die "Could not locate backend container for handbook backup."
+
+  ensure_backend_running_for_backup "$service"
+  container_root="$(local_fs_root_from_env)"
+
+  log "Archiving handbook from ${service}:${container_root}..."
+  docker compose exec -T "$service" sh -lc "
+    if [ -d \"$container_root\" ]; then
+      tar -czf - -C \"$container_root\" .
+    else
+      tmpdir=\$(mktemp -d)
+      tar -czf - -C \"\$tmpdir\" .
+      rm -rf \"\$tmpdir\"
+    fi
+  " > "$archive_path" || die "Failed to back up handbook files"
+}
+
+current_git_commit() {
+  git rev-parse HEAD 2>/dev/null || echo ""
+}
+
+current_git_branch() {
+  git rev-parse --abbrev-ref HEAD 2>/dev/null || echo ""
+}
+
 write_manifest() {
   local manifest_path="$1"
+  local git_commit git_branch handbook_root
+  git_commit="$(current_git_commit)"
+  git_branch="$(current_git_branch)"
+  handbook_root="$(local_fs_root_from_env)"
   cat > "$manifest_path" <<EOF
 {
   "created_at_utc": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
-  "project_root": "$ROOT_DIR",
+  "project_root": $(json_escape "$ROOT_DIR"),
   "cleanup_mode": "$CLEAN_MODE",
-  "project_name": "$(project_name)"
+  "project_name": "$(project_name)",
+  "knotwork_version": $(json_escape "$git_commit"),
+  "git_branch": $(json_escape "$git_branch"),
+  "handbook_root": $(json_escape "$handbook_root"),
+  "artifacts": [
+    "manifest.json",
+    "postgres.sql",
+    "handbook.tar.gz"
+  ]
 }
 EOF
 }
@@ -130,43 +216,25 @@ create_backup_zip() {
   local backup_zip="$1"
   local temp_dir="$2"
   local db_dump="$temp_dir/postgres.sql"
+  local handbook_archive="$temp_dir/handbook.tar.gz"
   local manifest="$temp_dir/manifest.json"
 
   backup_database "$db_dump"
+  backup_handbook "$handbook_archive"
   write_manifest "$manifest"
 
   log "Creating backup zip: $backup_zip"
-  BACKUP_TARGET="$backup_zip" STAGE_DIR="$temp_dir" ROOT_TO_ARCHIVE="$ROOT_DIR" python3 - <<'PY'
+  BACKUP_TARGET="$backup_zip" STAGE_DIR="$temp_dir" python3 - <<'PY'
 import os
 import zipfile
 from pathlib import Path
 
 backup_target = Path(os.environ["BACKUP_TARGET"])
 stage_dir = Path(os.environ["STAGE_DIR"])
-root = Path(os.environ["ROOT_TO_ARCHIVE"])
-
-exclude_names = {
-    ".git",
-    ".pytest_cache",
-    "__pycache__",
-    "node_modules",
-    ".venv",
-}
-exclude_suffixes = {".pyc", ".pyo"}
 
 with zipfile.ZipFile(backup_target, "w", compression=zipfile.ZIP_DEFLATED) as zf:
     for extra in stage_dir.iterdir():
-        zf.write(extra, f"backup-meta/{extra.name}")
-
-    for path in root.rglob("*"):
-        rel = path.relative_to(root)
-        if any(part in exclude_names for part in rel.parts):
-            continue
-        if path.suffix in exclude_suffixes:
-            continue
-        if path.is_dir():
-            continue
-        zf.write(path, Path(root.name) / rel)
+        zf.write(extra, extra.name)
 PY
 }
 
@@ -210,12 +278,11 @@ main() {
   local ts
   ts="$(date +%Y%m%d-%H%M%S)"
   local backup_zip="${BACKUP_DIR}/$(project_name)-backup-${ts}.zip"
-  local temp_dir
-  temp_dir="$(mktemp -d)"
-  trap 'rm -rf "$temp_dir"' EXIT
+  TEMP_DIR="$(mktemp -d)"
+  trap 'if [[ -n "${TEMP_DIR:-}" ]]; then rm -rf "$TEMP_DIR"; fi' EXIT
 
   echo "This will:"
-  echo "1) Create a zip backup with project files and PostgreSQL dump"
+  echo "1) Create a zip backup with metadata, PostgreSQL dump, and handbook archive"
   echo "2) Remove project docker containers/networks/volumes and local images"
   echo "3) Clean files using cleanup mode: $CLEAN_MODE"
   echo "Backup zip: $backup_zip"
@@ -227,7 +294,7 @@ main() {
     fi
   fi
 
-  create_backup_zip "$backup_zip" "$temp_dir"
+  create_backup_zip "$backup_zip" "$TEMP_DIR"
   docker_cleanup
 
   case "$CLEAN_MODE" in

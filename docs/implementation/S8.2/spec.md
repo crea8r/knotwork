@@ -29,7 +29,7 @@ Deploy Knotwork as a clean install on a remote server with a reproducible operat
 4. Documentation is sufficient for another operator to reproduce without tribal knowledge.
 5. Settings page only exposes tabs backed by shipped features in S8.2 (`Account`, `Members`, `Agents`).
 6. Installer prompts owner identity and domain, bootstraps owner workspace, and preloads default workflows.
-7. Uninstaller creates a zip backup including a PostgreSQL dump before destructive cleanup.
+7. Uninstaller creates a zip backup including manifest metadata, a PostgreSQL dump, and the handbook archive before destructive cleanup.
 
 ## Risks
 
@@ -72,6 +72,7 @@ Primary script:
 
 1. `scripts/install_s8_2.sh`
 2. `scripts/uninstall_s8_2.sh`
+3. `scripts/promote_localhost_to_public.sh`
 
 Bootstrap helper scripts:
 
@@ -87,19 +88,32 @@ Installer behavior:
 5. Keep postgres/redis internal to Docker network (no host port exposure in installer path).
 6. Start Docker stack with `docker compose --profile prod up -d --build`.
    - Backend startup uses `backend/scripts/migrate_or_stamp.py` to run the clean baseline on empty DBs and stamp legacy pre-reset dev DBs.
-7. Configure host nginx reverse proxy for:
+7. For non-local domains only, require preinstalled host `nginx` + `certbot`, then configure nginx reverse proxy for:
    - `/` -> frontend (`127.0.0.1:<FRONTEND_HOST_PORT>`)
    - `/api`, `/api/v1/ws`, `/ws`, `/agent-api`, `/openclaw-plugin`, `/health` -> backend (`127.0.0.1:<BACKEND_HOST_PORT>`)
 8. For non-local domains, gate on DNS readiness and run Let's Encrypt (`certbot --nginx`).
-9. Create/reuse owner user + owner workspace membership directly in DB bootstrap script.
-10. Import both default workflows by default:
+9. For `localhost`, skip nginx/certbot entirely and use direct frontend/backend host ports.
+10. Create/reuse owner user + owner workspace membership directly in DB bootstrap script.
+11. Import both default workflows by default:
    - `landing-page-builder`
    - `simple-writing`
-11. Import handbook dependencies for selected workflows.
+12. Import handbook dependencies for selected workflows.
+
+Promotion behavior:
+
+1. `scripts/promote_localhost_to_public.sh` upgrades an existing localhost install to a public domain without replacing data.
+2. Requires an existing `.env` with localhost `APP_BASE_URL`.
+3. Prompts for public domain, owner email, `RESEND_API`, and `EMAIL_FROM`.
+4. Rewrites `.env` for public mode:
+   - `APP_BASE_URL=https://<domain>`
+   - `VITE_API_URL=https://<domain>/api/v1`
+   - `AUTH_DEV_BYPASS_USER_ID=` (cleared)
+5. Rebuilds/restarts the production stack, preserving the existing database and handbook files.
+6. Configures host nginx, waits for DNS, requests Let's Encrypt TLS, and runs basic health checks.
 
 Uninstaller behavior:
 
 1. Create a timestamped backup zip outside the project directory.
-2. Include project files plus a `pg_dump` SQL export.
+2. Include manifest metadata, a `pg_dump` SQL export, and the handbook archive only. Do not back up the source tree.
 3. Tear down project Docker containers/networks/volumes and remove local project images.
 4. Support `runtime` cleanup (generated files only) and `full` cleanup (remove project tree contents except `.git`).

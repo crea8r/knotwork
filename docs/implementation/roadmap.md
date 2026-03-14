@@ -67,6 +67,8 @@ operations, while gradually distilling repeated work into reusable workflows.
 - LLM judge checkpoints + auto-ratings
 - Run replay from checkpoint
 - Self-hosted deployment option
+- Restore script to repopulate a workspace from an operator backup bundle
+- In-product backup/export function for operational stability
 - LLM provider OAuth PKCE — users connect their own OpenAI / Anthropic account directly
 
 ---

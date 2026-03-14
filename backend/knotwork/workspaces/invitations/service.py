@@ -54,6 +54,12 @@ async def create_invitation(
     invited_by_user_id: UUID | None,
     req: CreateInvitationRequest,
 ) -> InvitationOut:
+    if not settings.invitations_enabled:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Invitations are disabled on localhost installs until public email delivery is configured.",
+        )
+
     workspace = await db.get(Workspace, workspace_id)
     if workspace is None:
         raise HTTPException(status_code=404, detail="Workspace not found")
@@ -72,7 +78,6 @@ async def create_invitation(
     db.add(inv)
     await db.flush()
 
-    # Send invitation email (best-effort — don't fail if email is misconfigured)
     invite_url = f"{settings.app_base_url}/accept-invite?token={token_str}"
     body = (
         f"You've been invited to join the '{workspace.name}' workspace on Knotwork.\n\n"
@@ -89,6 +94,10 @@ async def create_invitation(
         )
     except Exception as exc:
         logger.error("Invitation email failed for %s: %s", email, exc)
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Invitation email could not be delivered. Check email configuration and try again.",
+        ) from exc
 
     await db.commit()
     return _to_out(inv)

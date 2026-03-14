@@ -123,30 +123,11 @@ gen_secret() {
   fi
 }
 
-install_host_packages() {
-  local install_nginx=0
-  local install_certbot=0
-  command -v nginx >/dev/null 2>&1 || install_nginx=1
-  command -v certbot >/dev/null 2>&1 || install_certbot=1
-  if [[ "$install_nginx" -eq 0 && "$install_certbot" -eq 0 ]]; then
-    log "nginx and certbot are already installed."
-    return
-  fi
-
-  if command -v apt-get >/dev/null 2>&1; then
-    log "Installing host packages (nginx/certbot if missing)..."
-    run_with_retry 3 3 $SUDO apt-get update -y || die "apt-get update failed"
-    DEBIAN_FRONTEND=noninteractive run_with_retry 3 3 \
-      $SUDO apt-get install -y nginx certbot python3-certbot-nginx \
-      || die "apt-get install failed"
-  elif command -v dnf >/dev/null 2>&1; then
-    log "Installing host packages (nginx/certbot if missing)..."
-    run_with_retry 3 3 \
-      $SUDO dnf install -y nginx certbot python3-certbot-nginx \
-      || die "dnf install failed"
-  else
-    die "Unsupported package manager. Install nginx + certbot manually."
-  fi
+require_non_local_host_software() {
+  command -v nginx >/dev/null 2>&1 \
+    || die "Non-local installs require host nginx. Install nginx first, then rerun the installer."
+  command -v certbot >/dev/null 2>&1 \
+    || die "Non-local installs require certbot for Let's Encrypt. Install certbot first, then rerun the installer."
 }
 
 ensure_nginx_port_available() {
@@ -321,11 +302,13 @@ wait_backend_health() {
   die "Backend did not become healthy in time."
 }
 
-require_cmd docker
 require_cmd curl
 require_cmd python3
+if ! command -v docker >/dev/null 2>&1; then
+  die "Docker is required to install Knotwork. Install Docker first, then rerun this script."
+fi
 if ! docker compose version >/dev/null 2>&1; then
-  die "Docker Compose plugin is required (docker compose ...)."
+  die "Docker Compose plugin is required (docker compose ...). Install or enable it first."
 fi
 docker info >/dev/null 2>&1 || die "Docker daemon is not reachable. Start Docker first."
 [[ -f ".env.docker.example" ]] || die "Missing .env.docker.example"
@@ -337,6 +320,9 @@ prompt_required OWNER_EMAIL "Owner email"
 is_valid_email "$OWNER_EMAIL" || die "Invalid owner email format: $OWNER_EMAIL"
 prompt_with_default DOMAIN "Server domain (use localhost for local install)" "localhost"
 is_valid_domain "$DOMAIN" || die "Invalid domain: $DOMAIN"
+if [[ "$DOMAIN" != "localhost" ]]; then
+  require_non_local_host_software
+fi
 prompt_with_default STORAGE_ADAPTER "Storage adapter" "local_fs"
 prompt_with_default LOCAL_FS_ROOT "Local handbook storage path inside container" "/app/data/knowledge"
 prompt_with_default DEFAULT_MODEL "Default model id" "openai/gpt-4o"
@@ -364,7 +350,7 @@ port_in_use "$FRONTEND_HOST_PORT" && die "Frontend host port ${FRONTEND_HOST_POR
 [[ "$BACKEND_HOST_PORT" == "$FRONTEND_HOST_PORT" ]] && die "Backend and frontend host ports cannot be the same."
 
 if [[ "$DOMAIN" == "localhost" ]]; then
-  prompt_with_default APP_BASE_URL "APP_BASE_URL" "http://localhost"
+  prompt_with_default APP_BASE_URL "APP_BASE_URL" "http://localhost:${FRONTEND_HOST_PORT}"
   prompt_with_default RESEND_API "Resend API key (optional for local)" ""
   prompt_with_default EMAIL_FROM "Email from address (local default)" "noreply@localhost"
   prompt_with_default ENABLE_LOCAL_BYPASS "Enable localhost auth bypass for bootstrapped owner? (yes/no)" "yes"
@@ -376,7 +362,11 @@ else
   [[ "$APP_BASE_URL" =~ ^https:// ]] || die "APP_BASE_URL must use https:// for non-local domain"
 fi
 
-VITE_API_URL="${APP_BASE_URL%/}/api/v1"
+if [[ "$DOMAIN" == "localhost" ]]; then
+  VITE_API_URL="http://localhost:${BACKEND_HOST_PORT}/api/v1"
+else
+  VITE_API_URL="${APP_BASE_URL%/}/api/v1"
+fi
 
 if [[ -f ".env" ]]; then
   cp .env ".env.backup.$(date +%Y%m%d%H%M%S)"
@@ -402,11 +392,9 @@ log "Starting Docker prod stack..."
 run_with_retry 2 3 "${COMPOSE_CMD[@]}" --profile prod up -d --build || die "docker compose up failed"
 wait_backend_health "$BACKEND_HOST_PORT"
 
-install_host_packages
-ensure_nginx_port_available
-write_nginx_config "$DOMAIN" "$BACKEND_HOST_PORT" "$FRONTEND_HOST_PORT"
-
 if [[ "$DOMAIN" != "localhost" ]]; then
+  ensure_nginx_port_available
+  write_nginx_config "$DOMAIN" "$BACKEND_HOST_PORT" "$FRONTEND_HOST_PORT"
   SERVER_IP="$(resolve_server_ip)"
   wait_for_dns "$DOMAIN" "$SERVER_IP"
   request_tls "$DOMAIN" "$OWNER_EMAIL"
