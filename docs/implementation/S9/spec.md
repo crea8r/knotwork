@@ -24,6 +24,10 @@ Make Knotwork ready for humans to use reliably in production operations.
    - define loop execution safety rules (for example max iterations, repeat-state visibility, and explicit stop conditions)
    - make review/revision loops understandable in designer and run UI
 6. OpenClaw communication upgrade from polling to WebSocket (or equivalent efficient push model).
+   - transport upgrade must include reliability semantics, not just protocol replacement
+   - plugin must recover automatically from dropped connection, stale credentials, and temporary backend unavailability
+   - plugin must retry or replay undelivered terminal task events (`completed`, `escalation`, `failed`) until backend acknowledges them
+   - system must expose explicit degraded states instead of silently appearing idle
 7. OpenClaw concurrency upgrade:
    - support multiple concurrent tasks per remote agent instead of one task per plugin instance
    - default concurrency is `2` tasks per remote agent
@@ -45,27 +49,36 @@ Make Knotwork ready for humans to use reliably in production operations.
    - task dispatch
    - task event submission (`log`, `completed`, `escalation`, `failed`)
    - keepalive/heartbeat
+   - ACK / retry semantics for event delivery
+   - reconnect / resume semantics after connection loss
 3. Preserve current DB task/event contract (`openclaw_execution_tasks` + `openclaw_execution_events`) so runtime behavior does not change while transport changes.
 4. Add reconnect/resume behavior so plugin restart/network blips do not orphan claimed tasks.
-5. Define concurrency/claim semantics for multi-task execution:
+5. Add automatic credential recovery behavior:
+   - startup handshake retries with backoff until success
+   - auth failures during dispatch/event submission trigger re-handshake automatically
+   - stale plugin credentials do not require manual restart as the primary recovery path
+6. Define concurrency/claim semantics for multi-task execution:
    - per-agent concurrency default is `2`
    - plugin-instance cap default `min(8, remote_agent_count * 2)`
    - fair claiming so one hot agent does not starve other agents
-6. Define explicit human response flow for agent escalations:
+7. Define explicit human response flow for agent escalations:
    - escalated question appears with answer form in run UI
    - human answer resumes the run
    - human can explicitly conclude "agent is confident, move on" when appropriate
    - timeline and decision records remain coherent after resume
-7. Define loop execution semantics for workflow graphs:
+8. Define loop execution semantics for workflow graphs:
    - loops are valid when used for review/revision flows
    - runtime prevents accidental infinite execution via explicit safeguards
    - run timeline and node state clearly show repeated passes through the same node
-8. Update deployment guidance for reverse proxy/TLS upgrade headers and idle timeouts for long-lived WS connections.
-9. Add S9 validation checks: reduced idle request noise, stable long-running task execution, no regression in run completion/escalation handling, correct queue/claim behavior under concurrent load, successful human answer/resume flow for escalations, and successful review-loop execution without false invalid-graph rejection.
-10. Align the trigger-input contract across operator and public entry points:
+9. Define degraded-state observability:
+   - connected, handshake_failed, auth_stale, gateway_unavailable, busy, idle, and backlog states are visible in operator-facing debug/status surfaces
+   - last successful handshake, task pull, and terminal event submit timestamps are visible
+10. Update deployment guidance for reverse proxy/TLS upgrade headers and idle timeouts for long-lived WS connections.
+11. Add S9 validation checks: reduced idle request noise, stable long-running task execution, no regression in run completion/escalation handling, correct queue/claim behavior under concurrent load, successful human answer/resume flow for escalations, successful review-loop execution without false invalid-graph rejection, and no manual restart required for routine dropped-connection/auth-recovery cases.
+12. Align the trigger-input contract across operator and public entry points:
    - uploaded files count as valid input even when the free-text field is empty
    - public trigger pages expose the same upload capability where the workflow input schema allows it
-11. Remove direct provider dependence from designer chat:
+13. Remove direct provider dependence from designer chat:
    - designer chat must invoke a configured agent path instead of calling OpenAI/Claude adapters directly
    - missing agent availability/configuration must surface as a clear blocking state in UI/API
 
@@ -84,9 +97,12 @@ Make Knotwork ready for humans to use reliably in production operations.
 6. OpenClaw can process multiple tasks concurrently with the default limit of `2` tasks per remote agent, without starving other agents on the same plugin instance.
 7. When an agent escalates with a question, the operator can answer in the run UI and resume the run to completion without manual DB/admin intervention.
 8. Review/revision workflows with loop-back edges can run successfully with clear safeguards and visible iteration history.
-9. Main workflows are usable on mobile screens.
-10. OpenClaw interaction is stable without polling-heavy behavior.
-11. Product is ready for human operators as primary users.
-12. Designer chat uses a configured agent path instead of direct OpenAI/Claude provider calls.
-13. Operator and public trigger forms accept an uploaded file as sufficient input when no text is entered.
-14. Public workflow pages support file upload wherever the workflow input contract allows it.
+9. OpenClaw transport can recover from routine disconnect/auth drift without requiring manual OpenClaw restart.
+10. Terminal task events are not silently lost when transient backend/network failures happen.
+11. Operator-facing status/debug surfaces make it clear whether OpenClaw is connected, degraded, busy, or backlogged.
+12. Main workflows are usable on mobile screens.
+13. OpenClaw interaction is stable without polling-heavy behavior.
+14. Product is ready for human operators as primary users.
+15. Designer chat uses a configured agent path instead of direct OpenAI/Claude provider calls.
+16. Operator and public trigger forms accept an uploaded file as sufficient input when no text is entered.
+17. Public workflow pages support file upload wherever the workflow input contract allows it.
