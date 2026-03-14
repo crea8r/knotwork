@@ -37,6 +37,13 @@ Deploy Knotwork as a clean install on a remote server with a reproducible operat
 2. OpenClaw reconnect confusion after restart (requires clear handshake/reconnect steps).
 3. TLS/proxy misconfiguration breaking websocket or callback flows.
 
+## Database Migration Policy
+
+1. Alembic history is intentionally reset to a single clean baseline for S8.2 installs.
+2. Fresh installs are supported via the new baseline only.
+3. Pre-reset dev databases are not migration-upgraded through historical revisions; they are stamped to the new baseline if the schema already exists.
+4. Installer validation target: no fresh install should hit duplicate-table errors from legacy revisions.
+
 ## Installer Default Workflow Candidates
 
 The installer can let operators choose which starter workflows to import.
@@ -48,13 +55,15 @@ Current catalog seeds two workflows captured from existing production-like examp
 Implementation files:
 
 1. `backend/knotwork/bootstrap/default_workflows.json` (catalog + definitions)
-2. `backend/scripts/import_default_workflows.py` (list/select/import CLI for installer integration)
+2. `backend/knotwork/bootstrap/handbook/` (self-contained sample handbook content)
+3. `backend/knotwork/bootstrap/handbook_manifest.json` (handbook titles/metadata)
+4. `backend/scripts/import_default_workflows.py` (list/select/import CLI for installer integration)
 
 Handbook dependency behavior:
 
-1. Importer reads each selected workflow's `knowledge_paths`.
-2. Resolved files (including folder-scoped refs) are copied from source workspace into target workspace.
-3. Transitive wiki-linked dependencies are imported via `load_knowledge_tree`.
+1. Importer reads each selected workflow's bootstrap `handbook_paths`.
+2. Resolved files are loaded from the in-repo bootstrap handbook pack under `backend/knotwork/bootstrap/handbook/`.
+3. Transitive wiki-linked dependencies are imported from that same bootstrap pack.
 4. Existing handbook files are preserved by default (optional overwrite flag available).
 
 ## Installer Flow (S8.2)
@@ -77,6 +86,7 @@ Installer behavior:
 4. Ask operator-selected host ports for backend/frontend (no hardcoded `8000`/`3000` assumption).
 5. Keep postgres/redis internal to Docker network (no host port exposure in installer path).
 6. Start Docker stack with `docker compose --profile prod up -d --build`.
+   - Backend startup uses `backend/scripts/migrate_or_stamp.py` to run the clean baseline on empty DBs and stamp legacy pre-reset dev DBs.
 7. Configure host nginx reverse proxy for:
    - `/` -> frontend (`127.0.0.1:<FRONTEND_HOST_PORT>`)
    - `/api`, `/api/v1/ws`, `/ws`, `/agent-api`, `/openclaw-plugin`, `/health` -> backend (`127.0.0.1:<BACKEND_HOST_PORT>`)

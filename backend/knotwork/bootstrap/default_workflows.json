@@ -3,7 +3,6 @@
     "id": "landing-page-builder",
     "name": "Building landing page",
     "source_graph_id": "4e97e3dc-b57b-44ed-903a-565b4259c2b7",
-    "source_workspace_id": "5b2ada74-d965-4948-8a7a-48b3bafa6111",
     "description": "Research business info, draft marketing copy, define brand guideline, then build a landing page.",
     "definition": {
       "nodes": [
@@ -78,13 +77,20 @@
           "type": "text"
         }
       ]
-    }
+    },
+    "handbook_paths": [
+      "marketing/crawl",
+      "marketing/cmo-profile.md",
+      "marketing/copywriting-skill.md",
+      "marketing/design",
+      "marketing/hssbc",
+      "marketing/hssbc.md"
+    ]
   },
   {
     "id": "simple-writing",
     "name": "Simple Writing",
     "source_graph_id": "49552a7c-a337-49b4-b18a-089ef3e3e6b1",
-    "source_workspace_id": "5b2ada74-d965-4948-8a7a-48b3bafa6111",
     "description": "Structured copywriting flow from request framing to CTA validation.",
     "definition": {
       "nodes": [
@@ -111,6 +117,9 @@
         {"name": "audience", "label": "Target Audience", "description": "Who it's for (specific audience).", "required": true, "type": "text"},
         {"name": "differentiator", "label": "Differentiator", "description": "What makes it different from competitors.", "required": true, "type": "textarea"}
       ]
-    }
+    },
+    "handbook_paths": [
+      "writing/noslop.md"
+    ]
   }
 ]

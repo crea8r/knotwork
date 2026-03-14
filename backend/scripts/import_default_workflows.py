@@ -18,19 +18,25 @@ from uuid import UUID, uuid4
 
 from sqlalchemy import and_, select
 
+from knotwork.auth.models import User  # noqa: F401
 from knotwork.database import AsyncSessionLocal
 from knotwork.graphs.models import Graph, GraphVersion
 from knotwork.knowledge import service as knowledge_service
-from knotwork.knowledge.models import KnowledgeFile
-from knotwork.runtime.knowledge_loader import load_knowledge_tree
-from knotwork.workspaces.models import Workspace
+from knotwork.runtime.knowledge_loader import extract_wiki_links, get_domain, resolve_link
+from knotwork.workspaces.models import Workspace, WorkspaceMember  # noqa: F401
 
 
 CATALOG_PATH = Path(__file__).resolve().parents[1] / "knotwork" / "bootstrap" / "default_workflows.json"
+HANDBOOK_ROOT = Path(__file__).resolve().parents[1] / "knotwork" / "bootstrap" / "handbook"
+HANDBOOK_MANIFEST_PATH = Path(__file__).resolve().parents[1] / "knotwork" / "bootstrap" / "handbook_manifest.json"
 
 
 def load_catalog() -> list[dict[str, Any]]:
     return json.loads(CATALOG_PATH.read_text(encoding="utf-8"))
+
+
+def load_handbook_manifest() -> dict[str, dict[str, Any]]:
+    return json.loads(HANDBOOK_MANIFEST_PATH.read_text(encoding="utf-8"))
 
 
 def parse_args() -> argparse.Namespace:
@@ -77,51 +83,38 @@ def _derive_title(path: str) -> str:
     return stem.replace("-", " ").replace("_", " ").strip().title() or path
 
 
-def _extract_knowledge_refs(definition: dict[str, Any]) -> set[str]:
-    refs: set[str] = set()
-    for node in definition.get("nodes", []):
-        if not isinstance(node, dict):
-            continue
-        cfg = node.get("config") or {}
-        if not isinstance(cfg, dict):
-            continue
-        paths = cfg.get("knowledge_paths") or cfg.get("knowledge_files") or []
-        if not isinstance(paths, list):
-            continue
-        for raw in paths:
-            if not isinstance(raw, str):
-                continue
-            ref = raw.strip().lstrip("/")
-            if ref:
-                refs.add(ref)
-    return refs
+def _repo_handbook_paths() -> set[str]:
+    return {
+        str(path.relative_to(HANDBOOK_ROOT))
+        for path in HANDBOOK_ROOT.rglob("*")
+        if path.is_file()
+    }
 
 
-async def _resolve_root_knowledge_paths(
-    db,
-    source_workspace_id: UUID,
-    refs: set[str],
-) -> tuple[list[str], dict[str, str], list[str]]:
-    rows = await db.execute(
-        select(KnowledgeFile.path, KnowledgeFile.title).where(KnowledgeFile.workspace_id == source_workspace_id)
-    )
-    files = list(rows.all())
-    source_paths = {str(p): str(t) for p, t in files}
+def _read_repo_handbook(path: str) -> str:
+    src = HANDBOOK_ROOT / path
+    if not src.is_file():
+        raise FileNotFoundError(path)
+    return src.read_text(encoding="utf-8")
+
+
+def _resolve_root_knowledge_paths(refs: set[str]) -> tuple[list[str], list[str]]:
+    available = _repo_handbook_paths()
     resolved: set[str] = set()
     unresolved: list[str] = []
 
     for ref in sorted(refs):
         matched = False
-        if ref in source_paths:
+        if ref in available:
             resolved.add(ref)
             matched = True
         alt = ref if ref.endswith(".md") else f"{ref}.md"
-        if alt in source_paths:
+        if alt in available:
             resolved.add(alt)
             matched = True
 
         prefix = ref.rstrip("/") + "/"
-        folder_hits = [p for p in source_paths if p.startswith(prefix)]
+        folder_hits = [p for p in available if p.startswith(prefix)]
         if folder_hits:
             resolved.update(folder_hits)
             matched = True
@@ -129,7 +122,43 @@ async def _resolve_root_knowledge_paths(
         if not matched:
             unresolved.append(ref)
 
-    return sorted(resolved), source_paths, unresolved
+    return sorted(resolved), unresolved
+
+
+def _load_repo_handbook_tree(fragment_paths: list[str]) -> tuple[dict[str, str], list[str]]:
+    active_domains = {get_domain(p) for p in fragment_paths} | {"shared"}
+    visited: set[str] = set()
+    imported: dict[str, str] = {}
+    missing: list[str] = []
+    available = _repo_handbook_paths()
+
+    def should_follow(current_path: str, target: str) -> bool:
+        target_domain = get_domain(target)
+        return (
+            get_domain(current_path) == "shared"
+            or target_domain == "shared"
+            or target_domain in active_domains
+        )
+
+    def load(path: str) -> None:
+        if path in visited:
+            return
+        visited.add(path)
+        if path not in available:
+            missing.append(path)
+            return
+
+        content = _read_repo_handbook(path)
+        imported[path] = content
+        for link in extract_wiki_links(content):
+            target = resolve_link(path, link)
+            if should_follow(path, target):
+                load(target)
+
+    for path in fragment_paths:
+        load(path)
+
+    return imported, sorted(set(missing))
 
 
 async def _import_handbook_dependencies(
@@ -137,37 +166,33 @@ async def _import_handbook_dependencies(
     workflow_row: dict[str, Any],
     target_workspace_id: UUID,
     overwrite_handbook: bool,
+    handbook_manifest: dict[str, dict[str, Any]],
 ) -> tuple[int, int, list[str]]:
-    source_workspace_id = UUID(workflow_row["source_workspace_id"])
-    refs = _extract_knowledge_refs(workflow_row["definition"])
+    refs = {str(p).lstrip("/") for p in (workflow_row.get("handbook_paths") or []) if isinstance(p, str)}
     if not refs:
         return 0, 0, []
 
-    roots, source_title_map, unresolved = await _resolve_root_knowledge_paths(
-        db=db,
-        source_workspace_id=source_workspace_id,
-        refs=refs,
-    )
+    roots, unresolved = _resolve_root_knowledge_paths(refs)
     if not roots:
         return 0, 0, unresolved
 
-    tree = await load_knowledge_tree(roots, str(source_workspace_id))
+    tree, missing_links = _load_repo_handbook_tree(roots)
     imported = 0
     skipped = 0
-    for fragment in tree.fragments:
-        existing = await knowledge_service.get_file_by_path(db, target_workspace_id, fragment.path)
+    for path, content in tree.items():
+        existing = await knowledge_service.get_file_by_path(db, target_workspace_id, path)
         if existing is not None and not overwrite_handbook:
             skipped += 1
             continue
 
-        title = source_title_map.get(fragment.path) or _derive_title(fragment.path)
+        title = str(handbook_manifest.get(path, {}).get("title") or _derive_title(path))
         if existing is None:
             await knowledge_service.create_file(
                 db=db,
                 workspace_id=target_workspace_id,
-                path=fragment.path,
+                path=path,
                 title=title,
-                content=fragment.content,
+                content=content,
                 created_by="bootstrap:default-workflow-import",
                 change_summary=f"Imported dependency from template {workflow_row['id']}",
             )
@@ -175,14 +200,14 @@ async def _import_handbook_dependencies(
             await knowledge_service.update_file(
                 db=db,
                 workspace_id=target_workspace_id,
-                path=fragment.path,
-                content=fragment.content,
+                path=path,
+                content=content,
                 updated_by="bootstrap:default-workflow-import",
                 change_summary=f"Overwritten by template {workflow_row['id']}",
             )
         imported += 1
 
-    unresolved.extend(tree.missing_links)
+    unresolved.extend(missing_links)
     return imported, skipped, sorted(set(unresolved))
 
 
@@ -198,6 +223,7 @@ async def import_templates(
     if not selected:
         print("No templates selected; nothing imported.")
         return
+    handbook_manifest = load_handbook_manifest()
 
     async with AsyncSessionLocal() as db:
         ws = await db.get(Workspace, workspace_id)
@@ -247,6 +273,7 @@ async def import_templates(
                     workflow_row=row,
                     target_workspace_id=workspace_id,
                     overwrite_handbook=overwrite_handbook,
+                    handbook_manifest=handbook_manifest,
                 )
                 handbook_imported += dep_imported
                 handbook_skipped += dep_skipped

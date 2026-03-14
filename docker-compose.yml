@@ -53,7 +53,7 @@ services:
       redis:
         condition: service_healthy
     command: >
-      sh -c "alembic upgrade head && uvicorn knotwork.main:app --host 0.0.0.0 --port 8000"
+      sh -c "python scripts/migrate_or_stamp.py && uvicorn knotwork.main:app --host 0.0.0.0 --port 8000"
     profiles: ["prod"]
     networks:
       knotwork-network:
@@ -81,7 +81,7 @@ services:
     volumes:
       - ./backend:/app
     command: >
-      sh -c "alembic upgrade head && uvicorn knotwork.main:app --host 0.0.0.0 --port 8000 --reload"
+      sh -c "python scripts/migrate_or_stamp.py && uvicorn knotwork.main:app --host 0.0.0.0 --port 8000 --reload"
     profiles: ["dev"]
     networks:
       knotwork-network:
