@@ -1,8 +1,11 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from './client'
+import { useAuthStore } from '@/store/auth'
 import type { ChannelMessage } from '@/types'
 
-const WS = import.meta.env.VITE_DEV_WORKSPACE_ID ?? 'dev-workspace'
+function useWorkspaceId() {
+  return useAuthStore((s) => s.workspaceId) ?? import.meta.env.VITE_DEV_WORKSPACE_ID ?? 'dev-workspace'
+}
 
 export type Provider = 'anthropic' | 'openai' | 'openclaw'
 export type AgentStatus = 'inactive' | 'active' | 'archived'
@@ -233,15 +236,16 @@ export interface OpenClawDebugState {
 }
 
 function invalidateAgentQueries(qc: ReturnType<typeof useQueryClient>, agentId?: string) {
-  qc.invalidateQueries({ queryKey: ['agents', WS] })
+  const workspaceId = useAuthStore.getState().workspaceId ?? import.meta.env.VITE_DEV_WORKSPACE_ID ?? 'dev-workspace'
+  qc.invalidateQueries({ queryKey: ['agents', workspaceId] })
   if (agentId) {
-    qc.invalidateQueries({ queryKey: ['agent', WS, agentId] })
-    qc.invalidateQueries({ queryKey: ['agent-history', WS, agentId] })
-    qc.invalidateQueries({ queryKey: ['agent-usage', WS, agentId] })
-    qc.invalidateQueries({ queryKey: ['agent-capability-latest', WS, agentId] })
-    qc.invalidateQueries({ queryKey: ['agent-capabilities', WS, agentId] })
-    qc.invalidateQueries({ queryKey: ['agent-preflight-runs', WS, agentId] })
-    qc.invalidateQueries({ queryKey: ['agent-debug-links', WS, agentId] })
+    qc.invalidateQueries({ queryKey: ['agent', workspaceId, agentId] })
+    qc.invalidateQueries({ queryKey: ['agent-history', workspaceId, agentId] })
+    qc.invalidateQueries({ queryKey: ['agent-usage', workspaceId, agentId] })
+    qc.invalidateQueries({ queryKey: ['agent-capability-latest', workspaceId, agentId] })
+    qc.invalidateQueries({ queryKey: ['agent-capabilities', workspaceId, agentId] })
+    qc.invalidateQueries({ queryKey: ['agent-preflight-runs', workspaceId, agentId] })
+    qc.invalidateQueries({ queryKey: ['agent-debug-links', workspaceId, agentId] })
   }
 }
 
@@ -251,20 +255,22 @@ export function useRegisteredAgents(filters?: {
   status?: string
   preflight_status?: string
 }) {
+  const workspaceId = useWorkspaceId()
   return useQuery<RegisteredAgent[]>({
-    queryKey: ['agents', WS, filters?.q ?? '', filters?.provider ?? '', filters?.status ?? '', filters?.preflight_status ?? ''],
+    queryKey: ['agents', workspaceId, filters?.q ?? '', filters?.provider ?? '', filters?.status ?? '', filters?.preflight_status ?? ''],
     queryFn: async () => {
-      const { data } = await api.get(`/workspaces/${WS}/agents`, { params: filters })
+      const { data } = await api.get(`/workspaces/${workspaceId}/agents`, { params: filters })
       return data
     },
   })
 }
 
 export function useCreateAgent() {
+  const workspaceId = useWorkspaceId()
   const qc = useQueryClient()
   return useMutation({
     mutationFn: async (payload: RegisteredAgentCreate) => {
-      const { data } = await api.post(`/workspaces/${WS}/agents`, payload)
+      const { data } = await api.post(`/workspaces/${workspaceId}/agents`, payload)
       return data as RegisteredAgent
     },
     onSuccess: (created) => invalidateAgentQueries(qc, created.id),
@@ -272,10 +278,11 @@ export function useCreateAgent() {
 }
 
 export function useAgent(agentId: string) {
+  const workspaceId = useWorkspaceId()
   return useQuery<RegisteredAgent>({
-    queryKey: ['agent', WS, agentId],
+    queryKey: ['agent', workspaceId, agentId],
     queryFn: async () => {
-      const { data } = await api.get(`/workspaces/${WS}/agents/${agentId}`)
+      const { data } = await api.get(`/workspaces/${workspaceId}/agents/${agentId}`)
       return data
     },
     enabled: !!agentId,
@@ -283,10 +290,11 @@ export function useAgent(agentId: string) {
 }
 
 export function useUpdateAgent(agentId: string) {
+  const workspaceId = useWorkspaceId()
   const qc = useQueryClient()
   return useMutation({
     mutationFn: async (payload: RegisteredAgentUpdate) => {
-      const { data } = await api.patch(`/workspaces/${WS}/agents/${agentId}`, payload)
+      const { data } = await api.patch(`/workspaces/${workspaceId}/agents/${agentId}`, payload)
       return data as RegisteredAgent
     },
     onSuccess: () => invalidateAgentQueries(qc, agentId),
@@ -294,10 +302,11 @@ export function useUpdateAgent(agentId: string) {
 }
 
 export function useUpdateAgentConnectivity(agentId: string) {
+  const workspaceId = useWorkspaceId()
   const qc = useQueryClient()
   return useMutation({
     mutationFn: async (payload: AgentConnectivityUpdate) => {
-      const { data } = await api.patch(`/workspaces/${WS}/agents/${agentId}/connectivity`, payload)
+      const { data } = await api.patch(`/workspaces/${workspaceId}/agents/${agentId}/connectivity`, payload)
       return data as RegisteredAgent
     },
     onSuccess: () => invalidateAgentQueries(qc, agentId),
@@ -305,10 +314,11 @@ export function useUpdateAgentConnectivity(agentId: string) {
 }
 
 export function useActivateAgent(agentId: string) {
+  const workspaceId = useWorkspaceId()
   const qc = useQueryClient()
   return useMutation({
     mutationFn: async (payload: { allow_warning?: boolean } = {}) => {
-      const { data } = await api.post(`/workspaces/${WS}/agents/${agentId}/activate`, payload)
+      const { data } = await api.post(`/workspaces/${workspaceId}/agents/${agentId}/activate`, payload)
       return data as RegisteredAgent
     },
     onSuccess: () => invalidateAgentQueries(qc, agentId),
@@ -316,10 +326,11 @@ export function useActivateAgent(agentId: string) {
 }
 
 export function useDeactivateAgent(agentId: string) {
+  const workspaceId = useWorkspaceId()
   const qc = useQueryClient()
   return useMutation({
     mutationFn: async (payload: { reason?: string } = {}) => {
-      const { data } = await api.post(`/workspaces/${WS}/agents/${agentId}/deactivate`, payload)
+      const { data } = await api.post(`/workspaces/${workspaceId}/agents/${agentId}/deactivate`, payload)
       return data as RegisteredAgent
     },
     onSuccess: () => invalidateAgentQueries(qc, agentId),
@@ -327,10 +338,11 @@ export function useDeactivateAgent(agentId: string) {
 }
 
 export function useArchiveAgent(agentId: string) {
+  const workspaceId = useWorkspaceId()
   const qc = useQueryClient()
   return useMutation({
     mutationFn: async (payload: { reason?: string } = {}) => {
-      const { data } = await api.post(`/workspaces/${WS}/agents/${agentId}/archive`, payload)
+      const { data } = await api.post(`/workspaces/${workspaceId}/agents/${agentId}/archive`, payload)
       return data as RegisteredAgent
     },
     onSuccess: () => invalidateAgentQueries(qc, agentId),
@@ -338,10 +350,11 @@ export function useArchiveAgent(agentId: string) {
 }
 
 export function useRefreshCapabilities(agentId: string) {
+  const workspaceId = useWorkspaceId()
   const qc = useQueryClient()
   return useMutation({
     mutationFn: async (payload: { save_snapshot?: boolean } = { save_snapshot: true }) => {
-      const { data } = await api.post(`/workspaces/${WS}/agents/${agentId}/capabilities/refresh`, payload)
+      const { data } = await api.post(`/workspaces/${workspaceId}/agents/${agentId}/capabilities/refresh`, payload)
       return data as CapabilityRefreshResult
     },
     onSuccess: () => invalidateAgentQueries(qc, agentId),
@@ -349,10 +362,11 @@ export function useRefreshCapabilities(agentId: string) {
 }
 
 export function useAgentCapabilityLatest(agentId: string) {
+  const workspaceId = useWorkspaceId()
   return useQuery<CapabilityContract>({
-    queryKey: ['agent-capability-latest', WS, agentId],
+    queryKey: ['agent-capability-latest', workspaceId, agentId],
     queryFn: async () => {
-      const { data } = await api.get(`/workspaces/${WS}/agents/${agentId}/capabilities/latest`)
+      const { data } = await api.get(`/workspaces/${workspaceId}/agents/${agentId}/capabilities/latest`)
       return data
     },
     enabled: !!agentId,
@@ -360,10 +374,11 @@ export function useAgentCapabilityLatest(agentId: string) {
 }
 
 export function useAgentCapabilities(agentId: string, limit = 20) {
+  const workspaceId = useWorkspaceId()
   return useQuery<CapabilitySnapshot[]>({
-    queryKey: ['agent-capabilities', WS, agentId, limit],
+    queryKey: ['agent-capabilities', workspaceId, agentId, limit],
     queryFn: async () => {
-      const { data } = await api.get(`/workspaces/${WS}/agents/${agentId}/capabilities`, { params: { limit } })
+      const { data } = await api.get(`/workspaces/${workspaceId}/agents/${agentId}/capabilities`, { params: { limit } })
       return data
     },
     enabled: !!agentId,
@@ -371,10 +386,11 @@ export function useAgentCapabilities(agentId: string, limit = 20) {
 }
 
 export function useRunPreflight(agentId: string) {
+  const workspaceId = useWorkspaceId()
   const qc = useQueryClient()
   return useMutation({
     mutationFn: async (payload: { suite?: string; include_optional?: boolean } = {}) => {
-      const { data } = await api.post(`/workspaces/${WS}/agents/${agentId}/preflight-runs`, {
+      const { data } = await api.post(`/workspaces/${workspaceId}/agents/${agentId}/preflight-runs`, {
         suite: payload.suite ?? 'default',
         include_optional: payload.include_optional ?? false,
       })
@@ -385,10 +401,11 @@ export function useRunPreflight(agentId: string) {
 }
 
 export function useAgentPreflightRuns(agentId: string, limit = 20) {
+  const workspaceId = useWorkspaceId()
   return useQuery<PreflightRun[]>({
-    queryKey: ['agent-preflight-runs', WS, agentId, limit],
+    queryKey: ['agent-preflight-runs', workspaceId, agentId, limit],
     queryFn: async () => {
-      const { data } = await api.get(`/workspaces/${WS}/agents/${agentId}/preflight-runs`, { params: { limit } })
+      const { data } = await api.get(`/workspaces/${workspaceId}/agents/${agentId}/preflight-runs`, { params: { limit } })
       return data
     },
     enabled: !!agentId,
@@ -396,10 +413,11 @@ export function useAgentPreflightRuns(agentId: string, limit = 20) {
 }
 
 export function usePromotePreflightBaseline(agentId: string) {
+  const workspaceId = useWorkspaceId()
   const qc = useQueryClient()
   return useMutation({
     mutationFn: async (preflightRunId: string) => {
-      const { data } = await api.post(`/workspaces/${WS}/agents/${agentId}/preflight-runs/${preflightRunId}/promote-baseline`)
+      const { data } = await api.post(`/workspaces/${workspaceId}/agents/${agentId}/preflight-runs/${preflightRunId}/promote-baseline`)
       return data as PreflightRun
     },
     onSuccess: () => invalidateAgentQueries(qc, agentId),
@@ -407,10 +425,11 @@ export function usePromotePreflightBaseline(agentId: string) {
 }
 
 export function useAgentHistory(agentId: string) {
+  const workspaceId = useWorkspaceId()
   return useQuery<AgentHistoryItem[]>({
-    queryKey: ['agent-history', WS, agentId],
+    queryKey: ['agent-history', workspaceId, agentId],
     queryFn: async () => {
-      const { data } = await api.get(`/workspaces/${WS}/agents/${agentId}/history`)
+      const { data } = await api.get(`/workspaces/${workspaceId}/agents/${agentId}/history`)
       return data
     },
     enabled: !!agentId,
@@ -418,10 +437,11 @@ export function useAgentHistory(agentId: string) {
 }
 
 export function useAgentUsage(agentId: string) {
+  const workspaceId = useWorkspaceId()
   return useQuery<AgentUsageItem[]>({
-    queryKey: ['agent-usage', WS, agentId],
+    queryKey: ['agent-usage', workspaceId, agentId],
     queryFn: async () => {
-      const { data } = await api.get(`/workspaces/${WS}/agents/${agentId}/usage`)
+      const { data } = await api.get(`/workspaces/${workspaceId}/agents/${agentId}/usage`)
       return data
     },
     enabled: !!agentId,
@@ -429,10 +449,11 @@ export function useAgentUsage(agentId: string) {
 }
 
 export function useAgentDebugLinks(agentId: string) {
+  const workspaceId = useWorkspaceId()
   return useQuery<DebugLinkItem[]>({
-    queryKey: ['agent-debug-links', WS, agentId],
+    queryKey: ['agent-debug-links', workspaceId, agentId],
     queryFn: async () => {
-      const { data } = await api.get(`/workspaces/${WS}/agents/${agentId}/debug-links`)
+      const { data } = await api.get(`/workspaces/${workspaceId}/agents/${agentId}/debug-links`)
       return data
     },
     enabled: !!agentId,
@@ -440,20 +461,22 @@ export function useAgentDebugLinks(agentId: string) {
 }
 
 export function useDeleteAgent() {
+  const workspaceId = useWorkspaceId()
   const qc = useQueryClient()
   return useMutation({
     mutationFn: async (agentId: string) => {
-      await api.delete(`/workspaces/${WS}/agents/${agentId}`)
+      await api.delete(`/workspaces/${workspaceId}/agents/${agentId}`)
     },
     onSuccess: () => invalidateAgentQueries(qc),
   })
 }
 
 export function useAgentMainChatMessages(agentId: string) {
+  const workspaceId = useWorkspaceId()
   return useQuery<ChannelMessage[]>({
-    queryKey: ['agent-main-chat-messages', WS, agentId],
+    queryKey: ['agent-main-chat-messages', workspaceId, agentId],
     queryFn: async () => {
-      const { data } = await api.get(`/workspaces/${WS}/agents/${agentId}/main-chat/messages`)
+      const { data } = await api.get(`/workspaces/${workspaceId}/agents/${agentId}/main-chat/messages`)
       return data
     },
     enabled: !!agentId,
@@ -470,57 +493,62 @@ export interface ChatAttachmentRef {
 }
 
 export function useAskAgentMainChat(agentId: string) {
+  const workspaceId = useWorkspaceId()
   const qc = useQueryClient()
   return useMutation({
     mutationFn: async (payload: { message: string; attachments?: ChatAttachmentRef[] }) => {
-      const { data } = await api.post(`/workspaces/${WS}/agents/${agentId}/main-chat/ask`, payload)
+      const { data } = await api.post(`/workspaces/${workspaceId}/agents/${agentId}/main-chat/ask`, payload)
       return data as AgentMainChatAskResponse
     },
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['agent-main-chat-messages', WS, agentId] })
+      qc.invalidateQueries({ queryKey: ['agent-main-chat-messages', workspaceId, agentId] })
       invalidateAgentQueries(qc, agentId)
     },
   })
 }
 
 export function useEnsureAgentMainChat(agentId: string) {
+  const workspaceId = useWorkspaceId()
   const qc = useQueryClient()
   return useMutation({
     mutationFn: async () => {
-      const { data } = await api.post(`/workspaces/${WS}/agents/${agentId}/main-chat/ensure`)
+      const { data } = await api.post(`/workspaces/${workspaceId}/agents/${agentId}/main-chat/ensure`)
       return data as AgentMainChatEnsureResponse
     },
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['agent-main-chat-messages', WS, agentId] })
+      qc.invalidateQueries({ queryKey: ['agent-main-chat-messages', workspaceId, agentId] })
     },
   })
 }
 
 export function useCreateOpenClawHandshakeToken() {
+  const workspaceId = useWorkspaceId()
   return useMutation({
     mutationFn: async (payload?: { ttl_minutes?: number }) => {
       const body = payload?.ttl_minutes ? { ttl_minutes: payload.ttl_minutes } : {}
-      const { data } = await api.post(`/workspaces/${WS}/openclaw/handshake-token`, body)
+      const { data } = await api.post(`/workspaces/${workspaceId}/openclaw/handshake-token`, body)
       return data as OpenClawHandshakeToken
     },
   })
 }
 
 export function useOpenClawIntegrations() {
+  const workspaceId = useWorkspaceId()
   return useQuery<OpenClawIntegration[]>({
-    queryKey: ['openclaw-integrations', WS],
+    queryKey: ['openclaw-integrations', workspaceId],
     queryFn: async () => {
-      const { data } = await api.get(`/workspaces/${WS}/openclaw/integrations`)
+      const { data } = await api.get(`/workspaces/${workspaceId}/openclaw/integrations`)
       return data
     },
   })
 }
 
 export function useOpenClawDebugState() {
+  const workspaceId = useWorkspaceId()
   return useQuery<OpenClawDebugState>({
-    queryKey: ['openclaw-debug-state', WS],
+    queryKey: ['openclaw-debug-state', workspaceId],
     queryFn: async () => {
-      const { data } = await api.get(`/workspaces/${WS}/openclaw/debug-state`)
+      const { data } = await api.get(`/workspaces/${workspaceId}/openclaw/debug-state`)
       return data
     },
     refetchInterval: 5_000,
@@ -528,10 +556,11 @@ export function useOpenClawDebugState() {
 }
 
 export function useOpenClawRemoteAgents(integrationId: string) {
+  const workspaceId = useWorkspaceId()
   return useQuery<OpenClawRemoteAgent[]>({
-    queryKey: ['openclaw-remote-agents', WS, integrationId],
+    queryKey: ['openclaw-remote-agents', workspaceId, integrationId],
     queryFn: async () => {
-      const { data } = await api.get(`/workspaces/${WS}/openclaw/integrations/${integrationId}/agents`)
+      const { data } = await api.get(`/workspaces/${workspaceId}/openclaw/integrations/${integrationId}/agents`)
       return data
     },
     enabled: !!integrationId,
@@ -539,15 +568,16 @@ export function useOpenClawRemoteAgents(integrationId: string) {
 }
 
 export function useRegisterOpenClawRemoteAgent() {
+  const workspaceId = useWorkspaceId()
   const qc = useQueryClient()
   return useMutation({
     mutationFn: async (payload: { integration_id: string; remote_agent_id: string; display_name?: string }) => {
-      const { data } = await api.post(`/workspaces/${WS}/openclaw/register-agent`, payload)
+      const { data } = await api.post(`/workspaces/${workspaceId}/openclaw/register-agent`, payload)
       return data as { registered_agent_id: string; display_name: string; agent_ref: string; provider: 'openclaw' }
     },
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['agents', WS] })
-      qc.invalidateQueries({ queryKey: ['openclaw-integrations', WS] })
+      qc.invalidateQueries({ queryKey: ['agents', workspaceId] })
+      qc.invalidateQueries({ queryKey: ['openclaw-integrations', workspaceId] })
     },
   })
 }

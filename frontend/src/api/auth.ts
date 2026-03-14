@@ -3,10 +3,11 @@
  */
 import { useMutation, useQuery } from '@tanstack/react-query'
 import axios from 'axios'
+import { API_BASE_URL } from './client'
 
 // Use a bare axios instance for auth calls (no auth header needed)
 const authApi = axios.create({
-  baseURL: '/api/v1',
+  baseURL: API_BASE_URL,
   headers: { 'Content-Type': 'application/json' },
 })
 
@@ -108,9 +109,8 @@ export function useAcceptInvitation() {
   })
 }
 
-// ── Current user ──────────────────────────────────────────────────────────────
-
 import { api } from './client'
+// ── Current user ──────────────────────────────────────────────────────────────
 
 export function useMe() {
   return useQuery<UserMe>({

@@ -2,9 +2,12 @@
  * Handbook (knowledge file) API hooks.
  */
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { api } from './client'
+import { api, API_BASE_URL } from './client'
+import { useAuthStore } from '@/store/auth'
 
-const WS_ID = import.meta.env.VITE_DEV_WORKSPACE_ID ?? 'dev-workspace'
+function useWorkspaceId() {
+  return useAuthStore((s) => s.workspaceId) ?? import.meta.env.VITE_DEV_WORKSPACE_ID ?? 'dev-workspace'
+}
 
 export interface KnowledgeFile {
   id: string
@@ -41,56 +44,62 @@ export interface SuggestionOut {
 // ── Queries ──────────────────────────────────────────────────────────────────
 
 export function useKnowledgeFiles() {
+  const workspaceId = useWorkspaceId()
   return useQuery<KnowledgeFile[]>({
-    queryKey: ['knowledge', WS_ID],
-    queryFn: () => api.get(`/workspaces/${WS_ID}/knowledge`).then(r => r.data),
+    queryKey: ['knowledge', workspaceId],
+    queryFn: () => api.get(`/workspaces/${workspaceId}/knowledge`).then(r => r.data),
   })
 }
 
 export function useSearchKnowledgeFiles(query: string) {
+  const workspaceId = useWorkspaceId()
   const q = query.trim()
   return useQuery<KnowledgeFile[]>({
-    queryKey: ['knowledge-search', WS_ID, q],
+    queryKey: ['knowledge-search', workspaceId, q],
     queryFn: () =>
       api
-        .get(`/workspaces/${WS_ID}/knowledge/search`, { params: { q } })
+        .get(`/workspaces/${workspaceId}/knowledge/search`, { params: { q } })
         .then((r) => r.data),
     enabled: q.length > 0,
   })
 }
 
 export function useKnowledgeFile(path: string | null) {
+  const workspaceId = useWorkspaceId()
   return useQuery<KnowledgeFileWithContent>({
-    queryKey: ['knowledge', WS_ID, path],
+    queryKey: ['knowledge', workspaceId, path],
     queryFn: () =>
-      api.get(`/workspaces/${WS_ID}/knowledge/file`, { params: { path } }).then(r => r.data),
+      api.get(`/workspaces/${workspaceId}/knowledge/file`, { params: { path } }).then(r => r.data),
     enabled: !!path,
   })
 }
 
 export function useKnowledgeHistory(path: string | null) {
+  const workspaceId = useWorkspaceId()
   return useQuery<FileVersion[]>({
-    queryKey: ['knowledge-history', WS_ID, path],
+    queryKey: ['knowledge-history', workspaceId, path],
     queryFn: () =>
-      api.get(`/workspaces/${WS_ID}/knowledge/history`, { params: { path } }).then(r => r.data),
+      api.get(`/workspaces/${workspaceId}/knowledge/history`, { params: { path } }).then(r => r.data),
     enabled: !!path,
   })
 }
 
 export function useKnowledgeHealth(path: string | null) {
+  const workspaceId = useWorkspaceId()
   return useQuery<{ path: string; health_score: number }>({
-    queryKey: ['knowledge-health', WS_ID, path],
+    queryKey: ['knowledge-health', workspaceId, path],
     queryFn: () =>
-      api.get(`/workspaces/${WS_ID}/knowledge/health`, { params: { path } }).then(r => r.data),
+      api.get(`/workspaces/${workspaceId}/knowledge/health`, { params: { path } }).then(r => r.data),
     enabled: !!path,
   })
 }
 
 export function useKnowledgeSuggestions(path: string | null) {
+  const workspaceId = useWorkspaceId()
   return useQuery<SuggestionOut>({
-    queryKey: ['knowledge-suggestions', WS_ID, path],
+    queryKey: ['knowledge-suggestions', workspaceId, path],
     queryFn: () =>
-      api.get(`/workspaces/${WS_ID}/knowledge/suggestions`, { params: { path } }).then(r => r.data),
+      api.get(`/workspaces/${workspaceId}/knowledge/suggestions`, { params: { path } }).then(r => r.data),
     enabled: !!path,
   })
 }
@@ -98,44 +107,48 @@ export function useKnowledgeSuggestions(path: string | null) {
 // ── Mutations ─────────────────────────────────────────────────────────────────
 
 export function useCreateKnowledgeFile() {
+  const workspaceId = useWorkspaceId()
   const qc = useQueryClient()
   return useMutation({
     mutationFn: (body: { path: string; title: string; content: string; change_summary?: string }) =>
-      api.post(`/workspaces/${WS_ID}/knowledge`, body).then(r => r.data),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['knowledge', WS_ID] }),
+      api.post(`/workspaces/${workspaceId}/knowledge`, body).then(r => r.data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['knowledge', workspaceId] }),
   })
 }
 
 export function useUpdateKnowledgeFile(path: string) {
+  const workspaceId = useWorkspaceId()
   const qc = useQueryClient()
   return useMutation({
     mutationFn: (body: { content: string; change_summary?: string }) =>
       api
-        .put(`/workspaces/${WS_ID}/knowledge/file`, body, { params: { path } })
+        .put(`/workspaces/${workspaceId}/knowledge/file`, body, { params: { path } })
         .then(r => r.data),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['knowledge', WS_ID, path] })
-      qc.invalidateQueries({ queryKey: ['knowledge-history', WS_ID, path] })
-      qc.invalidateQueries({ queryKey: ['knowledge', WS_ID] })
+      qc.invalidateQueries({ queryKey: ['knowledge', workspaceId, path] })
+      qc.invalidateQueries({ queryKey: ['knowledge-history', workspaceId, path] })
+      qc.invalidateQueries({ queryKey: ['knowledge', workspaceId] })
     },
   })
 }
 
 export function useSummarizeKnowledgeDiff(path: string) {
+  const workspaceId = useWorkspaceId()
   return useMutation({
     mutationFn: (body: { content: string }) =>
       api
-        .post(`/workspaces/${WS_ID}/knowledge/summarize-diff`, body, { params: { path } })
+        .post(`/workspaces/${workspaceId}/knowledge/summarize-diff`, body, { params: { path } })
         .then(r => r.data as { summary: string }),
   })
 }
 
 export function useDeleteKnowledgeFile() {
+  const workspaceId = useWorkspaceId()
   const qc = useQueryClient()
   return useMutation({
     mutationFn: (path: string) =>
-      api.delete(`/workspaces/${WS_ID}/knowledge/file`, { params: { path } }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['knowledge', WS_ID] }),
+      api.delete(`/workspaces/${workspaceId}/knowledge/file`, { params: { path } }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['knowledge', workspaceId] }),
   })
 }
 
@@ -148,6 +161,7 @@ export interface UploadPreview {
 }
 
 export function useUploadFile() {
+  const workspaceId = useWorkspaceId()
   return useMutation({
     mutationFn: async ({ file, folder }: { file: File; folder?: string }) => {
       const form = new FormData()
@@ -159,7 +173,7 @@ export function useUploadFile() {
       const token = localStorage.getItem('knotwork_token')
       const headers: HeadersInit = {}
       if (token) headers['Authorization'] = `Bearer ${token}`
-      const res = await fetch(`/api/v1/workspaces/${WS_ID}/handbook/upload${params}`, {
+      const res = await fetch(`${API_BASE_URL}/workspaces/${workspaceId}/handbook/upload${params}`, {
         method: 'POST',
         body: form,
         headers,
@@ -188,41 +202,45 @@ export interface HandbookProposal {
 }
 
 export function useHandbookProposals(status?: string) {
+  const workspaceId = useWorkspaceId()
   return useQuery<HandbookProposal[]>({
-    queryKey: ['handbook-proposals', WS_ID, status],
+    queryKey: ['handbook-proposals', workspaceId, status],
     queryFn: () =>
-      api.get(`/workspaces/${WS_ID}/handbook/proposals`, { params: status ? { status } : {} }).then(r => r.data),
+      api.get(`/workspaces/${workspaceId}/handbook/proposals`, { params: status ? { status } : {} }).then(r => r.data),
   })
 }
 
 export function useApproveProposal() {
+  const workspaceId = useWorkspaceId()
   const qc = useQueryClient()
   return useMutation({
     mutationFn: ({ id, final_content }: { id: string; final_content?: string }) =>
-      api.post(`/workspaces/${WS_ID}/handbook/proposals/${id}/approve`, { final_content }).then(r => r.data),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['handbook-proposals', WS_ID] }),
+      api.post(`/workspaces/${workspaceId}/handbook/proposals/${id}/approve`, { final_content }).then(r => r.data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['handbook-proposals', workspaceId] }),
   })
 }
 
 export function useRejectProposal() {
+  const workspaceId = useWorkspaceId()
   const qc = useQueryClient()
   return useMutation({
     mutationFn: (id: string) =>
-      api.post(`/workspaces/${WS_ID}/handbook/proposals/${id}/reject`, {}).then(r => r.data),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['handbook-proposals', WS_ID] }),
+      api.post(`/workspaces/${workspaceId}/handbook/proposals/${id}/reject`, {}).then(r => r.data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['handbook-proposals', workspaceId] }),
   })
 }
 
 export function useRestoreKnowledgeFile(path: string) {
+  const workspaceId = useWorkspaceId()
   const qc = useQueryClient()
   return useMutation({
     mutationFn: (version_id: string) =>
       api
-        .post(`/workspaces/${WS_ID}/knowledge/restore`, { version_id }, { params: { path } })
+        .post(`/workspaces/${workspaceId}/knowledge/restore`, { version_id }, { params: { path } })
         .then(r => r.data),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['knowledge', WS_ID, path] })
-      qc.invalidateQueries({ queryKey: ['knowledge-history', WS_ID, path] })
+      qc.invalidateQueries({ queryKey: ['knowledge', workspaceId, path] })
+      qc.invalidateQueries({ queryKey: ['knowledge-history', workspaceId, path] })
     },
   })
 }
