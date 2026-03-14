@@ -65,7 +65,7 @@ Or via env vars: `KNOTWORK_BASE_URL`, `KNOTWORK_HANDSHAKE_TOKEN`, `KNOTWORK_PLUG
 
 **3. Start/restart OpenClaw**
 
-Plugin handshakes automatically on first pairing. After that, it persists `pluginInstanceId` + `integrationSecret` locally and should survive normal OpenClaw restarts without needing a new handshake token. In Knotwork Settings > Agents you'll see the discovered agents. Register one, then trigger a run — the plugin picks it up from the task queue.
+The primary long-running plugin runtime handshakes automatically on first pairing. CLI/plugin-load contexts stay passive and do not consume the handshake token on startup. After pairing, the plugin persists `pluginInstanceId` + `integrationSecret` locally and should survive normal OpenClaw restarts without needing a new handshake token. In Knotwork Settings > Agents you'll see the discovered agents. Register one, then trigger a run — the plugin picks it up from the task queue.
 
 ## Config reference
 
@@ -74,7 +74,7 @@ Plugin handshakes automatically on first pairing. After that, it persists `plugi
 | `knotworkBaseUrl` | ✓ | — | URL reachable from OpenClaw runtime |
 | `handshakeToken` | ✓ | — | One-time token from Knotwork Settings |
 | `pluginInstanceId` | — | auto | Keep stable across restarts |
-| `autoHandshakeOnStart` | — | `true` | Handshake on plugin load |
+| `autoHandshakeOnStart` | — | `true` | Handshake on primary runtime startup |
 | `taskPollIntervalMs` | — | `2000` | Min 500ms |
 
 ## Persistent state
@@ -87,6 +87,8 @@ Stored fields:
 
 1. `pluginInstanceId`
 2. `integrationSecret`
+
+It also keeps a local runtime lease so only one long-running process owns background handshake/polling. Transient CLI/plugin-load contexts still expose RPC methods, but they do not auto-start the worker loop.
 
 This is used so normal OpenClaw restarts do not require a new handshake token.
 

@@ -3,7 +3,8 @@
 // All log lines also written to stdout → `docker logs <container> | grep knotwork-bridge`
 
 /* eslint-disable no-console */
-import { mkdir, readFile, writeFile } from 'node:fs/promises'
+import { rmSync } from 'node:fs'
+import { mkdir, open, readFile, rm, writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { discoverAgents, doHandshake, getConfig, getGatewayConfig, postEvent, pullTask, resolveInstanceId } from './bridge'
@@ -12,6 +13,7 @@ import type { AnyObj, OpenClawApi, PluginConfig, PluginState } from './types'
 
 const PLUGIN_ID = 'knotwork-bridge'
 const STATE_FILE = 'knotwork-bridge-state.json'
+const RUNTIME_LOCK_FILE = 'knotwork-bridge-runtime.lock'
 const HANDSHAKE_RETRY_MS = 15000
 
 type PersistedPluginState = {
@@ -20,10 +22,14 @@ type PersistedPluginState = {
 }
 
 export function activate(api: OpenClawApi): void {
+  let runtimeLockOwner = false
   const state: PluginState = {
     pluginInstanceId: null,
     integrationSecret: null,
     stateFilePath: null,
+    runtimeLockPath: null,
+    activationContext: null,
+    backgroundWorkerEnabled: false,
     lastHandshakeAt: null,
     lastHandshakeOk: false,
     lastError: null,
@@ -42,10 +48,36 @@ export function activate(api: OpenClawApi): void {
   }
 
   function getStateFilePath(): string {
+    const home = getHomeDir()
+    return join(home, '.openclaw', STATE_FILE)
+  }
+
+  function getRuntimeLockPath(): string {
+    const home = getHomeDir()
+    return join(home, '.openclaw', RUNTIME_LOCK_FILE)
+  }
+
+  function getHomeDir(): string {
     const home = (() => {
       try { return homedir() } catch { return process?.env?.HOME || '.' }
     })()
-    return join(home, '.openclaw', STATE_FILE)
+    return home
+  }
+
+  function getProcessArgs(): string[] {
+    try {
+      return Array.isArray(process?.argv) ? process.argv.map((part) => String(part).toLowerCase()) : []
+    } catch {
+      return []
+    }
+  }
+
+  function detectActivationContext(): string {
+    const args = getProcessArgs()
+    if (args.includes('gateway') && args.includes('call')) return 'cli_gateway_call'
+    if (args.includes('plugins') && (args.includes('list') || args.includes('inspect'))) return 'cli_plugins'
+    if (args.includes('--help') || args.includes('-h')) return 'cli_help'
+    return 'runtime'
   }
 
   async function readPersistedState(): Promise<PersistedPluginState> {
@@ -71,6 +103,73 @@ export function activate(api: OpenClawApi): void {
       pluginInstanceId: state.pluginInstanceId,
       integrationSecret: state.integrationSecret,
     }, null, 2))
+  }
+
+  async function releaseRuntimeLease(): Promise<void> {
+    if (!runtimeLockOwner || !state.runtimeLockPath) return
+    runtimeLockOwner = false
+    try {
+      await rm(state.runtimeLockPath, { force: true })
+    } catch {
+      // ignore cleanup failures
+    }
+  }
+
+  function releaseRuntimeLeaseSync(): void {
+    if (!runtimeLockOwner || !state.runtimeLockPath) return
+    runtimeLockOwner = false
+    try {
+      rmSync(state.runtimeLockPath, { force: true })
+    } catch {
+      // ignore cleanup failures
+    }
+  }
+
+  function isProcessAlive(pid: number): boolean {
+    if (!Number.isInteger(pid) || pid <= 0) return false
+    try {
+      process.kill(pid, 0)
+      return true
+    } catch {
+      return false
+    }
+  }
+
+  async function acquireRuntimeLease(): Promise<boolean> {
+    const path = getRuntimeLockPath()
+    state.runtimeLockPath = path
+    await mkdir(dirname(path), { recursive: true })
+
+    const tryAcquire = async (): Promise<boolean> => {
+      try {
+        const handle = await open(path, 'wx')
+        await handle.writeFile(JSON.stringify({
+          pid: process?.pid ?? null,
+          acquired_at: new Date().toISOString(),
+          plugin_id: PLUGIN_ID,
+        }, null, 2))
+        runtimeLockOwner = true
+        await handle.close()
+        return true
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err)
+        if (!/exist/i.test(msg)) return false
+        try {
+          const raw = await readFile(path, 'utf8')
+          const parsed = JSON.parse(raw) as { pid?: number }
+          if (!isProcessAlive(Number(parsed.pid ?? 0))) {
+            await rm(path, { force: true })
+            return tryAcquire()
+          }
+        } catch {
+          await rm(path, { force: true })
+          return tryAcquire()
+        }
+        return false
+      }
+    }
+
+    return tryAcquire()
   }
 
   async function resetPersistedSecret(resetInstanceId = false): Promise<void> {
@@ -308,6 +407,7 @@ export function activate(api: OpenClawApi): void {
   // ── Startup ───────────────────────────────────────────────────────────────────
 
   const cfg = getConfig(api)
+  state.activationContext = detectActivationContext()
   readPersistedState()
     .then(async (persisted) => {
       const configuredInstanceId = cfg.pluginInstanceId?.trim() || null
@@ -320,6 +420,19 @@ export function activate(api: OpenClawApi): void {
         log('state:ignored persisted secret due_to_instance_id_mismatch=true')
       }
       await persistState()
+
+      const canStartBackground = state.activationContext === 'runtime'
+      if (!canStartBackground) {
+        log(`startup:background-disabled context=${state.activationContext}`)
+        return
+      }
+      const leased = await acquireRuntimeLease()
+      if (!leased) {
+        log('startup:background-disabled runtime_lease=busy')
+        return
+      }
+      state.backgroundWorkerEnabled = true
+      log(`startup:background-enabled context=${state.activationContext}`)
 
       if (!state.integrationSecret && cfg.autoHandshakeOnStart && cfg.knotworkBaseUrl && cfg.handshakeToken) {
         runHandshake().catch((err: unknown) => {
@@ -344,12 +457,23 @@ export function activate(api: OpenClawApi): void {
   let busy = false
   const pollMs = Math.max(500, cfg.taskPollIntervalMs ?? 2000)
   setInterval(() => {
+    if (!state.backgroundWorkerEnabled) return
     if (busy) return
     busy = true
     pollAndRun()
       .catch((err) => log(`poll:error ${err instanceof Error ? err.message : String(err)}`))
       .finally(() => { busy = false })
   }, pollMs)
+
+  process.once('exit', () => {
+    releaseRuntimeLeaseSync()
+  })
+  process.once('SIGINT', () => {
+    void releaseRuntimeLease().finally(() => process.exit(0))
+  })
+  process.once('SIGTERM', () => {
+    void releaseRuntimeLease().finally(() => process.exit(0))
+  })
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────

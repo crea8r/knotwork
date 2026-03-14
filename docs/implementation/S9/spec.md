@@ -31,12 +31,6 @@ Make Knotwork ready for humans to use reliably in production operations.
    - plugin must support OpenClaw gateway auth modes `none`, `token`, `password`, and `trusted-proxy` through a single startup resolver rather than hardcoded token-only behavior
    - gateway auth strategy selection must be automatic by default, based on OpenClaw runtime config plus optional plugin hints
    - all gateway calls must go through one internal client wrapper so auth behavior, retries, and error classification are consistent
-   - plugin identity/bootstrap must be stable across routine restarts:
-     - `plugin_instance_id` must be persisted and reused
-     - `integration_secret` must be persisted and reused for normal restart recovery
-     - handshake is for initial pairing or explicit recovery, not a required step for every restart
-   - plugin must not loop forever on handshake `409 token already used` by generating or using new plugin identities
-   - when bootstrap fails due to identity mismatch, plugin must enter an explicit degraded state with actionable remediation instead of silently starving the queue
 7. OpenClaw concurrency upgrade:
    - support multiple concurrent tasks per remote agent instead of one task per plugin instance
    - default concurrency is `2` tasks per remote agent
@@ -93,11 +87,7 @@ Make Knotwork ready for humans to use reliably in production operations.
    - startup handshake retries with backoff until success
    - auth failures during dispatch/event submission trigger re-handshake automatically
    - stale plugin credentials do not require manual restart as the primary recovery path
-   - auth/bootstrap retry rules must distinguish recoverable vs non-recoverable failures:
-     - `401 invalid credentials` -> clear stale secret and retry handshake
-     - `409 handshake token already used` -> stop blind retry loop, preserve stable identity, surface remediation to reuse existing identity or generate a fresh token
-     - identity drift must not create unbounded new `plugin_instance_id` values
-   - gateway client startup resolves auth strategy from OpenClaw config:
+    - gateway client startup resolves auth strategy from OpenClaw config:
      - inputs: `api.config.gateway.auth.mode`, presence of gateway token, presence of gateway password, optional trusted-proxy capability
      - strategy matrix:
        - `none` -> no auth headers
@@ -153,28 +143,24 @@ Make Knotwork ready for humans to use reliably in production operations.
    - fresh startup succeeds across OpenClaw auth modes `none`, `token`, `password`, and supported `trusted-proxy`
    - plugin status/debug output identifies auth-mode mismatch clearly
    - auth failures no longer surface as opaque websocket/gateway errors without remediation guidance
-15. Add validation checks for plugin bootstrap identity recovery:
-   - routine restart reuses the same `plugin_instance_id` and persisted `integration_secret`
-   - plugin does not enter infinite handshake retry on `409 Handshake token already used`
-   - pending tasks are diagnosable as queue wait vs bootstrap/auth failure
-16. Add S9 validation checks: reduced idle request noise, stable long-running task execution, no regression in run completion/escalation handling, correct queue/claim behavior under concurrent load, successful human answer/resume flow for escalations, successful review-loop execution without false invalid-graph rejection, and no manual restart required for routine dropped-connection/auth-recovery cases.
-17. Align the trigger-input contract across operator and public entry points:
+15. Add S9 validation checks: reduced idle request noise, stable long-running task execution, no regression in run completion/escalation handling, correct queue/claim behavior under concurrent load, successful human answer/resume flow for escalations, successful review-loop execution without false invalid-graph rejection, and no manual restart required for routine dropped-connection/auth-recovery cases.
+16. Align the trigger-input contract across operator and public entry points:
    - uploaded files count as valid input even when the free-text field is empty
    - public trigger pages expose the same upload capability where the workflow input schema allows it
-18. Remove direct provider dependence from designer chat:
+17. Remove direct provider dependence from designer chat:
    - designer chat must invoke a configured agent path instead of calling OpenAI/Claude adapters directly
    - missing agent availability/configuration must surface as a clear blocking state in UI/API
-19. Define collaborative run addressing semantics:
+18. Define collaborative run addressing semantics:
    - stable participant identity for humans, external clients, and agents within a run
    - agent can direct a request/question to a specific participant
    - targeted requests are visible in run timeline and inbox state
    - replies are attributed to the exact participant and can be fed back into execution context
-20. Define workflow organization semantics:
+19. Define workflow organization semantics:
    - folder path model for workflows
    - tag model separate from folder hierarchy
    - handbook-style tree behaviors reused where appropriate (expand/collapse, selection, drag/drop only if explicitly supported)
    - workflow search/filter combines tree navigation with tag filtering
-21. Define install/session-state hardening semantics:
+20. Define install/session-state hardening semantics:
    - backend exposes `installation_id` via a stable endpoint already loaded during bootstrap (`/health`, `/auth/me`, or a dedicated session bootstrap endpoint)
    - `installation_id` persists across normal restarts but changes on true fresh install / database reset / explicit install regeneration
    - frontend stores last-seen `installation_id` separately from auth token/workspace cache
@@ -183,7 +169,7 @@ Make Knotwork ready for humans to use reliably in production operations.
    - localhost installs using bypass auth must never skip bootstrap solely because a cached bypass token exists
    - stale cached role must not drive owner/operator gating in UI without confirming current membership
    - operator-facing debug docs should mention how install resets invalidate cached browser state
-22. Define installation update semantics:
+21. Define installation update semantics:
    - each release exposes an application version, schema version, and minimum compatible OpenClaw plugin version
    - provide a canonical update entry point (for example a versioned docker compose pull/up flow or a dedicated update script) rather than relying on manual repo diffing
    - update flow includes ordered steps: fetch release, stop/recreate services as needed, run migrations exactly once, verify health, verify background worker, verify plugin compatibility state

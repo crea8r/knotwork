@@ -36,7 +36,9 @@ Three values must be in the OpenClaw plugin config or env vars:
 
 ### Handshake flow
 
-On startup (`autoHandshakeOnStart: true` by default), the plugin calls:
+Only the primary long-running plugin runtime auto-handshakes on startup (`autoHandshakeOnStart: true` by default). CLI/plugin-load contexts must stay passive and should not consume the pairing token.
+
+When the primary runtime starts, the plugin calls:
 
 ```
 POST /openclaw-plugin/handshake
@@ -60,6 +62,8 @@ Current local persistence behavior:
 1. Plugin stores `pluginInstanceId` + `integrationSecret` in `~/.openclaw/knotwork-bridge-state.json`
 2. On routine restart, plugin reuses the persisted secret instead of requiring a fresh handshake
 3. If backend returns `401 Invalid plugin credentials`, plugin clears the persisted secret and automatically attempts a fresh handshake
+4. CLI/plugin-load invocations do not auto-handshake or start background polling
+5. The primary runtime uses a local runtime lease so only one process owns background handshake/polling at a time
 
 Agent discovery runs at handshake time using a multi-step fallback:
 1. `api.agents.list()` SDK method

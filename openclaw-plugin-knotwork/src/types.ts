@@ -37,6 +37,9 @@ export type PluginState = {
   pluginInstanceId: string | null
   integrationSecret: string | null
   stateFilePath: string | null
+  runtimeLockPath: string | null
+  activationContext: string | null
+  backgroundWorkerEnabled: boolean
   lastHandshakeAt: string | null
   lastHandshakeOk: boolean
   lastError: string | null

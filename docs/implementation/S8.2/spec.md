@@ -20,6 +20,10 @@ Deploy Knotwork as a clean install on a remote server with a reproducible operat
    - routine OpenClaw restart does not require a fresh handshake token
    - plugin automatically re-handshakes on backend `401 Invalid plugin credentials`
    - operator has a documented reset/re-pair flow when intentionally starting over
+   - only the primary long-running plugin runtime is allowed to auto-handshake and poll tasks
+   - CLI/plugin-load contexts must remain passive and must not consume the handshake token on startup
+   - plugin must keep `pluginInstanceId` stable across routine restarts and must not generate fresh identities during bootstrap recovery
+   - when handshake fails with `409 Handshake token already used`, plugin must stop blind startup retries in the wrong process context and surface actionable remediation
 
 ## Explicitly Out of Scope
 
@@ -36,6 +40,7 @@ Deploy Knotwork as a clean install on a remote server with a reproducible operat
 6. Installer prompts owner identity and domain, bootstraps owner workspace, and preloads default workflows.
 7. Uninstaller creates a zip backup including manifest metadata, a PostgreSQL dump, and the handbook archive before destructive cleanup.
 8. Routine OpenClaw restart/reload reuses persisted plugin credentials and does not require generating a new handshake token.
+9. CLI/plugin-load invocations do not consume the handshake token or destabilize the real background task-claim loop.
 
 ## Risks
 
@@ -43,6 +48,7 @@ Deploy Knotwork as a clean install on a remote server with a reproducible operat
 2. OpenClaw reconnect confusion after restart (requires clear handshake/reconnect steps).
 3. TLS/proxy misconfiguration breaking websocket or callback flows.
 4. Plugin local state loss causing accidental re-pair attempts if reset flow is undocumented.
+5. Plugin loaded in non-worker contexts (for example CLI calls) consuming one-time pairing state unless startup behavior is gated correctly.
 
 ## Database Migration Policy
 
@@ -139,12 +145,15 @@ Behavior:
 1. On normal OpenClaw restart, the plugin reuses the persisted `integrationSecret` and continues pulling tasks without requiring a new handshake token.
 2. If backend rejects plugin auth with `401 Invalid plugin credentials`, the plugin clears the persisted secret and automatically attempts a fresh handshake using the configured handshake token.
 3. If the operator intentionally wants to start over, the plugin connection can be reset locally and re-paired without editing the database.
+4. Plugin startup only auto-handshakes and starts the polling loop in the primary long-running runtime context.
+5. CLI/plugin-load contexts may still expose diagnostic RPC methods, but they must not auto-handshake or start background queue consumption.
 
 Operational guidance:
 
 1. Treat the handshake token as a pairing bootstrap credential, not the normal runtime credential.
 2. Prefer a stable `pluginInstanceId` in OpenClaw config for predictable recovery.
 3. For deliberate re-pair/reset, clear the local plugin connection state first, then handshake again.
+4. If status shows background runtime disabled in a CLI context, that is expected and not a queue bug.
 
 Reset / start-over flow:
 

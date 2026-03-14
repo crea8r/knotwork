@@ -26,7 +26,7 @@
       },
       "autoHandshakeOnStart": {
         "type": "boolean",
-        "description": "If true, plugin handshakes immediately on startup.",
+        "description": "If true, the primary long-running plugin runtime handshakes automatically on startup.",
         "default": true
       },
       "taskPollIntervalMs": {
