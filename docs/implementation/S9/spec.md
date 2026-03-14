@@ -9,6 +9,9 @@ Make Knotwork ready for humans to use reliably in production operations.
 1. Workspace creation flow.
 2. Notification system implementation.
 3. Core UI refinement for daily operator/designer workflows.
+   - designer chat must route through registered/workspace agents rather than direct OpenAI or Claude provider calls
+   - when the user has uploaded a file, the run/public trigger input field may be left empty
+   - public workflow trigger pages support file upload as an input path
 4. Workflow readiness hardening:
    - validate the exact graph version before run trigger
    - block runs when executable nodes are missing required config (for example agent nodes without `agent_ref`)
@@ -59,6 +62,12 @@ Make Knotwork ready for humans to use reliably in production operations.
    - run timeline and node state clearly show repeated passes through the same node
 8. Update deployment guidance for reverse proxy/TLS upgrade headers and idle timeouts for long-lived WS connections.
 9. Add S9 validation checks: reduced idle request noise, stable long-running task execution, no regression in run completion/escalation handling, correct queue/claim behavior under concurrent load, successful human answer/resume flow for escalations, and successful review-loop execution without false invalid-graph rejection.
+10. Align the trigger-input contract across operator and public entry points:
+   - uploaded files count as valid input even when the free-text field is empty
+   - public trigger pages expose the same upload capability where the workflow input schema allows it
+11. Remove direct provider dependence from designer chat:
+   - designer chat must invoke a configured agent path instead of calling OpenAI/Claude adapters directly
+   - missing agent availability/configuration must surface as a clear blocking state in UI/API
 
 ## Non-Goals
 
@@ -78,3 +87,6 @@ Make Knotwork ready for humans to use reliably in production operations.
 9. Main workflows are usable on mobile screens.
 10. OpenClaw interaction is stable without polling-heavy behavior.
 11. Product is ready for human operators as primary users.
+12. Designer chat uses a configured agent path instead of direct OpenAI/Claude provider calls.
+13. Operator and public trigger forms accept an uploaded file as sufficient input when no text is entered.
+14. Public workflow pages support file upload wherever the workflow input contract allows it.

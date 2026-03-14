@@ -14,6 +14,7 @@ Deploy Knotwork as a clean install on a remote server with a reproducible operat
 6. Settings IA cleanup for scope clarity: hide `Workspace` and `Notifications` tabs until S9.
 7. Installer bootstrap support for default workflow import selection.
 8. Single-command installer for owner bootstrap + host nginx setup + Let's Encrypt automation.
+9. Backup-first uninstaller for Docker teardown and file cleanup.
 
 ## Explicitly Out of Scope
 
@@ -28,6 +29,7 @@ Deploy Knotwork as a clean install on a remote server with a reproducible operat
 4. Documentation is sufficient for another operator to reproduce without tribal knowledge.
 5. Settings page only exposes tabs backed by shipped features in S8.2 (`Account`, `Members`, `Agents`).
 6. Installer prompts owner identity and domain, bootstraps owner workspace, and preloads default workflows.
+7. Uninstaller creates a zip backup including a PostgreSQL dump before destructive cleanup.
 
 ## Risks
 
@@ -60,6 +62,7 @@ Handbook dependency behavior:
 Primary script:
 
 1. `scripts/install_s8_2.sh`
+2. `scripts/uninstall_s8_2.sh`
 
 Bootstrap helper scripts:
 
@@ -83,3 +86,10 @@ Installer behavior:
    - `landing-page-builder`
    - `simple-writing`
 11. Import handbook dependencies for selected workflows.
+
+Uninstaller behavior:
+
+1. Create a timestamped backup zip outside the project directory.
+2. Include project files plus a `pg_dump` SQL export.
+3. Tear down project Docker containers/networks/volumes and remove local project images.
+4. Support `runtime` cleanup (generated files only) and `full` cleanup (remove project tree contents except `.git`).

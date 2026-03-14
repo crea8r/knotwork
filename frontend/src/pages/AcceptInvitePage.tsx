@@ -7,7 +7,7 @@
  */
 import { useEffect, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { useAcceptInvitation, useGetInvitation, useVerifyMagicLink, useMe } from '@/api/auth'
+import { useAcceptInvitation, useGetInvitation, useVerifyMagicLink } from '@/api/auth'
 import { useAuthStore } from '@/store/auth'
 import { api } from '@/api/client'
 import knotworkLogo from '@/assets/knotwork-logo.svg'

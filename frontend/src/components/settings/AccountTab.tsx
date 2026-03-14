@@ -128,7 +128,7 @@ export default function AccountTab() {
           </div>
 
           <div className="flex items-center gap-3">
-            <Btn type="submit" variant="primary" isLoading={update.isPending}>
+            <Btn type="submit" variant="primary" loading={update.isPending}>
               Save changes
             </Btn>
             {saved && <span className="text-sm text-green-600">✓ Saved</span>}

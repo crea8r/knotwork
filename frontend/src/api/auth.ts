@@ -25,6 +25,7 @@ export interface AcceptInvitationResult {
   workspace_id: string
   name: string
   email: string
+  role: string
 }
 
 export interface MagicLinkVerifyResult {

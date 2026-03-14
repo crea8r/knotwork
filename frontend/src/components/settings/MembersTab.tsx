@@ -52,7 +52,7 @@ export default function MembersTab() {
           {membersData && (
             <span className="text-xs text-gray-400">({membersData.total})</span>
           )}
-          {loadingMembers && <Spinner className="ml-1 inline-block" />}
+          {loadingMembers && <span className="ml-1 inline-flex align-middle"><Spinner size="sm" /></span>}
         </div>
 
         {loadingMembers ? (
@@ -137,7 +137,7 @@ export default function MembersTab() {
         <div className="flex items-center justify-between px-4 py-3 border-b">
           <p className="text-sm font-medium text-gray-700">
             Invitations
-            {loadingInv && <Spinner className="ml-2 inline-block" />}
+            {loadingInv && <span className="ml-2 inline-flex align-middle"><Spinner size="sm" /></span>}
           </p>
           {isOwner && !showForm && (
             <button
