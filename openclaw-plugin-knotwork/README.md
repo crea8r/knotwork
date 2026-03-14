@@ -65,7 +65,7 @@ Or via env vars: `KNOTWORK_BASE_URL`, `KNOTWORK_HANDSHAKE_TOKEN`, `KNOTWORK_PLUG
 
 **3. Start/restart OpenClaw**
 
-Plugin handshakes automatically. In Knotwork Settings > Agents you'll see the discovered agents. Register one, then trigger a run — the plugin picks it up from the task queue.
+Plugin handshakes automatically on first pairing. After that, it persists `pluginInstanceId` + `integrationSecret` locally and should survive normal OpenClaw restarts without needing a new handshake token. In Knotwork Settings > Agents you'll see the discovered agents. Register one, then trigger a run — the plugin picks it up from the task queue.
 
 ## Config reference
 
@@ -76,6 +76,19 @@ Plugin handshakes automatically. In Knotwork Settings > Agents you'll see the di
 | `pluginInstanceId` | — | auto | Keep stable across restarts |
 | `autoHandshakeOnStart` | — | `true` | Handshake on plugin load |
 | `taskPollIntervalMs` | — | `2000` | Min 500ms |
+
+## Persistent state
+
+The plugin stores local connection state in:
+
+`~/.openclaw/knotwork-bridge-state.json`
+
+Stored fields:
+
+1. `pluginInstanceId`
+2. `integrationSecret`
+
+This is used so normal OpenClaw restarts do not require a new handshake token.
 
 ## Debugging
 
@@ -91,9 +104,14 @@ openclaw gateway call knotwork.logs
 # Re-handshake and re-sync agents on demand
 openclaw gateway call knotwork.handshake
 
+# Reset local connection state while keeping the current plugin instance id
+openclaw gateway call knotwork.reset_connection
+
 # Pull and execute exactly one task right now (useful for testing)
 openclaw gateway call knotwork.process_once
 ```
+
+If the backend reports invalid plugin credentials, the plugin now clears the persisted secret and automatically re-handshakes using the configured token.
 
 ### Docker logs (persistent, survives restarts)
 
@@ -133,4 +151,5 @@ To avoid restarts during development: mount the plugin directory as a volume and
 | `knotwork.logs` | Last 200 log lines from memory buffer |
 | `knotwork.handshake` | Re-handshake and re-sync agents |
 | `knotwork.sync_agents` | Alias for `knotwork.handshake` |
+| `knotwork.reset_connection` | Clear persisted local connection state so the plugin can be re-paired |
 | `knotwork.process_once` | Pull and execute one task immediately |

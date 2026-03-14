@@ -54,7 +54,12 @@ POST /openclaw-plugin/handshake
 3. Upserts `OpenClawRemoteAgent` rows — one per agent reported by the plugin.
 4. Returns `{ integration_secret, integration_id, workspace_id }`.
 
-The plugin stores `integration_secret` in memory. This secret is required for all subsequent plugin API calls (sent as `X-Knotwork-Integration-Secret` header). **The token is only needed once per plugin instance; the secret is the ongoing credential.**
+The plugin persists `integration_secret` locally on the OpenClaw side and reuses it across routine restarts. This secret is required for all subsequent plugin API calls (sent as `X-Knotwork-Integration-Secret` header). **The token is the pairing/bootstrap credential; the secret is the ongoing runtime credential.**
+
+Current local persistence behavior:
+1. Plugin stores `pluginInstanceId` + `integrationSecret` in `~/.openclaw/knotwork-bridge-state.json`
+2. On routine restart, plugin reuses the persisted secret instead of requiring a fresh handshake
+3. If backend returns `401 Invalid plugin credentials`, plugin clears the persisted secret and automatically attempts a fresh handshake
 
 Agent discovery runs at handshake time using a multi-step fallback:
 1. `api.agents.list()` SDK method
@@ -68,6 +73,11 @@ You can force a re-handshake (e.g. after adding a new agent) via the gateway RPC
 ```
 openclaw gateway call knotwork.handshake
 openclaw gateway call knotwork.sync_agents   # alias
+```
+
+To intentionally reset local plugin pairing state:
+```
+openclaw gateway call knotwork.reset_connection
 ```
 
 ---

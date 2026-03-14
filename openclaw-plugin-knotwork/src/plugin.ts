@@ -3,16 +3,27 @@
 // All log lines also written to stdout → `docker logs <container> | grep knotwork-bridge`
 
 /* eslint-disable no-console */
+import { mkdir, readFile, writeFile } from 'node:fs/promises'
+import { homedir } from 'node:os'
+import { dirname, join } from 'node:path'
 import { discoverAgents, doHandshake, getConfig, getGatewayConfig, postEvent, pullTask, resolveInstanceId } from './bridge'
 import { executeTask } from './session'
 import type { AnyObj, OpenClawApi, PluginConfig, PluginState } from './types'
 
 const PLUGIN_ID = 'knotwork-bridge'
+const STATE_FILE = 'knotwork-bridge-state.json'
+const HANDSHAKE_RETRY_MS = 15000
+
+type PersistedPluginState = {
+  pluginInstanceId?: string
+  integrationSecret?: string
+}
 
 export function activate(api: OpenClawApi): void {
   const state: PluginState = {
     pluginInstanceId: null,
     integrationSecret: null,
+    stateFilePath: null,
     lastHandshakeAt: null,
     lastHandshakeOk: false,
     lastError: null,
@@ -30,6 +41,65 @@ export function activate(api: OpenClawApi): void {
     console.log(`[${PLUGIN_ID}] ${line}`)
   }
 
+  function getStateFilePath(): string {
+    const home = (() => {
+      try { return homedir() } catch { return process?.env?.HOME || '.' }
+    })()
+    return join(home, '.openclaw', STATE_FILE)
+  }
+
+  async function readPersistedState(): Promise<PersistedPluginState> {
+    const path = getStateFilePath()
+    state.stateFilePath = path
+    try {
+      const raw = await readFile(path, 'utf8')
+      const parsed = JSON.parse(raw) as PersistedPluginState
+      return {
+        pluginInstanceId: typeof parsed.pluginInstanceId === 'string' ? parsed.pluginInstanceId.trim() : undefined,
+        integrationSecret: typeof parsed.integrationSecret === 'string' ? parsed.integrationSecret.trim() : undefined,
+      }
+    } catch {
+      return {}
+    }
+  }
+
+  async function persistState(): Promise<void> {
+    const path = state.stateFilePath ?? getStateFilePath()
+    state.stateFilePath = path
+    await mkdir(dirname(path), { recursive: true })
+    await writeFile(path, JSON.stringify({
+      pluginInstanceId: state.pluginInstanceId,
+      integrationSecret: state.integrationSecret,
+    }, null, 2))
+  }
+
+  async function resetPersistedSecret(resetInstanceId = false): Promise<void> {
+    if (resetInstanceId) state.pluginInstanceId = null
+    state.integrationSecret = null
+    await persistState()
+  }
+
+  function isInvalidCredentialsError(err: unknown): boolean {
+    const msg = err instanceof Error ? err.message : String(err)
+    return /invalid plugin credentials/i.test(msg) || /\(401\)/.test(msg)
+  }
+
+  let handshakeRetryTimer: ReturnType<typeof setTimeout> | null = null
+
+  function scheduleHandshakeRetry(reason: string): void {
+    if (handshakeRetryTimer) return
+    handshakeRetryTimer = setTimeout(() => {
+      handshakeRetryTimer = null
+      runHandshake().catch((err: unknown) => {
+        state.lastHandshakeOk = false
+        state.lastHandshakeAt = new Date().toISOString()
+        state.lastError = err instanceof Error ? err.message : String(err)
+        log(`handshake:retry-failed reason=${reason} error=${state.lastError}`)
+        scheduleHandshakeRetry('retry_failed')
+      })
+    }, HANDSHAKE_RETRY_MS)
+  }
+
   // ── Handshake ────────────────────────────────────────────────────────────────
 
   async function runHandshake(overrides: Partial<PluginConfig> = {}): Promise<AnyObj> {
@@ -43,11 +113,32 @@ export function activate(api: OpenClawApi): void {
     const resp = await doHandshake(cfg.knotworkBaseUrl, cfg.handshakeToken, instanceId, agents)
     state.pluginInstanceId = (resp.plugin_instance_id as string | undefined) ?? instanceId
     state.integrationSecret = (resp.integration_secret as string | undefined) ?? state.integrationSecret
+    await persistState()
     state.lastHandshakeOk = true
     state.lastHandshakeAt = new Date().toISOString()
     state.lastError = null
     log(`handshake:ok secret=...${String(state.integrationSecret ?? '').slice(-4)}`)
     return resp
+  }
+
+  async function recoverCredentials(reason: string): Promise<boolean> {
+    const cfg = getConfig(api)
+    if (!cfg.knotworkBaseUrl || !cfg.handshakeToken) {
+      log(`handshake:skipped reason=${reason} missing_config=true`)
+      return false
+    }
+    try {
+      await runHandshake()
+      log(`handshake:recovered reason=${reason}`)
+      return true
+    } catch (err) {
+      state.lastHandshakeOk = false
+      state.lastHandshakeAt = new Date().toISOString()
+      state.lastError = err instanceof Error ? err.message : String(err)
+      log(`handshake:recover-failed reason=${reason} error=${state.lastError}`)
+      scheduleHandshakeRetry('recover_failed')
+      return false
+    }
   }
 
   // ── Task execution ───────────────────────────────────────────────────────────
@@ -59,7 +150,17 @@ export function activate(api: OpenClawApi): void {
     const secret = state.integrationSecret
     if (!baseUrl || !instanceId || !secret) return
 
-    const task = await pullTask(baseUrl, instanceId, secret)
+    let task: AnyObj | null = null
+    try {
+      task = await pullTask(baseUrl, instanceId, secret)
+    } catch (err) {
+      if (!isInvalidCredentialsError(err)) throw err
+      log('auth:pull-task-invalid-credentials')
+      await resetPersistedSecret()
+      const recovered = await recoverCredentials('pull_task_401')
+      if (!recovered || !state.integrationSecret || !state.pluginInstanceId) return
+      task = await pullTask(baseUrl, state.pluginInstanceId, state.integrationSecret)
+    }
     if (!task) return
 
     const taskId = String(task.task_id)
@@ -67,8 +168,26 @@ export function activate(api: OpenClawApi): void {
     state.lastTaskAt = new Date().toISOString()
     log(`task:start id=${taskId} node=${task.node_id} session=${task.session_name}`)
 
+    async function submitEvent(eventType: string, payload: AnyObj): Promise<void> {
+      const curInstanceId = state.pluginInstanceId
+      const curSecret = state.integrationSecret
+      if (!baseUrl || !curInstanceId || !curSecret) {
+        throw new Error(`Cannot submit ${eventType}: plugin credentials unavailable`)
+      }
+      try {
+        await postEvent(baseUrl, curInstanceId, curSecret, taskId, eventType, payload)
+      } catch (err) {
+        if (!isInvalidCredentialsError(err)) throw err
+        log(`auth:post-event-invalid-credentials type=${eventType}`)
+        await resetPersistedSecret()
+        const recovered = await recoverCredentials(`post_event_${eventType}_401`)
+        if (!recovered || !state.integrationSecret || !state.pluginInstanceId) throw err
+        await postEvent(baseUrl, state.pluginInstanceId, state.integrationSecret, taskId, eventType, payload)
+      }
+    }
+
     // Notify Knotwork we've claimed the task (visible in debug panel)
-    await postEvent(baseUrl, instanceId, secret, taskId, 'log', {
+    await submitEvent('log', {
       entry_type: 'action',
       content: 'Plugin started task execution',
       metadata: { node_id: task.node_id, run_id: task.run_id, session_name: task.session_name },
@@ -79,7 +198,7 @@ export function activate(api: OpenClawApi): void {
       let heartbeatCount = 0
       heartbeat = setInterval(() => {
         heartbeatCount += 1
-        postEvent(baseUrl, instanceId, secret, taskId, 'log', {
+        submitEvent('log', {
           entry_type: 'progress',
           content: `OpenClaw is still working (heartbeat ${heartbeatCount})`,
           metadata: { heartbeat: heartbeatCount, node_id: task.node_id, run_id: task.run_id },
@@ -91,15 +210,15 @@ export function activate(api: OpenClawApi): void {
       log(`task:done id=${taskId} type=${result.type}`)
 
       if (result.type === 'escalation') {
-        await postEvent(baseUrl, instanceId, secret, taskId, 'escalation', {
+        await submitEvent('escalation', {
           question: result.question,
           options: result.options,
           message: result.message,
         })
       } else if (result.type === 'failed') {
-        await postEvent(baseUrl, instanceId, secret, taskId, 'failed', { error: result.error })
+        await submitEvent('failed', { error: result.error })
       } else {
-        await postEvent(baseUrl, instanceId, secret, taskId, 'completed', {
+        await submitEvent('completed', {
           output: result.output,
           next_branch: result.next_branch,
         })
@@ -107,7 +226,7 @@ export function activate(api: OpenClawApi): void {
     } catch (err) {
       const error = err instanceof Error ? err.message : String(err)
       log(`task:error id=${taskId} ${error}`)
-      await postEvent(baseUrl, instanceId, secret, taskId, 'failed', { error }).catch(() => {})
+      await submitEvent('failed', { error }).catch(() => {})
     } finally {
       if (heartbeat) clearInterval(heartbeat)
       state.runningTaskId = null
@@ -169,20 +288,53 @@ export function activate(api: OpenClawApi): void {
         ok(ctx, { ok: false, error: err instanceof Error ? err.message : String(err) })
       }
     })
+
+    rpc('knotwork.reset_connection', async (ctx: AnyObj) => {
+      const payload = getPayload(ctx)
+      const resetInstanceId = payload.resetInstanceId === true
+      await resetPersistedSecret(resetInstanceId)
+      state.lastError = null
+      state.lastHandshakeOk = false
+      log(`connection:reset resetInstanceId=${resetInstanceId}`)
+      ok(ctx, {
+        ok: true,
+        pluginInstanceId: state.pluginInstanceId,
+        resetInstanceId,
+        stateFilePath: state.stateFilePath,
+      })
+    })
   }
 
   // ── Startup ───────────────────────────────────────────────────────────────────
 
   const cfg = getConfig(api)
+  readPersistedState()
+    .then(async (persisted) => {
+      const configuredInstanceId = cfg.pluginInstanceId?.trim() || null
+      const effectiveInstanceId = configuredInstanceId || persisted.pluginInstanceId || resolveInstanceId(cfg)
+      state.pluginInstanceId = effectiveInstanceId
+      if (persisted.integrationSecret && (!configuredInstanceId || configuredInstanceId === persisted.pluginInstanceId)) {
+        state.integrationSecret = persisted.integrationSecret
+        log(`state:loaded secret=...${persisted.integrationSecret.slice(-4)}`)
+      } else if (persisted.integrationSecret && configuredInstanceId && configuredInstanceId !== persisted.pluginInstanceId) {
+        log('state:ignored persisted secret due_to_instance_id_mismatch=true')
+      }
+      await persistState()
 
-  if (cfg.autoHandshakeOnStart && cfg.knotworkBaseUrl && cfg.handshakeToken) {
-    runHandshake().catch((err: unknown) => {
-      state.lastHandshakeOk = false
-      state.lastHandshakeAt = new Date().toISOString()
-      state.lastError = err instanceof Error ? err.message : String(err)
-      log(`startup:handshake-failed ${state.lastError}`)
+      if (!state.integrationSecret && cfg.autoHandshakeOnStart && cfg.knotworkBaseUrl && cfg.handshakeToken) {
+        runHandshake().catch((err: unknown) => {
+          state.lastHandshakeOk = false
+          state.lastHandshakeAt = new Date().toISOString()
+          state.lastError = err instanceof Error ? err.message : String(err)
+          log(`startup:handshake-failed ${state.lastError}`)
+          scheduleHandshakeRetry('startup_failed')
+        })
+      }
     })
-  }
+    .catch((err: unknown) => {
+      state.lastError = err instanceof Error ? err.message : String(err)
+      log(`state:load-failed ${state.lastError}`)
+    })
 
   // Startup diagnostic — confirm WebSocket gateway config is readable
   const { port, token } = getGatewayConfig(api)

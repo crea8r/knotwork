@@ -39,7 +39,18 @@ Make Knotwork ready for humans to use reliably in production operations.
    - human can answer the question and resume the run without leaving the run context
    - human can conclude the agent is confident enough to move on after giving guidance or accepting the situation
    - the resolution path must be explicit in UI and reflected in run timeline / decision history
-9. Mobile-ready UI for key user journeys.
+9. Collaborative run-context support:
+   - each agent in a run understands it is operating within a team context, not in isolation
+   - run context may include workspace humans, workspace agents, and external client participants who can clarify requests without backend access
+   - agents can request idea/feedback/suggestions from specific humans or agents in the run
+   - addressing must be explicit so an agent can target the exact human or agent it needs help from
+   - external client interaction must stay scoped to the run and not grant general backend/workspace access
+10. Workflow organization UX:
+   - workflows support folders and tags for easier browsing and filtering
+   - workflow list/tree should reuse the Handbook file-tree interaction model for consistency
+   - users can browse workflows in a collapsible tree view by folder
+   - tags remain cross-cutting metadata and can be used for filtering/search independently of folder placement
+11. Mobile-ready UI for key user journeys.
 
 ## S9 Prep Note — OpenClaw WS Upgrade
 
@@ -81,6 +92,16 @@ Make Knotwork ready for humans to use reliably in production operations.
 13. Remove direct provider dependence from designer chat:
    - designer chat must invoke a configured agent path instead of calling OpenAI/Claude adapters directly
    - missing agent availability/configuration must surface as a clear blocking state in UI/API
+14. Define collaborative run addressing semantics:
+   - stable participant identity for humans, external clients, and agents within a run
+   - agent can direct a request/question to a specific participant
+   - targeted requests are visible in run timeline and inbox state
+   - replies are attributed to the exact participant and can be fed back into execution context
+15. Define workflow organization semantics:
+   - folder path model for workflows
+   - tag model separate from folder hierarchy
+   - handbook-style tree behaviors reused where appropriate (expand/collapse, selection, drag/drop only if explicitly supported)
+   - workflow search/filter combines tree navigation with tag filtering
 
 ## Non-Goals
 
@@ -106,3 +127,6 @@ Make Knotwork ready for humans to use reliably in production operations.
 15. Designer chat uses a configured agent path instead of direct OpenAI/Claude provider calls.
 16. Operator and public trigger forms accept an uploaded file as sufficient input when no text is entered.
 17. Public workflow pages support file upload wherever the workflow input contract allows it.
+18. Agents can explicitly address the correct human, external client, or workspace agent inside a run when they need clarification, ideas, or feedback.
+19. External clients can participate in run clarification without receiving backend/workspace access.
+20. Workflows can be organized by folder and tag, and the workflow browsing experience is consistent with the Handbook tree view.

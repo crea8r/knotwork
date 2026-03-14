@@ -18,7 +18,7 @@
       },
       "handshakeToken": {
         "type": "string",
-        "description": "One-time token generated in Knotwork Settings > Agents."
+        "description": "Pairing token generated in Knotwork Settings > Agents. Used for initial handshake and credential recovery."
       },
       "pluginInstanceId": {
         "type": "string",

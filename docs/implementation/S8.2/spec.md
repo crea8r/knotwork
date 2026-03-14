@@ -15,6 +15,11 @@ Deploy Knotwork as a clean install on a remote server with a reproducible operat
 7. Installer bootstrap support for default workflow import selection.
 8. Single-command installer for owner bootstrap + host nginx setup + Let's Encrypt automation.
 9. Backup-first uninstaller for Docker teardown and file cleanup.
+10. OpenClaw connection hardening for deployed installs:
+   - plugin persists `pluginInstanceId` and `integrationSecret` locally
+   - routine OpenClaw restart does not require a fresh handshake token
+   - plugin automatically re-handshakes on backend `401 Invalid plugin credentials`
+   - operator has a documented reset/re-pair flow when intentionally starting over
 
 ## Explicitly Out of Scope
 
@@ -30,12 +35,14 @@ Deploy Knotwork as a clean install on a remote server with a reproducible operat
 5. Settings page only exposes tabs backed by shipped features in S8.2 (`Account`, `Members`, `Agents`).
 6. Installer prompts owner identity and domain, bootstraps owner workspace, and preloads default workflows.
 7. Uninstaller creates a zip backup including manifest metadata, a PostgreSQL dump, and the handbook archive before destructive cleanup.
+8. Routine OpenClaw restart/reload reuses persisted plugin credentials and does not require generating a new handshake token.
 
 ## Risks
 
 1. Incomplete env setup (`JWT_SECRET`, API keys, `APP_BASE_URL`) causing runtime/auth issues.
 2. OpenClaw reconnect confusion after restart (requires clear handshake/reconnect steps).
 3. TLS/proxy misconfiguration breaking websocket or callback flows.
+4. Plugin local state loss causing accidental re-pair attempts if reset flow is undocumented.
 
 ## Database Migration Policy
 
@@ -117,3 +124,31 @@ Uninstaller behavior:
 2. Include manifest metadata, a `pg_dump` SQL export, and the handbook archive only. Do not back up the source tree.
 3. Tear down project Docker containers/networks/volumes and remove local project images.
 4. Support `runtime` cleanup (generated files only) and `full` cleanup (remove project tree contents except `.git`).
+
+## OpenClaw Persistent Connection State
+
+For S8.2 deployed installs, the Knotwork OpenClaw plugin now persists connection bootstrap state locally on the OpenClaw side.
+
+Stored locally:
+
+1. `pluginInstanceId`
+2. `integrationSecret`
+
+Behavior:
+
+1. On normal OpenClaw restart, the plugin reuses the persisted `integrationSecret` and continues pulling tasks without requiring a new handshake token.
+2. If backend rejects plugin auth with `401 Invalid plugin credentials`, the plugin clears the persisted secret and automatically attempts a fresh handshake using the configured handshake token.
+3. If the operator intentionally wants to start over, the plugin connection can be reset locally and re-paired without editing the database.
+
+Operational guidance:
+
+1. Treat the handshake token as a pairing bootstrap credential, not the normal runtime credential.
+2. Prefer a stable `pluginInstanceId` in OpenClaw config for predictable recovery.
+3. For deliberate re-pair/reset, clear the local plugin connection state first, then handshake again.
+
+Reset / start-over flow:
+
+1. In OpenClaw, run `openclaw gateway call knotwork.reset_connection`
+2. Restart OpenClaw plugin/runtime
+3. Trigger `openclaw gateway call knotwork.handshake`
+4. If the original handshake token is no longer valid for the intended reset path, generate a fresh token from Knotwork Settings → Agents and use that for the new pairing

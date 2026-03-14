@@ -36,6 +36,7 @@ export type PluginConfig = {
 export type PluginState = {
   pluginInstanceId: string | null
   integrationSecret: string | null
+  stateFilePath: string | null
   lastHandshakeAt: string | null
   lastHandshakeOk: boolean
   lastError: string | null
