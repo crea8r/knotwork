@@ -6,6 +6,7 @@ from uuid import UUID, uuid4
 
 from fastapi import HTTPException
 from sqlalchemy import and_, func, select
+from sqlalchemy.exc import IntegrityError, OperationalError, ProgrammingError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from knotwork.openclaw_integrations.models import (
@@ -28,6 +29,7 @@ from knotwork.openclaw_integrations.schemas import (
     RegisterFromOpenClawRequest,
     RegisterFromOpenClawResponse,
 )
+from knotwork.workspaces.models import Workspace
 from knotwork.registered_agents.models import RegisteredAgent
 
 SESSION_EXECUTION_CONTRACT_OPERATIONS = ("create_session", "send_message", "sync_session")
@@ -76,6 +78,10 @@ async def create_handshake_token(
     req: HandshakeTokenCreateRequest,
 ) -> HandshakeTokenOut:
     _ = req
+    workspace = await db.get(Workspace, workspace_id)
+    if workspace is None:
+        raise HTTPException(status_code=404, detail="Workspace not found")
+
     token = f"kw_oc_{secrets.token_urlsafe(24)}"
     # Temporary policy: fixed 1-year token lifetime.
     # Security hardening/rotation policy will be revisited in a later session.
@@ -87,7 +93,17 @@ async def create_handshake_token(
         expires_at=expires_at,
     )
     db.add(row)
-    await db.commit()
+    try:
+        await db.commit()
+    except IntegrityError as exc:
+        await db.rollback()
+        raise HTTPException(status_code=409, detail="Handshake token could not be created.") from exc
+    except (OperationalError, ProgrammingError) as exc:
+        await db.rollback()
+        raise HTTPException(
+            status_code=503,
+            detail="OpenClaw token storage is not initialized. Run migrations and restart backend.",
+        ) from exc
     return HandshakeTokenOut(workspace_id=workspace_id, token=token, expires_at=expires_at)
 
 

@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import pytest
 from datetime import datetime, timedelta, timezone
+from fastapi import HTTPException
 from uuid import UUID, uuid4
 
 
@@ -506,6 +507,26 @@ async def test_public_accept_invitation_already_accepted_returns_409(client, db,
 # ─────────────────────────────────────────────────────────────────────────────
 # 6. OpenClaw plugin install endpoint
 # ─────────────────────────────────────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_create_handshake_token_missing_workspace_returns_404(db):
+    """Service should reject handshake token creation for a non-existent workspace."""
+    from knotwork.openclaw_integrations.schemas import HandshakeTokenCreateRequest
+    from knotwork.openclaw_integrations.service import create_handshake_token
+
+    with pytest.raises(HTTPException) as exc:
+        await create_handshake_token(db, uuid4(), HandshakeTokenCreateRequest())
+
+    assert exc.value.status_code == 404
+    assert exc.value.detail == "Workspace not found"
+
+
+@pytest.mark.asyncio
+async def test_create_handshake_token_route_requires_owner(client, workspace):
+    """Handshake token route should be owner-protected like other workspace settings."""
+    resp = await client.post(f"/api/v1/workspaces/{workspace.id}/openclaw/handshake-token", json={})
+    assert resp.status_code == 401
 
 
 async def _create_handshake_token(db, workspace, expired: bool = False) -> str:

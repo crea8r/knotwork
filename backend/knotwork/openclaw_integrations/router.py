@@ -5,7 +5,9 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, Header, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from knotwork.auth.deps import require_owner
 from knotwork.database import get_db
+from knotwork.workspaces.models import WorkspaceMember
 from knotwork.openclaw_integrations import schemas, service
 
 router = APIRouter(tags=["openclaw_integrations"])
@@ -21,6 +23,7 @@ async def create_handshake_token(
     workspace_id: UUID,
     data: schemas.HandshakeTokenCreateRequest,
     db: AsyncSession = Depends(get_db),
+    _member: WorkspaceMember = Depends(require_owner),
 ):
     return await service.create_handshake_token(db, workspace_id, data)
 
