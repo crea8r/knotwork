@@ -81,16 +81,20 @@ async def get_install_bundle(
     instructions = (
         "To install the Knotwork bridge plugin in OpenClaw:\n"
         "1. Run the install_command in a terminal where OpenClaw is installed.\n"
-        "2. If openclaw supports URL-based install: "
+        "2. Approve/grant the plugin gateway scopes `operator.read` and `operator.write` when OpenClaw prompts for permissions.\n"
+        "   If your OpenClaw setup manages plugin permissions in config instead of an interactive prompt, ensure those two scopes are explicitly granted before running Knotwork tasks.\n"
+        "3. If openclaw supports URL-based install: "
         f"  openclaw plugin install {base_url}/openclaw-plugin/install?token={token}\n"
-        "3. Restart OpenClaw — the plugin will auto-handshake on startup.\n"
-        "4. Verify in Knotwork Settings → Agents → OpenClaw section."
+        "4. Restart OpenClaw — the plugin will auto-handshake on startup.\n"
+        "5. Verify in Knotwork Settings → Agents → OpenClaw section.\n"
+        "6. If you see `missing scope: operator.write` or `missing scope: operator.read`, the plugin was installed without the required gateway permissions. Reinstall or update plugin permissions, then restart OpenClaw and run `openclaw gateway call knotwork.handshake`."
     )
 
     return {
         "plugin_package": f"{_PLUGIN_PACKAGE}@{_PLUGIN_VERSION}",
         "install_command": install_command,
         "config_snippet": config_snippet,
+        "required_gateway_scopes": ["operator.read", "operator.write"],
         "instructions": instructions,
         "knotwork_base_url": base_url,
         "token": token,

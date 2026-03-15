@@ -12,6 +12,24 @@ const AGENT_WAIT_TIMEOUT_MS = 900_000
 const AGENT_WAIT_RPC_TIMEOUT_MS = AGENT_WAIT_TIMEOUT_MS + 10_000
 const OPERATOR_SCOPES = ['operator.read', 'operator.write']
 
+function toErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error)
+}
+
+function missingScope(error: unknown): string | null {
+  const message = toErrorMessage(error)
+  const match = message.match(/missing scope:\s*([A-Za-z0-9._-]+)/i)
+  return match ? match[1] ?? null : null
+}
+
+function scopeHelp(scope: string): Error {
+  return new Error(
+    `OpenClaw gateway denied required scope '${scope}'. ` +
+    `The Knotwork plugin requires operator.read and operator.write. ` +
+    `Update the OpenClaw plugin installation/approval to grant those scopes, then restart OpenClaw and re-run handshake.`,
+  )
+}
+
 type WsFrame = {
   type: string; id?: string; event?: string
   ok?: boolean; payload?: unknown; error?: unknown
@@ -211,11 +229,17 @@ export async function executeTask(api: OpenClawApi, task: AnyObj): Promise<TaskR
       try {
         return await gatewayCall(method, params)
       } catch (error) {
-        const message = error instanceof Error ? error.message : String(error)
-        if (!/missing scope:/i.test(message)) throw error
+        const scope = missingScope(error)
+        if (!scope) throw error
       }
     }
-    return gatewayRpc(port, token, method, params, timeoutMs)
+    try {
+      return await gatewayRpc(port, token, method, params, timeoutMs)
+    } catch (error) {
+      const scope = missingScope(error)
+      if (scope) throw scopeHelp(scope)
+      throw error
+    }
   }
 
   // 1. Send message — gateway auto-creates session on first call.
@@ -227,7 +251,7 @@ export async function executeTask(api: OpenClawApi, task: AnyObj): Promise<TaskR
       extraSystemPrompt: String(task.system_prompt ?? ''),
     })) as AnyObj
   } catch (e) {
-    throw new Error(`gateway 'agent' failed: ${e instanceof Error ? e.message : String(e)}`)
+    throw new Error(`gateway 'agent' failed: ${toErrorMessage(e)}`)
   }
 
   // 2. Sync — wait for completion via runId, then read output from chat history.

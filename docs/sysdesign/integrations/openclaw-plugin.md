@@ -34,6 +34,11 @@ Three values must be in the OpenClaw plugin config or env vars:
 | `handshakeToken` | `KNOTWORK_HANDSHAKE_TOKEN` | One-time token generated from Knotwork Settings → OpenClaw |
 | `pluginInstanceId` | `KNOTWORK_PLUGIN_INSTANCE_ID` | Stable ID for this plugin instance (auto-generated if omitted) |
 
+The OpenClaw plugin must also be granted gateway scopes:
+
+1. `operator.read`
+2. `operator.write`
+
 ### Handshake flow
 
 Only the primary long-running plugin runtime auto-handshakes on startup (`autoHandshakeOnStart: true` by default). CLI/plugin-load contexts must stay passive and should not consume the pairing token.
@@ -129,6 +134,8 @@ On claiming, the task transitions: `pending → claimed`. The response includes:
 ### Step 3 — Plugin executes via OpenClaw gateway
 
 The plugin calls `executeTask(api, task)` in `session.ts`. This uses the **Session Execution Contract** — three logical operations over the OpenClaw local WebSocket gateway (`ws://127.0.0.1:<port>/`):
+
+If those gateway scopes are not granted, task execution fails before the first `agent` call with an error like `missing scope: operator.write`.
 
 #### Wire protocol
 Each call opens a new WebSocket connection with a two-step handshake:

@@ -22,14 +22,15 @@ Every task is executed as three logical operations:
 | Operation | What happens |
 |---|---|
 | `create_session` | Implicit — OpenClaw auto-creates on first message. Identity = deterministic scoped key from `task.session_name`. |
-| `send_message` | `POST /v1/responses` (primary) or `gateway.call('agent', ...)` (fallback). Idempotency key = `knotwork:task:<taskId>` — deterministic, retry-safe. |
+| `send_message` | `gateway.call('agent', ...)`. Idempotency key = `knotwork:task:<taskId>` — deterministic, retry-safe. |
 | `sync_session` | `agent.wait(runId)` as completion signal; `chat.history` reads output. `runId` is the correlation token. |
 
-**Execution paths (in order):**
-1. HTTP `POST /v1/responses` — synchronous, session-persistent via `x-openclaw-session-key` + `user` field. No polling.
-2. `gateway.call('agent')` + `agent.wait` — for environments with HTTP endpoint disabled.
+**Execution path:**
+1. `gateway.call('agent')` + `agent.wait` over the OpenClaw local gateway.
 
-Both paths use the same deterministic idempotency key so retries never produce duplicate agent runs.
+This requires the plugin to be granted OpenClaw gateway scopes:
+1. `operator.read`
+2. `operator.write`
 
 ## Setup
 
@@ -66,6 +67,16 @@ Or via env vars: `KNOTWORK_BASE_URL`, `KNOTWORK_HANDSHAKE_TOKEN`, `KNOTWORK_PLUG
 **3. Start/restart OpenClaw**
 
 The primary long-running plugin runtime handshakes automatically on first pairing. CLI/plugin-load contexts stay passive and do not consume the handshake token on startup. After pairing, the plugin persists `pluginInstanceId` + `integrationSecret` locally and should survive normal OpenClaw restarts without needing a new handshake token. In Knotwork Settings > Agents you'll see the discovered agents. Register one, then trigger a run — the plugin picks it up from the task queue.
+
+If OpenClaw prompts for plugin permissions during install, approve:
+1. `operator.read`
+2. `operator.write`
+
+If you see `missing scope: operator.write` or `missing scope: operator.read`, the plugin was installed without the required gateway scopes. Reinstall or update the plugin permissions, restart OpenClaw, then run:
+
+```bash
+openclaw gateway call knotwork.handshake
+```
 
 ## Config reference
 

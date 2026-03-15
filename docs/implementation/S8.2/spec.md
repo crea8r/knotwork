@@ -24,6 +24,7 @@ Deploy Knotwork as a clean install on a remote server with a reproducible operat
    - CLI/plugin-load contexts must remain passive and must not consume the handshake token on startup
    - plugin must keep `pluginInstanceId` stable across routine restarts and must not generate fresh identities during bootstrap recovery
    - when handshake fails with `409 Handshake token already used`, plugin must stop blind startup retries in the wrong process context and surface actionable remediation
+   - install guidance must explicitly require OpenClaw gateway scopes `operator.read` and `operator.write`; missing-scope failures must surface with actionable remediation
 
 ## Explicitly Out of Scope
 
