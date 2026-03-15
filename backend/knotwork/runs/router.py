@@ -82,7 +82,7 @@ async def upload_run_attachment(
         change_summary=f"run attachment {filename}",
     )
     token = _build_download_token(workspace_id, key)
-    base = settings.normalized_backend_base_url
+    base = settings.normalized_backend_url
     url = f"{base}/api/v1/workspaces/{workspace_id}/runs/attachments/{attachment_id}/{filename}?token={token}"
     return RunAttachmentUploadOut(
         key=key,

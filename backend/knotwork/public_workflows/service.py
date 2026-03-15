@@ -36,7 +36,7 @@ def _new_token(prefix: str) -> str:
 
 
 def _public_run_url(token: str) -> str:
-    base = settings.app_base_url.rstrip("/")
+    base = settings.normalized_frontend_url
     return f"{base}/public/runs/{token}"
 
 

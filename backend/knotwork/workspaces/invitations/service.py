@@ -78,7 +78,7 @@ async def create_invitation(
     db.add(inv)
     await db.flush()
 
-    invite_url = f"{settings.app_base_url}/accept-invite?token={token_str}"
+    invite_url = f"{settings.normalized_frontend_url}/accept-invite?token={token_str}"
     body = (
         f"You've been invited to join the '{workspace.name}' workspace on Knotwork.\n\n"
         f"Click the link below to accept your invitation (expires in {_INVITE_TTL_DAYS} days):\n\n"

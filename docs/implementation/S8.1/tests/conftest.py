@@ -14,7 +14,8 @@ os.environ.setdefault("ANTHROPIC_API_KEY", "sk-ant-test-fake")
 os.environ.setdefault("DATABASE_URL", "sqlite+aiosqlite:///:memory:")
 os.environ.setdefault("REDIS_URL", "redis://localhost:6379")
 os.environ.setdefault("JWT_SECRET", "test-secret-s8-1")
-os.environ.setdefault("APP_BASE_URL", "http://localhost:3000")
+os.environ.setdefault("FRONTEND_URL", "http://localhost:3000")
+os.environ.setdefault("BACKEND_URL", "http://localhost:8000")
 
 import knotwork.auth.models                       # noqa: F401  (User, UserMagicToken)
 import knotwork.workspaces.models                 # noqa: F401

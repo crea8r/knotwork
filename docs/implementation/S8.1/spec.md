@@ -54,7 +54,7 @@ The backend entrypoint runs `alembic upgrade head` before starting uvicorn, so m
 - `GET /api/v1/auth/me` — current user (requires JWT)
 - `POST /api/v1/auth/logout` — no-op (JWT discarded client-side)
 
-**Config additions:** `smtp_host`, `smtp_port`, `smtp_user`, `smtp_password`, `app_base_url`, `auth_dev_bypass_user_id`
+**Config additions:** `smtp_host`, `smtp_port`, `smtp_user`, `smtp_password`, `frontend_url`, `auth_dev_bypass_user_id`
 
 **Dev bypass:** If `AUTH_DEV_BYPASS_USER_ID=<uuid>` is set, all requests authenticate as that user without JWT. This keeps existing integration tests passing without auth wiring.
 
@@ -133,7 +133,7 @@ Run: `cd backend && alembic upgrade head`
 - `knotwork/auth/router.py` — implemented magic link endpoints + /me
 - `knotwork/auth/service.py` — **NEW**
 - `knotwork/auth/deps.py` — **NEW**
-- `knotwork/config.py` — added SMTP + app_base_url + auth_dev_bypass_user_id
+- `knotwork/config.py` — added SMTP + frontend_url + auth_dev_bypass_user_id
 - `knotwork/main.py` — wired invitations router + install router + model imports
 - `knotwork/openclaw_integrations/install_router.py` — **NEW**
 - `knotwork/openclaw_integrations/models.py` — added description column

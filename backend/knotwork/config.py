@@ -41,11 +41,11 @@ class Settings(BaseSettings):
     resend_api: str = ""              # env var: RESEND_API
     email_from: str = "noreply@knotwork.io"
 
-    # App base URL used in magic link / invite emails
-    app_base_url: str = "http://localhost:3000"
-    # Canonical externally reachable base URL for backend-only absolute URLs
+    # Frontend URL used in magic link / invite emails and public pages.
+    frontend_url: str = "http://localhost:3000"
+    # Canonical externally reachable backend URL for backend-only absolute URLs
     # such as OpenClaw install links and attachment downloads.
-    backend_base_url: str = "http://localhost:8000"
+    backend_url: str = "http://localhost:8000"
     # Dev-only: if set, all requests authenticate as this user UUID without JWT.
     # Leave empty in production.
     auth_dev_bypass_user_id: str = ""
@@ -61,7 +61,7 @@ class Settings(BaseSettings):
 
     @property
     def is_local_app(self) -> bool:
-        host = (urlparse(self.app_base_url).hostname or "").lower()
+        host = (urlparse(self.frontend_url).hostname or "").lower()
         return host in {"localhost", "127.0.0.1", "::1"}
 
     @property
@@ -73,12 +73,12 @@ class Settings(BaseSettings):
         return (not self.is_local_app) and self.email_delivery_enabled
 
     @property
-    def normalized_app_base_url(self) -> str:
-        return self.app_base_url.rstrip("/")
+    def normalized_frontend_url(self) -> str:
+        return self.frontend_url.rstrip("/")
 
     @property
-    def normalized_backend_base_url(self) -> str:
-        return self.backend_base_url.rstrip("/")
+    def normalized_backend_url(self) -> str:
+        return self.backend_url.rstrip("/")
 
 
 settings = Settings()  # type: ignore[call-arg]

@@ -36,7 +36,7 @@ def invitations_enabled(monkeypatch):
     async def _send_ok(**_: object) -> None:
         return None
 
-    monkeypatch.setattr(settings, "app_base_url", "https://app.example.com")
+    monkeypatch.setattr(settings, "frontend_url", "https://app.example.com")
     monkeypatch.setattr(settings, "resend_api", "re_test")
     monkeypatch.setattr(settings, "email_from", "noreply@example.com")
     monkeypatch.setattr("knotwork.workspaces.invitations.service.send_email", _send_ok)
@@ -495,7 +495,7 @@ async def test_create_invitation_disabled_on_localhost_install(db, workspace, us
     from knotwork.workspaces.invitations.schemas import CreateInvitationRequest
     from knotwork.workspaces.invitations.service import create_invitation
 
-    monkeypatch.setattr(settings, "app_base_url", "http://localhost:3000")
+    monkeypatch.setattr(settings, "frontend_url", "http://localhost:3000")
     monkeypatch.setattr(settings, "resend_api", "")
     monkeypatch.setattr(settings, "email_from", "")
 
@@ -520,7 +520,7 @@ async def test_create_invitation_email_failure_returns_502(db, workspace, user, 
     async def _boom(**_: object) -> None:
         raise RuntimeError("smtp broken")
 
-    monkeypatch.setattr(settings, "app_base_url", "https://app.example.com")
+    monkeypatch.setattr(settings, "frontend_url", "https://app.example.com")
     monkeypatch.setattr(settings, "resend_api", "re_test")
     monkeypatch.setattr(settings, "email_from", "noreply@example.com")
     monkeypatch.setattr("knotwork.workspaces.invitations.service.send_email", _boom)
@@ -809,7 +809,8 @@ async def test_install_endpoint_valid_token_returns_bundle(client, db, workspace
     assert "knotwork_base_url" in data
     assert "plugin_package" in data
     assert data["plugin_id"] == "knotwork-bridge"
-    assert data["plugin_install_dir_template"] == "${HOME}/.openclaw/knotwork-plugin"
+    assert data["install_url"].endswith(f"/openclaw-plugin/install?token={token}")
+    assert data["install_command"] == f"openclaw plugins install {data['install_url']}"
     assert data["required_gateway_scopes"] == ["operator.read", "operator.write"]
     assert data["required_config_keys"] == ["knotworkBaseUrl", "handshakeToken"]
     assert data["requires_user_permission_approval"] is True
@@ -824,8 +825,7 @@ async def test_install_endpoint_valid_token_returns_bundle(client, db, workspace
         "verification_command" in condition.lower() or "missing-config" in condition.lower()
         for condition in data["installation_failure_conditions"]
     )
-    assert "__OPENCLAW_PLUGIN_DIR__" in data["config_snippet"]["plugins"]["load"]["paths"][0]
-    assert "package" not in data["config_snippet"]["plugins"]["entries"]["knotwork-bridge"]
+    assert data["config_snippet"]["plugins"]["entries"]["knotwork-bridge"]["package"] == "@knotwork/knotwork-bridge@0.2.0"
     assert data["token"] == token
 
 

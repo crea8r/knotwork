@@ -1,10 +1,8 @@
 networks:
-  # Shared bridge network — external containers (e.g. OpenClaw) can join this
-  # network to reach Knotwork services by name.
-  # Create once: `docker network create knotwork-network` (compose does it
-  # automatically on first `docker compose up`).
+  # Per-install isolated network. OpenClaw or other sidecars can join this
+  # network explicitly by name if they need Docker-network access to Knotwork.
   knotwork-network:
-    name: knotwork-network
+    name: ${KNOTWORK_NETWORK_NAME:-knotwork-local-network}
 
 services:
   # ── Infrastructure ────────────────────────────────────────────────────────────
@@ -36,6 +34,7 @@ services:
 
   # ── Backend (API server) ──────────────────────────────────────────────────────
   backend:
+    image: ${COMPOSE_PROJECT_NAME:-knotwork}-backend:latest
     build:
       context: .
       dockerfile: Dockerfile.backend
@@ -63,6 +62,7 @@ services:
 
   # Dev backend: volume mounts for hot reload
   backend-dev:
+    image: ${COMPOSE_PROJECT_NAME:-knotwork}-backend-dev:latest
     build:
       context: .
       dockerfile: Dockerfile.backend
@@ -91,6 +91,7 @@ services:
 
   # ── Worker (arq background tasks) ─────────────────────────────────────────────
   worker:
+    image: ${COMPOSE_PROJECT_NAME:-knotwork}-worker:latest
     build:
       context: .
       dockerfile: Dockerfile.backend
@@ -112,6 +113,7 @@ services:
       - knotwork-network
 
   worker-dev:
+    image: ${COMPOSE_PROJECT_NAME:-knotwork}-worker-dev:latest
     build:
       context: .
       dockerfile: Dockerfile.backend
@@ -136,6 +138,7 @@ services:
 
   # ── Frontend (dev: Vite HMR) ──────────────────────────────────────────────────
   frontend-dev:
+    image: ${COMPOSE_PROJECT_NAME:-knotwork}-frontend-dev:latest
     build:
       context: .
       dockerfile: Dockerfile.frontend
@@ -156,6 +159,7 @@ services:
 
   # ── Frontend (prod: nginx static) ─────────────────────────────────────────────
   frontend-prod:
+    image: ${COMPOSE_PROJECT_NAME:-knotwork}-frontend-prod:latest
     build:
       context: .
       dockerfile: Dockerfile.frontend

@@ -45,14 +45,10 @@ In your OpenClaw config (`openclaw.config.json`):
 ```json
 {
   "plugins": {
-    "load": {
-      "paths": [
-        "/absolute/path/to/knotwork-plugin"
-      ]
-    },
     "entries": {
       "knotwork-bridge": {
         "enabled": true,
+        "package": "@knotwork/knotwork-bridge@0.2.0",
         "config": {
           "knotworkBaseUrl": "http://host.docker.internal:8000",
           "handshakeToken": "kw_oc_...",
@@ -66,8 +62,14 @@ In your OpenClaw config (`openclaw.config.json`):
 }
 ```
 
-OpenClaw must be able to discover the plugin from `plugins.load.paths`. The entry config alone is not enough.
-If startup says `plugin not found: knotwork-bridge`, your load path is wrong and the installation is failed.
+Preferred install path:
+
+```bash
+openclaw plugins install <install-url-from-knotwork>
+```
+
+Use the standard OpenClaw plugin installer so OpenClaw can register the plugin and request the required permissions.
+If startup says `plugin not found: knotwork-bridge`, the standard installer did not complete correctly and the installation is failed.
 
 For a durable install, persist the plugin config in `openclaw.config.json`.
 Do not rely on one-shot shell env vars alone, because OpenClaw may not preserve them across restarts.

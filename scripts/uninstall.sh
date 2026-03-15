@@ -5,6 +5,7 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 PARENT_DIR="$(dirname "$ROOT_DIR")"
 cd "$ROOT_DIR"
 TEMP_DIR=""
+INSTALL_MANIFEST="$ROOT_DIR/.knotwork-install.json"
 
 SUDO=""
 if [[ "${EUID}" -ne 0 ]]; then
@@ -95,14 +96,73 @@ project_name() {
   basename "$ROOT_DIR"
 }
 
+manifest_value() {
+  local key="$1"
+  if [[ -f "$INSTALL_MANIFEST" ]]; then
+    python3 - "$INSTALL_MANIFEST" "$key" <<'PY'
+import json, sys
+path, key = sys.argv[1], sys.argv[2]
+with open(path) as f:
+    data = json.load(f)
+value = data.get(key, "")
+if isinstance(value, (dict, list)):
+    print(json.dumps(value))
+else:
+    print(value)
+PY
+  fi
+}
+
+compose_project_name() {
+  local value=""
+  if [[ -f "$INSTALL_MANIFEST" ]]; then
+    value="$(manifest_value compose_project_name)"
+  fi
+  if [[ -n "$value" ]]; then
+    echo "$value"
+    return
+  fi
+  if [[ -f "$ROOT_DIR/.env" ]]; then
+    awk -F= '$1=="COMPOSE_PROJECT_NAME" {print substr($0, index($0,$2)); exit}' "$ROOT_DIR/.env"
+    return
+  fi
+  echo "$(project_name)"
+}
+
+compose_cmd() {
+  docker compose --project-name "$(compose_project_name)" "$@"
+}
+
+owned_image_names() {
+  if [[ -f "$INSTALL_MANIFEST" ]]; then
+    python3 - "$INSTALL_MANIFEST" <<'PY'
+import json, sys
+with open(sys.argv[1]) as f:
+    data = json.load(f)
+for image in data.get("images", []):
+    print(image)
+PY
+    return
+  fi
+  local project
+  project="$(compose_project_name)"
+  printf '%s\n' \
+    "${project}-backend:latest" \
+    "${project}-worker:latest" \
+    "${project}-frontend-prod:latest" \
+    "${project}-backend-dev:latest" \
+    "${project}-worker-dev:latest" \
+    "${project}-frontend-dev:latest"
+}
+
 compose_ps_running() {
-  docker compose ps -q | grep -q .
+  compose_cmd ps -q | grep -q .
 }
 
 ensure_postgres_running() {
   log "Ensuring postgres is running for backup..."
-  run_with_retry 2 3 docker compose up -d postgres || die "Failed to start postgres service for backup"
-  run_with_retry 30 2 docker compose exec -T postgres pg_isready -U knotwork -d knotwork >/dev/null \
+  run_with_retry 2 3 compose_cmd up -d postgres || die "Failed to start postgres service for backup"
+  run_with_retry 30 2 compose_cmd exec -T postgres pg_isready -U knotwork -d knotwork >/dev/null \
     || die "Postgres did not become ready for backup"
 }
 
@@ -114,7 +174,7 @@ backup_database() {
 
   ensure_postgres_running
   log "Dumping PostgreSQL database..."
-  docker compose exec -T postgres \
+  compose_cmd exec -T postgres \
     pg_dump -U knotwork -d knotwork --clean --if-exists --no-owner --no-privileges \
     > "$dump_path" || die "pg_dump failed"
 }
@@ -129,13 +189,13 @@ local_fs_root_from_env() {
 
 detect_backend_service() {
   local service=""
-  service="$(docker compose ps --services --status running 2>/dev/null | awk '$1=="backend"{print; exit}')"
+  service="$(compose_cmd ps --services --status running 2>/dev/null | awk '$1=="backend"{print; exit}')"
   [[ -n "$service" ]] && { echo "$service"; return; }
-  service="$(docker compose ps --services --status running 2>/dev/null | awk '$1=="backend-dev"{print; exit}')"
+  service="$(compose_cmd ps --services --status running 2>/dev/null | awk '$1=="backend-dev"{print; exit}')"
   [[ -n "$service" ]] && { echo "$service"; return; }
-  service="$(docker compose ps --services 2>/dev/null | awk '$1=="backend"{print; exit}')"
+  service="$(compose_cmd ps --services 2>/dev/null | awk '$1=="backend"{print; exit}')"
   [[ -n "$service" ]] && { echo "$service"; return; }
-  service="$(docker compose ps --services 2>/dev/null | awk '$1=="backend-dev"{print; exit}')"
+  service="$(compose_cmd ps --services 2>/dev/null | awk '$1=="backend-dev"{print; exit}')"
   [[ -n "$service" ]] && { echo "$service"; return; }
   if grep -qE '^  backend:' "$ROOT_DIR/docker-compose.yml"; then
     echo "backend"
@@ -152,11 +212,11 @@ ensure_backend_running_for_backup() {
   local service="$1"
   case "$service" in
     backend)
-      run_with_retry 2 3 docker compose --profile prod up -d postgres backend \
+      run_with_retry 2 3 compose_cmd --profile prod up -d postgres backend \
         || die "Failed to start backend service for handbook backup"
       ;;
     backend-dev)
-      run_with_retry 2 3 docker compose --profile dev up -d postgres backend-dev \
+      run_with_retry 2 3 compose_cmd --profile dev up -d postgres backend-dev \
         || die "Failed to start backend-dev service for handbook backup"
       ;;
     *)
@@ -187,12 +247,12 @@ backup_handbook() {
   "
 
   log "Archiving handbook from ${service}:${container_root}..."
-  if docker compose exec -T "$service" sh -lc "$backup_cmd" > "$archive_path" 2>/dev/null; then
+  if compose_cmd exec -T "$service" sh -lc "$backup_cmd" > "$archive_path" 2>/dev/null; then
     return
   fi
 
   log "Backend service is not exec-ready; retrying handbook backup via one-off container..."
-  docker compose run --rm --no-deps -T --entrypoint sh "$service" -lc "$backup_cmd" \
+  compose_cmd run --rm --no-deps -T --entrypoint sh "$service" -lc "$backup_cmd" \
     > "$archive_path" || die "Failed to back up handbook files"
 }
 
@@ -206,16 +266,23 @@ current_git_branch() {
 
 write_manifest() {
   local manifest_path="$1"
-  local git_commit git_branch handbook_root
+  local git_commit git_branch handbook_root compose_project network_name
   git_commit="$(current_git_commit)"
   git_branch="$(current_git_branch)"
   handbook_root="$(local_fs_root_from_env)"
+  compose_project="$(compose_project_name)"
+  if [[ -f "$INSTALL_MANIFEST" ]]; then
+    network_name="$(manifest_value network_name)"
+  fi
+  [[ -n "${network_name:-}" ]] || network_name="${compose_project}-network"
   cat > "$manifest_path" <<EOF
 {
   "created_at_utc": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
   "project_root": $(json_escape "$ROOT_DIR"),
   "cleanup_mode": "$CLEAN_MODE",
   "project_name": "$(project_name)",
+  "compose_project_name": $(json_escape "$compose_project"),
+  "network_name": $(json_escape "$network_name"),
   "knotwork_version": $(json_escape "$git_commit"),
   "git_branch": $(json_escape "$git_branch"),
   "handbook_root": $(json_escape "$handbook_root"),
@@ -260,17 +327,30 @@ docker_cleanup() {
     return
   fi
 
-  log "Stopping and removing project containers, networks, and volumes..."
-  docker compose down --remove-orphans --volumes --rmi local || warn "docker compose down reported errors"
+  local project
+  project="$(compose_project_name)"
 
-  log "Pruning dangling/unused docker images..."
-  docker image prune -f || warn "docker image prune reported errors"
+  log "Stopping and removing docker resources owned by compose project '${project}'..."
+  compose_cmd --profile prod down --remove-orphans --volumes || warn "docker compose down reported errors"
+  compose_cmd --profile dev down --remove-orphans --volumes || warn "docker compose dev down reported errors"
+
+  log "Removing project images only..."
+  while IFS= read -r image; do
+    [[ -n "$image" ]] || continue
+    docker image inspect "$image" >/dev/null 2>&1 || continue
+    if docker ps -a --filter "ancestor=$image" --format '{{.ID}}' | grep -q .; then
+      warn "Skipping image still referenced by a container: $image"
+      continue
+    fi
+    docker image rm -f "$image" >/dev/null 2>&1 || warn "Could not remove image: $image"
+  done < <(owned_image_names)
 }
 
 cleanup_runtime_files() {
   log "Cleaning runtime-generated files..."
   rm -rf \
     "$ROOT_DIR/.env" \
+    "$ROOT_DIR/.knotwork-install.json" \
     "$ROOT_DIR"/.env.backup.* \
     "$ROOT_DIR/backend/data" \
     "$ROOT_DIR/backend/logs" \

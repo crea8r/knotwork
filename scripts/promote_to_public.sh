@@ -295,6 +295,29 @@ set_env_key() {
   fi
 }
 
+write_install_manifest() {
+  local path="$1"
+  cat > "$path" <<EOF
+{
+  "install_mode": "public",
+  "compose_project_name": "${COMPOSE_PROJECT_NAME}",
+  "network_name": "${COMPOSE_PROJECT_NAME}-network",
+  "frontend_url": "${FRONTEND_URL}",
+  "backend_url": "${BACKEND_URL}",
+  "frontend_host_port": "${FRONTEND_HOST_PORT}",
+  "backend_host_port": "${BACKEND_HOST_PORT}",
+  "images": [
+    "${COMPOSE_PROJECT_NAME}-backend:latest",
+    "${COMPOSE_PROJECT_NAME}-worker:latest",
+    "${COMPOSE_PROJECT_NAME}-frontend-prod:latest",
+    "${COMPOSE_PROJECT_NAME}-backend-dev:latest",
+    "${COMPOSE_PROJECT_NAME}-worker-dev:latest",
+    "${COMPOSE_PROJECT_NAME}-frontend-dev:latest"
+  ]
+}
+EOF
+}
+
 get_env_value() {
   local key="$1"
   local file="$2"
@@ -314,23 +337,27 @@ docker info >/dev/null 2>&1 || die "Docker daemon is not reachable. Start Docker
 [[ -f ".env" ]] || die "Missing .env. Promotion requires an existing localhost install."
 [[ -f "docker-compose.yml" ]] || die "Missing docker-compose.yml"
 
-CURRENT_APP_BASE_URL="$(get_env_value APP_BASE_URL .env)"
+CURRENT_FRONTEND_URL="$(get_env_value FRONTEND_URL .env)"
+CURRENT_BACKEND_URL="$(get_env_value BACKEND_URL .env)"
+COMPOSE_PROJECT_NAME="$(get_env_value COMPOSE_PROJECT_NAME .env)"
 BACKEND_HOST_PORT="$(get_env_value BACKEND_HOST_PORT .env)"
 FRONTEND_HOST_PORT="$(get_env_value FRONTEND_HOST_PORT .env)"
 CURRENT_BYPASS="$(get_env_value AUTH_DEV_BYPASS_USER_ID .env)"
 
 [[ -n "$BACKEND_HOST_PORT" ]] || BACKEND_HOST_PORT="8000"
 [[ -n "$FRONTEND_HOST_PORT" ]] || FRONTEND_HOST_PORT="3000"
+[[ -n "$COMPOSE_PROJECT_NAME" ]] || COMPOSE_PROJECT_NAME="knotwork-local"
 
-[[ "$CURRENT_APP_BASE_URL" == http://localhost* ]] \
-  || die "Current APP_BASE_URL is not localhost. This script is only for promoting a localhost install."
+[[ "$CURRENT_FRONTEND_URL" == http://localhost* ]] \
+  || die "Current FRONTEND_URL is not localhost. This script is only for promoting a localhost install."
 
 if [[ -z "$CURRENT_BYPASS" ]]; then
   warn "AUTH_DEV_BYPASS_USER_ID is already empty. Promotion will still proceed."
 fi
 
 echo "Knotwork localhost -> public promotion"
-echo "Current APP_BASE_URL: ${CURRENT_APP_BASE_URL:-<unset>}"
+echo "Current FRONTEND_URL: ${CURRENT_FRONTEND_URL:-<unset>}"
+echo "Current BACKEND_URL: ${CURRENT_BACKEND_URL:-<unset>}"
 echo "Backend host port: $BACKEND_HOST_PORT"
 echo "Frontend host port: $FRONTEND_HOST_PORT"
 
@@ -338,23 +365,26 @@ prompt_required OWNER_EMAIL "Owner email for Let's Encrypt notices"
 is_valid_email "$OWNER_EMAIL" || die "Invalid owner email format: $OWNER_EMAIL"
 prompt_required DOMAIN "Public domain"
 is_valid_domain "$DOMAIN" || die "Invalid domain: $DOMAIN"
+prompt_with_default FRONTEND_URL "Public frontend URL" "https://${DOMAIN}"
+prompt_with_default BACKEND_URL "Public backend URL" "https://api.${DOMAIN}"
 prompt_required RESEND_API "Resend API key (re_...)"
 prompt_required EMAIL_FROM "From email (verified on Resend)"
 
-APP_BASE_URL="https://${DOMAIN}"
-VITE_API_URL="${APP_BASE_URL}/api/v1"
+VITE_API_URL="${BACKEND_URL}/api/v1"
 
 ensure_nginx_port_available
 
 cp .env ".env.backup.$(date +%Y%m%d%H%M%S)"
-set_env_key "APP_BASE_URL" "$APP_BASE_URL" .env
+set_env_key "FRONTEND_URL" "$FRONTEND_URL" .env
+set_env_key "BACKEND_URL" "$BACKEND_URL" .env
 set_env_key "VITE_API_URL" "$VITE_API_URL" .env
 set_env_key "RESEND_API" "$RESEND_API" .env
 set_env_key "EMAIL_FROM" "$EMAIL_FROM" .env
 set_env_key "AUTH_DEV_BYPASS_USER_ID" "" .env
+write_install_manifest .knotwork-install.json
 
 log "Rebuilding and restarting production services..."
-run_with_retry 2 3 docker compose --profile prod up -d --build || die "docker compose up failed"
+run_with_retry 2 3 docker compose --project-name "$COMPOSE_PROJECT_NAME" --profile prod up -d --build || die "docker compose up failed"
 wait_backend_health "$BACKEND_HOST_PORT"
 wait_frontend_http "$FRONTEND_HOST_PORT"
 
@@ -362,11 +392,11 @@ write_nginx_config "$DOMAIN" "$BACKEND_HOST_PORT" "$FRONTEND_HOST_PORT"
 SERVER_IP="$(resolve_server_ip)"
 wait_for_dns "$DOMAIN" "$SERVER_IP"
 request_tls "$DOMAIN" "$OWNER_EMAIL"
-wait_public_https "$APP_BASE_URL"
+wait_public_https "$FRONTEND_URL"
 
 echo
 echo "Promotion complete."
-echo "Public URL: $APP_BASE_URL"
+echo "Public URL: $FRONTEND_URL"
 echo "Backend host port: $BACKEND_HOST_PORT"
 echo "Frontend host port: $FRONTEND_HOST_PORT"
 echo "Auth bypass: disabled"

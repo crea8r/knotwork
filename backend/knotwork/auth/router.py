@@ -66,7 +66,7 @@ async def request_magic_link(
     token_str = await service.create_magic_link_token(db, user)
     await db.commit()
 
-    login_url = f"{settings.app_base_url}/accept-invite?magic={token_str}"
+    login_url = f"{settings.normalized_frontend_url}/accept-invite?magic={token_str}"
     body = (
         f"Click the link below to log in to Knotwork (expires in 15 minutes):\n\n"
         f"{login_url}\n\n"

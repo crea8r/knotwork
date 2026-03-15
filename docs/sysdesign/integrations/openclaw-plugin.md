@@ -41,7 +41,7 @@ The OpenClaw plugin must also be granted gateway scopes:
 
 Operational requirement:
 1. Persist `knotworkBaseUrl` and `handshakeToken` in OpenClaw plugin config.
-2. Ensure the plugin is discoverable via `plugins.load.paths`; an entry config alone is not sufficient.
+2. Use the standard `openclaw plugins install <install-url>` flow so OpenClaw can register the plugin and run its normal permission-approval path.
 3. Treat env vars only as bootstrap helpers for install commands, not as the durable runtime source of truth.
 4. If OpenClaw requires interactive plugin-permission approval, an agent-assisted install must pause and hand control back to the human operator for approval.
 5. Treat installation as failed unless `openclaw gateway call knotwork.handshake` succeeds after restart. Missing-scope, missing-config, or `plugin not found` errors from that verification step mean the install is invalid.

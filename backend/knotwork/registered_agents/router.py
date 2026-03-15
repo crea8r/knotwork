@@ -359,7 +359,7 @@ async def upload_chat_attachment(
         change_summary=f"chat attachment {filename}",
     )
 
-    base = settings.normalized_backend_base_url
+    base = settings.normalized_backend_url
     download_url = f"{base}/api/v1/chat-attachments/{attachment_id}/{filename}"
 
     return {

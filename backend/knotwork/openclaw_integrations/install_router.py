@@ -7,7 +7,7 @@ the knotwork-bridge plugin. The user copies this URL from the Knotwork UI and
 shares it with their OpenClaw agent.
 
 The response contains:
-  - install_command: full shell command to install + configure the plugin
+  - install_command: standard OpenClaw plugin install command
   - config_snippet: the plugin config block for openclaw.config.json
   - verification_command: required post-install check that must succeed
   - requires_user_permission_approval: whether OpenClaw install may pause for human approval
@@ -30,7 +30,6 @@ router = APIRouter(tags=["openclaw_install"])
 _PLUGIN_PACKAGE = "@knotwork/knotwork-bridge"
 _PLUGIN_VERSION = "0.2.0"
 _PLUGIN_ID = "knotwork-bridge"
-_PLUGIN_INSTALL_DIR_TEMPLATE = "${HOME}/.openclaw/knotwork-plugin"
 
 
 @router.get("/openclaw-plugin/install")
@@ -57,27 +56,17 @@ async def get_install_bundle(
     if expires_at < cmp_now:
         raise HTTPException(status_code=410, detail="Token has expired")
 
-    base_url = settings.normalized_backend_base_url
+    base_url = settings.normalized_backend_url
 
-    install_command = (
-        f'PLUGIN_DIR="{_PLUGIN_INSTALL_DIR_TEMPLATE}" && '
-        f'mkdir -p "$PLUGIN_DIR" && '
-        f'npm pack {_PLUGIN_PACKAGE}@{_PLUGIN_VERSION} --pack-destination "$PLUGIN_DIR" && '
-        f'cd "$PLUGIN_DIR" && '
-        f'tar -xzf knotwork-knotwork-bridge-{_PLUGIN_VERSION}.tgz --strip-components=1 package && '
-        f'rm -f knotwork-knotwork-bridge-{_PLUGIN_VERSION}.tgz'
-    )
+    install_url = f"{base_url}/openclaw-plugin/install?token={token}"
+    install_command = f"openclaw plugins install {install_url}"
 
     config_snippet = {
         "plugins": {
-            "load": {
-                "paths": [
-                    "__OPENCLAW_PLUGIN_DIR__"
-                ]
-            },
             "entries": {
                 _PLUGIN_ID: {
                     "enabled": True,
+                    "package": f"{_PLUGIN_PACKAGE}@{_PLUGIN_VERSION}",
                     "config": {
                         "knotworkBaseUrl": base_url,
                         "handshakeToken": token,
@@ -94,26 +83,25 @@ async def get_install_bundle(
     instructions = (
         "To install the Knotwork bridge plugin in OpenClaw:\n"
         "1. Run the install_command in a terminal where OpenClaw is installed.\n"
-        "2. Resolve the absolute plugin directory used by install_command and replace `__OPENCLAW_PLUGIN_DIR__` in config_snippet with that absolute path.\n"
-        "3. Persist the returned config_snippet into OpenClaw plugin config (`openclaw.config.json`). The plugin must be discoverable through `plugins.load.paths`; do not rely on `entries.*.package`.\n"
+        "2. Let the standard OpenClaw installer handle plugin registration and permission approval.\n"
+        "3. Persist the returned config_snippet into OpenClaw plugin config (`openclaw.config.json`) if the installer does not do it automatically.\n"
         "4. OpenClaw may require an interactive permission approval step during install.\n"
         "   If an agent is driving installation through chat, it must stop and ask the human operator to approve the requested permissions. It must not assume approval happened automatically.\n"
         "5. Approve/grant the plugin gateway scopes `operator.read` and `operator.write` when OpenClaw prompts for permissions.\n"
         "   If your OpenClaw setup manages plugin permissions in config instead of an interactive prompt, ensure those two scopes are explicitly granted before running Knotwork tasks.\n"
-        "6. If openclaw supports URL-based install: "
-        f"  openclaw plugin install {base_url}/openclaw-plugin/install?token={token}\n"
-        "7. Restart OpenClaw — the plugin will auto-handshake on startup.\n"
-        "8. Run the verification_command exactly as returned. Installation is not successful until this command exits successfully.\n"
-        "9. Verify in Knotwork Settings → Agents → OpenClaw section.\n"
-        "10. If you see `missing scope: operator.write` or `missing scope: operator.read`, the plugin was installed without the required gateway permissions. Treat the installation as failed. Reinstall or update plugin permissions, then restart OpenClaw and run `openclaw gateway call knotwork.handshake` again.\n"
-        "11. If OpenClaw starts with `plugin not found: knotwork-bridge`, the plugin directory was not added correctly to `plugins.load.paths`. Treat the installation as failed and fix the absolute plugin path in config.\n"
-        "12. If OpenClaw starts the plugin without `knotworkBaseUrl`, the install was not persisted correctly. Treat the installation as failed. Re-apply config_snippet to `openclaw.config.json` and restart OpenClaw."
+        "6. Restart OpenClaw — the plugin will auto-handshake on startup.\n"
+        f"   Standard installer URL reference: {install_url}\n"
+        "7. Run the verification_command exactly as returned. Installation is not successful until this command exits successfully.\n"
+        "8. Verify in Knotwork Settings → Agents → OpenClaw section.\n"
+        "9. If you see `missing scope: operator.write` or `missing scope: operator.read`, the plugin was installed without the required gateway permissions. Treat the installation as failed. Reinstall with the standard installer, then restart OpenClaw and run `openclaw gateway call knotwork.handshake` again.\n"
+        "10. If OpenClaw starts with `plugin not found: knotwork-bridge`, the standard plugin install did not complete successfully. Treat the installation as failed and rerun the standard installer.\n"
+        "11. If OpenClaw starts the plugin without `knotworkBaseUrl`, the install config was not persisted correctly. Treat the installation as failed. Re-apply config_snippet to `openclaw.config.json` and restart OpenClaw."
     )
 
     return {
         "plugin_package": f"{_PLUGIN_PACKAGE}@{_PLUGIN_VERSION}",
         "plugin_id": _PLUGIN_ID,
-        "plugin_install_dir_template": _PLUGIN_INSTALL_DIR_TEMPLATE,
+        "install_url": install_url,
         "install_command": install_command,
         "config_snippet": config_snippet,
         "verification_command": verification_command,
@@ -125,7 +113,7 @@ async def get_install_bundle(
         "installation_failure_conditions": [
             "OpenClaw permission approval does not grant operator.read",
             "OpenClaw permission approval does not grant operator.write",
-            "The plugin is not discoverable through plugins.load.paths",
+            "The standard OpenClaw plugin installation does not complete successfully",
             "The plugin starts without knotworkBaseUrl or handshakeToken persisted in config",
             "The verification_command returns a missing-scope or missing-config error",
         ],

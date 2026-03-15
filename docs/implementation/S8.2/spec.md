@@ -45,7 +45,7 @@ Deploy Knotwork as a clean install on a remote server with a reproducible operat
 
 ## Risks
 
-1. Incomplete env setup (`JWT_SECRET`, API keys, `APP_BASE_URL`) causing runtime/auth issues.
+1. Incomplete env setup (`JWT_SECRET`, API keys, `FRONTEND_URL`) causing runtime/auth issues.
 2. OpenClaw reconnect confusion after restart (requires clear handshake/reconnect steps).
 3. TLS/proxy misconfiguration breaking websocket or callback flows.
 4. Plugin local state loss causing accidental re-pair attempts if reset flow is undocumented.
@@ -84,9 +84,9 @@ Handbook dependency behavior:
 
 Primary script:
 
-1. `scripts/install_s8_2.sh`
-2. `scripts/uninstall_s8_2.sh`
-3. `scripts/promote_localhost_to_public.sh`
+1. `scripts/install.sh`
+2. `scripts/uninstall.sh`
+3. `scripts/promote_to_public.sh`
 
 Bootstrap helper scripts:
 
@@ -115,11 +115,11 @@ Installer behavior:
 
 Promotion behavior:
 
-1. `scripts/promote_localhost_to_public.sh` upgrades an existing localhost install to a public domain without replacing data.
-2. Requires an existing `.env` with localhost `APP_BASE_URL`.
+1. `scripts/promote_to_public.sh` upgrades an existing localhost install to a public domain without replacing data.
+2. Requires an existing `.env` with localhost `FRONTEND_URL`.
 3. Prompts for public domain, owner email, `RESEND_API`, and `EMAIL_FROM`.
 4. Rewrites `.env` for public mode:
-   - `APP_BASE_URL=https://<domain>`
+   - `FRONTEND_URL=https://<domain>`
    - `VITE_API_URL=https://<domain>/api/v1`
    - `AUTH_DEV_BYPASS_USER_ID=` (cleared)
 5. Rebuilds/restarts the production stack, preserving the existing database and handbook files.
