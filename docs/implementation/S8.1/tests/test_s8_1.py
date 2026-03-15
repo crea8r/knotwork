@@ -808,17 +808,49 @@ async def test_install_endpoint_valid_token_returns_bundle(client, db, workspace
     assert "instructions" in data
     assert "knotwork_base_url" in data
     assert "plugin_package" in data
+    assert data["plugin_id"] == "knotwork-bridge"
+    assert data["plugin_install_dir_template"] == "${HOME}/.openclaw/knotwork-plugin"
+    assert data["required_gateway_scopes"] == ["operator.read", "operator.write"]
+    assert data["required_config_keys"] == ["knotworkBaseUrl", "handshakeToken"]
+    assert data["requires_user_permission_approval"] is True
+    assert "human operator" in data["agent_install_policy"].lower()
+    assert data["verification_command"] == "openclaw gateway call knotwork.handshake"
+    assert "installation succeeds only if" in data["installation_success_criteria"].lower()
+    assert any(
+        "operator.write" in condition.lower()
+        for condition in data["installation_failure_conditions"]
+    )
+    assert any(
+        "verification_command" in condition.lower() or "missing-config" in condition.lower()
+        for condition in data["installation_failure_conditions"]
+    )
+    assert "__OPENCLAW_PLUGIN_DIR__" in data["config_snippet"]["plugins"]["load"]["paths"][0]
+    assert "package" not in data["config_snippet"]["plugins"]["entries"]["knotwork-bridge"]
     assert data["token"] == token
 
 
 @pytest.mark.asyncio
 async def test_install_endpoint_bundle_contains_token_in_command(client, db, workspace):
-    """The install_command returned must embed the handshake token."""
+    """The install bundle must persist the handshake token in plugin config."""
     token = await _create_handshake_token(db, workspace)
 
     resp = await client.get(f"/openclaw-plugin/install?token={token}")
     assert resp.status_code == 200
-    assert token in resp.json()["install_command"]
+    data = resp.json()
+    assert token == data["config_snippet"]["plugins"]["entries"]["knotwork-bridge"]["config"]["handshakeToken"]
+
+
+def test_openclaw_plugin_manifest_declares_required_operator_permissions():
+    """Plugin manifest must declare both operator.read and operator.write."""
+    import json
+    from pathlib import Path
+
+    manifest_path = Path(__file__).resolve().parents[4] / "openclaw-plugin-knotwork" / "openclaw.plugin.json"
+    manifest = json.loads(manifest_path.read_text())
+
+    assert "permissions" in manifest
+    assert "operator.read" in manifest["permissions"]
+    assert "operator.write" in manifest["permissions"]
 
 
 @pytest.mark.asyncio

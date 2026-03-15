@@ -7,6 +7,7 @@
   "entry": "./index.ts",
   "permissions": [
     "network",
+    "operator.read",
     "operator.write"
   ],
   "configSchema": {

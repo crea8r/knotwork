@@ -8,7 +8,7 @@ import { mkdir, open, readFile, rm, writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { discoverAgents, doHandshake, getConfig, getGatewayConfig, postEvent, pullTask, resolveInstanceId } from './bridge'
-import { executeTask } from './session'
+import { executeTask, isOperatorScopeError, verifyGatewayOperatorScopes } from './session'
 import type { AnyObj, OpenClawApi, PluginConfig, PluginState } from './types'
 
 const PLUGIN_ID = 'knotwork-bridge'
@@ -194,6 +194,10 @@ export function activate(api: OpenClawApi): void {
         state.lastHandshakeAt = new Date().toISOString()
         state.lastError = err instanceof Error ? err.message : String(err)
         log(`handshake:retry-failed reason=${reason} error=${state.lastError}`)
+        if (isOperatorScopeError(err)) {
+          log('handshake:retry-stopped reason=missing_required_operator_scope')
+          return
+        }
         scheduleHandshakeRetry('retry_failed')
       })
     }, HANDSHAKE_RETRY_MS)
@@ -207,6 +211,7 @@ export function activate(api: OpenClawApi): void {
       throw new Error('Missing knotworkBaseUrl or handshakeToken in plugin config')
     }
     const instanceId = state.pluginInstanceId ?? resolveInstanceId(cfg)
+    await verifyGatewayOperatorScopes(api)
     const agents = await discoverAgents(api)
     log(`handshake:start instanceId=${instanceId} agents=${agents.length}`)
     const resp = await doHandshake(cfg.knotworkBaseUrl, cfg.handshakeToken, instanceId, agents)
@@ -235,6 +240,10 @@ export function activate(api: OpenClawApi): void {
       state.lastHandshakeAt = new Date().toISOString()
       state.lastError = err instanceof Error ? err.message : String(err)
       log(`handshake:recover-failed reason=${reason} error=${state.lastError}`)
+      if (isOperatorScopeError(err)) {
+        log('handshake:recover-stopped reason=missing_required_operator_scope')
+        return false
+      }
       scheduleHandshakeRetry('recover_failed')
       return false
     }
@@ -440,6 +449,10 @@ export function activate(api: OpenClawApi): void {
           state.lastHandshakeAt = new Date().toISOString()
           state.lastError = err instanceof Error ? err.message : String(err)
           log(`startup:handshake-failed ${state.lastError}`)
+          if (isOperatorScopeError(err)) {
+            log('startup:handshake-stopped reason=missing_required_operator_scope')
+            return
+          }
           scheduleHandshakeRetry('startup_failed')
         })
       }

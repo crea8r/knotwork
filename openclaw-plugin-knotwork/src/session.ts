@@ -16,10 +16,15 @@ function toErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error)
 }
 
-function missingScope(error: unknown): string | null {
+export function missingScope(error: unknown): string | null {
   const message = toErrorMessage(error)
   const match = message.match(/missing scope:\s*([A-Za-z0-9._-]+)/i)
   return match ? match[1] ?? null : null
+}
+
+export function isOperatorScopeError(error: unknown): boolean {
+  const scope = missingScope(error)
+  return scope === 'operator.read' || scope === 'operator.write'
 }
 
 function scopeHelp(scope: string): Error {
@@ -286,4 +291,33 @@ export async function executeTask(api: OpenClawApi, task: AnyObj): Promise<TaskR
     return { type: 'failed', error: `agent timed out after ${Math.floor(AGENT_WAIT_TIMEOUT_MS / 1000)}s` }
   }
   return parseResult(waited)
+}
+
+export async function verifyGatewayOperatorScopes(api: OpenClawApi): Promise<void> {
+  const gatewayCall = api.gateway?.call
+  const { port, token } = getGatewayConfig(api)
+
+  async function rpc(method: string, params: AnyObj, timeoutMs = 10_000): Promise<void> {
+    if (typeof gatewayCall === 'function') {
+      try {
+        await gatewayCall(method, params)
+        return
+      } catch (error) {
+        const scope = missingScope(error)
+        if (scope) throw scopeHelp(scope)
+        return
+      }
+    }
+    try {
+      await gatewayRpc(port, token, method, params, timeoutMs)
+    } catch (error) {
+      const scope = missingScope(error)
+      if (scope) throw scopeHelp(scope)
+      // Any non-scope error means the method reached gateway validation/business logic,
+      // which is sufficient proof that the required scope was granted.
+    }
+  }
+
+  await rpc('chat.history', {})
+  await rpc('agent', {})
 }

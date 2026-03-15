@@ -39,6 +39,13 @@ The OpenClaw plugin must also be granted gateway scopes:
 1. `operator.read`
 2. `operator.write`
 
+Operational requirement:
+1. Persist `knotworkBaseUrl` and `handshakeToken` in OpenClaw plugin config.
+2. Ensure the plugin is discoverable via `plugins.load.paths`; an entry config alone is not sufficient.
+3. Treat env vars only as bootstrap helpers for install commands, not as the durable runtime source of truth.
+4. If OpenClaw requires interactive plugin-permission approval, an agent-assisted install must pause and hand control back to the human operator for approval.
+5. Treat installation as failed unless `openclaw gateway call knotwork.handshake` succeeds after restart. Missing-scope, missing-config, or `plugin not found` errors from that verification step mean the install is invalid.
+
 ### Handshake flow
 
 Only the primary long-running plugin runtime auto-handshakes on startup (`autoHandshakeOnStart: true` by default). CLI/plugin-load contexts must stay passive and should not consume the pairing token.
@@ -60,6 +67,8 @@ POST /openclaw-plugin/handshake
 2. Upserts an `OpenClawIntegration` row for this `(workspace, plugin_instance_id)` pair.
 3. Upserts `OpenClawRemoteAgent` rows — one per agent reported by the plugin.
 4. Returns `{ integration_secret, integration_id, workspace_id }`.
+
+Before the plugin performs that Knotwork handshake, it probes the OpenClaw gateway for `operator.read` and `operator.write`. If either scope is missing, handshake must fail immediately with actionable remediation instead of allowing a "connected but unrunnable" installation.
 
 The plugin persists `integration_secret` locally on the OpenClaw side and reuses it across routine restarts. This secret is required for all subsequent plugin API calls (sent as `X-Knotwork-Integration-Secret` header). **The token is the pairing/bootstrap credential; the secret is the ongoing runtime credential.**
 

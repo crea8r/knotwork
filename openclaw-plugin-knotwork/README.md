@@ -45,10 +45,14 @@ In your OpenClaw config (`openclaw.config.json`):
 ```json
 {
   "plugins": {
+    "load": {
+      "paths": [
+        "/absolute/path/to/knotwork-plugin"
+      ]
+    },
     "entries": {
       "knotwork-bridge": {
         "enabled": true,
-        "source": "/absolute/path/to/openclaw-plugin-knotwork",
         "config": {
           "knotworkBaseUrl": "http://host.docker.internal:8000",
           "handshakeToken": "kw_oc_...",
@@ -62,7 +66,11 @@ In your OpenClaw config (`openclaw.config.json`):
 }
 ```
 
-Or via env vars: `KNOTWORK_BASE_URL`, `KNOTWORK_HANDSHAKE_TOKEN`, `KNOTWORK_PLUGIN_INSTANCE_ID`.
+OpenClaw must be able to discover the plugin from `plugins.load.paths`. The entry config alone is not enough.
+If startup says `plugin not found: knotwork-bridge`, your load path is wrong and the installation is failed.
+
+For a durable install, persist the plugin config in `openclaw.config.json`.
+Do not rely on one-shot shell env vars alone, because OpenClaw may not preserve them across restarts.
 
 **3. Start/restart OpenClaw**
 
@@ -72,11 +80,17 @@ If OpenClaw prompts for plugin permissions during install, approve:
 1. `operator.read`
 2. `operator.write`
 
+The plugin manifest now declares both scopes, so a correct OpenClaw install flow should request them during installation/approval.
+If installation is being driven by another agent through chat, that agent must stop and ask the user to approve the interactive permission prompt. This is a trust-boundary step and should not be silently assumed.
+
 If you see `missing scope: operator.write` or `missing scope: operator.read`, the plugin was installed without the required gateway scopes. Reinstall or update the plugin permissions, restart OpenClaw, then run:
 
 ```bash
 openclaw gateway call knotwork.handshake
 ```
+
+The plugin now checks these scopes during handshake/startup. A bad install should fail at pairing time instead of waiting until the first workflow run.
+Treat installation as failed unless `openclaw gateway call knotwork.handshake` succeeds after the install/restart step.
 
 ## Config reference
 
