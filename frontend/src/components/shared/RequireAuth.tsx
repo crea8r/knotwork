@@ -27,6 +27,7 @@ interface Props {
 
 export default function RequireAuth({ children }: Props) {
   const token = useAuthStore((s) => s.token)
+  const workspaceId = useAuthStore((s) => s.workspaceId)
   const login = useAuthStore((s) => s.login)
   const clearAuth = useAuthStore((s) => s.clearAuth)
   const location = useLocation()
@@ -37,7 +38,12 @@ export default function RequireAuth({ children }: Props) {
   )
 
   useEffect(() => {
-    if (!isLocalhostApp || token === 'localhost-bypass') return
+    if (!isLocalhostApp) return
+
+    const shouldBootstrap =
+      !token || token === 'localhost-bypass'
+
+    if (!shouldBootstrap) return
 
     let cancelled = false
 
@@ -58,7 +64,9 @@ export default function RequireAuth({ children }: Props) {
 
         const me = (await meRes.json()) as MeOut
         const workspaces = (await wsRes.json()) as WorkspaceOut[]
-        const primary = workspaces[0]
+        const selected =
+          workspaces.find((ws) => ws.id === workspaceId) ?? workspaces[0]
+        const primary = selected
         if (!primary) {
           throw new Error('No workspace available for localhost auth bootstrap')
         }
@@ -78,7 +86,7 @@ export default function RequireAuth({ children }: Props) {
     return () => {
       cancelled = true
     }
-  }, [token, isLocalhostApp, login, clearAuth])
+  }, [token, workspaceId, isLocalhostApp, login, clearAuth])
 
   if (!token) {
     if (isLocalhostApp && !bootstrapFailed) {
