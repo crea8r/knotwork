@@ -6,10 +6,12 @@ Covers:
   - Invalid / tampered token rejected
   - Magic link token creation
   - Magic link token consumption (valid, re-used, expired, not found)
+  - Auth dependency edge cases (malformed JWT, deleted user, dev bypass)
   - POST /api/v1/auth/magic-link-request (existing + unknown email)
   - POST /api/v1/auth/magic-link-verify (valid + invalid token)
+  - POST /api/v1/auth/magic-link-verify rejects reused token
   - GET /api/v1/auth/me (authenticated)
-  - Invitation create → list → verify → accept (happy path)
+  - Invitation create → list → verify → accept (happy path + permission/config edges)
   - Invitation accept already-accepted returns 409
   - Invitation accept expired returns 410
   - GET /openclaw-plugin/install with valid token returns install bundle
@@ -24,6 +26,20 @@ import pytest
 from datetime import datetime, timedelta, timezone
 from fastapi import HTTPException
 from uuid import UUID, uuid4
+
+
+@pytest.fixture
+def invitations_enabled(monkeypatch):
+    """Force invitation/email settings into a public-install configuration."""
+    from knotwork.config import settings
+
+    async def _send_ok(**_: object) -> None:
+        return None
+
+    monkeypatch.setattr(settings, "app_base_url", "https://app.example.com")
+    monkeypatch.setattr(settings, "resend_api", "re_test")
+    monkeypatch.setattr(settings, "email_from", "noreply@example.com")
+    monkeypatch.setattr("knotwork.workspaces.invitations.service.send_email", _send_ok)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -55,8 +71,9 @@ def test_decode_tampered_token_returns_none():
     from knotwork.auth.service import create_access_token, decode_access_token
 
     token = create_access_token(uuid4())
-    # flip the last character
-    tampered = token[:-1] + ("X" if token[-1] != "X" else "Y")
+    header, payload, signature = token.split(".")
+    tampered_signature = ("A" if signature[0] != "A" else "B") + signature[1:]
+    tampered = ".".join([header, payload, tampered_signature])
     assert decode_access_token(tampered) is None
 
 
@@ -155,9 +172,63 @@ async def test_consume_nonexistent_magic_link_token_returns_none(db):
     assert result is None
 
 
+@pytest.mark.asyncio
+async def test_get_or_create_user_normalizes_email_and_does_not_duplicate(db):
+    """Email lookup should be case/whitespace insensitive for upsert behavior."""
+    from knotwork.auth.service import get_or_create_user
+
+    user1, created1 = await get_or_create_user(db, "  Alice@Example.com  ", "Alice")
+    user2, created2 = await get_or_create_user(db, "alice@example.com", "Alice Two")
+
+    assert created1 is True
+    assert created2 is False
+    assert user1.id == user2.id
+    assert user1.email == "alice@example.com"
+
+
 # ─────────────────────────────────────────────────────────────────────────────
-# 3. Auth endpoints — routes are at /api/v1/auth/...
+# 3. Auth dependency + endpoints — routes are at /api/v1/auth/...
 # ─────────────────────────────────────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_get_current_user_dev_bypass_returns_configured_user_without_token(db, user, monkeypatch):
+    """AUTH_DEV_BYPASS_USER_ID should bypass JWT auth when it points to a real user."""
+    from knotwork.auth.deps import get_current_user
+    from knotwork.config import settings
+
+    monkeypatch.setattr(settings, "auth_dev_bypass_user_id", str(user.id))
+    result = await get_current_user(creds=None, db=db)
+    assert result.id == user.id
+
+
+@pytest.mark.asyncio
+async def test_get_current_user_invalid_dev_bypass_falls_back_to_normal_auth(db, monkeypatch):
+    """Malformed bypass ids must not accidentally authenticate requests."""
+    from knotwork.auth.deps import get_current_user
+    from knotwork.config import settings
+
+    monkeypatch.setattr(settings, "auth_dev_bypass_user_id", "not-a-uuid")
+    with pytest.raises(HTTPException) as exc:
+        await get_current_user(creds=None, db=db)
+    assert exc.value.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_get_current_user_token_for_deleted_user_returns_401(db, user):
+    """A valid JWT whose user no longer exists must be rejected."""
+    from knotwork.auth.deps import get_current_user
+    from knotwork.auth.service import create_access_token
+    from fastapi.security import HTTPAuthorizationCredentials
+
+    token = create_access_token(user.id)
+    await db.delete(user)
+    await db.commit()
+
+    creds = HTTPAuthorizationCredentials(scheme="Bearer", credentials=token)
+    with pytest.raises(HTTPException) as exc:
+        await get_current_user(creds=creds, db=db)
+    assert exc.value.status_code == 401
 
 
 @pytest.mark.asyncio
@@ -176,6 +247,15 @@ async def test_magic_link_request_unknown_email_returns_404(client):
         "/api/v1/auth/magic-link-request", json={"email": "nobody@example.com"}
     )
     assert resp.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_magic_link_request_normalizes_email_input(client, user):
+    """Known users should be found even if the email casing/whitespace differs."""
+    resp = await client.post(
+        "/api/v1/auth/magic-link-request", json={"email": f"  {user.email.upper()}  "}
+    )
+    assert resp.status_code == 202
 
 
 @pytest.mark.asyncio
@@ -205,6 +285,21 @@ async def test_magic_link_verify_invalid_token_returns_401(client):
 
 
 @pytest.mark.asyncio
+async def test_magic_link_verify_reused_token_returns_401(client, db, user):
+    """A magic link token must be single-use at the API layer too."""
+    from knotwork.auth.service import create_magic_link_token
+
+    token = await create_magic_link_token(db, user)
+    await db.commit()
+
+    first = await client.post("/api/v1/auth/magic-link-verify", json={"token": token})
+    second = await client.post("/api/v1/auth/magic-link-verify", json={"token": token})
+
+    assert first.status_code == 200
+    assert second.status_code == 401
+
+
+@pytest.mark.asyncio
 async def test_auth_me_returns_current_user(client, db, user):
     """GET /api/v1/auth/me with a valid Bearer token returns the user's profile."""
     from knotwork.auth.service import create_access_token
@@ -226,13 +321,22 @@ async def test_auth_me_without_token_returns_401(client):
     assert resp.status_code == 401
 
 
+@pytest.mark.asyncio
+async def test_auth_me_with_malformed_bearer_token_returns_401(client):
+    """Malformed bearer tokens should not reach user resolution."""
+    resp = await client.get(
+        "/api/v1/auth/me", headers={"Authorization": "Bearer definitely-not-a-jwt"}
+    )
+    assert resp.status_code == 401
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # 4. Invitation service (direct, bypasses HTTP auth)
 # ─────────────────────────────────────────────────────────────────────────────
 
 
 @pytest.mark.asyncio
-async def test_create_invitation_saves_row(db, workspace, user):
+async def test_create_invitation_saves_row(db, workspace, user, invitations_enabled):
     """create_invitation persists a WorkspaceInvitation row."""
     from knotwork.workspaces.invitations.schemas import CreateInvitationRequest
     from knotwork.workspaces.invitations.service import create_invitation, list_invitations
@@ -248,7 +352,7 @@ async def test_create_invitation_saves_row(db, workspace, user):
 
 
 @pytest.mark.asyncio
-async def test_invitation_token_hint_is_last_6_chars(db, workspace, user):
+async def test_invitation_token_hint_is_last_6_chars(db, workspace, user, invitations_enabled):
     """token_hint must be exactly the last 6 characters of the token."""
     from knotwork.workspaces.invitations.schemas import CreateInvitationRequest
     from knotwork.workspaces.invitations.service import create_invitation
@@ -268,7 +372,7 @@ async def test_invitation_token_hint_is_last_6_chars(db, workspace, user):
 
 
 @pytest.mark.asyncio
-async def test_get_invitation_by_token_valid(db, workspace, user):
+async def test_get_invitation_by_token_valid(db, workspace, user, invitations_enabled):
     """get_invitation_by_token returns workspace name + role for a valid token."""
     from knotwork.workspaces.invitations.schemas import CreateInvitationRequest
     from knotwork.workspaces.invitations.service import create_invitation, get_invitation_by_token
@@ -292,7 +396,7 @@ async def test_get_invitation_by_token_valid(db, workspace, user):
 
 
 @pytest.mark.asyncio
-async def test_accept_invitation_creates_user_and_member(db, workspace, user):
+async def test_accept_invitation_creates_user_and_member(db, workspace, user, invitations_enabled):
     """accept_invitation creates a User + WorkspaceMember and returns a JWT."""
     from knotwork.workspaces.invitations.schemas import CreateInvitationRequest
     from knotwork.workspaces.invitations.service import create_invitation, accept_invitation
@@ -333,7 +437,7 @@ async def test_accept_invitation_creates_user_and_member(db, workspace, user):
 
 
 @pytest.mark.asyncio
-async def test_accept_invitation_already_accepted_raises_409(db, workspace, user):
+async def test_accept_invitation_already_accepted_raises_409(db, workspace, user, invitations_enabled):
     """Accepting an already-accepted invitation raises HTTP 409."""
     from fastapi import HTTPException
     from knotwork.workspaces.invitations.schemas import CreateInvitationRequest
@@ -384,6 +488,54 @@ async def test_accept_expired_invitation_raises_410(db, workspace, user):
     assert exc_info.value.status_code == 410
 
 
+@pytest.mark.asyncio
+async def test_create_invitation_disabled_on_localhost_install(db, workspace, user, monkeypatch):
+    """Localhost installs with no email delivery must reject invite creation."""
+    from knotwork.config import settings
+    from knotwork.workspaces.invitations.schemas import CreateInvitationRequest
+    from knotwork.workspaces.invitations.service import create_invitation
+
+    monkeypatch.setattr(settings, "app_base_url", "http://localhost:3000")
+    monkeypatch.setattr(settings, "resend_api", "")
+    monkeypatch.setattr(settings, "email_from", "")
+
+    with pytest.raises(HTTPException) as exc:
+        await create_invitation(
+            db,
+            workspace.id,
+            user.id,
+            CreateInvitationRequest(email="blocked@example.com", role="operator"),
+        )
+
+    assert exc.value.status_code == 409
+
+
+@pytest.mark.asyncio
+async def test_create_invitation_email_failure_returns_502(db, workspace, user, monkeypatch):
+    """Public installs should fail fast if invite delivery fails."""
+    from knotwork.config import settings
+    from knotwork.workspaces.invitations.schemas import CreateInvitationRequest
+    from knotwork.workspaces.invitations.service import create_invitation
+
+    async def _boom(**_: object) -> None:
+        raise RuntimeError("smtp broken")
+
+    monkeypatch.setattr(settings, "app_base_url", "https://app.example.com")
+    monkeypatch.setattr(settings, "resend_api", "re_test")
+    monkeypatch.setattr(settings, "email_from", "noreply@example.com")
+    monkeypatch.setattr("knotwork.workspaces.invitations.service.send_email", _boom)
+
+    with pytest.raises(HTTPException) as exc:
+        await create_invitation(
+            db,
+            workspace.id,
+            user.id,
+            CreateInvitationRequest(email="broken@example.com", role="operator"),
+        )
+
+    assert exc.value.status_code == 502
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # 5. Invitation API endpoints (HTTP layer)
 #    Protected routes need JWT + WorkspaceMember(role=owner).
@@ -392,7 +544,7 @@ async def test_accept_expired_invitation_raises_410(db, workspace, user):
 
 
 @pytest.mark.asyncio
-async def test_list_invitations_empty(client, workspace, user, workspace_member):
+async def test_list_invitations_empty(client, workspace, user, workspace_member, invitations_enabled):
     """GET /api/v1/workspaces/{id}/invitations returns empty list when none exist."""
     from knotwork.auth.service import create_access_token
 
@@ -406,7 +558,7 @@ async def test_list_invitations_empty(client, workspace, user, workspace_member)
 
 
 @pytest.mark.asyncio
-async def test_create_invitation_via_api(client, workspace, user, workspace_member):
+async def test_create_invitation_via_api(client, workspace, user, workspace_member, invitations_enabled):
     """POST /api/v1/workspaces/{id}/invitations creates an invitation (owner only)."""
     from knotwork.auth.service import create_access_token
 
@@ -425,7 +577,48 @@ async def test_create_invitation_via_api(client, workspace, user, workspace_memb
 
 
 @pytest.mark.asyncio
-async def test_public_verify_invitation_endpoint(client, db, workspace, user):
+async def test_create_invitation_api_rejects_non_member(client, db, workspace, user, invitations_enabled):
+    """Workspace routes should reject users outside the workspace."""
+    from knotwork.auth.models import User
+    from knotwork.auth.service import create_access_token
+
+    outsider = User(email="outsider@example.com", name="Outsider", hashed_password="!no-password")
+    db.add(outsider)
+    await db.commit()
+
+    token = create_access_token(outsider.id)
+    resp = await client.post(
+        f"/api/v1/workspaces/{workspace.id}/invitations",
+        json={"email": "api-invite@example.com", "role": "operator"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert resp.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_create_invitation_api_rejects_operator_role(client, db, workspace, user, invitations_enabled):
+    """Only owners may create invitations."""
+    from knotwork.auth.models import User
+    from knotwork.auth.service import create_access_token
+    from knotwork.workspaces.models import WorkspaceMember
+
+    operator = User(email="operator@example.com", name="Operator", hashed_password="!no-password")
+    db.add(operator)
+    await db.flush()
+    db.add(WorkspaceMember(workspace_id=workspace.id, user_id=operator.id, role="operator"))
+    await db.commit()
+
+    jwt = create_access_token(operator.id)
+    resp = await client.post(
+        f"/api/v1/workspaces/{workspace.id}/invitations",
+        json={"email": "api-invite@example.com", "role": "operator"},
+        headers={"Authorization": f"Bearer {jwt}"},
+    )
+    assert resp.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_public_verify_invitation_endpoint(client, db, workspace, user, invitations_enabled):
     """GET /api/v1/auth/invitations/{token} returns workspace name + email."""
     from knotwork.workspaces.invitations.schemas import CreateInvitationRequest
     from knotwork.workspaces.invitations.service import create_invitation
@@ -452,7 +645,35 @@ async def test_public_verify_invitation_endpoint(client, db, workspace, user):
 
 
 @pytest.mark.asyncio
-async def test_public_accept_invitation_endpoint(client, db, workspace, user):
+async def test_public_verify_invitation_invalid_token_returns_404(client):
+    """Unknown invite tokens should not leak any information."""
+    resp = await client.get("/api/v1/auth/invitations/not-a-real-token")
+    assert resp.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_public_verify_expired_invitation_returns_410(client, db, workspace, user):
+    """Expired invites should be reported as expired before acceptance."""
+    from knotwork.workspaces.invitations.models import WorkspaceInvitation
+    import secrets
+
+    token_str = secrets.token_urlsafe(32)
+    db.add(WorkspaceInvitation(
+        workspace_id=workspace.id,
+        invited_by_user_id=user.id,
+        email="expired-verify@example.com",
+        role="operator",
+        token=token_str,
+        expires_at=datetime.now(timezone.utc) - timedelta(hours=1),
+    ))
+    await db.commit()
+
+    resp = await client.get(f"/api/v1/auth/invitations/{token_str}")
+    assert resp.status_code == 410
+
+
+@pytest.mark.asyncio
+async def test_public_accept_invitation_endpoint(client, db, workspace, user, invitations_enabled):
     """POST /api/v1/auth/invitations/{token}/accept creates account and returns JWT."""
     from knotwork.workspaces.invitations.schemas import CreateInvitationRequest
     from knotwork.workspaces.invitations.service import create_invitation
@@ -479,7 +700,7 @@ async def test_public_accept_invitation_endpoint(client, db, workspace, user):
 
 
 @pytest.mark.asyncio
-async def test_public_accept_invitation_already_accepted_returns_409(client, db, workspace, user):
+async def test_public_accept_invitation_already_accepted_returns_409(client, db, workspace, user, invitations_enabled):
     """POST /api/v1/auth/invitations/{token}/accept for an already accepted invite returns 409."""
     from knotwork.workspaces.invitations.schemas import CreateInvitationRequest
     from knotwork.workspaces.invitations.service import create_invitation
@@ -502,6 +723,28 @@ async def test_public_accept_invitation_already_accepted_returns_409(client, db,
         f"/api/v1/auth/invitations/{row.token}/accept", json={"name": "Twice"}
     )
     assert resp.status_code == 409
+
+
+@pytest.mark.asyncio
+async def test_public_verify_invitation_reports_already_accepted(client, db, workspace, user, invitations_enabled):
+    """Verification endpoint should surface that an invite has already been accepted."""
+    from knotwork.workspaces.invitations.schemas import CreateInvitationRequest
+    from knotwork.workspaces.invitations.service import create_invitation
+    from knotwork.workspaces.invitations.models import WorkspaceInvitation
+    from sqlalchemy import select
+
+    req = CreateInvitationRequest(email="accepted@example.com", role="operator")
+    await create_invitation(db, workspace.id, user.id, req)
+    row = (
+        await db.execute(
+            select(WorkspaceInvitation).where(WorkspaceInvitation.email == "accepted@example.com")
+        )
+    ).scalar_one()
+    await client.post(f"/api/v1/auth/invitations/{row.token}/accept", json={"name": "Accepted User"})
+
+    resp = await client.get(f"/api/v1/auth/invitations/{row.token}")
+    assert resp.status_code == 200
+    assert resp.json()["already_accepted"] is True
 
 
 # ─────────────────────────────────────────────────────────────────────────────

@@ -137,6 +137,14 @@ detect_backend_service() {
   [[ -n "$service" ]] && { echo "$service"; return; }
   service="$(docker compose ps --services 2>/dev/null | awk '$1=="backend-dev"{print; exit}')"
   [[ -n "$service" ]] && { echo "$service"; return; }
+  if grep -qE '^  backend:' "$ROOT_DIR/docker-compose.yml"; then
+    echo "backend"
+    return
+  fi
+  if grep -qE '^  backend-dev:' "$ROOT_DIR/docker-compose.yml"; then
+    echo "backend-dev"
+    return
+  fi
   echo ""
 }
 
@@ -161,15 +169,14 @@ backup_handbook() {
   local archive_path="$1"
   local service
   local container_root
+  local backup_cmd
 
   service="$(detect_backend_service)"
   [[ -n "$service" ]] || die "Could not locate backend container for handbook backup."
 
   ensure_backend_running_for_backup "$service"
   container_root="$(local_fs_root_from_env)"
-
-  log "Archiving handbook from ${service}:${container_root}..."
-  docker compose exec -T "$service" sh -lc "
+  backup_cmd="
     if [ -d \"$container_root\" ]; then
       tar -czf - -C \"$container_root\" .
     else
@@ -177,7 +184,16 @@ backup_handbook() {
       tar -czf - -C \"\$tmpdir\" .
       rm -rf \"\$tmpdir\"
     fi
-  " > "$archive_path" || die "Failed to back up handbook files"
+  "
+
+  log "Archiving handbook from ${service}:${container_root}..."
+  if docker compose exec -T "$service" sh -lc "$backup_cmd" > "$archive_path" 2>/dev/null; then
+    return
+  fi
+
+  log "Backend service is not exec-ready; retrying handbook backup via one-off container..."
+  docker compose run --rm --no-deps -T --entrypoint sh "$service" -lc "$backup_cmd" \
+    > "$archive_path" || die "Failed to back up handbook files"
 }
 
 current_git_commit() {
