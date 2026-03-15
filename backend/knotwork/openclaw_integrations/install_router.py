@@ -22,6 +22,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from knotwork.database import get_db
+from knotwork.config import settings
 from knotwork.openclaw_integrations.models import OpenClawHandshakeToken
 
 router = APIRouter(tags=["openclaw_install"])
@@ -56,8 +57,7 @@ async def get_install_bundle(
     if expires_at < cmp_now:
         raise HTTPException(status_code=410, detail="Token has expired")
 
-    # Derive the Knotwork base URL from the incoming request so this works in any environment
-    base_url = str(request.base_url).rstrip("/")
+    base_url = settings.normalized_backend_base_url
 
     install_command = (
         f'PLUGIN_DIR="{_PLUGIN_INSTALL_DIR_TEMPLATE}" && '

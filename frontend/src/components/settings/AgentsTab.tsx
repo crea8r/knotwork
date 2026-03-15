@@ -4,6 +4,7 @@ import { ChevronDown, ChevronRight, Copy, RefreshCw } from 'lucide-react'
 import Card from '@/components/shared/Card'
 import Badge from '@/components/shared/Badge'
 import Spinner from '@/components/shared/Spinner'
+import { BACKEND_BASE_URL } from '@/api/client'
 import {
   useCreateOpenClawHandshakeToken,
   useOpenClawIntegrations,
@@ -90,7 +91,7 @@ export default function AgentsTab() {
                     className="px-2.5 py-1.5 rounded-lg border border-gray-200 bg-white text-xs inline-flex items-center gap-1">
                     <Copy size={12} /> Copy token
                   </button>
-                  <button type="button" onClick={() => navigator.clipboard.writeText(`${window.location.origin}/openclaw-plugin/install?token=${token}`)}
+                  <button type="button" onClick={() => navigator.clipboard.writeText(`${BACKEND_BASE_URL}/openclaw-plugin/install?token=${token}`)}
                     className="px-2.5 py-1.5 rounded-lg border border-brand-200 bg-brand-50 text-brand-700 text-xs inline-flex items-center gap-1">
                     <Copy size={12} /> Copy install URL
                   </button>
@@ -105,7 +106,7 @@ export default function AgentsTab() {
                 </div>
                 <div>
                   <p className="text-gray-500">Install URL:</p>
-                  <p className="font-mono break-all text-brand-700 mt-1">{window.location.origin}/openclaw-plugin/install?token={token}</p>
+                  <p className="font-mono break-all text-brand-700 mt-1">{BACKEND_BASE_URL}/openclaw-plugin/install?token={token}</p>
                 </div>
               </div>
             )}

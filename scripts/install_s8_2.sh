@@ -130,6 +130,7 @@ DEFAULT_MODEL=${DEFAULT_MODEL}
 JWT_SECRET=${JWT_SECRET}
 AUTH_DEV_BYPASS_USER_ID=${AUTH_DEV_BYPASS_USER_ID}
 APP_BASE_URL=${APP_BASE_URL}
+BACKEND_BASE_URL=${BACKEND_BASE_URL}
 RESEND_API=${RESEND_API}
 EMAIL_FROM=${EMAIL_FROM}
 BACKEND_HOST_PORT=${BACKEND_HOST_PORT}
@@ -383,11 +384,13 @@ if [[ "$DOMAIN" == "localhost" ]]; then
   prompt_with_default APP_BASE_URL "APP_BASE_URL" "http://localhost:${FRONTEND_HOST_PORT}"
   prompt_with_default RESEND_API "Resend API key (optional for local)" ""
   prompt_with_default EMAIL_FROM "Email from address (local default)" "noreply@localhost"
+  BACKEND_BASE_URL="http://localhost:${BACKEND_HOST_PORT}"
 else
   prompt_with_default APP_BASE_URL "APP_BASE_URL" "https://${DOMAIN}"
   prompt_required RESEND_API "Resend API key (re_...)"
   prompt_required EMAIL_FROM "From email (verified on Resend)"
   [[ "$APP_BASE_URL" =~ ^https:// ]] || die "APP_BASE_URL must use https:// for non-local domain"
+  BACKEND_BASE_URL="${APP_BASE_URL%/}"
 fi
 
 if [[ "$DOMAIN" == "localhost" ]]; then

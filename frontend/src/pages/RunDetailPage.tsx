@@ -14,6 +14,7 @@ import {
   useRunChatMessages,
   useAbortRun,
 } from '@/api/runs'
+import { WS_API_BASE_URL } from '@/api/client'
 import { useGraphVersion } from '@/api/graphs'
 import { useEscalations, useResolveEscalationAny } from '@/api/escalations'
 import { useRegisteredAgents } from '@/api/agents'
@@ -557,8 +558,7 @@ export default function RunDetailPage() {
 
   useEffect(() => {
     if (!runId || (run && TERMINAL.has(run.status))) return
-    const apiBase = (import.meta.env.VITE_API_URL ?? 'http://localhost:8000/api/v1').replace(/^http/, 'ws')
-    const ws = new WebSocket(`${apiBase}/ws/runs/${runId}`)
+    const ws = new WebSocket(`${WS_API_BASE_URL}/ws/runs/${runId}`)
     wsRef.current = ws
     ws.onopen = () => setWsConnected(true)
     ws.onclose = () => setWsConnected(false)

@@ -43,6 +43,9 @@ class Settings(BaseSettings):
 
     # App base URL used in magic link / invite emails
     app_base_url: str = "http://localhost:3000"
+    # Canonical externally reachable base URL for backend-only absolute URLs
+    # such as OpenClaw install links and attachment downloads.
+    backend_base_url: str = "http://localhost:8000"
     # Dev-only: if set, all requests authenticate as this user UUID without JWT.
     # Leave empty in production.
     auth_dev_bypass_user_id: str = ""
@@ -68,6 +71,14 @@ class Settings(BaseSettings):
     @property
     def invitations_enabled(self) -> bool:
         return (not self.is_local_app) and self.email_delivery_enabled
+
+    @property
+    def normalized_app_base_url(self) -> str:
+        return self.app_base_url.rstrip("/")
+
+    @property
+    def normalized_backend_base_url(self) -> str:
+        return self.backend_base_url.rstrip("/")
 
 
 settings = Settings()  # type: ignore[call-arg]

@@ -6,7 +6,17 @@
 import axios from 'axios'
 import { useAuthStore } from '@/store/auth'
 
-export const API_BASE_URL = import.meta.env.VITE_API_URL ?? '/api/v1'
+function resolveApiUrl(): URL {
+  const raw = import.meta.env.VITE_API_URL ?? '/api/v1'
+  const base = typeof window !== 'undefined' ? window.location.origin : 'http://localhost'
+  return new URL(raw, base)
+}
+
+const apiUrl = resolveApiUrl()
+
+export const API_BASE_URL = apiUrl.toString().replace(/\/$/, '')
+export const BACKEND_BASE_URL = apiUrl.origin
+export const WS_API_BASE_URL = API_BASE_URL.replace(/^http/, 'ws')
 
 export const api = axios.create({
   baseURL: API_BASE_URL,

@@ -7,6 +7,7 @@ from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, Upl
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from knotwork.channels.schemas import ChannelMessageOut
+from knotwork.config import settings
 from knotwork.database import get_db
 from knotwork.registered_agents import schemas, service
 
@@ -358,8 +359,7 @@ async def upload_chat_attachment(
         change_summary=f"chat attachment {filename}",
     )
 
-    # Build the download URL from the request base URL so OpenClaw can reach it
-    base = str(request.base_url).rstrip("/") if request else ""
+    base = settings.normalized_backend_base_url
     download_url = f"{base}/api/v1/chat-attachments/{attachment_id}/{filename}"
 
     return {
