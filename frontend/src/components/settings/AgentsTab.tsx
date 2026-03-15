@@ -76,8 +76,9 @@ export default function AgentsTab() {
             </p>
             <ol className="text-xs text-gray-500 list-decimal pl-5 space-y-1">
               <li>Click <strong>Generate handshake token</strong>.</li>
-              <li>Copy the <strong>install URL</strong> and share it with your OpenClaw agent.</li>
-              <li>Ask the agent: <em>"Install knotwork from [install URL]"</em> — the plugin handshakes automatically.</li>
+              <li>Install the published plugin package in OpenClaw.</li>
+              <li>Copy the <strong>setup URL</strong> and share it with your OpenClaw agent so it can apply the Knotwork config.</li>
+              <li>Ask the agent: <em>"Install @knotwork/knotwork-bridge, then configure it from [setup URL]"</em>.</li>
               <li>Synced agents appear below — click <strong>Register</strong> to add them.</li>
             </ol>
             <div className="flex items-center gap-2 flex-wrap">
@@ -93,7 +94,7 @@ export default function AgentsTab() {
                   </button>
                   <button type="button" onClick={() => navigator.clipboard.writeText(`${BACKEND_BASE_URL}/openclaw-plugin/install?token=${token}`)}
                     className="px-2.5 py-1.5 rounded-lg border border-brand-200 bg-brand-50 text-brand-700 text-xs inline-flex items-center gap-1">
-                    <Copy size={12} /> Copy install URL
+                    <Copy size={12} /> Copy setup URL
                   </button>
                 </>
               )}
@@ -105,7 +106,7 @@ export default function AgentsTab() {
                   <p className="font-mono break-all text-gray-700 mt-1">{token}</p>
                 </div>
                 <div>
-                  <p className="text-gray-500">Install URL:</p>
+                  <p className="text-gray-500">Setup URL:</p>
                   <p className="font-mono break-all text-brand-700 mt-1">{BACKEND_BASE_URL}/openclaw-plugin/install?token={token}</p>
                 </div>
               </div>

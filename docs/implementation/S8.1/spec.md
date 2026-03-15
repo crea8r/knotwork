@@ -26,10 +26,11 @@ The backend entrypoint runs `alembic upgrade head` before starting uvicorn, so m
 
 **New backend endpoint:** `GET /openclaw-plugin/install?token=<handshake_token>`
 - Public endpoint (no JWT required, only validates the token exists + isn't expired)
-- Returns: `{ install_command, config_snippet, instructions, plugin_package, knotwork_base_url, token }`
-- The OpenClaw agent fetches this URL and follows the returned instructions to install + configure the plugin
+- Returns: `{ install_command, setup_url, config_snippet, instructions, plugin_package, knotwork_base_url, token }`
+- This endpoint is a setup bundle, not the plugin artifact itself
+- The OpenClaw agent fetches this URL and follows the returned instructions to configure the plugin after installing the published package
 
-**Frontend:** "Copy install URL" button added to Settings → Agents → OpenClaw plugin connection section. URL format: `<origin>/openclaw-plugin/install?token=<token>`
+**Frontend:** "Copy setup URL" button added to Settings → Agents → OpenClaw plugin connection section. URL format: `<backend-origin>/openclaw-plugin/install?token=<token>`
 
 **Agent description field:**
 - `RemoteAgent.description?: string` added to plugin `types.ts`
@@ -92,7 +93,7 @@ The backend entrypoint runs `alembic upgrade head` before starting uvicorn, so m
 
 **New `MembersTab.tsx`:** Real invitation list + invite form (owner only); replaces mock data in SettingsPage
 
-**Updated `AgentsTab.tsx`:** "Copy install URL" button, agent description display
+**Updated `AgentsTab.tsx`:** "Copy setup URL" button, agent description display
 
 ### F. Roadmap
 
@@ -157,7 +158,7 @@ Run: `cd backend && alembic upgrade head`
 - `src/App.tsx` — added /login, /accept-invite, RequireAuth wrapper
 - `src/components/shared/RequireAuth.tsx` — **NEW**
 - `src/components/settings/MembersTab.tsx` — **NEW** (real data + invite form)
-- `src/components/settings/AgentsTab.tsx` — install URL button + description display
+- `src/components/settings/AgentsTab.tsx` — setup URL button + description display
 
 ### Plugin
 - `openclaw-plugin-knotwork/src/types.ts` — added description to RemoteAgent

@@ -809,8 +809,8 @@ async def test_install_endpoint_valid_token_returns_bundle(client, db, workspace
     assert "knotwork_base_url" in data
     assert "plugin_package" in data
     assert data["plugin_id"] == "knotwork-bridge"
-    assert data["install_url"].endswith(f"/openclaw-plugin/install?token={token}")
-    assert data["install_command"] == f"openclaw plugins install {data['install_url']}"
+    assert data["setup_url"].endswith(f"/openclaw-plugin/install?token={token}")
+    assert data["install_command"] == "openclaw plugins install @knotwork/knotwork-bridge@0.2.0"
     assert data["required_gateway_scopes"] == ["operator.read", "operator.write"]
     assert data["required_config_keys"] == ["knotworkBaseUrl", "handshakeToken"]
     assert data["requires_user_permission_approval"] is True

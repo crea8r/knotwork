@@ -80,16 +80,16 @@ Run after `docker compose --profile dev up` and migrations.
 
 ---
 
-## D. OpenClaw plugin install URL
+## D. OpenClaw plugin setup URL
 
-### D1. Install URL visible after token generation
+### D1. Setup URL visible after token generation
 - Settings → Agents → "Generate handshake token" → wait for response
-- ✅ Pass: Two buttons visible: "Copy token" and "Copy install URL". Below buttons: token + install URL shown in the gray box.
-- ❌ Fail: Only "Copy token" button, no install URL.
+- ✅ Pass: Two buttons visible: "Copy token" and "Copy setup URL". Below buttons: token + setup URL shown in the gray box.
+- ❌ Fail: Only "Copy token" button, no setup URL.
 
-### D2. Install endpoint returns JSON
+### D2. Setup endpoint returns JSON
 - Generate a token, then open: `http://localhost:8000/openclaw-plugin/install?token=<token>`
-- ✅ Pass: JSON with `install_command`, `config_snippet`, `instructions`, `plugin_package`, `knotwork_base_url`.
+- ✅ Pass: JSON with `install_command`, `setup_url`, `config_snippet`, `instructions`, `plugin_package`, `knotwork_base_url`.
 - ❌ Fail: 404 or 500.
 
 ### D3. Invalid token rejected

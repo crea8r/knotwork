@@ -65,10 +65,11 @@ In your OpenClaw config (`openclaw.config.json`):
 Preferred install path:
 
 ```bash
-openclaw plugins install <install-url-from-knotwork>
+openclaw plugins install @knotwork/knotwork-bridge@0.2.0
 ```
 
 Use the standard OpenClaw plugin installer so OpenClaw can register the plugin and request the required permissions.
+Then fetch the Knotwork setup bundle URL from Settings > Agents and apply the returned config snippet containing `knotworkBaseUrl` and `handshakeToken`.
 If startup says `plugin not found: knotwork-bridge`, the standard installer did not complete correctly and the installation is failed.
 
 For a durable install, persist the plugin config in `openclaw.config.json`.
