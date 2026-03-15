@@ -2,15 +2,83 @@
  * LoginPage — passwordless magic link login.
  * User enters email → receives magic link email → clicks link → logged in.
  */
-import { useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import { Navigate } from 'react-router-dom'
 import { useRequestMagicLink } from '@/api/auth'
+import { API_BASE_URL } from '@/api/client'
 import knotworkLogo from '@/assets/knotwork-logo.svg'
+import { useAuthStore } from '@/store/auth'
+
+interface WorkspaceOut {
+  id: string
+  name: string
+  slug: string
+  member_role: 'owner' | 'operator'
+}
+
+interface MeOut {
+  id: string
+  email: string
+  name: string
+}
 
 export default function LoginPage() {
+  const token = useAuthStore((s) => s.token)
+  const login = useAuthStore((s) => s.login)
+  const clearAuth = useAuthStore((s) => s.clearAuth)
   const [email, setEmail] = useState('')
   const [sent, setSent] = useState(false)
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
+  const [bootstrapFailed, setBootstrapFailed] = useState(false)
   const request = useRequestMagicLink()
+  const isLocalhostApp = useMemo(
+    () => typeof window !== 'undefined' && ['localhost', '127.0.0.1', '::1'].includes(window.location.hostname),
+    [],
+  )
+
+  useEffect(() => {
+    if (!isLocalhostApp || token) return
+
+    let cancelled = false
+
+    async function bootstrapLocalAuth() {
+      try {
+        const [meRes, wsRes] = await Promise.all([
+          fetch(`${API_BASE_URL}/auth/me`),
+          fetch(`${API_BASE_URL}/workspaces`),
+        ])
+
+        if (meRes.status === 401 || wsRes.status === 401) {
+          if (!cancelled) setBootstrapFailed(true)
+          return
+        }
+        if (!meRes.ok || !wsRes.ok) {
+          throw new Error('Local auth bootstrap failed')
+        }
+
+        const me = (await meRes.json()) as MeOut
+        const workspaces = (await wsRes.json()) as WorkspaceOut[]
+        const primary = workspaces[0]
+        if (!primary) {
+          throw new Error('No workspace available for localhost auth bootstrap')
+        }
+
+        if (!cancelled) {
+          login('localhost-bypass', me, primary.id, primary.member_role)
+        }
+      } catch {
+        if (!cancelled) {
+          clearAuth()
+          setBootstrapFailed(true)
+        }
+      }
+    }
+
+    bootstrapLocalAuth()
+    return () => {
+      cancelled = true
+    }
+  }, [token, isLocalhostApp, login, clearAuth])
 
   const submit = (e: React.FormEvent) => {
     e.preventDefault()
@@ -23,6 +91,23 @@ export default function LoginPage() {
         setErrorMsg(detail ?? 'Something went wrong. Please try again.')
       },
     })
+  }
+
+  if (token) {
+    return <Navigate to="/inbox" replace />
+  }
+
+  if (isLocalhostApp && !bootstrapFailed) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
+        <div className="w-full max-w-md rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
+          <p className="text-sm font-medium text-gray-800">Preparing localhost session</p>
+          <p className="mt-2 text-sm text-gray-500">
+            Attempting automatic sign-in for this localhost install.
+          </p>
+        </div>
+      </div>
+    )
   }
 
   return (
