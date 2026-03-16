@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
@@ -38,6 +38,13 @@ function variantByStatus(s?: string): 'green' | 'gray' | 'red' | 'orange' | 'pur
   if (s === 'warning') return 'orange'
   if (s === 'inactive' || s === 'never_run') return 'gray'
   return 'purple'
+}
+
+function formatTimestamp(value: string | null | undefined): string {
+  if (!value) return '—'
+  const d = new Date(value)
+  if (Number.isNaN(d.getTime())) return '—'
+  return d.toLocaleString()
 }
 
 function PageButtons({ page, total, onChange }: { page: number; total: number; onChange: (p: number) => void }) {
@@ -565,23 +572,41 @@ export default function AgentProfilePage() {
                                 <th className="px-3 py-2">Task</th>
                                 <th className="px-3 py-2">Node</th>
                                 <th className="px-3 py-2">Status</th>
+                                <th className="px-3 py-2">Failed at</th>
                                 <th className="px-3 py-2">Events</th>
                                 <th className="px-3 py-2">Created</th>
                               </tr>
                             </thead>
                             <tbody>
                               {agentTasks.map((t) => (
-                                <tr key={t.task_id} className="border-t border-gray-50">
-                                  <td className="px-3 py-2 font-mono text-gray-700">{t.task_id.slice(0, 8)}</td>
-                                  <td className="px-3 py-2 text-gray-600">{t.node_id}</td>
-                                  <td className="px-3 py-2">
-                                    <Badge variant={t.status === 'completed' ? 'green' : t.status === 'failed' ? 'red' : t.status === 'pending' ? 'orange' : 'gray'}>
-                                      {t.status}
-                                    </Badge>
-                                  </td>
-                                  <td className="px-3 py-2 text-gray-600">{t.event_count}</td>
-                                  <td className="px-3 py-2 text-gray-400">{new Date(t.created_at).toLocaleTimeString()}</td>
-                                </tr>
+                                <Fragment key={t.task_id}>
+                                  <tr className="border-t border-gray-50 align-top">
+                                    <td className="px-3 py-2 font-mono text-gray-700">{t.task_id.slice(0, 8)}</td>
+                                    <td className="px-3 py-2 text-gray-600">{t.node_id}</td>
+                                    <td className="px-3 py-2">
+                                      <Badge variant={t.status === 'completed' ? 'green' : t.status === 'failed' ? 'red' : t.status === 'pending' ? 'orange' : 'gray'}>
+                                        {t.status}
+                                      </Badge>
+                                    </td>
+                                    <td className="px-3 py-2 text-gray-500">
+                                      {t.status === 'failed' ? formatTimestamp(t.failed_at) : '—'}
+                                    </td>
+                                    <td className="px-3 py-2 text-gray-600">{t.event_count}</td>
+                                    <td className="px-3 py-2 text-gray-400">{formatTimestamp(t.created_at)}</td>
+                                  </tr>
+                                  {t.status === 'failed' && t.error_message && (
+                                    <tr className="border-t border-red-50 bg-red-50/60">
+                                      <td className="px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-red-700">
+                                        Error
+                                      </td>
+                                      <td colSpan={5} className="px-3 py-2">
+                                        <pre className="whitespace-pre-wrap break-words text-[11px] leading-relaxed text-red-700">
+                                          {t.error_message}
+                                        </pre>
+                                      </td>
+                                    </tr>
+                                  )}
+                                </Fragment>
                               ))}
                             </tbody>
                           </table>

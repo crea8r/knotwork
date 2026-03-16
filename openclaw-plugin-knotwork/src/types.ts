@@ -32,6 +32,17 @@ export type PluginConfig = {
   taskPollIntervalMs?: number
 }
 
+export type RecentTask = {
+  taskId: string
+  nodeId: string | null
+  runId: string | null
+  sessionName: string | null
+  status: string
+  startedAt: string
+  finishedAt: string | null
+  error: string | null
+}
+
 // Live plugin state (exposed via knotwork.status RPC and knotwork.logs)
 export type PluginState = {
   pluginInstanceId: string | null
@@ -45,6 +56,8 @@ export type PluginState = {
   lastError: string | null
   lastTaskAt: string | null
   runningTaskId: string | null
+  runtimeLeaseOwnerPid: number | null
+  recentTasks: RecentTask[]
   logs: string[] // rolling 200-line ring buffer; each line also written to stdout
 }
 

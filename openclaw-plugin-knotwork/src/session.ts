@@ -16,10 +16,47 @@ function toErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error)
 }
 
+function collectErrorStrings(error: unknown, seen = new Set<unknown>()): string[] {
+  if (error == null || seen.has(error)) return []
+  if (typeof error === 'string') return [error]
+  if (error instanceof Error) {
+    seen.add(error)
+    return [error.message, ...collectErrorStrings((error as Error & { cause?: unknown }).cause, seen)]
+  }
+  if (Array.isArray(error)) {
+    seen.add(error)
+    return error.flatMap((item) => collectErrorStrings(item, seen))
+  }
+  if (typeof error === 'object') {
+    seen.add(error)
+    const obj = error as AnyObj
+    const direct = [
+      obj.message,
+      obj.error,
+      obj.reason,
+      obj.details,
+      obj.payload,
+      obj.data,
+      obj.cause,
+      obj.meta,
+    ]
+    const scopes = Array.isArray(obj.missingScopes) ? obj.missingScopes : Array.isArray(obj.missing_scopes) ? obj.missing_scopes : []
+    return [
+      ...direct.flatMap((item) => collectErrorStrings(item, seen)),
+      ...scopes.filter((item): item is string => typeof item === 'string'),
+    ]
+  }
+  return [String(error)]
+}
+
 export function missingScope(error: unknown): string | null {
-  const message = toErrorMessage(error)
-  const match = message.match(/missing scope:\s*([A-Za-z0-9._-]+)/i)
-  return match ? match[1] ?? null : null
+  for (const message of collectErrorStrings(error)) {
+    const direct = message.trim()
+    if (OPERATOR_SCOPES.includes(direct)) return direct
+    const match = direct.match(/missing scope:\s*([A-Za-z0-9._-]+)/i)
+    if (match?.[1]) return match[1]
+  }
+  return null
 }
 
 export function isOperatorScopeError(error: unknown): boolean {
@@ -298,14 +335,15 @@ export async function verifyGatewayOperatorScopes(api: OpenClawApi): Promise<voi
   const { port, token } = getGatewayConfig(api)
 
   async function rpc(method: string, params: AnyObj, timeoutMs = 10_000): Promise<void> {
+    let helperScopeError: string | null = null
     if (typeof gatewayCall === 'function') {
       try {
         await gatewayCall(method, params)
         return
       } catch (error) {
         const scope = missingScope(error)
-        if (scope) throw scopeHelp(scope)
-        return
+        if (!scope) return
+        helperScopeError = scope
       }
     }
     try {
@@ -313,6 +351,7 @@ export async function verifyGatewayOperatorScopes(api: OpenClawApi): Promise<voi
     } catch (error) {
       const scope = missingScope(error)
       if (scope) throw scopeHelp(scope)
+      if (helperScopeError) throw scopeHelp(helperScopeError)
       // Any non-scope error means the method reached gateway validation/business logic,
       // which is sufficient proof that the required scope was granted.
     }

@@ -19,7 +19,6 @@ The response contains:
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from pathlib import PurePosixPath
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy import select
@@ -47,11 +46,6 @@ def _external_base_url(request: Request) -> str:
 
 def _plugin_package_url() -> str:
     return settings.openclaw_plugin_package_url.strip()
-
-
-def _local_plugin_filename(package_url: str) -> str:
-    name = PurePosixPath(package_url).name
-    return name or f"{_PLUGIN_ID}-{_PLUGIN_VERSION}.tar.gz"
 
 
 @router.get("/openclaw-plugin/install")
@@ -87,11 +81,10 @@ async def get_install_bundle(
         )
 
     setup_url = f"{base_url}/openclaw-plugin/install?token={token}"
-    local_package_file = _local_plugin_filename(package_url)
     uninstall_command = f'openclaw plugins uninstall "{_PLUGIN_ID}"'
     cleanup_command = f'rm -rf ~/.openclaw/extensions/{_PLUGIN_ID}'
-    download_command = f'curl -fL "{package_url}" -o "{local_package_file}"'
-    install_command = f'openclaw plugins install "{local_package_file}"'
+    download_command = f'curl -fLJO "{package_url}"'
+    install_command = 'openclaw plugins install "<downloaded-file-name>"'
 
     config_snippet = {
         "plugins": {
@@ -119,7 +112,8 @@ async def get_install_bundle(
         "   Use cleanup_command for this step.\n"
         "3. Run the download_command in a terminal where OpenClaw is installed.\n"
         f"   This downloads the configured plugin artifact from: {package_url}\n"
-        f"4. Run the install_command to install the downloaded local file: {local_package_file}\n"
+        "   The file will be saved using the filename returned by the server.\n"
+        "4. Run the install_command using that downloaded filename.\n"
         "5. Let the standard OpenClaw installer handle plugin registration and permission approval.\n"
         "6. Update ~/.openclaw/openclaw.json with the returned config_snippet so the plugin has the right knotworkBackendUrl and handshakeToken.\n"
         "7. OpenClaw may require an interactive permission approval step during install.\n"
@@ -138,7 +132,7 @@ async def get_install_bundle(
     return {
         "plugin_package": package_url,
         "plugin_archive_url": package_url,
-        "local_package_file": local_package_file,
+        "local_package_file": None,
         "plugin_id": _PLUGIN_ID,
         "setup_url": setup_url,
         "uninstall_command": uninstall_command,

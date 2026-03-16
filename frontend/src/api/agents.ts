@@ -223,7 +223,10 @@ export interface OpenClawTaskDebugItem {
   agent_ref: string
   created_at: string
   claimed_at: string | null
+  completed_at: string | null
+  failed_at: string | null
   updated_at: string
+  error_message: string | null
   event_count: number
   latest_event_at: string | null
 }

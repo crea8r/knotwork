@@ -102,7 +102,10 @@ class OpenClawTaskDebugItem(BaseModel):
     agent_ref: str
     created_at: datetime
     claimed_at: datetime | None = None
+    completed_at: datetime | None = None
+    failed_at: datetime | None = None
     updated_at: datetime
+    error_message: str | None = None
     event_count: int = 0
     latest_event_at: datetime | None = None
 

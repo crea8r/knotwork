@@ -9,7 +9,7 @@ import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { discoverAgents, doHandshake, getConfig, getGatewayConfig, postEvent, pullTask, resolveInstanceId } from './bridge'
 import { executeTask, isOperatorScopeError, verifyGatewayOperatorScopes } from './session'
-import type { AnyObj, OpenClawApi, PluginConfig, PluginState } from './types'
+import type { AnyObj, OpenClawApi, PluginConfig, PluginState, RecentTask } from './types'
 
 const PLUGIN_ID = 'knotwork-bridge'
 const STATE_FILE = 'knotwork-bridge-state.json'
@@ -19,10 +19,21 @@ const HANDSHAKE_RETRY_MS = 15000
 type PersistedPluginState = {
   pluginInstanceId?: string
   integrationSecret?: string
+  lastHandshakeAt?: string
+  lastHandshakeOk?: boolean
+  lastError?: string | null
+  lastTaskAt?: string | null
+  runtimeLockPath?: string | null
+  runtimeLeaseOwnerPid?: number | null
+  recentTasks?: RecentTask[]
+  logs?: string[]
 }
+
+const MAX_RECENT_TASKS = 20
 
 export function activate(api: OpenClawApi): void {
   let runtimeLockOwner = false
+  let stateHydrated = false
   const state: PluginState = {
     pluginInstanceId: null,
     integrationSecret: null,
@@ -35,6 +46,8 @@ export function activate(api: OpenClawApi): void {
     lastError: null,
     lastTaskAt: null,
     runningTaskId: null,
+    runtimeLeaseOwnerPid: null,
+    recentTasks: [],
     logs: [],
   }
 
@@ -45,6 +58,33 @@ export function activate(api: OpenClawApi): void {
     const line = `${new Date().toISOString()} ${msg}`
     state.logs = [...state.logs, line].slice(-200)
     console.log(`[${PLUGIN_ID}] ${line}`)
+    if (stateHydrated) void persistSnapshot()
+  }
+
+  function rememberError(error: unknown): string {
+    const text = error instanceof Error ? error.message : String(error)
+    state.lastError = text
+    return text
+  }
+
+  function upsertRecentTask(task: RecentTask): void {
+    const rest = state.recentTasks.filter((item) => item.taskId !== task.taskId)
+    state.recentTasks = [task, ...rest].slice(0, MAX_RECENT_TASKS)
+    void persistSnapshot()
+  }
+
+  function currentRecentTask(task: AnyObj, taskId: string, startedAt: string): RecentTask {
+    const existing = state.recentTasks.find((item) => item.taskId === taskId)
+    return {
+      taskId,
+      nodeId: task.node_id ? String(task.node_id) : existing?.nodeId ?? null,
+      runId: task.run_id ? String(task.run_id) : existing?.runId ?? null,
+      sessionName: task.session_name ? String(task.session_name) : existing?.sessionName ?? null,
+      status: existing?.status ?? 'claimed',
+      startedAt: existing?.startedAt ?? startedAt,
+      finishedAt: existing?.finishedAt ?? null,
+      error: existing?.error ?? null,
+    }
   }
 
   function getStateFilePath(): string {
@@ -89,20 +129,47 @@ export function activate(api: OpenClawApi): void {
       return {
         pluginInstanceId: typeof parsed.pluginInstanceId === 'string' ? parsed.pluginInstanceId.trim() : undefined,
         integrationSecret: typeof parsed.integrationSecret === 'string' ? parsed.integrationSecret.trim() : undefined,
+        lastHandshakeAt: typeof parsed.lastHandshakeAt === 'string' ? parsed.lastHandshakeAt : undefined,
+        lastHandshakeOk: typeof parsed.lastHandshakeOk === 'boolean' ? parsed.lastHandshakeOk : undefined,
+        lastError: typeof parsed.lastError === 'string' ? parsed.lastError : null,
+        lastTaskAt: typeof parsed.lastTaskAt === 'string' ? parsed.lastTaskAt : null,
+        runtimeLockPath: typeof parsed.runtimeLockPath === 'string' ? parsed.runtimeLockPath : null,
+        runtimeLeaseOwnerPid: Number.isInteger(parsed.runtimeLeaseOwnerPid) ? parsed.runtimeLeaseOwnerPid : null,
+        recentTasks: Array.isArray(parsed.recentTasks) ? parsed.recentTasks.slice(0, MAX_RECENT_TASKS) : [],
+        logs: Array.isArray(parsed.logs) ? parsed.logs.slice(-200).filter((line): line is string => typeof line === 'string') : [],
       }
     } catch {
       return {}
     }
   }
 
-  async function persistState(): Promise<void> {
+  let snapshotWrite: Promise<void> = Promise.resolve()
+
+  async function persistSnapshot(): Promise<void> {
     const path = state.stateFilePath ?? getStateFilePath()
     state.stateFilePath = path
-    await mkdir(dirname(path), { recursive: true })
-    await writeFile(path, JSON.stringify({
-      pluginInstanceId: state.pluginInstanceId,
-      integrationSecret: state.integrationSecret,
-    }, null, 2))
+    snapshotWrite = snapshotWrite
+      .catch(() => {})
+      .then(async () => {
+        await mkdir(dirname(path), { recursive: true })
+        await writeFile(path, JSON.stringify({
+          pluginInstanceId: state.pluginInstanceId,
+          integrationSecret: state.integrationSecret,
+          lastHandshakeAt: state.lastHandshakeAt,
+          lastHandshakeOk: state.lastHandshakeOk,
+          lastError: state.lastError,
+          lastTaskAt: state.lastTaskAt,
+          runtimeLockPath: state.runtimeLockPath,
+          runtimeLeaseOwnerPid: state.runtimeLeaseOwnerPid,
+          recentTasks: state.recentTasks,
+          logs: state.logs,
+        }, null, 2))
+      })
+    return snapshotWrite
+  }
+
+  async function persistState(): Promise<void> {
+    await persistSnapshot()
   }
 
   async function releaseRuntimeLease(): Promise<void> {
@@ -149,7 +216,9 @@ export function activate(api: OpenClawApi): void {
           plugin_id: PLUGIN_ID,
         }, null, 2))
         runtimeLockOwner = true
+        state.runtimeLeaseOwnerPid = process?.pid ?? null
         await handle.close()
+        void persistSnapshot()
         return true
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err)
@@ -192,7 +261,7 @@ export function activate(api: OpenClawApi): void {
       runHandshake().catch((err: unknown) => {
         state.lastHandshakeOk = false
         state.lastHandshakeAt = new Date().toISOString()
-        state.lastError = err instanceof Error ? err.message : String(err)
+        state.lastError = rememberError(err)
         log(`handshake:retry-failed reason=${reason} error=${state.lastError}`)
         if (isOperatorScopeError(err)) {
           log('handshake:retry-stopped reason=missing_required_operator_scope')
@@ -221,7 +290,7 @@ export function activate(api: OpenClawApi): void {
     state.lastHandshakeOk = true
     state.lastHandshakeAt = new Date().toISOString()
     state.lastError = null
-    log(`handshake:ok secret=...${String(state.integrationSecret ?? '').slice(-4)}`)
+    log(`handshake:ok secret=...${String(state.integrationSecret ?? '').slice(-4)} instanceId=${state.pluginInstanceId}`)
     return resp
   }
 
@@ -238,7 +307,7 @@ export function activate(api: OpenClawApi): void {
     } catch (err) {
       state.lastHandshakeOk = false
       state.lastHandshakeAt = new Date().toISOString()
-      state.lastError = err instanceof Error ? err.message : String(err)
+      state.lastError = rememberError(err)
       log(`handshake:recover-failed reason=${reason} error=${state.lastError}`)
       if (isOperatorScopeError(err)) {
         log('handshake:recover-stopped reason=missing_required_operator_scope')
@@ -256,25 +325,49 @@ export function activate(api: OpenClawApi): void {
     const baseUrl = cfg.knotworkBackendUrl
     const instanceId = state.pluginInstanceId
     const secret = state.integrationSecret
-    if (!baseUrl || !instanceId || !secret) return
+    if (!baseUrl || !instanceId || !secret) {
+      const missing = [
+        !baseUrl ? 'knotworkBackendUrl' : null,
+        !instanceId ? 'pluginInstanceId' : null,
+        !secret ? 'integrationSecret' : null,
+      ].filter(Boolean).join(',')
+      log(`poll:skipped missing=${missing}`)
+      return
+    }
 
     let task: AnyObj | null = null
+    log(`pull:start instanceId=${instanceId}`)
     try {
       task = await pullTask(baseUrl, instanceId, secret)
     } catch (err) {
-      if (!isInvalidCredentialsError(err)) throw err
+      if (!isInvalidCredentialsError(err)) {
+        const error = rememberError(err)
+        log(`pull:error instanceId=${instanceId} error=${error}`)
+        throw err
+      }
       log('auth:pull-task-invalid-credentials')
       await resetPersistedSecret()
       const recovered = await recoverCredentials('pull_task_401')
       if (!recovered || !state.integrationSecret || !state.pluginInstanceId) return
+      log(`pull:retry instanceId=${state.pluginInstanceId}`)
       task = await pullTask(baseUrl, state.pluginInstanceId, state.integrationSecret)
     }
-    if (!task) return
+    if (!task) {
+      log(`pull:empty instanceId=${instanceId}`)
+      return
+    }
 
     const taskId = String(task.task_id)
+    const taskStartedAt = new Date().toISOString()
     state.runningTaskId = taskId
-    state.lastTaskAt = new Date().toISOString()
-    log(`task:start id=${taskId} node=${task.node_id} session=${task.session_name}`)
+    state.lastTaskAt = taskStartedAt
+    upsertRecentTask({
+      ...currentRecentTask(task, taskId, taskStartedAt),
+      status: 'claimed',
+      finishedAt: null,
+      error: null,
+    })
+    log(`task:start id=${taskId} node=${task.node_id} run=${task.run_id ?? 'n/a'} session=${task.session_name}`)
 
     async function submitEvent(eventType: string, payload: AnyObj): Promise<void> {
       const curInstanceId = state.pluginInstanceId
@@ -282,15 +375,22 @@ export function activate(api: OpenClawApi): void {
       if (!baseUrl || !curInstanceId || !curSecret) {
         throw new Error(`Cannot submit ${eventType}: plugin credentials unavailable`)
       }
+      log(`event:post:start id=${taskId} type=${eventType}`)
       try {
         await postEvent(baseUrl, curInstanceId, curSecret, taskId, eventType, payload)
+        log(`event:post:ok id=${taskId} type=${eventType}`)
       } catch (err) {
-        if (!isInvalidCredentialsError(err)) throw err
+        if (!isInvalidCredentialsError(err)) {
+          const error = rememberError(err)
+          log(`event:post:error id=${taskId} type=${eventType} error=${error}`)
+          throw err
+        }
         log(`auth:post-event-invalid-credentials type=${eventType}`)
         await resetPersistedSecret()
         const recovered = await recoverCredentials(`post_event_${eventType}_401`)
         if (!recovered || !state.integrationSecret || !state.pluginInstanceId) throw err
         await postEvent(baseUrl, state.pluginInstanceId, state.integrationSecret, taskId, eventType, payload)
+        log(`event:post:ok id=${taskId} type=${eventType} retried=true`)
       }
     }
 
@@ -299,7 +399,10 @@ export function activate(api: OpenClawApi): void {
       entry_type: 'action',
       content: 'Plugin started task execution',
       metadata: { node_id: task.node_id, run_id: task.run_id, session_name: task.session_name },
-    }).catch(() => { /* non-fatal — don't let a log failure abort the task */ })
+    }).catch((err) => {
+      const error = rememberError(err)
+      log(`event:post:nonfatal id=${taskId} type=log error=${error}`)
+    })
 
     let heartbeat: ReturnType<typeof setInterval> | null = null
     try {
@@ -318,26 +421,54 @@ export function activate(api: OpenClawApi): void {
       log(`task:done id=${taskId} type=${result.type}`)
 
       if (result.type === 'escalation') {
+        upsertRecentTask({
+          ...currentRecentTask(task, taskId, taskStartedAt),
+          status: 'escalation',
+          finishedAt: new Date().toISOString(),
+          error: null,
+        })
         await submitEvent('escalation', {
           question: result.question,
           options: result.options,
           message: result.message,
         })
       } else if (result.type === 'failed') {
+        upsertRecentTask({
+          ...currentRecentTask(task, taskId, taskStartedAt),
+          status: 'failed',
+          finishedAt: new Date().toISOString(),
+          error: result.error,
+        })
         await submitEvent('failed', { error: result.error })
       } else {
+        upsertRecentTask({
+          ...currentRecentTask(task, taskId, taskStartedAt),
+          status: 'completed',
+          finishedAt: new Date().toISOString(),
+          error: null,
+        })
         await submitEvent('completed', {
           output: result.output,
           next_branch: result.next_branch,
         })
       }
     } catch (err) {
-      const error = err instanceof Error ? err.message : String(err)
+      const error = rememberError(err)
+      upsertRecentTask({
+        ...currentRecentTask(task, taskId, taskStartedAt),
+        status: 'failed',
+        finishedAt: new Date().toISOString(),
+        error,
+      })
       log(`task:error id=${taskId} ${error}`)
-      await submitEvent('failed', { error }).catch(() => {})
+      await submitEvent('failed', { error }).catch((submitErr) => {
+        const submitError = rememberError(submitErr)
+        log(`task:error-report-failed id=${taskId} error=${submitError}`)
+      })
     } finally {
       if (heartbeat) clearInterval(heartbeat)
       state.runningTaskId = null
+      void persistSnapshot()
     }
   }
 
@@ -353,6 +484,8 @@ export function activate(api: OpenClawApi): void {
         ...state,
         runtime: {
           gatewayCallAvailable: typeof api.gateway?.call === 'function',
+          runtimeLeaseOwnerPid: state.runtimeLeaseOwnerPid,
+          currentPid: process?.pid ?? null,
         },
         config: {
           knotworkBackendUrl: cfg.knotworkBackendUrl ?? null,
@@ -363,8 +496,11 @@ export function activate(api: OpenClawApi): void {
     })
 
     rpc('knotwork.logs', async (ctx: AnyObj) => {
-      // Returns the in-memory log buffer. For persistent logs use `docker logs`.
-      ok(ctx, { logs: state.logs, count: state.logs.length })
+      ok(ctx, {
+        logs: state.logs,
+        count: state.logs.length,
+        recentTasks: state.recentTasks,
+      })
     })
 
     const handleHandshake = async (ctx: AnyObj): Promise<void> => {
@@ -377,10 +513,10 @@ export function activate(api: OpenClawApi): void {
         })
         ok(ctx, { ok: true, pluginInstanceId: state.pluginInstanceId, result: resp })
       } catch (err) {
-        const error = err instanceof Error ? err.message : String(err)
+        const error = rememberError(err)
         state.lastHandshakeOk = false
         state.lastHandshakeAt = new Date().toISOString()
-        state.lastError = error
+        log(`handshake:error ${error}`)
         ok(ctx, { ok: false, error })
       }
     }
@@ -393,7 +529,9 @@ export function activate(api: OpenClawApi): void {
         await pollAndRun()
         ok(ctx, { ok: true })
       } catch (err) {
-        ok(ctx, { ok: false, error: err instanceof Error ? err.message : String(err) })
+        const error = rememberError(err)
+        log(`process_once:error ${error}`)
+        ok(ctx, { ok: false, error })
       }
     })
 
@@ -403,6 +541,8 @@ export function activate(api: OpenClawApi): void {
       await resetPersistedSecret(resetInstanceId)
       state.lastError = null
       state.lastHandshakeOk = false
+      state.recentTasks = []
+      state.logs = []
       log(`connection:reset resetInstanceId=${resetInstanceId}`)
       ok(ctx, {
         ok: true,
@@ -428,6 +568,15 @@ export function activate(api: OpenClawApi): void {
       } else if (persisted.integrationSecret && configuredInstanceId && configuredInstanceId !== persisted.pluginInstanceId) {
         log('state:ignored persisted secret due_to_instance_id_mismatch=true')
       }
+      state.lastHandshakeAt = persisted.lastHandshakeAt ?? state.lastHandshakeAt
+      state.lastHandshakeOk = persisted.lastHandshakeOk ?? state.lastHandshakeOk
+      state.lastError = persisted.lastError ?? state.lastError
+      state.lastTaskAt = persisted.lastTaskAt ?? state.lastTaskAt
+      state.runtimeLockPath = persisted.runtimeLockPath ?? state.runtimeLockPath
+      state.runtimeLeaseOwnerPid = persisted.runtimeLeaseOwnerPid ?? state.runtimeLeaseOwnerPid
+      state.recentTasks = Array.isArray(persisted.recentTasks) ? persisted.recentTasks : state.recentTasks
+      state.logs = Array.isArray(persisted.logs) ? persisted.logs : state.logs
+      stateHydrated = true
       await persistState()
 
       const canStartBackground = state.activationContext === 'runtime'
@@ -447,7 +596,7 @@ export function activate(api: OpenClawApi): void {
         runHandshake().catch((err: unknown) => {
           state.lastHandshakeOk = false
           state.lastHandshakeAt = new Date().toISOString()
-          state.lastError = err instanceof Error ? err.message : String(err)
+          state.lastError = rememberError(err)
           log(`startup:handshake-failed ${state.lastError}`)
           if (isOperatorScopeError(err)) {
             log('startup:handshake-stopped reason=missing_required_operator_scope')
@@ -458,7 +607,8 @@ export function activate(api: OpenClawApi): void {
       }
     })
     .catch((err: unknown) => {
-      state.lastError = err instanceof Error ? err.message : String(err)
+      stateHydrated = true
+      state.lastError = rememberError(err)
       log(`state:load-failed ${state.lastError}`)
     })
 
@@ -474,7 +624,7 @@ export function activate(api: OpenClawApi): void {
     if (busy) return
     busy = true
     pollAndRun()
-      .catch((err) => log(`poll:error ${err instanceof Error ? err.message : String(err)}`))
+      .catch((err) => log(`poll:error ${rememberError(err)}`))
       .finally(() => { busy = false })
   }, pollMs)
 

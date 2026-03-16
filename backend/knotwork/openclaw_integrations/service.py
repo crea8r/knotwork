@@ -310,7 +310,10 @@ async def get_debug_state(db: AsyncSession, workspace_id: UUID) -> OpenClawDebug
                 agent_ref=task.agent_ref,
                 created_at=task.created_at,
                 claimed_at=task.claimed_at,
+                completed_at=task.completed_at,
+                failed_at=task.completed_at if task.status == "failed" else None,
                 updated_at=task.updated_at,
+                error_message=task.error_message,
                 event_count=int(ev_count or 0),
                 latest_event_at=ev_latest,
             )

@@ -827,12 +827,9 @@ async def test_install_endpoint_valid_token_returns_bundle(client, db, workspace
     assert data["plugin_package"] == data["plugin_archive_url"]
     assert data["uninstall_command"] == 'openclaw plugins uninstall "knotwork-bridge"'
     assert data["cleanup_command"] == 'rm -rf ~/.openclaw/extensions/knotwork-bridge'
-    assert data["local_package_file"] == "knotwork-bridge-0.2.0.tar.gz"
-    assert data["download_command"] == (
-        'curl -fL "https://plugins.example.com/knotwork-bridge-0.2.0.tar.gz" '
-        '-o "knotwork-bridge-0.2.0.tar.gz"'
-    )
-    assert data["install_command"] == 'openclaw plugins install "knotwork-bridge-0.2.0.tar.gz"'
+    assert data["local_package_file"] is None
+    assert data["download_command"] == 'curl -fLJO "https://plugins.example.com/knotwork-bridge-0.2.0.tar.gz"'
+    assert data["install_command"] == 'openclaw plugins install "<downloaded-file-name>"'
     assert data["required_gateway_scopes"] == ["operator.read", "operator.write"]
     assert data["required_config_keys"] == ["knotworkBackendUrl", "handshakeToken"]
     assert data["requires_user_permission_approval"] is True
@@ -861,7 +858,7 @@ async def test_install_endpoint_bundle_contains_token_in_command(client, db, wor
     assert resp.status_code == 200
     data = resp.json()
     assert token == data["config_snippet"]["plugins"]["entries"]["knotwork-bridge"]["config"]["handshakeToken"]
-    assert data["install_command"].endswith(f'"{data["local_package_file"]}"')
+    assert "<downloaded-file-name>" in data["install_command"]
 
 
 @pytest.mark.asyncio
