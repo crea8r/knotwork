@@ -271,6 +271,7 @@ export async function executeTask(api: OpenClawApi, task: AnyObj): Promise<TaskR
       try {
         return await gatewayCall(method, params)
       } catch (error) {
+        console.error('line 274 ---- custom code error: ',error)
         const scope = missingScope(error)
         if (!scope) throw error
       }
@@ -278,6 +279,7 @@ export async function executeTask(api: OpenClawApi, task: AnyObj): Promise<TaskR
     try {
       return await gatewayRpc(port, token, method, params, timeoutMs)
     } catch (error) {
+      console.error('line 282 ---- custom code error: ',error)
       const scope = missingScope(error)
       if (scope) throw scopeHelp(scope)
       throw error
@@ -341,6 +343,7 @@ export async function verifyGatewayOperatorScopes(api: OpenClawApi): Promise<voi
         await gatewayCall(method, params)
         return
       } catch (error) {
+        console.error('line 346 ---- custom code error: ',error)
         const scope = missingScope(error)
         if (!scope) return
         helperScopeError = scope
@@ -349,6 +352,7 @@ export async function verifyGatewayOperatorScopes(api: OpenClawApi): Promise<voi
     try {
       await gatewayRpc(port, token, method, params, timeoutMs)
     } catch (error) {
+      console.error('line 355 ---- custom code error: ',error)
       const scope = missingScope(error)
       if (scope) throw scopeHelp(scope)
       if (helperScopeError) throw scopeHelp(helperScopeError)

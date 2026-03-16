@@ -29,6 +29,8 @@ export interface RegisteredAgent {
   preflight_status: PreflightStatus
   preflight_run_at: string | null
   last_used_at: string | null
+  openclaw_integration_id: string | null
+  openclaw_remote_agent_id: string | null
   created_at: string
   updated_at: string
 }
@@ -183,6 +185,12 @@ export interface OpenClawIntegration {
   last_seen_at: string
   created_at: string
   updated_at: string
+}
+
+export interface OpenClawIntegrationDeleteResult {
+  integration_id: string
+  plugin_instance_id: string
+  archived_registered_agent_count: number
 }
 
 export interface OpenClawRemoteAgent {
@@ -542,6 +550,23 @@ export function useOpenClawIntegrations() {
     queryFn: async () => {
       const { data } = await api.get(`/workspaces/${workspaceId}/openclaw/integrations`)
       return data
+    },
+  })
+}
+
+export function useDeleteOpenClawIntegration() {
+  const workspaceId = useWorkspaceId()
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (integrationId: string) => {
+      const { data } = await api.delete(`/workspaces/${workspaceId}/openclaw/integrations/${integrationId}`)
+      return data as OpenClawIntegrationDeleteResult
+    },
+    onSuccess: (_, integrationId) => {
+      invalidateAgentQueries(qc)
+      qc.invalidateQueries({ queryKey: ['openclaw-integrations', workspaceId] })
+      qc.invalidateQueries({ queryKey: ['openclaw-debug-state', workspaceId] })
+      qc.invalidateQueries({ queryKey: ['openclaw-remote-agents', workspaceId, integrationId] })
     },
   })
 }

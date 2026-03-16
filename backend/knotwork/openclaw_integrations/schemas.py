@@ -48,6 +48,12 @@ class OpenClawIntegrationOut(BaseModel):
     updated_at: datetime
 
 
+class OpenClawIntegrationDeleteOut(BaseModel):
+    integration_id: UUID
+    plugin_instance_id: str
+    archived_registered_agent_count: int = 0
+
+
 class OpenClawRemoteAgentOut(BaseModel):
     id: UUID
     workspace_id: UUID

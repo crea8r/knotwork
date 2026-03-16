@@ -1,12 +1,14 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
-import { ChevronDown, ChevronRight, Copy, RefreshCw } from 'lucide-react'
+import { ChevronDown, ChevronRight, Copy, RefreshCw, Trash2 } from 'lucide-react'
 import Card from '@/components/shared/Card'
 import Badge from '@/components/shared/Badge'
 import Spinner from '@/components/shared/Spinner'
 import { BACKEND_BASE_URL } from '@/api/client'
 import {
+  useDeleteOpenClawIntegration,
   useCreateOpenClawHandshakeToken,
+  type OpenClawIntegration,
   useOpenClawIntegrations,
   useOpenClawRemoteAgents,
   useRefreshCapabilities,
@@ -34,7 +36,6 @@ export default function AgentsTab() {
   const [q, setQ] = useState('')
   const [statusFilter, setStatusFilter] = useState('')
   const [pluginOpen, setPluginOpen] = useState(false)
-  const [selectedIntegration, setSelectedIntegration] = useState('')
 
   const { data: agents = [], isLoading } = useRegisteredAgents({
     q: q || undefined,
@@ -49,16 +50,12 @@ export default function AgentsTab() {
   const token = handshake.data?.token ?? ''
 
   const { data: integrations = [] } = useOpenClawIntegrations()
-  const resolvedIntegration = selectedIntegration || integrations[0]?.id || ''
-  const { data: remoteAgents = [], isLoading: remoteLoading } = useOpenClawRemoteAgents(resolvedIntegration)
-  const registerRemote = useRegisterOpenClawRemoteAgent()
-
-  // Unregistered = remote agents with no matching registered agent_ref (checked against ALL agents)
   const registeredRefs = new Set(allAgents.map((a) => a.agent_ref))
-  const unregistered = remoteAgents.filter((ra) => !registeredRefs.has(`openclaw:${ra.slug}`))
+  const nonOpenClawAgents = agents.filter((agent) => agent.provider !== 'openclaw')
+  const openClawRegisteredAgents = agents.filter((agent) => agent.provider === 'openclaw')
 
-  const loading = isLoading || remoteLoading
-  const empty = !loading && agents.length === 0 && unregistered.length === 0
+  const loading = isLoading
+  const empty = !loading && nonOpenClawAgents.length === 0 && integrations.length === 0
 
   return (
     <div className="space-y-6">
@@ -124,39 +121,126 @@ export default function AgentsTab() {
           <option value="active">Active</option>
           <option value="inactive">Inactive</option>
         </select>
-        {integrations.length > 1 && (
-          <select value={resolvedIntegration} onChange={(e) => setSelectedIntegration(e.target.value)}
-            className="border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white">
-            {integrations.map((i) => <option key={i.id} value={i.id}>{i.plugin_instance_id}</option>)}
-          </select>
-        )}
       </div>
 
-      {/* Unified agent list */}
-      <Card className="overflow-hidden">
-        <div className="px-4 py-3 border-b">
-          <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Agents</p>
-        </div>
-        {loading ? (
-          <div className="p-6"><Spinner /></div>
-        ) : empty ? (
-          <div className="p-6 text-sm text-gray-400 italic">
-            {integrations.length === 0
-              ? 'No plugin connected yet. Use the handshake flow above to connect OpenClaw.'
-              : 'No agents found.'}
-          </div>
-        ) : (
-          <ul className="divide-y divide-gray-100">
-            {agents.map((agent) => <AgentRow key={agent.id} agent={agent} />)}
-            {unregistered.map((ra) => (
-              <UnregisteredRow key={ra.id} ra={ra}
-                onRegister={() => registerRemote.mutate({ integration_id: ra.integration_id, remote_agent_id: ra.remote_agent_id, display_name: ra.display_name })}
-                isPending={registerRemote.isPending} />
-            ))}
-          </ul>
-        )}
-      </Card>
+      {loading ? (
+        <Card className="p-6"><Spinner /></Card>
+      ) : empty ? (
+        <Card className="p-6 text-sm text-gray-400 italic">
+          No agents found.
+        </Card>
+      ) : (
+        <>
+          {integrations.map((integration) => (
+            <OpenClawIntegrationSection
+              key={integration.id}
+              integration={integration}
+              registeredAgents={openClawRegisteredAgents.filter((agent) => agent.openclaw_integration_id === integration.id)}
+              registeredRefs={registeredRefs}
+            />
+          ))}
+
+          {nonOpenClawAgents.length > 0 && (
+            <Card className="overflow-hidden">
+              <div className="px-4 py-3 border-b">
+                <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Other agents</p>
+              </div>
+              <ul className="divide-y divide-gray-100">
+                {nonOpenClawAgents.map((agent) => <AgentRow key={agent.id} agent={agent} />)}
+              </ul>
+            </Card>
+          )}
+        </>
+      )}
     </div>
+  )
+}
+
+function OpenClawIntegrationSection({
+  integration,
+  registeredAgents,
+  registeredRefs,
+}: {
+  integration: OpenClawIntegration
+  registeredAgents: RegisteredAgent[]
+  registeredRefs: Set<string>
+}) {
+  const { data: remoteAgents = [], isLoading } = useOpenClawRemoteAgents(integration.id)
+  const registerRemote = useRegisterOpenClawRemoteAgent()
+  const deleteIntegration = useDeleteOpenClawIntegration()
+  const unregistered = remoteAgents.filter((ra) => !registeredRefs.has(`openclaw:${ra.slug}`))
+
+  const handleDelete = () => {
+    const confirmed = window.confirm(
+      `Delete all Knotwork agents and OpenClaw integration data for plugin "${integration.plugin_instance_id}"? This archives registered agents for this plugin and removes the current handshake/integration state.`,
+    )
+    if (!confirmed) return
+    deleteIntegration.mutate(integration.id)
+  }
+
+  return (
+    <Card className="overflow-hidden">
+      <div className="px-4 py-3 border-b bg-gray-50/70 flex items-center justify-between gap-3 flex-wrap">
+        <div>
+          <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Plugin</p>
+          <div className="mt-1 flex items-center gap-2 flex-wrap">
+            <span className="font-mono text-sm text-gray-700">{integration.plugin_instance_id}</span>
+            <Badge variant="gray">{integration.status}</Badge>
+            {integration.plugin_version && <Badge variant="purple">{integration.plugin_version}</Badge>}
+          </div>
+        </div>
+        <button
+          type="button"
+          onClick={handleDelete}
+          disabled={deleteIntegration.isPending}
+          className="px-3 py-1.5 rounded-lg border border-red-200 bg-red-50 text-red-700 text-xs inline-flex items-center gap-1 disabled:opacity-50"
+        >
+          <Trash2 size={12} />
+          {deleteIntegration.isPending ? 'Deleting…' : 'Delete all agents'}
+        </button>
+      </div>
+
+      {isLoading ? (
+        <div className="p-4"><Spinner /></div>
+      ) : (
+        <div>
+          {registeredAgents.length > 0 && (
+            <>
+              <div className="px-4 py-2 border-b bg-white">
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-400">Registered in Knotwork</p>
+              </div>
+              <ul className="divide-y divide-gray-100">
+                {registeredAgents.map((agent) => <AgentRow key={agent.id} agent={agent} />)}
+              </ul>
+            </>
+          )}
+
+          {unregistered.length > 0 && (
+            <>
+              <div className="px-4 py-2 border-y bg-gray-50/60">
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-400">Discovered from plugin</p>
+              </div>
+              <ul className="divide-y divide-gray-100">
+                {unregistered.map((ra) => (
+                  <UnregisteredRow
+                    key={ra.id}
+                    ra={ra}
+                    onRegister={() => registerRemote.mutate({ integration_id: ra.integration_id, remote_agent_id: ra.remote_agent_id, display_name: ra.display_name })}
+                    isPending={registerRemote.isPending}
+                  />
+                ))}
+              </ul>
+            </>
+          )}
+
+          {registeredAgents.length === 0 && unregistered.length === 0 && (
+            <div className="p-4 text-sm text-gray-400 italic">
+              No agents are currently attached to this plugin instance.
+            </div>
+          )}
+        </div>
+      )}
+    </Card>
   )
 }
 

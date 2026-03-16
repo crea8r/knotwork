@@ -39,6 +39,19 @@ async def list_integrations(
     return await service.list_integrations(db, workspace_id)
 
 
+@router.delete(
+    "/workspaces/{workspace_id}/openclaw/integrations/{integration_id}",
+    response_model=schemas.OpenClawIntegrationDeleteOut,
+)
+async def delete_integration(
+    workspace_id: UUID,
+    integration_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    _member: WorkspaceMember = Depends(require_owner),
+):
+    return await service.delete_integration(db, workspace_id, integration_id)
+
+
 @router.get(
     "/workspaces/{workspace_id}/openclaw/debug-state",
     response_model=schemas.OpenClawDebugStateOut,

@@ -19,6 +19,7 @@ from knotwork.openclaw_integrations.models import (
 from knotwork.openclaw_integrations.schemas import (
     HandshakeTokenCreateRequest,
     OpenClawDebugStateOut,
+    OpenClawIntegrationDeleteOut,
     OpenClawIntegrationDebugState,
     HandshakeTokenOut,
     OpenClawTaskDebugItem,
@@ -233,6 +234,40 @@ async def list_integrations(db: AsyncSession, workspace_id: UUID) -> list[OpenCl
         )
         for i in rows.scalars()
     ]
+
+
+async def delete_integration(
+    db: AsyncSession,
+    workspace_id: UUID,
+    integration_id: UUID,
+) -> OpenClawIntegrationDeleteOut:
+    integration = await db.get(OpenClawIntegration, integration_id)
+    if integration is None or integration.workspace_id != workspace_id:
+        raise HTTPException(status_code=404, detail="Integration not found")
+
+    rows = await db.execute(
+        select(RegisteredAgent)
+        .where(RegisteredAgent.workspace_id == workspace_id)
+        .where(RegisteredAgent.provider == "openclaw")
+        .where(RegisteredAgent.openclaw_integration_id == integration.id)
+        .where(RegisteredAgent.status != "archived")
+    )
+    registered_agents = list(rows.scalars())
+    now = _now()
+    for agent in registered_agents:
+        agent.status = "archived"
+        agent.is_active = False
+        agent.archived_at = now
+        agent.updated_at = now
+
+    await db.delete(integration)
+    await db.commit()
+
+    return OpenClawIntegrationDeleteOut(
+        integration_id=integration_id,
+        plugin_instance_id=integration.plugin_instance_id,
+        archived_registered_agent_count=len(registered_agents),
+    )
 
 
 async def get_debug_state(db: AsyncSession, workspace_id: UUID) -> OpenClawDebugStateOut:
