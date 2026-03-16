@@ -65,12 +65,27 @@ In your OpenClaw config (`openclaw.config.json`):
 Preferred install path:
 
 ```bash
-openclaw plugins install <knotwork-base-url>/openclaw-plugin/package/knotwork-bridge-0.2.0.tar.gz
+curl -fL <plugin-artifact-url> -o knotwork-bridge-0.2.0.tar.gz
+openclaw plugins install knotwork-bridge-0.2.0.tar.gz
+```
+
+Build the artifact locally:
+
+```bash
+cd openclaw-plugin-knotwork
+npm run build
+npm run package:tarball
+```
+
+This writes a real file to:
+
+```bash
+openclaw-plugin-knotwork/artifacts/knotwork-bridge-0.2.0.tar.gz
 ```
 
 Use the standard OpenClaw plugin installer so OpenClaw can register the plugin and request the required permissions.
-Get the exact tarball URL and config snippet from Knotwork's setup bundle URL in Settings > Agents.
-The setup bundle returns the install command, the plugin tarball URL, and the config snippet containing `knotworkBaseUrl` and `handshakeToken`.
+Get the exact artifact URL and config snippet from Knotwork's setup bundle URL in Settings > Agents.
+The setup bundle returns the install command, the configured plugin artifact URL, and the config snippet containing `knotworkBaseUrl` and `handshakeToken`.
 If startup says `plugin not found: knotwork-bridge`, the standard installer did not complete correctly and the installation is failed.
 
 For a durable install, persist the plugin config in `openclaw.config.json`.
