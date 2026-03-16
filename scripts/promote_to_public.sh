@@ -339,6 +339,7 @@ docker info >/dev/null 2>&1 || die "Docker daemon is not reachable. Start Docker
 
 CURRENT_FRONTEND_URL="$(get_env_value FRONTEND_URL .env)"
 CURRENT_BACKEND_URL="$(get_env_value BACKEND_URL .env)"
+CURRENT_PLUGIN_PACKAGE_URL="$(get_env_value OPENCLAW_PLUGIN_PACKAGE_URL .env)"
 COMPOSE_PROJECT_NAME="$(get_env_value COMPOSE_PROJECT_NAME .env)"
 BACKEND_HOST_PORT="$(get_env_value BACKEND_HOST_PORT .env)"
 FRONTEND_HOST_PORT="$(get_env_value FRONTEND_HOST_PORT .env)"
@@ -358,6 +359,7 @@ fi
 echo "Knotwork localhost -> public promotion"
 echo "Current FRONTEND_URL: ${CURRENT_FRONTEND_URL:-<unset>}"
 echo "Current BACKEND_URL: ${CURRENT_BACKEND_URL:-<unset>}"
+echo "Current OPENCLAW_PLUGIN_PACKAGE_URL: ${CURRENT_PLUGIN_PACKAGE_URL:-<unset>}"
 echo "Backend host port: $BACKEND_HOST_PORT"
 echo "Frontend host port: $FRONTEND_HOST_PORT"
 
@@ -367,6 +369,7 @@ prompt_required DOMAIN "Public domain"
 is_valid_domain "$DOMAIN" || die "Invalid domain: $DOMAIN"
 prompt_with_default FRONTEND_URL "Public frontend URL" "https://${DOMAIN}"
 prompt_with_default BACKEND_URL "Public backend URL" "https://api.${DOMAIN}"
+prompt_with_default OPENCLAW_PLUGIN_PACKAGE_URL "OpenClaw plugin package URL (.tar.gz)" "${CURRENT_PLUGIN_PACKAGE_URL}"
 prompt_required RESEND_API "Resend API key (re_...)"
 prompt_required EMAIL_FROM "From email (verified on Resend)"
 
@@ -377,6 +380,7 @@ ensure_nginx_port_available
 cp .env ".env.backup.$(date +%Y%m%d%H%M%S)"
 set_env_key "FRONTEND_URL" "$FRONTEND_URL" .env
 set_env_key "BACKEND_URL" "$BACKEND_URL" .env
+set_env_key "OPENCLAW_PLUGIN_PACKAGE_URL" "$OPENCLAW_PLUGIN_PACKAGE_URL" .env
 set_env_key "VITE_API_URL" "$VITE_API_URL" .env
 set_env_key "RESEND_API" "$RESEND_API" .env
 set_env_key "EMAIL_FROM" "$EMAIL_FROM" .env

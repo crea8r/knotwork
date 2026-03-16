@@ -89,7 +89,7 @@ Run after `docker compose --profile dev up` and migrations.
 
 ### D2. Setup endpoint returns JSON
 - Generate a token, then open: `http://localhost:8000/openclaw-plugin/install?token=<token>`
-- ✅ Pass: JSON with `install_command`, `setup_url`, `config_snippet`, `instructions`, `plugin_package`, `knotwork_base_url`.
+- ✅ Pass: JSON with `uninstall_command`, `cleanup_command`, `download_command`, `install_command`, `setup_url`, `config_snippet`, `instructions`, `plugin_package`, `knotwork_backend_url`.
 - ❌ Fail: 404 or 500.
 
 ### D3. Invalid token rejected

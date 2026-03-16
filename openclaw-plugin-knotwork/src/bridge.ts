@@ -28,7 +28,7 @@ export function getConfig(api: OpenClawApi): PluginConfig {
   ) as AnyObj
   const merged = { ...entry, ...direct } as PluginConfig
   return {
-    knotworkBaseUrl: merged.knotworkBaseUrl ?? env('KNOTWORK_BASE_URL'),
+    knotworkBackendUrl: merged.knotworkBackendUrl ?? env('KNOTWORK_BACKEND_URL'),
     handshakeToken: merged.handshakeToken ?? env('KNOTWORK_HANDSHAKE_TOKEN'),
     pluginInstanceId: merged.pluginInstanceId ?? env('KNOTWORK_PLUGIN_INSTANCE_ID'),
     autoHandshakeOnStart:

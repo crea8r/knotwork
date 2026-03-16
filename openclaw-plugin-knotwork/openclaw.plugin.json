@@ -13,7 +13,7 @@
   "configSchema": {
     "type": "object",
     "properties": {
-      "knotworkBaseUrl": {
+      "knotworkBackendUrl": {
         "type": "string",
         "description": "Knotwork server base URL reachable from OpenClaw runtime (example: http://host.docker.internal:8000)."
       },
@@ -36,9 +36,6 @@
         "default": 2000
       }
     },
-    "required": [
-      "knotworkBaseUrl",
-      "handshakeToken"
-    ]
+    "required": []
   }
 }

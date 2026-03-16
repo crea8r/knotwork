@@ -133,6 +133,7 @@ JWT_SECRET=${JWT_SECRET}
 AUTH_DEV_BYPASS_USER_ID=${AUTH_DEV_BYPASS_USER_ID}
 FRONTEND_URL=${FRONTEND_URL}
 BACKEND_URL=${BACKEND_URL}
+OPENCLAW_PLUGIN_PACKAGE_URL=${OPENCLAW_PLUGIN_PACKAGE_URL}
 RESEND_API=${RESEND_API}
 EMAIL_FROM=${EMAIL_FROM}
 BACKEND_HOST_PORT=${BACKEND_HOST_PORT}
@@ -413,6 +414,7 @@ port_in_use "$FRONTEND_HOST_PORT" && die "Frontend host port ${FRONTEND_HOST_POR
 
 if [[ "$DOMAIN" == "localhost" ]]; then
   prompt_with_default FRONTEND_URL "Frontend URL" "http://localhost:${FRONTEND_HOST_PORT}"
+  prompt_required OPENCLAW_PLUGIN_PACKAGE_URL "OpenClaw plugin package URL (.tar.gz)"
   prompt_with_default RESEND_API "Resend API key (optional for local)" ""
   prompt_with_default EMAIL_FROM "Email from address (local default)" "noreply@localhost"
   BACKEND_URL="http://localhost:${BACKEND_HOST_PORT}"
@@ -420,6 +422,7 @@ if [[ "$DOMAIN" == "localhost" ]]; then
 else
   prompt_with_default FRONTEND_URL "Frontend URL" "https://${DOMAIN}"
   prompt_with_default BACKEND_URL "Backend URL" "https://api.${DOMAIN}"
+  prompt_required OPENCLAW_PLUGIN_PACKAGE_URL "OpenClaw plugin package URL (.tar.gz)"
   prompt_required RESEND_API "Resend API key (re_...)"
   prompt_required EMAIL_FROM "From email (verified on Resend)"
   [[ "$FRONTEND_URL" =~ ^https:// ]] || die "FRONTEND_URL must use https:// for non-local domain"

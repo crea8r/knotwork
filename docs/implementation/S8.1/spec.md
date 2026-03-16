@@ -26,7 +26,7 @@ The backend entrypoint runs `alembic upgrade head` before starting uvicorn, so m
 
 **New backend endpoint:** `GET /openclaw-plugin/install?token=<handshake_token>`
 - Public endpoint (no JWT required, only validates the token exists + isn't expired)
-- Returns: `{ install_command, setup_url, config_snippet, instructions, plugin_package, knotwork_base_url, token }`
+- Returns: `{ uninstall_command, cleanup_command, download_command, install_command, setup_url, config_snippet, instructions, plugin_package, knotwork_backend_url, token }`
 - This endpoint is a setup bundle, not the plugin artifact itself
 - The OpenClaw agent fetches this URL and follows the returned instructions to configure the plugin after installing the published package
 

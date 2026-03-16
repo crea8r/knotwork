@@ -30,7 +30,7 @@ Three values must be in the OpenClaw plugin config or env vars:
 
 | Config key | Env var | Description |
 |---|---|---|
-| `knotworkBaseUrl` | `KNOTWORK_BASE_URL` | Base URL of the Knotwork backend (e.g. `http://localhost:8000`) |
+| `knotworkBackendUrl` | `KNOTWORK_BACKEND_URL` | Base URL of the Knotwork backend (e.g. `http://localhost:8000`) |
 | `handshakeToken` | `KNOTWORK_HANDSHAKE_TOKEN` | One-time token generated from Knotwork Settings → OpenClaw |
 | `pluginInstanceId` | `KNOTWORK_PLUGIN_INSTANCE_ID` | Stable ID for this plugin instance (auto-generated if omitted) |
 
@@ -40,12 +40,13 @@ The OpenClaw plugin must also be granted gateway scopes:
 2. `operator.write`
 
 Operational requirement:
-1. Persist `knotworkBaseUrl` and `handshakeToken` in OpenClaw plugin config.
-2. Download the plugin artifact locally, then use the standard `openclaw plugins install <local-plugin-file>` flow so OpenClaw can register the plugin and run its normal permission-approval path.
-3. Treat the Knotwork `/openclaw-plugin/install?token=...` URL as a setup bundle endpoint; it returns the configured plugin artifact URL, config, and verification instructions.
-4. Treat env vars only as bootstrap helpers for install commands, not as the durable runtime source of truth.
-5. If OpenClaw requires interactive plugin-permission approval, an agent-assisted install must pause and hand control back to the human operator for approval.
-6. Treat installation as failed unless `openclaw gateway call knotwork.handshake` succeeds after restart. Missing-scope, missing-config, or `plugin not found` errors from that verification step mean the install is invalid.
+1. Persist `knotworkBackendUrl` and `handshakeToken` in `~/.openclaw/openclaw.json`.
+2. Before reinstalling, remove the existing plugin registration and delete `~/.openclaw/extensions/knotwork-bridge`.
+3. Download the plugin artifact locally, then use the standard `openclaw plugins install <local-plugin-file>` flow so OpenClaw can register the plugin and run its normal permission-approval path.
+4. Treat the Knotwork `/openclaw-plugin/install?token=...` URL as a setup bundle endpoint; it returns uninstall, cleanup, config, and verification instructions.
+5. Treat env vars only as bootstrap helpers for install commands, not as the durable runtime source of truth.
+6. If OpenClaw requires interactive plugin-permission approval, an agent-assisted install must pause and hand control back to the human operator for approval.
+7. Treat installation as failed unless `openclaw gateway call knotwork.handshake` succeeds after restart. Missing-scope, missing-config, or `plugin not found` errors from that verification step mean the install is invalid.
 
 ### Handshake flow
 

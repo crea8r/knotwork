@@ -40,7 +40,7 @@ Settings > Agents > Generate Handshake Token → copies `kw_oc_...` token.
 
 **2. Configure the plugin**
 
-In your OpenClaw config (`openclaw.config.json`):
+In your OpenClaw config (`~/.openclaw/openclaw.json`):
 
 ```json
 {
@@ -48,9 +48,9 @@ In your OpenClaw config (`openclaw.config.json`):
     "entries": {
       "knotwork-bridge": {
         "enabled": true,
-        "package": "@knotwork/knotwork-bridge@0.2.0",
+        "package": "/absolute/path/to/knotwork-bridge-0.2.0.tar.gz",
         "config": {
-          "knotworkBaseUrl": "http://host.docker.internal:8000",
+          "knotworkBackendUrl": "http://host.docker.internal:8000",
           "handshakeToken": "kw_oc_...",
           "pluginInstanceId": "my-openclaw-1",
           "autoHandshakeOnStart": true,
@@ -65,6 +65,8 @@ In your OpenClaw config (`openclaw.config.json`):
 Preferred install path:
 
 ```bash
+openclaw plugins uninstall knotwork-bridge
+rm -rf ~/.openclaw/extensions/knotwork-bridge
 curl -fL <plugin-artifact-url> -o knotwork-bridge-0.2.0.tar.gz
 openclaw plugins install knotwork-bridge-0.2.0.tar.gz
 ```
@@ -85,10 +87,10 @@ openclaw-plugin-knotwork/artifacts/knotwork-bridge-0.2.0.tar.gz
 
 Use the standard OpenClaw plugin installer so OpenClaw can register the plugin and request the required permissions.
 Get the exact artifact URL and config snippet from Knotwork's setup bundle URL in Settings > Agents.
-The setup bundle returns the install command, the configured plugin artifact URL, and the config snippet containing `knotworkBaseUrl` and `handshakeToken`.
+The setup bundle returns uninstall/cleanup commands, install commands, and the config snippet containing `knotworkBackendUrl` and `handshakeToken`.
 If startup says `plugin not found: knotwork-bridge`, the standard installer did not complete correctly and the installation is failed.
 
-For a durable install, persist the plugin config in `openclaw.config.json`.
+For a durable install, persist the plugin config in `~/.openclaw/openclaw.json`.
 Do not rely on one-shot shell env vars alone, because OpenClaw may not preserve them across restarts.
 
 **3. Start/restart OpenClaw**
@@ -115,8 +117,8 @@ Treat installation as failed unless `openclaw gateway call knotwork.handshake` s
 
 | Key | Required | Default | Notes |
 |---|---|---|---|
-| `knotworkBaseUrl` | ✓ | — | URL reachable from OpenClaw runtime |
-| `handshakeToken` | ✓ | — | One-time token from Knotwork Settings |
+| `knotworkBackendUrl` | runtime | — | URL reachable from OpenClaw runtime |
+| `handshakeToken` | runtime | — | One-time token from Knotwork Settings |
 | `pluginInstanceId` | — | auto | Keep stable across restarts |
 | `autoHandshakeOnStart` | — | `true` | Handshake on primary runtime startup |
 | `taskPollIntervalMs` | — | `2000` | Min 500ms |

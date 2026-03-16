@@ -25,7 +25,7 @@ export type OpenClawApi = {
 
 // Plugin config — from openclaw.plugin.json configSchema or env vars
 export type PluginConfig = {
-  knotworkBaseUrl?: string
+  knotworkBackendUrl?: string
   handshakeToken?: string
   pluginInstanceId?: string
   autoHandshakeOnStart?: boolean

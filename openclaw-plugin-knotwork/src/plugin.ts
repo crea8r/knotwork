@@ -207,14 +207,14 @@ export function activate(api: OpenClawApi): void {
 
   async function runHandshake(overrides: Partial<PluginConfig> = {}): Promise<AnyObj> {
     const cfg = { ...getConfig(api), ...overrides }
-    if (!cfg.knotworkBaseUrl || !cfg.handshakeToken) {
-      throw new Error('Missing knotworkBaseUrl or handshakeToken in plugin config')
+    if (!cfg.knotworkBackendUrl || !cfg.handshakeToken) {
+      throw new Error('Missing knotworkBackendUrl or handshakeToken in plugin config')
     }
     const instanceId = state.pluginInstanceId ?? resolveInstanceId(cfg)
     await verifyGatewayOperatorScopes(api)
     const agents = await discoverAgents(api)
     log(`handshake:start instanceId=${instanceId} agents=${agents.length}`)
-    const resp = await doHandshake(cfg.knotworkBaseUrl, cfg.handshakeToken, instanceId, agents)
+    const resp = await doHandshake(cfg.knotworkBackendUrl, cfg.handshakeToken, instanceId, agents)
     state.pluginInstanceId = (resp.plugin_instance_id as string | undefined) ?? instanceId
     state.integrationSecret = (resp.integration_secret as string | undefined) ?? state.integrationSecret
     await persistState()
@@ -227,7 +227,7 @@ export function activate(api: OpenClawApi): void {
 
   async function recoverCredentials(reason: string): Promise<boolean> {
     const cfg = getConfig(api)
-    if (!cfg.knotworkBaseUrl || !cfg.handshakeToken) {
+    if (!cfg.knotworkBackendUrl || !cfg.handshakeToken) {
       log(`handshake:skipped reason=${reason} missing_config=true`)
       return false
     }
@@ -253,7 +253,7 @@ export function activate(api: OpenClawApi): void {
 
   async function pollAndRun(): Promise<void> {
     const cfg = getConfig(api)
-    const baseUrl = cfg.knotworkBaseUrl
+    const baseUrl = cfg.knotworkBackendUrl
     const instanceId = state.pluginInstanceId
     const secret = state.integrationSecret
     if (!baseUrl || !instanceId || !secret) return
@@ -355,7 +355,7 @@ export function activate(api: OpenClawApi): void {
           gatewayCallAvailable: typeof api.gateway?.call === 'function',
         },
         config: {
-          knotworkBaseUrl: cfg.knotworkBaseUrl ?? null,
+          knotworkBackendUrl: cfg.knotworkBackendUrl ?? null,
           autoHandshakeOnStart: cfg.autoHandshakeOnStart ?? true,
           taskPollIntervalMs: cfg.taskPollIntervalMs ?? 2000,
         },
@@ -371,7 +371,7 @@ export function activate(api: OpenClawApi): void {
       const payload = getPayload(ctx)
       try {
         const resp = await runHandshake({
-          knotworkBaseUrl: payload.knotworkBaseUrl as string | undefined,
+          knotworkBackendUrl: payload.knotworkBackendUrl as string | undefined,
           handshakeToken: payload.handshakeToken as string | undefined,
           pluginInstanceId: payload.pluginInstanceId as string | undefined,
         })
@@ -443,7 +443,7 @@ export function activate(api: OpenClawApi): void {
       state.backgroundWorkerEnabled = true
       log(`startup:background-enabled context=${state.activationContext}`)
 
-      if (!state.integrationSecret && cfg.autoHandshakeOnStart && cfg.knotworkBaseUrl && cfg.handshakeToken) {
+      if (!state.integrationSecret && cfg.autoHandshakeOnStart && cfg.knotworkBackendUrl && cfg.handshakeToken) {
         runHandshake().catch((err: unknown) => {
           state.lastHandshakeOk = false
           state.lastHandshakeAt = new Date().toISOString()

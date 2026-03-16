@@ -817,14 +817,16 @@ async def test_install_endpoint_valid_token_returns_bundle(client, db, workspace
     assert "download_command" in data
     assert "config_snippet" in data
     assert "instructions" in data
-    assert "knotwork_base_url" in data
+    assert "knotwork_backend_url" in data
     assert "plugin_package" in data
     assert data["plugin_id"] == "knotwork-bridge"
-    base_url = data["knotwork_base_url"]
+    base_url = data["knotwork_backend_url"]
     assert base_url.startswith("http://")
     assert data["setup_url"].endswith(f"/openclaw-plugin/install?token={token}")
     assert data["plugin_archive_url"] == openclaw_plugin_package_url
     assert data["plugin_package"] == data["plugin_archive_url"]
+    assert data["uninstall_command"] == 'openclaw plugins uninstall "knotwork-bridge"'
+    assert data["cleanup_command"] == 'rm -rf ~/.openclaw/extensions/knotwork-bridge'
     assert data["local_package_file"] == "knotwork-bridge-0.2.0.tar.gz"
     assert data["download_command"] == (
         'curl -fL "https://plugins.example.com/knotwork-bridge-0.2.0.tar.gz" '
@@ -832,7 +834,7 @@ async def test_install_endpoint_valid_token_returns_bundle(client, db, workspace
     )
     assert data["install_command"] == 'openclaw plugins install "knotwork-bridge-0.2.0.tar.gz"'
     assert data["required_gateway_scopes"] == ["operator.read", "operator.write"]
-    assert data["required_config_keys"] == ["knotworkBaseUrl", "handshakeToken"]
+    assert data["required_config_keys"] == ["knotworkBackendUrl", "handshakeToken"]
     assert data["requires_user_permission_approval"] is True
     assert "human operator" in data["agent_install_policy"].lower()
     assert data["verification_command"] == "openclaw gateway call knotwork.handshake"
@@ -846,6 +848,7 @@ async def test_install_endpoint_valid_token_returns_bundle(client, db, workspace
         for condition in data["installation_failure_conditions"]
     )
     assert data["config_snippet"]["plugins"]["entries"]["knotwork-bridge"]["package"] == data["plugin_archive_url"]
+    assert data["config_snippet"]["plugins"]["entries"]["knotwork-bridge"]["config"]["knotworkBackendUrl"] == base_url
     assert data["token"] == token
 
 
@@ -876,7 +879,7 @@ async def test_install_endpoint_uses_forwarded_host_for_bundle_urls(client, db, 
 
     assert resp.status_code == 200
     data = resp.json()
-    assert data["knotwork_base_url"] == "https://knotwork.example.com"
+    assert data["knotwork_backend_url"] == "https://knotwork.example.com"
     assert data["plugin_archive_url"] == openclaw_plugin_package_url
 
 
