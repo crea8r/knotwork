@@ -1,4 +1,4 @@
-"""OpenClaw plugin install endpoint.
+"""OpenClaw plugin install endpoints.
 
 GET /openclaw-plugin/install?token=<handshake_token>
 
@@ -7,7 +7,7 @@ the knotwork-bridge plugin. The user copies this URL from the Knotwork UI and
 shares it with their OpenClaw agent.
 
 The response contains:
-  - install_command: standard OpenClaw plugin install command for the published package
+  - install_command: OpenClaw plugin install command targeting a Knotwork-served tarball
   - config_snippet: the plugin config block for openclaw.config.json
   - verification_command: required post-install check that must succeed
   - requires_user_permission_approval: whether OpenClaw install may pause for human approval
@@ -15,14 +15,17 @@ The response contains:
 """
 from __future__ import annotations
 
+import io
+import tarfile
 from datetime import datetime, timezone
+from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi.responses import StreamingResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from knotwork.database import get_db
-from knotwork.config import settings
 from knotwork.openclaw_integrations.models import OpenClawHandshakeToken
 
 router = APIRouter(tags=["openclaw_install"])
@@ -30,6 +33,41 @@ router = APIRouter(tags=["openclaw_install"])
 _PLUGIN_PACKAGE = "@knotwork/knotwork-bridge"
 _PLUGIN_VERSION = "0.2.0"
 _PLUGIN_ID = "knotwork-bridge"
+_PLUGIN_DIR = Path(__file__).resolve().parents[3] / "openclaw-plugin-knotwork"
+_PLUGIN_ARCHIVE_NAME = f"{_PLUGIN_ID}-{_PLUGIN_VERSION}.tar.gz"
+
+
+def _external_base_url(request: Request) -> str:
+    forwarded_proto = request.headers.get("x-forwarded-proto")
+    forwarded_host = request.headers.get("x-forwarded-host")
+    host = forwarded_host or request.headers.get("host")
+    scheme = forwarded_proto or request.url.scheme
+    if host:
+        return f"{scheme}://{host}".rstrip("/")
+    return str(request.base_url).rstrip("/")
+
+
+def _plugin_archive_url(request: Request) -> str:
+    return f"{_external_base_url(request)}/openclaw-plugin/package/{_PLUGIN_ARCHIVE_NAME}"
+
+
+@router.get("/openclaw-plugin/package/{archive_name}")
+async def download_plugin_package(archive_name: str) -> StreamingResponse:
+    """Serve the local OpenClaw plugin as a tar.gz archive."""
+    if archive_name != _PLUGIN_ARCHIVE_NAME:
+        raise HTTPException(status_code=404, detail="Plugin package not found")
+    if not _PLUGIN_DIR.exists():
+        raise HTTPException(status_code=404, detail="Plugin source directory not found")
+
+    buffer = io.BytesIO()
+    with tarfile.open(fileobj=buffer, mode="w:gz") as tar:
+        for path in sorted(_PLUGIN_DIR.rglob("*")):
+            if path.name == "node_modules" or "node_modules" in path.parts:
+                continue
+            tar.add(path, arcname=f"{_PLUGIN_ID}-{_PLUGIN_VERSION}/{path.relative_to(_PLUGIN_DIR)}")
+    buffer.seek(0)
+    headers = {"Content-Disposition": f'attachment; filename="{_PLUGIN_ARCHIVE_NAME}"'}
+    return StreamingResponse(buffer, media_type="application/gzip", headers=headers)
 
 
 @router.get("/openclaw-plugin/install")
@@ -56,17 +94,18 @@ async def get_install_bundle(
     if expires_at < cmp_now:
         raise HTTPException(status_code=410, detail="Token has expired")
 
-    base_url = settings.normalized_backend_url
+    base_url = _external_base_url(request)
 
     setup_url = f"{base_url}/openclaw-plugin/install?token={token}"
-    install_command = f"openclaw plugins install {_PLUGIN_PACKAGE}@{_PLUGIN_VERSION}"
+    package_url = _plugin_archive_url(request)
+    install_command = f"openclaw plugins install {package_url}"
 
     config_snippet = {
         "plugins": {
             "entries": {
                 _PLUGIN_ID: {
                     "enabled": True,
-                    "package": f"{_PLUGIN_PACKAGE}@{_PLUGIN_VERSION}",
+                    "package": package_url,
                     "config": {
                         "knotworkBaseUrl": base_url,
                         "handshakeToken": token,
@@ -83,8 +122,9 @@ async def get_install_bundle(
     instructions = (
         "To install the Knotwork bridge plugin in OpenClaw:\n"
         "1. Run the install_command in a terminal where OpenClaw is installed.\n"
+        f"   The command installs the tarball served by Knotwork at: {package_url}\n"
         "2. Let the standard OpenClaw installer handle plugin registration and permission approval.\n"
-        "3. Fetch the setup_url and persist the returned config_snippet into OpenClaw plugin config (`openclaw.config.json`) if the installer does not do it automatically.\n"
+        "3. Persist the returned config_snippet into OpenClaw plugin config (`openclaw.config.json`) if the installer does not do it automatically.\n"
         "4. OpenClaw may require an interactive permission approval step during install.\n"
         "   If an agent is driving installation through chat, it must stop and ask the human operator to approve the requested permissions. It must not assume approval happened automatically.\n"
         "5. Approve/grant the plugin gateway scopes `operator.read` and `operator.write` when OpenClaw prompts for permissions.\n"
@@ -99,7 +139,8 @@ async def get_install_bundle(
     )
 
     return {
-        "plugin_package": f"{_PLUGIN_PACKAGE}@{_PLUGIN_VERSION}",
+        "plugin_package": package_url,
+        "plugin_archive_url": package_url,
         "plugin_id": _PLUGIN_ID,
         "setup_url": setup_url,
         "install_command": install_command,

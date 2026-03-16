@@ -809,8 +809,12 @@ async def test_install_endpoint_valid_token_returns_bundle(client, db, workspace
     assert "knotwork_base_url" in data
     assert "plugin_package" in data
     assert data["plugin_id"] == "knotwork-bridge"
+    base_url = data["knotwork_base_url"]
+    assert base_url.startswith("http://")
     assert data["setup_url"].endswith(f"/openclaw-plugin/install?token={token}")
-    assert data["install_command"] == "openclaw plugins install @knotwork/knotwork-bridge@0.2.0"
+    assert data["plugin_archive_url"] == f"{base_url}/openclaw-plugin/package/knotwork-bridge-0.2.0.tar.gz"
+    assert data["plugin_package"] == data["plugin_archive_url"]
+    assert data["install_command"] == f"openclaw plugins install {data['plugin_archive_url']}"
     assert data["required_gateway_scopes"] == ["operator.read", "operator.write"]
     assert data["required_config_keys"] == ["knotworkBaseUrl", "handshakeToken"]
     assert data["requires_user_permission_approval"] is True
@@ -825,7 +829,7 @@ async def test_install_endpoint_valid_token_returns_bundle(client, db, workspace
         "verification_command" in condition.lower() or "missing-config" in condition.lower()
         for condition in data["installation_failure_conditions"]
     )
-    assert data["config_snippet"]["plugins"]["entries"]["knotwork-bridge"]["package"] == "@knotwork/knotwork-bridge@0.2.0"
+    assert data["config_snippet"]["plugins"]["entries"]["knotwork-bridge"]["package"] == data["plugin_archive_url"]
     assert data["token"] == token
 
 
@@ -838,6 +842,38 @@ async def test_install_endpoint_bundle_contains_token_in_command(client, db, wor
     assert resp.status_code == 200
     data = resp.json()
     assert token == data["config_snippet"]["plugins"]["entries"]["knotwork-bridge"]["config"]["handshakeToken"]
+
+
+@pytest.mark.asyncio
+async def test_install_endpoint_uses_forwarded_host_for_bundle_urls(client, db, workspace):
+    """Install bundle should advertise the externally requested host, not static BACKEND_URL."""
+    token = await _create_handshake_token(db, workspace)
+
+    resp = await client.get(
+        f"/openclaw-plugin/install?token={token}",
+        headers={
+            "x-forwarded-proto": "https",
+            "x-forwarded-host": "knotwork.example.com",
+        },
+    )
+
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["knotwork_base_url"] == "https://knotwork.example.com"
+    assert data["plugin_archive_url"] == (
+        "https://knotwork.example.com/openclaw-plugin/package/knotwork-bridge-0.2.0.tar.gz"
+    )
+
+
+@pytest.mark.asyncio
+async def test_openclaw_plugin_package_download_returns_tarball(client):
+    """Plugin package endpoint should stream a tar.gz archive."""
+    resp = await client.get("/openclaw-plugin/package/knotwork-bridge-0.2.0.tar.gz")
+
+    assert resp.status_code == 200
+    assert resp.headers["content-type"] == "application/gzip"
+    assert "knotwork-bridge-0.2.0.tar.gz" in resp.headers["content-disposition"]
+    assert len(resp.content) > 0
 
 
 def test_openclaw_plugin_manifest_declares_required_operator_permissions():

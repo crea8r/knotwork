@@ -76,9 +76,8 @@ export default function AgentsTab() {
             </p>
             <ol className="text-xs text-gray-500 list-decimal pl-5 space-y-1">
               <li>Click <strong>Generate handshake token</strong>.</li>
-              <li>Install the published plugin package in OpenClaw.</li>
-              <li>Copy the <strong>setup URL</strong> and share it with your OpenClaw agent so it can apply the Knotwork config.</li>
-              <li>Ask the agent: <em>"Install @knotwork/knotwork-bridge, then configure it from [setup URL]"</em>.</li>
+              <li>Copy the <strong>setup URL</strong> and share it with your OpenClaw agent.</li>
+              <li>Ask the agent: <em>"Install the Knotwork OpenClaw plugin from [setup URL], then apply its config."</em>.</li>
               <li>Synced agents appear below — click <strong>Register</strong> to add them.</li>
             </ol>
             <div className="flex items-center gap-2 flex-wrap">
