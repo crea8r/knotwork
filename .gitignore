@@ -45,6 +45,7 @@ Thumbs.db
 # Local storage (dev data)
 backend/data/
 data/
+!docs/**/data/
 
 # Docker
 *.pid
