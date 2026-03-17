@@ -70,4 +70,4 @@ API: `GET/POST /api/v1/workspaces/:id/agents`, `DELETE .../agents/:agent_id`
 
 S8 expands this model with capability snapshots, preflight runs/tests, usage facts, debug refs,
 and avatar assets. See:
-[agents-settings-profile.md](/Users/hieu/Work/crea8r/knotwork/docs/sysdesign/data-models/agents-settings-profile.md)
+[agents-settings-profile.md](/Users/hieu/Work/crea8r/knotwork/docs/sysdesign/data/models/agents-settings-profile.md)

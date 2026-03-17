@@ -39,7 +39,7 @@ POST   /api/v1/workspaces/:workspace_id/knowledge/file/suggestions/:suggestion_i
 ## <span style="color:#c1121f;font-weight:700">LEGACY</span> Tool Registry *(removed in S7)*
 
 The `/tools` endpoints were removed in S7. Agents bring their own tools.
-See `docs/sysdesign/tools.md` for the current tool model.
+See `docs/sysdesign/engine/tools.md` for the current tool model.
 
 ---
 

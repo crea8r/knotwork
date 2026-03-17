@@ -113,7 +113,7 @@ Source: [`types.ts:ExecutionTask`](../../../../../../openclaw-plugin-knotwork/sr
 - `OPENCLAW_GATEWAY_PORT` — WebSocket port (default: 18789)
 - `OPENCLAW_GATEWAY_TOKEN` — gateway auth token
 
-Source: [`bridge.ts:getGatewayConfig`](../../../../../../openclaw-plugin-knotwork/src/bridge.ts#L60)
+Source: [`openclaw/bridge.ts:getGatewayConfig`](../../../../../../openclaw-plugin-knotwork/src/openclaw/bridge.ts#L60)
 
 ---
 
@@ -167,7 +167,7 @@ Each call to `gatewayRpc` opens a **new** WebSocket connection. The protocol has
 
 Server-pushed `"type": "event"` frames (connect.challenge, tick) are **ignored**.
 
-Source: [`session.ts:gatewayRpc`](../../../../../../openclaw-plugin-knotwork/src/session.ts#L80)
+Source: [`openclaw/gateway.ts:gatewayRpc`](../../../../../../openclaw-plugin-knotwork/src/openclaw/gateway.ts)
 
 ---
 
@@ -185,7 +185,7 @@ The `session_name` comes from the backend. It is deterministic — same run/node
 
 The `idempotencyKey = "knotwork:task:<task_id>"` prevents duplicate messages if `agent` is called twice for the same task.
 
-Source: [`session.ts:buildSessionKey`](../../../../../../openclaw-plugin-knotwork/src/session.ts#L164), [`session.ts:idempotencyKey`](../../../../../../openclaw-plugin-knotwork/src/session.ts#L181)
+Source: [`openclaw/session.ts:buildSessionKey`](../../../../../../openclaw-plugin-knotwork/src/openclaw/session.ts), [`openclaw/session.ts:idempotencyKey`](../../../../../../openclaw-plugin-knotwork/src/openclaw/session.ts)
 
 ---
 
@@ -211,7 +211,7 @@ The OpenClaw agent signals completion by appending a structured block at the **e
 
 If no block is present, the **full message** is treated as a confident completion.
 
-Source: [`session.ts:parseDecisionBlock`](../../../../../../openclaw-plugin-knotwork/src/session.ts#L203)
+Source: [`openclaw/session.ts:parseDecisionBlock`](../../../../../../openclaw-plugin-knotwork/src/openclaw/session.ts)
 
 ---
 
@@ -219,10 +219,10 @@ Source: [`session.ts:parseDecisionBlock`](../../../../../../openclaw-plugin-knot
 
 | Step | Timeout | Set at |
 |---|---|---|
-| `agent` RPC (send message) | 90 seconds (default) | [`session.ts:rpc L264`](../../../../../../openclaw-plugin-knotwork/src/session.ts#L264) |
-| `agent.wait` RPC | 910 seconds (15 min + 10s buffer) | `AGENT_WAIT_RPC_TIMEOUT_MS` at [`session.ts L12`](../../../../../../openclaw-plugin-knotwork/src/session.ts#L12) |
-| `chat.history` RPC | 10 seconds | [`session.ts L305`](../../../../../../openclaw-plugin-knotwork/src/session.ts#L305) |
+| `agent` RPC (send message) | 90 seconds (default) | `openclaw/session.ts:rpc` |
+| `agent.wait` RPC | 910 seconds (15 min + 10s buffer) | `AGENT_WAIT_RPC_TIMEOUT_MS` in [`openclaw/session.ts`](../../../../../../openclaw-plugin-knotwork/src/openclaw/session.ts) |
+| `chat.history` RPC | 10 seconds | `openclaw/session.ts:executeTask` |
 
 The `agent.wait` gateway call internally uses `timeoutMs: 900_000` (15 min) — sent in the params to the gateway. On `status: "timeout"`, the plugin falls back to reading `chat.history` directly before declaring failure.
 
-Source: [`session.ts:executeTask L254`](../../../../../../openclaw-plugin-knotwork/src/session.ts#L254)
+Source: [`openclaw/session.ts:executeTask`](../../../../../../openclaw-plugin-knotwork/src/openclaw/session.ts)

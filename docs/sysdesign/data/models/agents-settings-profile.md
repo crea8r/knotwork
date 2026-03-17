@@ -350,7 +350,7 @@ Reset should never delete:
 
 ## Mapping to API Contract
 
-See [agents-settings-profile API contract](/Users/hieu/Work/crea8r/knotwork/docs/sysdesign/api/agents-settings-profile.md).
+See [agents-settings-profile API contract](/Users/hieu/Work/crea8r/knotwork/docs/sysdesign/interfaces/api/agents-settings-profile.md).
 
 1. `/agents` list and detail read from `registered_agents`.
 2. `/capabilities/*` uses `agent_capability_snapshots`.

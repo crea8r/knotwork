@@ -1,3 +1,6 @@
+// Plugin directory — resolves to ~/.openclaw/extensions/knotwork-bridge when loaded by OpenClaw.
+declare const __dirname: string
+
 declare const process: {
   env?: Record<string, string | undefined>
   argv?: string[]

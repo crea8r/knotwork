@@ -58,8 +58,8 @@ sequenceDiagram
 
     rect rgb(240, 255, 255)
         Note over User,FS: Phase 5 — Write config
-        User->>FS: edit ~/.openclaw/openclaw.json
-        Note right of FS: add config_snippet block:<br/>knotworkBackendUrl<br/>handshakeToken<br/>autoHandshakeOnStart: true<br/>taskPollIntervalMs: 2000
+        User->>FS: run configure-knotwork-bridge.sh (from bundle field: config_script)
+        Note right of FS: script merges config_snippet into ~/.openclaw/openclaw.json<br/>using python3 — no jq needed, safe on existing config<br/>(knotworkBackendUrl + handshakeToken + autoHandshakeOnStart: true)
     end
 
     rect rgb(255, 255, 240)
@@ -121,15 +121,17 @@ Source: [`install_router.py:get_install_bundle L148`](../../../../../../backend/
 | File | Phase | Who reads | Purpose |
 |---|---|---|---|
 | `~/.openclaw/openclaw.json` | 6 | Plugin via `bridge.ts:getConfig` (L30) | Read `knotworkBackendUrl`, `handshakeToken`, `taskPollIntervalMs` |
-| `~/.openclaw/knotwork-bridge-state.json` | 6 | `plugin.ts:readPersistedState` (L132) | Check for existing `integrationSecret` |
+| `~/.openclaw/knotwork-bridge-state.json` | 6 | `plugin.ts:readPersistedState` | Check for existing `pluginInstanceId` (no secret here) |
+| `~/.openclaw/extensions/knotwork-bridge/credentials.json` | 6 | `plugin.ts:readPersistedCredentials` | Check for existing `integrationSecret` (absent on fresh install) |
 
 ## Files Written
 
 | File | Phase | Who writes | What |
 |---|---|---|---|
-| `~/.openclaw/openclaw.json` | 5 | User (manual edit) | `config_snippet` block with backend URL + token |
-| `~/.openclaw/knotwork-bridge-state.json` | 6 | `plugin.ts:persistSnapshot` (L157) | `pluginInstanceId` + `integrationSecret` |
-| `~/.openclaw/knotwork-bridge-runtime.lock` | 6 | `plugin.ts:acquireRuntimeLease` (L214) | `{ pid, acquired_at }` |
+| `~/.openclaw/openclaw.json` | 5 | User runs `config_script` from bundle | `config_snippet` block with backend URL + token (deep-merged, existing keys preserved) |
+| `~/.openclaw/knotwork-bridge-state.json` | 6 | `plugin.ts:persistSnapshot` | `pluginInstanceId` + history — **no `integrationSecret`** |
+| `~/.openclaw/extensions/knotwork-bridge/credentials.json` | 6 | `plugin.ts:persistCredentials` | `{ integrationSecret }` — auto-cleaned on uninstall |
+| `~/.openclaw/extensions/knotwork-bridge/runtime.lock` | 6 | `state/lease.ts:acquireRuntimeLease` | `{ pid, acquired_at }` — co-located with bundle, auto-removed on clean exit |
 | `~/.openclaw/extensions/knotwork-bridge/` | 4 | OpenClaw installer | Plugin bundle (extracted from `.tar.gz`) |
 
 ## DB Tables Written (backend)

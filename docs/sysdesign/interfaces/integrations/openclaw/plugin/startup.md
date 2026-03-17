@@ -25,17 +25,20 @@ sequenceDiagram
     else context is runtime
         Plugin->>FS: read ~/.openclaw/knotwork-bridge-state.json
         alt file exists
-            FS-->>Plugin: pluginInstanceId, integrationSecret, recentTasks, logs
-            alt configuredInstanceId matches persisted pluginInstanceId
-                Plugin->>Plugin: restore integrationSecret
-            else instance ID mismatch
-                Plugin->>Plugin: discard persisted secret (log: instance_id_mismatch)
-            end
+            FS-->>Plugin: pluginInstanceId, recentTasks, logs
         else file not found
             FS-->>Plugin: empty state
         end
 
-        Plugin->>FS: write ~/.openclaw/knotwork-bridge-state.json (normalised snapshot)
+        Plugin->>FS: read ~/.openclaw/extensions/knotwork-bridge/credentials.json
+        alt file exists AND instanceId matches
+            FS-->>Plugin: integrationSecret
+            Plugin->>Plugin: restore integrationSecret
+        else file missing or instanceId mismatch
+            Plugin->>Plugin: discard secret (log: instance_id_mismatch or no credentials)
+        end
+
+        Plugin->>FS: write ~/.openclaw/knotwork-bridge-state.json (normalised snapshot, no secret)
         Plugin->>Plugin: log gateway ws://127.0.0.1:PORT/ tokenPresent=...
 
         Plugin->>FS: open ~/.openclaw/knotwork-bridge-runtime.lock (O_EXCL)
@@ -62,7 +65,7 @@ sequenceDiagram
             Plugin->>KB: POST /openclaw-plugin/handshake
             alt handshake ok
                 KB-->>Plugin: integration_secret
-                Plugin->>FS: persist integrationSecret
+                Plugin->>FS: write credentials.json (integrationSecret)
             else scope error
                 Plugin->>Plugin: log startup:handshake-stopped (missing scope)
                 Note over Plugin: polling disabled — human must fix scopes
@@ -71,9 +74,10 @@ sequenceDiagram
             end
         end
 
-        Plugin->>Plugin: setInterval pollAndRun every taskPollIntervalMs
+        Plugin->>Plugin: setInterval every taskPollIntervalMs
+        Note over Plugin: each tick is a no-op until both backgroundWorkerEnabled=true AND integrationSecret≠null<br/>polling activates automatically once runHandshake sets the secret (no separate trigger needed)
         Plugin->>Plugin: register SIGTERM / SIGINT / exit handlers
-        Note over Plugin: plugin running — poll loop active
+        Note over Plugin: plugin running — polling begins only after successful handshake
     end
 ```
 
@@ -88,15 +92,16 @@ sequenceDiagram
 Source: [`plugin.ts:activate`](../../../../../../openclaw-plugin-knotwork/src/plugin.ts#L43), [`plugin.ts:detectActivationContext`](../../../../../../openclaw-plugin-knotwork/src/plugin.ts#L124)
 
 ### From filesystem
-- `~/.openclaw/knotwork-bridge-state.json` — persisted state from previous run
-- `~/.openclaw/knotwork-bridge-runtime.lock` — runtime lease mutex
+- `~/.openclaw/knotwork-bridge-state.json` — persisted identity + history (`pluginInstanceId`, `recentTasks`, logs)
+- `~/.openclaw/extensions/knotwork-bridge/credentials.json` — persisted secret (`integrationSecret`); absent after fresh install
+- `~/.openclaw/extensions/knotwork-bridge/runtime.lock` — runtime lease mutex
 
 ### From config (`~/.openclaw/openclaw.json` via `api.config`)
 - `gateway.port` / `OPENCLAW_GATEWAY_PORT` — WebSocket gateway port (default: 18789)
 - `gateway.auth.token` / `OPENCLAW_GATEWAY_TOKEN` — auth token for gateway
 - `plugins.entries.knotwork-bridge.config.taskPollIntervalMs` — poll interval (default: 2000ms)
 
-Source: [`bridge.ts:getGatewayConfig`](../../../../../../openclaw-plugin-knotwork/src/bridge.ts#L60), [`bridge.ts:getConfig`](../../../../../../openclaw-plugin-knotwork/src/bridge.ts#L30)
+Source: [`openclaw/bridge.ts:getGatewayConfig`](../../../../../../openclaw-plugin-knotwork/src/openclaw/bridge.ts#L60), [`openclaw/bridge.ts:getConfig`](../../../../../../openclaw-plugin-knotwork/src/openclaw/bridge.ts#L30)
 
 ---
 
@@ -130,8 +135,9 @@ Source: [`types.ts:PluginState`](../../../../../../openclaw-plugin-knotwork/src/
 
 | File | When | What |
 |---|---|---|
-| `~/.openclaw/knotwork-bridge-state.json` | After state load (`stateHydrated = true`) | Normalised state snapshot |
-| `~/.openclaw/knotwork-bridge-runtime.lock` | On lease acquisition | `{ pid, acquired_at, plugin_id }` |
+| `~/.openclaw/knotwork-bridge-state.json` | After state load (`stateHydrated = true`) | Normalised snapshot — `pluginInstanceId` + history, **no secret** |
+| `~/.openclaw/extensions/knotwork-bridge/credentials.json` | After successful handshake | `{ integrationSecret }` |
+| `~/.openclaw/extensions/knotwork-bridge/runtime.lock` | On lease acquisition | `{ pid, acquired_at, plugin_id }` |
 
 Source: [`plugin.ts:persistSnapshot`](../../../../../../openclaw-plugin-knotwork/src/plugin.ts#L157), [`plugin.ts:acquireRuntimeLease`](../../../../../../openclaw-plugin-knotwork/src/plugin.ts#L214)
 
@@ -141,9 +147,10 @@ Source: [`plugin.ts:persistSnapshot`](../../../../../../openclaw-plugin-knotwork
 
 | File | Read by | Purpose |
 |---|---|---|
-| `~/.openclaw/knotwork-bridge-state.json` | `plugin.ts:readPersistedState` (L132) | Recover credentials + history across restarts |
-| `~/.openclaw/knotwork-bridge-runtime.lock` | `plugin.ts:acquireRuntimeLease` (L235) | Read incumbent PID to check if process is still alive |
-| `~/.openclaw/openclaw.json` *(via OpenClaw api)* | `bridge.ts:getConfig` (L30), `bridge.ts:getGatewayConfig` (L60) | Read plugin config + gateway port/token |
+| `~/.openclaw/knotwork-bridge-state.json` | `plugin.ts:readPersistedState` | Recover `pluginInstanceId` + history across restarts |
+| `~/.openclaw/extensions/knotwork-bridge/credentials.json` | `plugin.ts:readPersistedCredentials` | Recover `integrationSecret` across restarts (absent = not yet paired) |
+| `~/.openclaw/extensions/knotwork-bridge/runtime.lock` | `state/lease.ts:acquireRuntimeLease` | Read incumbent PID to check if process is still alive |
+| `~/.openclaw/openclaw.json` *(via OpenClaw api)* | `openclaw/bridge.ts:getConfig` (L30), `openclaw/bridge.ts:getGatewayConfig` (L60) | Read plugin config + gateway port/token |
 
 ---
 
@@ -151,8 +158,9 @@ Source: [`plugin.ts:persistSnapshot`](../../../../../../openclaw-plugin-knotwork
 
 | File | Written by | What |
 |---|---|---|
-| `~/.openclaw/knotwork-bridge-state.json` | `plugin.ts:persistSnapshot` (L157) | Serialised `PluginState` (all fields) |
-| `~/.openclaw/knotwork-bridge-runtime.lock` | `plugin.ts:acquireRuntimeLease` (L222) | `{ pid, acquired_at, plugin_id }` JSON |
+| `~/.openclaw/knotwork-bridge-state.json` | `plugin.ts:persistSnapshot` | `pluginInstanceId` + history — **no `integrationSecret`** |
+| `~/.openclaw/extensions/knotwork-bridge/credentials.json` | `plugin.ts:persistCredentials` | `{ integrationSecret }` — auto-cleaned on uninstall |
+| `~/.openclaw/extensions/knotwork-bridge/runtime.lock` | `state/lease.ts:acquireRuntimeLease` | `{ pid, acquired_at, plugin_id }` JSON |
 
 ---
 

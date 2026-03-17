@@ -144,9 +144,16 @@ After deletion, any `pending` tasks for this integration are orphaned — the pl
 | File | Role |
 |---|---|
 | [`types.ts`](../../../../../openclaw-plugin-knotwork/src/types.ts) | All shared types: `ExecutionTask`, `TaskResult`, `PluginState`, `OpenClawApi`, `PluginConfig` |
-| [`bridge.ts`](../../../../../openclaw-plugin-knotwork/src/bridge.ts) | Config resolution, agent discovery, HTTP calls to Knotwork (`doHandshake`, `pullTask`, `postEvent`) |
-| [`session.ts`](../../../../../openclaw-plugin-knotwork/src/session.ts) | OpenClaw gateway WebSocket protocol: `gatewayRpc`, `executeTask`, `parseDecisionBlock` |
-| [`plugin.ts`](../../../../../openclaw-plugin-knotwork/src/plugin.ts) | Entry point: `activate()`, poll loop (`pollAndRun`), state persistence, gateway RPC methods |
+| [`openclaw/bridge.ts`](../../../../../openclaw-plugin-knotwork/src/openclaw/bridge.ts) | Config resolution, agent discovery, HTTP calls to Knotwork (`doHandshake`, `pullTask`, `postEvent`) |
+| [`openclaw/gateway.ts`](../../../../../openclaw-plugin-knotwork/src/openclaw/gateway.ts) | Raw WebSocket RPC transport: `gatewayRpc` |
+| [`openclaw/scope.ts`](../../../../../openclaw-plugin-knotwork/src/openclaw/scope.ts) | Scope error detection: `missingScope`, `isOperatorScopeError`, `scopeHelp` |
+| [`openclaw/session.ts`](../../../../../openclaw-plugin-knotwork/src/openclaw/session.ts) | Task execution: `executeTask`, `parseDecisionBlock`, session key construction |
+| [`state/persist.ts`](../../../../../openclaw-plugin-knotwork/src/state/persist.ts) | State file read: `readPersistedState`, `PersistedPluginState` |
+| [`state/lease.ts`](../../../../../openclaw-plugin-knotwork/src/state/lease.ts) | Runtime process lock: `acquireRuntimeLease`, `releaseRuntimeLease` |
+| [`lifecycle/handshake.ts`](../../../../../openclaw-plugin-knotwork/src/lifecycle/handshake.ts) | Handshake, credential recovery, retry scheduling |
+| [`lifecycle/worker.ts`](../../../../../openclaw-plugin-knotwork/src/lifecycle/worker.ts) | Task poll loop: `pollAndRun`, heartbeat, event posting |
+| [`lifecycle/rpc.ts`](../../../../../openclaw-plugin-knotwork/src/lifecycle/rpc.ts) | Inbound gateway RPC registrations: `knotwork.*` methods |
+| [`plugin.ts`](../../../../../openclaw-plugin-knotwork/src/plugin.ts) | Entry point: `activate()`, state init, context wiring, poll interval, exit handlers |
 
 ### Plugin (compiled artifact)
 

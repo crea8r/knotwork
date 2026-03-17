@@ -20,6 +20,24 @@ Runtime adapter   ──DB──▶  OpenClawExecutionTask row (status: pending)
 Runtime adapter ──DB──▶   Reads updated task row, yields NodeEvent
 ```
 
+```mermaid
+flowchart LR
+    subgraph Knotwork["Knotwork Backend"]
+        A[LangGraph node\nagent_ref=openclaw:*] -->|writes| B[(OpenClawExecutionTask\nstatus: pending)]
+        B -->|reads| C[OpenClawAdapter\npoll every 2s]
+    end
+    subgraph Plugin["OpenClaw Plugin"]
+        D[pull-task\nevery 2s] -->|claims| B
+        D --> E[executeTask\ngateway WebSocket]
+        E -->|posts event| B
+    end
+    subgraph OC["OpenClaw Gateway :18789"]
+        F[agent run]
+    end
+    E <-->|WebSocket| F
+    C -->|NodeEvent| G([LangGraph continues])
+```
+
 ---
 
 ## Part 1: Connection — Handshake

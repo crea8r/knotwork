@@ -260,6 +260,14 @@ async def delete_integration(
         agent.archived_at = now
         agent.updated_at = now
 
+    token_rows = await db.execute(
+        select(OpenClawHandshakeToken)
+        .where(OpenClawHandshakeToken.workspace_id == workspace_id)
+        .where(OpenClawHandshakeToken.expires_at >= now)
+    )
+    for token in token_rows.scalars():
+        token.used_at = None
+
     await db.delete(integration)
     await db.commit()
 

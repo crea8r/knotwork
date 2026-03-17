@@ -89,7 +89,7 @@ sequenceDiagram
 ### From poll timer
 - `taskPollIntervalMs` from config (default: 2000ms, minimum: 500ms clamped at L635)
 
-Source: [`plugin.ts L634`](../../../../../../openclaw-plugin-knotwork/src/plugin.ts#L634)
+Source: [`plugin.ts`](../../../../../../openclaw-plugin-knotwork/src/plugin.ts)
 
 ### From in-memory state
 ```typescript
@@ -161,7 +161,7 @@ Source: [`types.ts:ExecutionTask`](../../../../../../openclaw-plugin-knotwork/sr
 }
 ```
 
-Source: [`plugin.ts:pollAndRun L386`](../../../../../../openclaw-plugin-knotwork/src/plugin.ts#L386), [`bridge.ts:postEvent`](../../../../../../openclaw-plugin-knotwork/src/bridge.ts#L205)
+Source: [`lifecycle/worker.ts:pollAndRun`](../../../../../../openclaw-plugin-knotwork/src/lifecycle/worker.ts), [`openclaw/bridge.ts:postEvent`](../../../../../../openclaw-plugin-knotwork/src/openclaw/bridge.ts)
 
 ---
 
@@ -175,7 +175,7 @@ None directly. Config is already loaded into `state` and `cfg` in memory.
 |---|---|---|
 | `~/.openclaw/knotwork-bridge-state.json` | After every event post + on task finish | Updated `recentTasks`, `runningTaskId`, `lastTaskAt`, `logs` |
 
-Source: [`plugin.ts:upsertRecentTask`](../../../../../../openclaw-plugin-knotwork/src/plugin.ts#L79), [`plugin.ts:persistSnapshot`](../../../../../../openclaw-plugin-knotwork/src/plugin.ts#L157)
+Source: [`lifecycle/worker.ts:upsertRecentTask`](../../../../../../openclaw-plugin-knotwork/src/lifecycle/worker.ts), [`plugin.ts:persistSnapshot`](../../../../../../openclaw-plugin-knotwork/src/plugin.ts)
 
 ## DB Tables Written (backend — during pull-task)
 
@@ -190,13 +190,13 @@ Source: [`plugin.ts:upsertRecentTask`](../../../../../../openclaw-plugin-knotwor
 
 ## Concurrency
 
-The `busy` flag at [`plugin.ts L634`](../../../../../../openclaw-plugin-knotwork/src/plugin.ts#L634) ensures only one task runs at a time:
+The `busy` flag in [`plugin.ts`](../../../../../../openclaw-plugin-knotwork/src/plugin.ts) ensures only one task runs at a time, and the `integrationSecret` guard prevents any polling before handshake completes:
 
 ```typescript
 let busy = false
 setInterval(() => {
-  if (!state.backgroundWorkerEnabled) return
-  if (busy) return
+  // no-op until backgroundWorkerEnabled=true AND integrationSecret is set
+  if (!state.backgroundWorkerEnabled || !state.integrationSecret || busy) return
   busy = true
   pollAndRun()
     .catch(...)

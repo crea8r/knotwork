@@ -610,4 +610,4 @@ WebSocket or SSE topic payloads:
 - missing preflight => `never_run`
 3. Label non-OpenClaw providers as <span style="color:#c1121f;font-weight:700">LEGACY / TRANSITIONAL</span> in response metadata for UI badges.
 
-See data model contract: [agents-settings-profile data model](/Users/hieu/Work/crea8r/knotwork/docs/sysdesign/data-models/agents-settings-profile.md).
+See data model contract: [agents-settings-profile data model](/Users/hieu/Work/crea8r/knotwork/docs/sysdesign/data/models/agents-settings-profile.md).

@@ -48,7 +48,7 @@ class Settings(BaseSettings):
     backend_url: str = "http://localhost:8000"
     # Externally hosted OpenClaw plugin artifact URL. Knotwork advertises this
     # in the install bundle but does not build or serve the plugin package.
-    openclaw_plugin_package_url: str = "https://lab.crea8r.xyz/kw-plugin/files/knotwork-bridge-0.2.0.tar.gz"
+    openclaw_plugin_package_url: str = "https://lab.crea8r.xyz/kw-plugin/latest"
     # Dev-only: if set, all requests authenticate as this user UUID without JWT.
     # Leave empty in production.
     auth_dev_bypass_user_id: str = ""

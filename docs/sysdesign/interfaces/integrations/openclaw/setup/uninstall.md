@@ -23,15 +23,15 @@ sequenceDiagram
         Note over User,Plugin: Plugin-side removal
         User->>OC: openclaw plugins uninstall "knotwork-bridge"
         OC->>Plugin: deactivate / process exit
-        Plugin->>FS: releaseRuntimeLeaseSync (rm knotwork-bridge-runtime.lock)
-        Note right of Plugin: process.once exit handler — plugin.ts L645
+        Plugin->>FS: releaseRuntimeLeaseSync (rm extensions/knotwork-bridge/runtime.lock)
+        Note right of Plugin: process.once exit handler — plugin.ts
         OC-->>User: plugin unregistered
 
         User->>FS: rm -rf ~/.openclaw/extensions/knotwork-bridge
-        Note right of FS: removes installed plugin bundle
+        Note right of FS: removes plugin bundle, runtime.lock, AND credentials.json<br/>(all co-located in extension dir — cleaned up automatically)
 
         User->>FS: rm ~/.openclaw/knotwork-bridge-state.json
-        Note right of FS: removes persisted integrationSecret + history<br/>(optional but recommended for clean state)
+        Note right of FS: removes pluginInstanceId + history<br/>(optional — intentionally survives reinstall to preserve pluginInstanceId)
     end
 
     rect rgb(240, 255, 240)
@@ -77,9 +77,8 @@ sequenceDiagram
 
 | Item | On plugin uninstall | On Knotwork DELETE integration |
 |---|---|---|
-| `~/.openclaw/extensions/knotwork-bridge/` | Removed by `openclaw plugins uninstall` + `rm -rf` | Not touched |
-| `~/.openclaw/knotwork-bridge-state.json` | Removed manually (recommended) | Not touched |
-| `~/.openclaw/knotwork-bridge-runtime.lock` | Removed on process exit | Not touched |
+| `~/.openclaw/extensions/knotwork-bridge/` | Removed by `openclaw plugins uninstall` + `rm -rf` (includes `runtime.lock` + `credentials.json`) | Not touched |
+| `~/.openclaw/knotwork-bridge-state.json` | **Not auto-removed** — persists `pluginInstanceId` for re-install. Delete manually only if fully removing the integration. | Not touched |
 | `openclaw_integrations` row | Not touched | **Deleted** |
 | `openclaw_remote_agents` rows | Not touched | **Deleted** (CASCADE) |
 | `openclaw_execution_tasks` rows | Not touched | **Deleted** (CASCADE) |
@@ -118,9 +117,10 @@ If the token is expired or was deleted, generate a new one from Knotwork Setting
 
 | File | Operation | Who |
 |---|---|---|
-| `~/.openclaw/knotwork-bridge-runtime.lock` | DELETE (on process exit) | `plugin.ts:releaseRuntimeLeaseSync` (L194) |
-| `~/.openclaw/extensions/knotwork-bridge/` | DELETE (manual) | User / `openclaw plugins uninstall` |
-| `~/.openclaw/knotwork-bridge-state.json` | DELETE (manual, recommended) | User |
+| `~/.openclaw/extensions/knotwork-bridge/runtime.lock` | DELETE (on clean exit) | `state/lease.ts:releaseRuntimeLeaseSync` |
+| `~/.openclaw/extensions/knotwork-bridge/credentials.json` | DELETE (auto, via extension dir removal) | User / `openclaw plugins uninstall` |
+| `~/.openclaw/extensions/knotwork-bridge/` | DELETE (manual) — removes `runtime.lock` + `credentials.json` + bundle | User / `openclaw plugins uninstall` |
+| `~/.openclaw/knotwork-bridge-state.json` | DELETE (manual, only if fully removing) — **intentionally survives reinstall** (preserves `pluginInstanceId`) | User |
 
 ## DB Tables Written (backend)
 

@@ -86,7 +86,7 @@ App
     └── Notification preferences
 ```
 
-See S8 detail spec: [agents-settings-profile.md](/Users/hieu/Work/crea8r/knotwork/docs/sysdesign/frontend/agents-settings-profile.md).
+See S8 detail spec: [agents-settings-profile.md](/Users/hieu/Work/crea8r/knotwork/docs/sysdesign/frontend/pages/agents-settings-profile.md).
 
 ---
 

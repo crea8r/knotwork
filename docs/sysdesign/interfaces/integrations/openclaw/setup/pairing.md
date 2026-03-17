@@ -92,13 +92,21 @@ sequenceDiagram
   }}}
 }
 ```
-Source: [`bridge.ts:getConfig`](../../../../../../openclaw-plugin-knotwork/src/bridge.ts#L30) — merges `api.pluginConfig`, `api.config.plugins.entries`, and env vars.
+Source: [`openclaw/bridge.ts:getConfig`](../../../../../../openclaw-plugin-knotwork/src/openclaw/bridge.ts#L30) — merges `api.pluginConfig`, `api.config.plugins.entries`, and env vars.
+
+**Note — `pluginInstanceId` is not set in `openclaw.json`.** The plugin resolves it with the following priority (see `plugin.ts` L108–109):
+
+1. `openclaw.json` → `config.pluginInstanceId` (or env `KNOTWORK_PLUGIN_INSTANCE_ID`) — only if you want to pin a fixed ID
+2. `~/.openclaw/knotwork-bridge-state.json` → `pluginInstanceId` — source of truth after the first run
+3. Auto-generated: `knotwork-{random10}` via `resolveInstanceId()` — first run only
+
+After a successful handshake the backend confirms (or reassigns) the ID in its response; the plugin immediately persists it to the state file. Every subsequent restart loads it from there, keeping the same integration identity.
 
 ### From plugin (sent to backend at handshake)
 ```json
 {
   "token": "kw_oc_...",
-  "plugin_instance_id": "knotwork-abc123",
+  "plugin_instance_id": "knotwork-abc123",   // auto-generated on first run, then from state file
   "plugin_version": "0.2.0",
   "agents": [
     {
@@ -111,7 +119,7 @@ Source: [`bridge.ts:getConfig`](../../../../../../openclaw-plugin-knotwork/src/b
   ]
 }
 ```
-Source: [`bridge.ts:doHandshake`](../../../../../../openclaw-plugin-knotwork/src/bridge.ts#L179)
+Source: [`bridge.ts:doHandshake`](../../../../../../openclaw-plugin-knotwork/src/openclaw/bridge.ts#L179)
 
 ---
 
@@ -130,9 +138,10 @@ Source: [`bridge.ts:doHandshake`](../../../../../../openclaw-plugin-knotwork/src
 Source: [`service.py:plugin_handshake`](../../../../../../backend/knotwork/openclaw_integrations/service.py#L207) returns `PluginHandshakeResponse`.
 
 ### Written by plugin
-- `~/.openclaw/knotwork-bridge-state.json` — persists `pluginInstanceId` + `integrationSecret`
+- `~/.openclaw/knotwork-bridge-state.json` — persists `pluginInstanceId` (survives reinstall)
+- `~/.openclaw/extensions/knotwork-bridge/credentials.json` — persists `integrationSecret` (auto-cleaned on uninstall)
 
-Source: [`plugin.ts:persistSnapshot`](../../../../../../openclaw-plugin-knotwork/src/plugin.ts#L157)
+Source: `plugin.ts:persistState` → calls `persistSnapshot` + `persistCredentials`
 
 ---
 
@@ -140,14 +149,16 @@ Source: [`plugin.ts:persistSnapshot`](../../../../../../openclaw-plugin-knotwork
 
 | File | Who reads | What for |
 |---|---|---|
-| `~/.openclaw/knotwork-bridge-state.json` | `plugin.ts:readPersistedState` (L132) | Recover `integrationSecret` + `pluginInstanceId` across restarts |
-| `~/.openclaw/openclaw.json` | OpenClaw runtime → `bridge.ts:getConfig` (L30) | Read `knotworkBackendUrl`, `handshakeToken`, `pluginInstanceId` |
+| `~/.openclaw/knotwork-bridge-state.json` | `plugin.ts:readPersistedState` | Recover `pluginInstanceId` across restarts — **primary source of truth for identity** |
+| `~/.openclaw/extensions/knotwork-bridge/credentials.json` | `plugin.ts:readPersistedCredentials` | Recover `integrationSecret` across restarts |
+| `~/.openclaw/openclaw.json` | OpenClaw runtime → `openclaw/bridge.ts:getConfig` | Read `knotworkBackendUrl`, `handshakeToken` (and optionally `pluginInstanceId` to pin a fixed ID) |
 
 ## Files Written
 
 | File | Who writes | What |
 |---|---|---|
-| `~/.openclaw/knotwork-bridge-state.json` | `plugin.ts:persistSnapshot` (L157) | `pluginInstanceId`, `integrationSecret`, `lastHandshakeAt`, `lastHandshakeOk` |
+| `~/.openclaw/knotwork-bridge-state.json` | `plugin.ts:persistSnapshot` | `pluginInstanceId`, `lastHandshakeAt`, `lastHandshakeOk` (no secret) |
+| `~/.openclaw/extensions/knotwork-bridge/credentials.json` | `plugin.ts:persistCredentials` | `integrationSecret` only — auto-cleaned on uninstall |
 
 ## DB Tables Written (backend)
 
@@ -172,7 +183,7 @@ Before calling `doHandshake`, the plugin discovers available OpenClaw agents via
 5. default stub: [{ remote_agent_id: 'main', slug: 'main' }]
 ```
 
-Source: [`bridge.ts:discoverAgents`](../../../../../../openclaw-plugin-knotwork/src/bridge.ts#L117)
+Source: [`bridge.ts:discoverAgents`](../../../../../../openclaw-plugin-knotwork/src/openclaw/bridge.ts#L117)
 
 The discovered agents are sent in the handshake payload and persisted as `OpenClawRemoteAgent` rows.
 
@@ -188,11 +199,11 @@ await rpc('chat.history', {})  // probes operator.read
 await rpc('agent', {})         // probes operator.write
 ```
 
-Source: [`session.ts:verifyGatewayOperatorScopes`](../../../../../../openclaw-plugin-knotwork/src/session.ts#L328)
+Source: [`openclaw/session.ts:verifyGatewayOperatorScopes`](../../../../../../openclaw-plugin-knotwork/src/openclaw/session.ts)
 
 If either probe returns a scope error, `isOperatorScopeError` returns true and the startup stops with a clear error message. Any non-scope error (business-logic rejection) is treated as proof the scope was granted.
 
-Source: [`session.ts:isOperatorScopeError`](../../../../../../openclaw-plugin-knotwork/src/session.ts#L62)
+Source: [`openclaw/scope.ts:isOperatorScopeError`](../../../../../../openclaw-plugin-knotwork/src/openclaw/scope.ts)
 
 ---
 

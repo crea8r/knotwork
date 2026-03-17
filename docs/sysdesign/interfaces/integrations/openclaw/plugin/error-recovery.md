@@ -76,7 +76,7 @@ sequenceDiagram
     Note over Plugin: Human must reinstall plugin with correct scopes,<br/>then run: openclaw gateway call knotwork.handshake
 ```
 
-Source: [`session.ts:missingScope`](../../../../../../openclaw-plugin-knotwork/src/session.ts#L52), [`session.ts:isOperatorScopeError`](../../../../../../openclaw-plugin-knotwork/src/session.ts#L62), [`plugin.ts:scheduleHandshakeRetry`](../../../../../../openclaw-plugin-knotwork/src/plugin.ts#L266)
+Source: [`openclaw/scope.ts:missingScope`](../../../../../../openclaw-plugin-knotwork/src/openclaw/scope.ts#L30), [`openclaw/scope.ts:isOperatorScopeError`](../../../../../../openclaw-plugin-knotwork/src/openclaw/scope.ts#L38), [`lifecycle/handshake.ts:scheduleHandshakeRetry`](../../../../../../openclaw-plugin-knotwork/src/lifecycle/handshake.ts)
 
 ---
 
@@ -144,7 +144,7 @@ sequenceDiagram
     end
 ```
 
-Source: [`session.ts:executeTask L311`](../../../../../../openclaw-plugin-knotwork/src/session.ts#L311)
+Source: [`openclaw/session.ts:executeTask`](../../../../../../openclaw-plugin-knotwork/src/openclaw/session.ts)
 
 ---
 
@@ -204,7 +204,7 @@ sequenceDiagram
     end
 ```
 
-Source: [`session.ts:gatewayRpc`](../../../../../../openclaw-plugin-knotwork/src/session.ts#L80)
+Source: [`openclaw/gateway.ts:gatewayRpc`](../../../../../../openclaw-plugin-knotwork/src/openclaw/gateway.ts)
 
 ---
 

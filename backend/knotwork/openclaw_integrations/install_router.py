@@ -18,6 +18,7 @@ The response contains:
 """
 from __future__ import annotations
 
+import json
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
@@ -97,6 +98,11 @@ async def get_install_bundle(
                         "handshakeToken": token,
                         "autoHandshakeOnStart": True,
                         "taskPollIntervalMs": 2000,
+                        "permission": [
+                            "network",
+                            "operator.read",
+                            "operator.write"
+                        ]
                     },
                 }
             }
@@ -104,6 +110,33 @@ async def get_install_bundle(
     }
 
     verification_command = "openclaw gateway call knotwork.handshake"
+
+    # Shell script that deep-merges config_snippet into ~/.openclaw/openclaw.json.
+    # Uses python3 (always present where OpenClaw runs) — no jq dependency.
+    _snippet_json = json.dumps(config_snippet)
+    config_script = "\n".join([
+        "#!/usr/bin/env bash",
+        "# configure-knotwork-bridge.sh",
+        "# Merges the knotwork-bridge config block into ~/.openclaw/openclaw.json.",
+        "# Run once after installing the plugin, then restart the OpenClaw gateway.",
+        "set -euo pipefail",
+        "",
+        "python3 - <<'PYEOF'",
+        "import json, os",
+        "cfg = os.path.expanduser('~/.openclaw/openclaw.json')",
+        f"snippet = json.loads({repr(_snippet_json)})",
+        "try:",
+        "    existing = json.load(open(cfg))",
+        "except (FileNotFoundError, json.JSONDecodeError):",
+        "    existing = {}",
+        "existing.setdefault('plugins', {}).setdefault('entries', {})",
+        "existing['plugins']['entries'].update(snippet['plugins']['entries'])",
+        "os.makedirs(os.path.dirname(cfg), exist_ok=True)",
+        "with open(cfg, 'w') as f:",
+        "    json.dump(existing, f, indent=2)",
+        "print('Config written to', cfg)",
+        "PYEOF",
+    ])
 
     instructions = (
         "To install the Knotwork bridge plugin in OpenClaw:\n"
@@ -115,7 +148,9 @@ async def get_install_bundle(
         "   The file will be saved using the filename returned by the server.\n"
         "4. Run the install_command using that downloaded filename.\n"
         "5. Let the standard OpenClaw installer handle plugin registration and permission approval.\n"
-        "6. Update ~/.openclaw/openclaw.json with the returned config_snippet so the plugin has the right knotworkBackendUrl and handshakeToken.\n"
+        "6. Run the returned config_script as a shell script to write the plugin config automatically:\n"
+        "   Save the script to a file (e.g. configure-knotwork-bridge.sh), make it executable (chmod +x), and run it.\n"
+        "   The script merges the knotwork-bridge config block into ~/.openclaw/openclaw.json using python3.\n"
         "7. OpenClaw may require an interactive permission approval step during install.\n"
         "   If an agent is driving installation through chat, it must stop and ask the human operator to approve the requested permissions. It must not assume approval happened automatically.\n"
         "8. Approve/grant the plugin gateway scopes `operator.read` and `operator.write` when OpenClaw prompts for permissions.\n"
@@ -140,6 +175,7 @@ async def get_install_bundle(
         "download_command": download_command,
         "install_command": install_command,
         "config_snippet": config_snippet,
+        "config_script": config_script,
         "verification_command": verification_command,
         "installation_success_criteria": (
             "Installation succeeds only if the plugin starts with the persisted config "

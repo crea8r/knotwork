@@ -151,7 +151,7 @@ DELETE /api/v1/workspaces/:workspace_id/agents/:agent_id
 
 > S8 expands this surface substantially (capability refresh, preflight runs, activation lifecycle,
 > usage history, compatibility checks, debug links, avatar upload flow). See:
-> [agents-settings-profile.md](/Users/hieu/Work/crea8r/knotwork/docs/sysdesign/api/agents-settings-profile.md)
+> [agents-settings-profile.md](/Users/hieu/Work/crea8r/knotwork/docs/sysdesign/interfaces/api/agents-settings-profile.md)
 
 POST body:
 ```json
