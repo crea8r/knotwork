@@ -40,8 +40,7 @@ export default function RequireAuth({ children }: Props) {
   useEffect(() => {
     if (!isLocalhostApp) return
 
-    const shouldBootstrap =
-      !token || token === 'localhost-bypass'
+    const shouldBootstrap = !token
 
     if (!shouldBootstrap) return
 
