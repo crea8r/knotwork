@@ -9,7 +9,7 @@ class StorageBackend(StrEnum):
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+    model_config = SettingsConfigDict(env_file=[".env", "../.env"], extra="ignore")
 
     # Database
     database_url: str

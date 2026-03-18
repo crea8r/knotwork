@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """
 Seed script: create a default dev workspace + demo graph if none exists.
-Writes the workspace UUID to frontend/.env.local so the UI can use it.
+Upserts VITE_DEV_WORKSPACE_ID into the root .env so Vite and pydantic-settings
+both pick it up from a single file.
 
 Usage: .venv/bin/python seed.py
 """
@@ -83,9 +84,27 @@ async def main() -> None:
         else:
             print(f"Demo graph already exists: {graph.id}")
 
-    env_local = ROOT / "frontend" / ".env.local"
-    env_local.write_text(f"VITE_DEV_WORKSPACE_ID={ws.id}\n")
-    print(f"Written {env_local}")
+    # Upsert VITE_DEV_WORKSPACE_ID in the root .env so both Vite and pydantic-settings
+    # pick it up. We only write/update this one key and leave everything else intact.
+    root_env = ROOT / ".env"
+    key = "VITE_DEV_WORKSPACE_ID"
+    value = str(ws.id)
+    if root_env.exists():
+        lines = root_env.read_text().splitlines(keepends=True)
+        found = False
+        new_lines = []
+        for line in lines:
+            if line.startswith(f"{key}=") or line.startswith(f"{key} ="):
+                new_lines.append(f"{key}={value}\n")
+                found = True
+            else:
+                new_lines.append(line)
+        if not found:
+            new_lines.append(f"{key}={value}\n")
+        root_env.write_text("".join(new_lines))
+    else:
+        root_env.write_text(f"{key}={value}\n")
+    print(f"Updated {root_env} with {key}={value}")
 
 
 asyncio.run(main())

@@ -44,6 +44,9 @@ services:
       DATABASE_URL: postgresql+asyncpg://knotwork:knotwork@postgres:5432/knotwork
       DATABASE_URL_SYNC: postgresql://knotwork:knotwork@postgres:5432/knotwork
       REDIS_URL: redis://redis:6379
+      # Explicit override so pydantic-settings reads it from process env, not the
+      # baked-in backend/.env which does not contain this key.
+      AUTH_DEV_BYPASS_USER_ID: ${AUTH_DEV_BYPASS_USER_ID:-}
     ports:
       - "${BACKEND_HOST_PORT:-8000}:8000"
     depends_on:
@@ -71,6 +74,7 @@ services:
       DATABASE_URL: postgresql+asyncpg://knotwork:knotwork@postgres:5432/knotwork
       DATABASE_URL_SYNC: postgresql://knotwork:knotwork@postgres:5432/knotwork
       REDIS_URL: redis://redis:6379
+      AUTH_DEV_BYPASS_USER_ID: ${AUTH_DEV_BYPASS_USER_ID:-}
     ports:
       - "${BACKEND_DEV_HOST_PORT:-8000}:8000"
     depends_on:
@@ -100,6 +104,7 @@ services:
       DATABASE_URL: postgresql+asyncpg://knotwork:knotwork@postgres:5432/knotwork
       DATABASE_URL_SYNC: postgresql://knotwork:knotwork@postgres:5432/knotwork
       REDIS_URL: redis://redis:6379
+      AUTH_DEV_BYPASS_USER_ID: ${AUTH_DEV_BYPASS_USER_ID:-}
     depends_on:
       postgres:
         condition: service_healthy
@@ -122,6 +127,7 @@ services:
       DATABASE_URL: postgresql+asyncpg://knotwork:knotwork@postgres:5432/knotwork
       DATABASE_URL_SYNC: postgresql://knotwork:knotwork@postgres:5432/knotwork
       REDIS_URL: redis://redis:6379
+      AUTH_DEV_BYPASS_USER_ID: ${AUTH_DEV_BYPASS_USER_ID:-}
     depends_on:
       postgres:
         condition: service_healthy
@@ -153,6 +159,7 @@ services:
       # Must point to the backend Docker service name, not localhost.
       BACKEND_URL: http://backend-dev:8000
       BACKEND_WS_URL: ws://backend-dev:8000
+      VITE_DEV_WORKSPACE_ID: ${VITE_DEV_WORKSPACE_ID:-}
     profiles: ["dev"]
     networks:
       - knotwork-network

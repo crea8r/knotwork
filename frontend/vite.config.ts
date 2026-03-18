@@ -4,6 +4,8 @@ import path from 'path'
 
 export default defineConfig({
   plugins: [react()],
+  // Read .env files from the project root (one level up from frontend/).
+  envDir: '../',
   resolve: {
     alias: { '@': path.resolve(__dirname, './src') },
   },

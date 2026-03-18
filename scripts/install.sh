@@ -9,6 +9,16 @@ if [[ "${EUID}" -ne 0 ]]; then
   SUDO="sudo"
 fi
 
+# ── Install mode ──────────────────────────────────────────────────────────────
+# --dev  Hot-reload dev install (localhost only, volume-mounted source, Vite HMR).
+#        Code changes in backend/ and frontend/src/ take effect without reinstalling.
+INSTALL_MODE="prod"
+for arg in "$@"; do
+  if [[ "$arg" == "--dev" ]]; then
+    INSTALL_MODE="dev"
+  fi
+done
+
 log() { printf "\n[%s] %s\n" "$(date +'%H:%M:%S')" "$*"; }
 die() { echo "ERROR: $*" >&2; exit 1; }
 warn() { echo "WARN: $*" >&2; }
@@ -138,6 +148,8 @@ RESEND_API=${RESEND_API}
 EMAIL_FROM=${EMAIL_FROM}
 BACKEND_HOST_PORT=${BACKEND_HOST_PORT}
 FRONTEND_HOST_PORT=${FRONTEND_HOST_PORT}
+BACKEND_DEV_HOST_PORT=${BACKEND_DEV_HOST_PORT}
+FRONTEND_DEV_HOST_PORT=${FRONTEND_DEV_HOST_PORT}
 VITE_API_URL=${VITE_API_URL}
 EOF
 }
@@ -377,15 +389,28 @@ docker info >/dev/null 2>&1 || die "Docker daemon is not reachable. Start Docker
 [[ -f ".env.docker.example" ]] || die "Missing .env.docker.example"
 [[ -f "docker-compose.yml" ]] || die "Missing docker-compose.yml"
 
-echo "Knotwork S8.2 installer (single host, host nginx, auto TLS)"
+if [[ "$INSTALL_MODE" == "dev" ]]; then
+  echo "Knotwork dev installer (localhost only, hot-reload — code changes take effect without reinstalling)"
+else
+  echo "Knotwork S8.2 installer (single host, host nginx, auto TLS)"
+fi
+
 prompt_required OWNER_NAME "Owner full name"
 prompt_required OWNER_EMAIL "Owner email"
 is_valid_email "$OWNER_EMAIL" || die "Invalid owner email format: $OWNER_EMAIL"
-prompt_with_default DOMAIN "Server domain (use localhost for local install)" "localhost"
-is_valid_domain "$DOMAIN" || die "Invalid domain: $DOMAIN"
-if [[ "$DOMAIN" != "localhost" ]]; then
-  require_non_local_host_software
+
+if [[ "$INSTALL_MODE" == "dev" ]]; then
+  # Dev installs are always localhost.
+  DOMAIN="localhost"
+  echo "Domain: localhost (dev mode, hot-reload)"
+else
+  prompt_with_default DOMAIN "Server domain (use localhost for local install)" "localhost"
+  is_valid_domain "$DOMAIN" || die "Invalid domain: $DOMAIN"
+  if [[ "$DOMAIN" != "localhost" ]]; then
+    require_non_local_host_software
+  fi
 fi
+
 prompt_with_default STORAGE_ADAPTER "Storage adapter" "local_fs"
 prompt_with_default LOCAL_FS_ROOT "Local handbook storage path inside container" "/app/data/knowledge"
 prompt_with_default DEFAULT_MODEL "Default model id" "openai/gpt-4o"
@@ -402,15 +427,32 @@ if [[ -z "$JWT_SECRET" ]]; then
   JWT_SECRET="$(gen_secret)"
 fi
 
+# ── Port selection ─────────────────────────────────────────────────────────────
 DEFAULT_BACKEND_PORT="$(next_free_port 8000)"
 DEFAULT_FRONTEND_PORT="$(next_free_port 3000)"
-prompt_with_default BACKEND_HOST_PORT "Backend host port" "$DEFAULT_BACKEND_PORT"
-prompt_with_default FRONTEND_HOST_PORT "Frontend host port" "$DEFAULT_FRONTEND_PORT"
-is_valid_port "$BACKEND_HOST_PORT" || die "Invalid backend port: $BACKEND_HOST_PORT"
-is_valid_port "$FRONTEND_HOST_PORT" || die "Invalid frontend port: $FRONTEND_HOST_PORT"
-port_in_use "$BACKEND_HOST_PORT" && die "Backend host port ${BACKEND_HOST_PORT} is already in use."
-port_in_use "$FRONTEND_HOST_PORT" && die "Frontend host port ${FRONTEND_HOST_PORT} is already in use."
-[[ "$BACKEND_HOST_PORT" == "$FRONTEND_HOST_PORT" ]] && die "Backend and frontend host ports cannot be the same."
+if [[ "$INSTALL_MODE" == "dev" ]]; then
+  # Dev mode uses the *-dev docker-compose services which bind BACKEND_DEV_HOST_PORT
+  # and FRONTEND_DEV_HOST_PORT.  Prod ports default to same values (unused in dev).
+  prompt_with_default BACKEND_DEV_HOST_PORT "Backend dev host port" "$DEFAULT_BACKEND_PORT"
+  prompt_with_default FRONTEND_DEV_HOST_PORT "Frontend dev host port" "$DEFAULT_FRONTEND_PORT"
+  is_valid_port "$BACKEND_DEV_HOST_PORT" || die "Invalid backend port: $BACKEND_DEV_HOST_PORT"
+  is_valid_port "$FRONTEND_DEV_HOST_PORT" || die "Invalid frontend port: $FRONTEND_DEV_HOST_PORT"
+  port_in_use "$BACKEND_DEV_HOST_PORT" && die "Backend dev host port ${BACKEND_DEV_HOST_PORT} is already in use."
+  port_in_use "$FRONTEND_DEV_HOST_PORT" && die "Frontend dev host port ${FRONTEND_DEV_HOST_PORT} is already in use."
+  [[ "$BACKEND_DEV_HOST_PORT" == "$FRONTEND_DEV_HOST_PORT" ]] && die "Backend and frontend host ports cannot be the same."
+  BACKEND_HOST_PORT="$BACKEND_DEV_HOST_PORT"
+  FRONTEND_HOST_PORT="$FRONTEND_DEV_HOST_PORT"
+else
+  prompt_with_default BACKEND_HOST_PORT "Backend host port" "$DEFAULT_BACKEND_PORT"
+  prompt_with_default FRONTEND_HOST_PORT "Frontend host port" "$DEFAULT_FRONTEND_PORT"
+  is_valid_port "$BACKEND_HOST_PORT" || die "Invalid backend port: $BACKEND_HOST_PORT"
+  is_valid_port "$FRONTEND_HOST_PORT" || die "Invalid frontend port: $FRONTEND_HOST_PORT"
+  port_in_use "$BACKEND_HOST_PORT" && die "Backend host port ${BACKEND_HOST_PORT} is already in use."
+  port_in_use "$FRONTEND_HOST_PORT" && die "Frontend host port ${FRONTEND_HOST_PORT} is already in use."
+  [[ "$BACKEND_HOST_PORT" == "$FRONTEND_HOST_PORT" ]] && die "Backend and frontend host ports cannot be the same."
+  BACKEND_DEV_HOST_PORT="$BACKEND_HOST_PORT"
+  FRONTEND_DEV_HOST_PORT="$FRONTEND_HOST_PORT"
+fi
 
 if [[ "$DOMAIN" == "localhost" ]]; then
   prompt_with_default FRONTEND_URL "Frontend URL" "http://localhost:${FRONTEND_HOST_PORT}"
@@ -446,9 +488,20 @@ write_env_file .env
 write_install_manifest .knotwork-install.json
 
 COMPOSE_CMD=(docker compose --project-name "$COMPOSE_PROJECT_NAME")
+# Service names and compose profile differ by install mode.
+if [[ "$INSTALL_MODE" == "dev" ]]; then
+  COMPOSE_PROFILE="dev"
+  BACKEND_SERVICE="backend-dev"
+  WORKER_SERVICE="worker-dev"
+else
+  COMPOSE_PROFILE="prod"
+  BACKEND_SERVICE="backend"
+  WORKER_SERVICE="worker"
+fi
 
-log "Starting Docker prod stack..."
-run_with_retry 2 3 "${COMPOSE_CMD[@]}" --profile prod up -d --build || die "docker compose up failed"
+log "Starting Docker ${COMPOSE_PROFILE} stack..."
+run_with_retry 2 3 "${COMPOSE_CMD[@]}" --profile "$COMPOSE_PROFILE" up -d --build \
+  || die "docker compose up failed"
 wait_backend_health "$BACKEND_HOST_PORT"
 
 if [[ "$DOMAIN" != "localhost" ]]; then
@@ -461,7 +514,7 @@ fi
 
 log "Bootstrapping owner + workspace..."
 BOOTSTRAP_JSON="$(
-  "${COMPOSE_CMD[@]}" --profile prod exec -T backend \
+  "${COMPOSE_CMD[@]}" --profile "$COMPOSE_PROFILE" exec -T "$BACKEND_SERVICE" \
     python scripts/bootstrap_owner.py \
       --owner-name "$OWNER_NAME" \
       --owner-email "$OWNER_EMAIL"
@@ -477,7 +530,8 @@ if [[ "$DOMAIN" == "localhost" ]]; then
   AUTH_DEV_BYPASS_USER_ID="$OWNER_USER_ID"
   write_env_file .env
   verify_env_postconditions "$OWNER_USER_ID"
-  "${COMPOSE_CMD[@]}" --profile prod up -d --force-recreate backend worker
+  "${COMPOSE_CMD[@]}" --profile "$COMPOSE_PROFILE" up -d --force-recreate \
+    "$BACKEND_SERVICE" "$WORKER_SERVICE"
   wait_backend_health "$BACKEND_HOST_PORT"
   curl -fsS "http://127.0.0.1:${BACKEND_HOST_PORT}/api/v1/auth/me" >/dev/null \
     || die "Localhost auth bypass verification failed: /api/v1/auth/me returned non-200"
@@ -486,7 +540,7 @@ if [[ "$DOMAIN" == "localhost" ]]; then
 fi
 
 log "Importing default workflows (preselected: 2)..."
-run_with_retry 3 5 "${COMPOSE_CMD[@]}" --profile prod exec -T backend \
+run_with_retry 3 5 "${COMPOSE_CMD[@]}" --profile "$COMPOSE_PROFILE" exec -T "$BACKEND_SERVICE" \
   python scripts/import_default_workflows.py \
     --workspace-id "$WORKSPACE_ID" \
     --workflow-id landing-page-builder \
@@ -494,12 +548,17 @@ run_with_retry 3 5 "${COMPOSE_CMD[@]}" --profile prod exec -T backend \
   || warn "Default workflow import failed after retries — run manually: python scripts/import_default_workflows.py --workspace-id $WORKSPACE_ID --workflow-id landing-page-builder --workflow-id simple-writing"
 
 echo
-echo "Install complete."
+echo "Install complete (mode: ${COMPOSE_PROFILE})."
 echo "Domain: $DOMAIN"
 echo "Frontend URL: $FRONTEND_URL"
 echo "Backend URL: $BACKEND_URL"
-echo "Backend host port: $BACKEND_HOST_PORT"
-echo "Frontend host port: $FRONTEND_HOST_PORT"
+if [[ "$INSTALL_MODE" == "dev" ]]; then
+  echo "Backend dev port: $BACKEND_DEV_HOST_PORT"
+  echo "Frontend dev port (Vite HMR): $FRONTEND_DEV_HOST_PORT"
+else
+  echo "Backend host port: $BACKEND_HOST_PORT"
+  echo "Frontend host port: $FRONTEND_HOST_PORT"
+fi
 echo "Workspace ID: $WORKSPACE_ID"
 echo "Owner user ID: $OWNER_USER_ID"
 echo "Owner email: $OWNER_EMAIL"
@@ -509,6 +568,14 @@ echo "1) Open $FRONTEND_URL"
 if [[ "$DOMAIN" == "localhost" ]]; then
   echo "2) Localhost auth bypass is enabled for owner ${OWNER_EMAIL}"
   echo "3) Open the app; it should auto-sign-in even after localStorage is cleared"
+  if [[ "$INSTALL_MODE" == "dev" ]]; then
+    echo ""
+    echo "Hot-reload notes:"
+    echo "  • Backend changes: edit files in backend/ — uvicorn auto-reloads"
+    echo "  • Frontend changes: edit files in frontend/src/ — Vite HMR updates in-browser"
+    echo "  • To restart services: docker compose --project-name $COMPOSE_PROJECT_NAME --profile dev restart backend-dev worker-dev"
+    echo "  • To view logs: docker compose --project-name $COMPOSE_PROJECT_NAME --profile dev logs -f backend-dev"
+  fi
 else
   echo "2) Request magic link using owner email"
   echo "3) Login and verify imported workflows + handbook files"
