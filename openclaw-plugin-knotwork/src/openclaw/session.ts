@@ -1,17 +1,13 @@
 // session.ts — Session execution: send message, wait for completion, parse output.
-// Wire protocol: WebSocket JSON frames — see gateway.ts for the low-level RPC.
-// create_session: implicit — OpenClaw auto-creates on first agent call.
-// send_message:   rpc('agent', {agentId, sessionKey, idempotencyKey, message, extraSystemPrompt})
-// sync_session:   rpc('agent.wait', {runId}) -> rpc('chat.history', {sessionKey})
+// Uses api.runtime.subagent (injected by OpenClaw when plugin exports default register).
+// create_session: implicit — OpenClaw auto-creates on first subagent.run call.
+// send_message:   subagent.run({ sessionKey, message, extraSystemPrompt, idempotencyKey })
+// sync_session:   subagent.waitForRun({ runId }) -> subagent.getSessionMessages({ sessionKey })
 // completion:     agent ends final message with ```json-decision block (confident|escalate)
 
-import { getGatewayConfig } from './bridge'
-import { gatewayRpc } from './gateway'
-import { isOperatorScopeError, missingScope, scopeHelp } from './scope'
 import type { ExecutionTask, LooseRecord, OpenClawApi, TaskResult } from '../types'
 
 const AGENT_WAIT_TIMEOUT_MS = 900_000
-const AGENT_WAIT_RPC_TIMEOUT_MS = AGENT_WAIT_TIMEOUT_MS + 10_000
 
 function toErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error)
@@ -39,8 +35,17 @@ function idempotencyKey(taskId: string): string {
   return `knotwork:task:${taskId}`
 }
 
-function latestAssistantMessage(history: LooseRecord): string {
-  const messages = Array.isArray(history.messages) ? history.messages : []
+function getSubagent(api: OpenClawApi) {
+  const subagent = (api as any).runtime?.subagent
+  if (typeof subagent?.run !== 'function') throw new Error('api.runtime.subagent not available — ensure plugin exports default register')
+  return subagent as {
+    run: (p: { sessionKey: string; message: string; extraSystemPrompt?: string; idempotencyKey?: string }) => Promise<{ runId: string }>
+    waitForRun: (p: { runId: string; timeoutMs?: number }) => Promise<{ status: string; error?: string }>
+    getSessionMessages: (p: { sessionKey: string; limit?: number }) => Promise<{ messages: unknown[] }>
+  }
+}
+
+function latestAssistantMessage(messages: unknown[]): string {
   for (let i = messages.length - 1; i >= 0; i--) {
     const m = messages[i] as LooseRecord
     if (String(m.role ?? '').toLowerCase() !== 'assistant') continue
@@ -83,104 +88,57 @@ function parseDecisionBlock(text: string): TaskResult | null {
   return { type: 'completed', output, next_branch }
 }
 
-function parseResult(raw: unknown): TaskResult {
-  if (!raw || typeof raw !== 'object') return { type: 'completed', output: String(raw ?? ''), next_branch: null }
-  const r = raw as LooseRecord
-  if (r.type === 'escalation' || r.needs_human === true) {
-    return { type: 'escalation', question: String(r.question ?? r.message ?? 'Need human input'), options: Array.isArray(r.options) ? (r.options as string[]) : [] }
-  }
-  if (r.type === 'failed' || (r.error && !r.output && !r.output_text)) {
-    return { type: 'failed', error: String(r.error ?? r.message ?? 'execution failed') }
-  }
-  const next_branch = typeof r.next_branch === 'string' ? r.next_branch : typeof r.nextBranch === 'string' ? r.nextBranch : null
-  const text = r.output_text ?? r.output ?? r.text ?? r.message
-  return { type: 'completed', output: typeof text === 'string' ? text.trim() : JSON.stringify(r), next_branch }
-}
 
 export async function executeTask(api: OpenClawApi, task: ExecutionTask): Promise<TaskResult> {
   const taskId = String(task.task_id ?? '')
   if (!taskId) throw new Error('task missing task_id')
 
-  const gatewayCall = api.gateway?.call
-  const { port, token } = getGatewayConfig(api)
+  const subagent = getSubagent(api)
   const sKey = buildSessionKey(task)
   const iKey = idempotencyKey(taskId)
-  const agentId = String(task.remote_agent_id ?? task.agent_id ?? 'main')
 
-  async function rpc(method: string, params: LooseRecord, timeoutMs = 90_000): Promise<unknown> {
-    if (typeof gatewayCall === 'function') {
-      try { return await gatewayCall(method, params) } catch (error) {
-        if (!missingScope(error)) throw error
-      }
-    }
-    try {
-      return await gatewayRpc(port, token, method, params, timeoutMs)
-    } catch (error) {
-      const scope = missingScope(error)
-      if (scope) throw scopeHelp(scope)
-      throw error
-    }
-  }
-
-  let started: LooseRecord
+  let started: { runId: string }
   try {
-    started = (await rpc('agent', {
-      agentId, sessionKey: sKey, idempotencyKey: iKey,
+    started = await subagent.run({
+      sessionKey: sKey,
+      idempotencyKey: iKey,
       message: String(task.user_prompt ?? ''),
-      extraSystemPrompt: String(task.system_prompt ?? ''),
-    })) as LooseRecord
+      extraSystemPrompt: String(task.system_prompt ?? '') || undefined,
+    })
   } catch (e) {
-    throw new Error(`gateway 'agent' failed: ${toErrorMessage(e)}`)
+    throw new Error(`subagent.run failed: ${toErrorMessage(e)}`)
   }
 
-  const runId = [started.runId, started.run_id, started.id].find((v) => typeof v === 'string' && v)
-  if (!runId) return parseResult(started)
+  const { runId } = started
+  if (!runId) return { type: 'failed', error: 'subagent.run returned no runId' }
 
-  const waited = (await rpc('agent.wait', { runId, timeoutMs: AGENT_WAIT_TIMEOUT_MS }, AGENT_WAIT_RPC_TIMEOUT_MS)) as LooseRecord
+  const waited = await subagent.waitForRun({ runId, timeoutMs: AGENT_WAIT_TIMEOUT_MS })
   const status = String(waited.status ?? '')
+
+  async function fetchLastMsg(): Promise<string> {
+    const { messages } = await subagent.getSessionMessages({ sessionKey: sKey, limit: 50 })
+    return latestAssistantMessage(messages)
+  }
+
   if (status === 'ok') {
-    const history = (await rpc('chat.history', { sessionKey: sKey, limit: 50 }, 10_000)) as LooseRecord
-    const lastMsg = latestAssistantMessage(history)
+    const lastMsg = await fetchLastMsg()
     return parseDecisionBlock(lastMsg) ?? { type: 'completed', output: lastMsg, next_branch: null }
   }
-  if (status === 'error') return { type: 'failed', error: String(waited.error ?? waited.summary ?? 'agent error') }
+  if (status === 'error') return { type: 'failed', error: String(waited.error ?? 'agent error') }
   if (status === 'timeout') {
-    // Fallback: query transcript before failing — wait can timeout while response is already present.
     try {
-      const history = (await rpc('chat.history', { sessionKey: sKey, limit: 50 }, 10_000)) as LooseRecord
-      const lastMsg = latestAssistantMessage(history)
+      const lastMsg = await fetchLastMsg()
       if (lastMsg) return parseDecisionBlock(lastMsg) ?? { type: 'completed', output: lastMsg, next_branch: null }
     } catch { /* ignore fallback errors */ }
     return { type: 'failed', error: `agent timed out after ${Math.floor(AGENT_WAIT_TIMEOUT_MS / 1000)}s` }
   }
-  return parseResult(waited)
+  return { type: 'failed', error: `unexpected wait status: ${status}` }
 }
 
 export async function verifyGatewayOperatorScopes(api: OpenClawApi): Promise<void> {
-  const gatewayCall = api.gateway?.call
-  const { port, token } = getGatewayConfig(api)
-
-  async function rpc(method: string, params: LooseRecord, timeoutMs = 10_000): Promise<void> {
-    let helperScopeError: string | null = null
-    if (typeof gatewayCall === 'function') {
-      try { await gatewayCall(method, params); return } catch (error) {
-        const scope = missingScope(error)
-        if (!scope) return
-        helperScopeError = scope
-      }
-    }
-    try {
-      await gatewayRpc(port, token, method, params, timeoutMs)
-    } catch (error) {
-      const scope = missingScope(error)
-      if (scope) throw scopeHelp(scope)
-      if (helperScopeError) throw scopeHelp(helperScopeError)
-      // Non-scope error means method reached gateway logic -> scope is granted.
-    }
-  }
-
-  await rpc('chat.history', {})
-  await rpc('agent', {})
+  // With api.runtime.subagent there are no gateway scopes to verify.
+  // Just confirm subagent is available; if not, surface a clear error.
+  getSubagent(api)
 }
 
 // Re-export so callers that import isOperatorScopeError from './session' still work.

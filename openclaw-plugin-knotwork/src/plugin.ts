@@ -70,7 +70,7 @@ export function activate(api: OpenClawApi): void {
           lastHandshakeAt: state.lastHandshakeAt, lastHandshakeOk: state.lastHandshakeOk,
           lastError: state.lastError, lastTaskAt: state.lastTaskAt,
           runtimeLockPath: state.runtimeLockPath, runtimeLeaseOwnerPid: state.runtimeLeaseOwnerPid,
-          recentTasks: state.recentTasks, logs: state.logs,
+          recentTasks: state.recentTasks,
         }, null, 2))
       })
     return snapshotWrite
@@ -140,7 +140,9 @@ export function activate(api: OpenClawApi): void {
       state.runtimeLockPath = persisted.runtimeLockPath ?? state.runtimeLockPath
       state.runtimeLeaseOwnerPid = persisted.runtimeLeaseOwnerPid ?? state.runtimeLeaseOwnerPid
       state.recentTasks = Array.isArray(persisted.recentTasks) ? persisted.recentTasks : state.recentTasks
-      state.logs = Array.isArray(persisted.logs) ? persisted.logs : state.logs
+      // Intentionally NOT restoring state.logs — each session starts with a fresh log buffer.
+      // This ensures `knotwork.logs` always shows only the current session, not 200 lines of history
+      // from previous restarts that would bury new entries.
       stateHydrated = true
       await persistSnapshot()
 

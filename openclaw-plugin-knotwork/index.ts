@@ -1,1 +1,2 @@
-export { activate } from './src/plugin'
+import { activate } from './src/plugin'
+export default function register(api: any) { activate(api) }

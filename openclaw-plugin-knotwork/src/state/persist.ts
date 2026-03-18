@@ -18,7 +18,7 @@ export type PersistedPluginState = {
   runtimeLockPath?: string | null
   runtimeLeaseOwnerPid?: number | null
   recentTasks?: RecentTask[]
-  logs?: string[]
+  // logs intentionally not persisted — each session starts fresh so knotwork.logs always shows current session
 }
 
 export type PersistedCredentials = {
@@ -38,9 +38,6 @@ export async function readPersistedState(path: string): Promise<PersistedPluginS
       runtimeLockPath: typeof parsed.runtimeLockPath === 'string' ? parsed.runtimeLockPath : null,
       runtimeLeaseOwnerPid: Number.isInteger(parsed.runtimeLeaseOwnerPid) ? parsed.runtimeLeaseOwnerPid : null,
       recentTasks: Array.isArray(parsed.recentTasks) ? parsed.recentTasks.slice(0, MAX_RECENT_TASKS) : [],
-      logs: Array.isArray(parsed.logs)
-        ? parsed.logs.slice(-200).filter((line): line is string => typeof line === 'string')
-        : [],
     }
   } catch {
     return {}

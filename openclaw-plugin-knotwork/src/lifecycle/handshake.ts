@@ -26,8 +26,13 @@ export async function runHandshake(
 ): Promise<HandshakeResponse> {
   const { state, api, log, persistState } = ctx
   const cfg = { ...getConfig(api), ...overrides }
-  if (!cfg.knotworkBackendUrl || !cfg.handshakeToken) {
-    throw new Error('Missing knotworkBackendUrl or handshakeToken in plugin config')
+  if (!cfg.knotworkBackendUrl) {
+    log(`handshakeToken: ${cfg.handshakeToken}`)
+    throw new Error('Missing knotworkBackendUrl in plugin config')
+  }
+  if (!cfg.handshakeToken) {
+    log(`knotworkBackendUrl: ${cfg.knotworkBackendUrl}`)
+    throw new Error('Missing handshakeToken in plugin config')
   }
   const instanceId = state.pluginInstanceId ?? resolveInstanceId(cfg)
   try {

@@ -56,13 +56,15 @@ export function resolveInstanceId(cfg: PluginConfig): string {
   return `knotwork-${Math.random().toString(36).slice(2, 12)}`
 }
 
-// Gateway WebSocket config — port + auth token for the native protocol.
-export function getGatewayConfig(api: OpenClawApi): { port: number; token: string | null } {
+// Gateway WebSocket config — port + auth credentials for the native protocol.
+// token + password + nonce are all required for the connect.challenge handshake.
+export function getGatewayConfig(api: OpenClawApi): { port: number; token: string | null; password: string | null } {
   const gw = (((api.config ?? {}) as LooseRecord).gateway ?? {}) as LooseRecord
   const auth = (gw.auth ?? {}) as LooseRecord
   const port = parseInt(String(gw.port ?? env('OPENCLAW_GATEWAY_PORT') ?? '18789'), 10) || 18789
   const token = String(auth.token ?? env('OPENCLAW_GATEWAY_TOKEN') ?? '').trim() || null
-  return { port, token }
+  const password = String(auth.password ?? env('OPENCLAW_GATEWAY_PASSWORD') ?? '').trim() || null
+  return { port, token, password }
 }
 
 // ── Agent discovery ───────────────────────────────────────────────────────────
@@ -123,17 +125,7 @@ export async function discoverAgents(api: OpenClawApi): Promise<RemoteAgent[]> {
       if (out.length) return out
     } catch { /* fallthrough */ }
   }
-  // 2. gateway call
-  if (typeof api.gateway?.call === 'function') {
-    for (const method of ['agents.list', 'agent.list']) {
-      try {
-        const res = await api.gateway.call(method, {})
-        const out = unpackAgentList(res).map(normalizeAgent).filter(Boolean) as RemoteAgent[]
-        if (out.length) return out
-      } catch { /* try next */ }
-    }
-  }
-  // 3. config.agents.list fallback
+  // 2. config.agents.list fallback
   const config = (api.config ?? {}) as LooseRecord
   const agentsConfig = (config.agents ?? {}) as LooseRecord
   const cfgList = unpackAgentList(agentsConfig.list)

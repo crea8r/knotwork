@@ -92,17 +92,11 @@ async def get_install_bundle(
             "entries": {
                 _PLUGIN_ID: {
                     "enabled": True,
-                    "package": package_url,
                     "config": {
                         "knotworkBackendUrl": base_url,
                         "handshakeToken": token,
                         "autoHandshakeOnStart": True,
                         "taskPollIntervalMs": 2000,
-                        "permission": [
-                            "network",
-                            "operator.read",
-                            "operator.write"
-                        ]
                     },
                 }
             }
@@ -151,17 +145,19 @@ async def get_install_bundle(
         "6. Run the returned config_script as a shell script to write the plugin config automatically:\n"
         "   Save the script to a file (e.g. configure-knotwork-bridge.sh), make it executable (chmod +x), and run it.\n"
         "   The script merges the knotwork-bridge config block into ~/.openclaw/openclaw.json using python3.\n"
-        "7. OpenClaw may require an interactive permission approval step during install.\n"
-        "   If an agent is driving installation through chat, it must stop and ask the human operator to approve the requested permissions. It must not assume approval happened automatically.\n"
-        "8. Approve/grant the plugin gateway scopes `operator.read` and `operator.write` when OpenClaw prompts for permissions.\n"
-        "   If your OpenClaw setup manages plugin permissions in config instead of an interactive prompt, ensure those two scopes are explicitly granted before running Knotwork tasks.\n"
-        "9. Ask the user to restart the OpenClaw gateway to make sure the new plugin config is loaded.\n"
+        "7. Run the returned config_script as a shell script — it writes knotworkBackendUrl, handshakeToken, AND "
+        "`permissions: [network, operator.read, operator.write]` into the plugin entry in ~/.openclaw/openclaw.json.\n"
+        "   The permissions field in openclaw.json is the operator's explicit approval of the gateway scopes declared in the plugin manifest.\n"
+        "   Without it, OpenClaw loads the plugin but denies operator.read/operator.write, and task execution will fail.\n"
+        "8. Ask the user to restart the OpenClaw gateway to load the updated config.\n"
         f"   Setup bundle URL reference: {setup_url}\n"
-        "10. Run the verification_command exactly as returned. Installation is not successful until this command exits successfully.\n"
-        "11. Verify in Knotwork Settings → Agents → OpenClaw section.\n"
-        "12. If you see `missing scope: operator.write` or `missing scope: operator.read`, the plugin was installed without the required gateway permissions. Treat the installation as failed. Reinstall with the standard installer, then restart OpenClaw and run `openclaw gateway call knotwork.handshake` again.\n"
-        "13. If OpenClaw starts with `plugin not found: knotwork-bridge`, the standard plugin install did not complete successfully. Treat the installation as failed and rerun the standard installer.\n"
-        "14. If OpenClaw starts the plugin without `knotworkBackendUrl` or `handshakeToken`, the install config was not persisted correctly. Treat the installation as failed. Re-apply config_snippet to ~/.openclaw/openclaw.json, restart the OpenClaw gateway, and run verification again."
+        "9. Run the verification_command exactly as returned. Installation is not successful until this command exits successfully.\n"
+        "   After a successful handshake, `openclaw gateway call knotwork.status` should show `gatewayCallAvailable: true`.\n"
+        "10. Verify in Knotwork Settings → Agents → OpenClaw section.\n"
+        "11. If you see `missing scope: operator.write` or `missing scope: operator.read`, the permissions field is missing or incorrect in ~/.openclaw/openclaw.json. "
+        "Re-run the config_script, restart OpenClaw, and run verification again.\n"
+        "12. If OpenClaw starts with `plugin not found: knotwork-bridge`, the standard plugin install did not complete successfully. Treat the installation as failed and rerun the standard installer.\n"
+        "13. If OpenClaw starts the plugin without `knotworkBackendUrl` or `handshakeToken`, the install config was not persisted correctly. Treat the installation as failed. Re-apply config_snippet to ~/.openclaw/openclaw.json, restart the OpenClaw gateway, and run verification again."
     )
 
     return {
@@ -183,9 +179,7 @@ async def get_install_bundle(
             "or missing-config errors."
         ),
         "installation_failure_conditions": [
-            "OpenClaw permission approval does not grant operator.read",
-            "OpenClaw permission approval does not grant operator.write",
-            "The standard OpenClaw plugin installation does not complete successfully",
+            "The standard OpenClaw plugin installation does not complete successfully (manifest permissions not loaded)",
             "The plugin starts without knotworkBackendUrl or handshakeToken persisted in config",
             "The verification_command returns a missing-scope or missing-config error",
         ],
@@ -193,8 +187,8 @@ async def get_install_bundle(
         "required_config_keys": ["knotworkBackendUrl", "handshakeToken"],
         "requires_user_permission_approval": True,
         "agent_install_policy": (
-            "If OpenClaw prompts for permission approval, the installing agent must pause and ask the human operator to approve. "
-            "After installation it must update ~/.openclaw/openclaw.json with knotworkBackendUrl and handshakeToken, ask the user to restart the OpenClaw gateway, then run the verification_command and mark the installation failed if verification does not succeed."
+            "After installation, run the config_script to write knotworkBackendUrl, handshakeToken, and permissions into ~/.openclaw/openclaw.json. "
+            "Ask the user to restart the OpenClaw gateway, then run the verification_command and mark the installation failed if verification does not succeed."
         ),
         "instructions": instructions,
         "knotwork_backend_url": base_url,

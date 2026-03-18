@@ -15,11 +15,11 @@ export type RpcCtx = {
 }
 
 function getPayload(ctx: GatewayMethodContext): LooseRecord {
-  return (ctx.request?.payload ?? ctx.payload ?? {}) as LooseRecord
+  return (ctx.params ?? {}) as LooseRecord
 }
 
 function ok(ctx: GatewayMethodContext, payload: LooseRecord): void {
-  if (typeof ctx.respond === 'function') ctx.respond(true, payload)
+  ctx.respond(true, payload)
 }
 
 export function registerRpcMethods(ctx: RpcCtx): void {
@@ -27,12 +27,11 @@ export function registerRpcMethods(ctx: RpcCtx): void {
   if (typeof api.registerGatewayMethod !== 'function') return
   const rpc = api.registerGatewayMethod.bind(api)
 
-  rpc('knotwork.status', async (gwCtx: GatewayMethodContext) => {
+  rpc('knotwork.status', (gwCtx: GatewayMethodContext) => {
     const cfg = getConfig(api)
     ok(gwCtx, {
       ...state,
       runtime: {
-        gatewayCallAvailable: typeof api.gateway?.call === 'function',
         runtimeLeaseOwnerPid: state.runtimeLeaseOwnerPid,
         currentPid: process?.pid ?? null,
       },

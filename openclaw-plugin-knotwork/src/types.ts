@@ -9,34 +9,23 @@ export type JsonValue = JsonPrimitive | JsonObject | JsonArray
 
 export type LooseRecord = Record<string, unknown>
 
-export type GatewayCall = (method: string, params?: LooseRecord) => Promise<unknown>
-
+// GatewayMethodContext matches the real GatewayRequestHandlerOptions shape from OpenClaw.
+// Handlers receive { params, respond, ... } — params holds the RPC call arguments.
 export type GatewayMethodContext = {
-  request?: {
-    payload?: LooseRecord
-  }
-  payload?: LooseRecord
-  respond?: (ok: boolean, payload: LooseRecord) => void
+  params: Record<string, unknown>
+  respond: (ok: boolean, payload?: unknown) => void
+  [key: string]: unknown
 }
 
 export type OpenClawApi = {
   config?: LooseRecord
   pluginConfig?: LooseRecord
-  gateway?: {
-    call?: GatewayCall
-  }
-  runtime?: {
-    system?: {
-      runCommandWithTimeout?: (
-        argv: string[],
-        options: number | { timeoutMs: number; cwd?: string },
-      ) => Promise<{ stdout: string; stderr: string; code: number | null }>
-    }
-  }
+  runtime?: LooseRecord
   registerGatewayMethod?: (
     name: string,
     handler: (ctx: GatewayMethodContext) => Promise<void> | void,
   ) => void
+  on?: (hookName: string, handler: (...args: unknown[]) => unknown) => void
   agents?: {
     list?: (params?: LooseRecord) => Promise<unknown>
   }
@@ -116,11 +105,3 @@ export type TaskResult =
   | { type: 'escalation'; question: string; options: string[]; message?: string }
   | { type: 'failed'; error: string }
 
-export type WsFrame = {
-  type: string
-  id?: string
-  event?: string
-  ok?: boolean
-  payload?: unknown
-  error?: unknown
-}
