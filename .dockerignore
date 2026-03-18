@@ -1,0 +1,5 @@
+# Never bake local env files into images.
+# Even if backend/.env or frontend/.env* somehow exist on the host,
+# they must not end up in any Docker layer.
+backend/.env*
+frontend/.env*
