@@ -467,8 +467,10 @@ BOOTSTRAP_JSON="$(
       --owner-email "$OWNER_EMAIL"
 )"
 echo "$BOOTSTRAP_JSON"
-WORKSPACE_ID="$(printf "%s" "$BOOTSTRAP_JSON" | python3 -c 'import json,sys; print(json.load(sys.stdin)["workspace_id"])')"
-OWNER_USER_ID="$(printf "%s" "$BOOTSTRAP_JSON" | python3 -c 'import json,sys; print(json.load(sys.stdin)["owner_user_id"])')"
+WORKSPACE_ID="$(printf "%s" "$BOOTSTRAP_JSON" | python3 -c 'import json,sys; print(json.load(sys.stdin)["workspace_id"])')" || die "Failed to parse workspace_id from bootstrap output"
+OWNER_USER_ID="$(printf "%s" "$BOOTSTRAP_JSON" | python3 -c 'import json,sys; print(json.load(sys.stdin)["owner_user_id"])')" || die "Failed to parse owner_user_id from bootstrap output"
+[[ -n "$WORKSPACE_ID" ]] || die "Bootstrap did not return a workspace_id"
+[[ -n "$OWNER_USER_ID" ]] || die "Bootstrap did not return an owner_user_id"
 
 if [[ "$DOMAIN" == "localhost" ]]; then
   log "Enabling localhost auth bypass for owner user ${OWNER_USER_ID}..."
@@ -484,11 +486,12 @@ if [[ "$DOMAIN" == "localhost" ]]; then
 fi
 
 log "Importing default workflows (preselected: 2)..."
-"${COMPOSE_CMD[@]}" --profile prod exec -T backend \
+run_with_retry 3 5 "${COMPOSE_CMD[@]}" --profile prod exec -T backend \
   python scripts/import_default_workflows.py \
     --workspace-id "$WORKSPACE_ID" \
     --workflow-id landing-page-builder \
-    --workflow-id simple-writing
+    --workflow-id simple-writing \
+  || warn "Default workflow import failed after retries — run manually: python scripts/import_default_workflows.py --workspace-id $WORKSPACE_ID --workflow-id landing-page-builder --workflow-id simple-writing"
 
 echo
 echo "Install complete."

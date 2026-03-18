@@ -472,6 +472,55 @@ async def register_from_remote_agent(
     )
 
 
+STALE_THRESHOLD_MINUTES = 30
+
+
+async def cleanup_stale_integrations(db: AsyncSession) -> dict:
+    """
+    Clean up stale plugin integrations that have missed their heartbeat.
+
+    Rules (threshold: 30 min — plugin polls every ~2 s, so this is definitively dead):
+    - No heartbeat AND no agents registered → hard delete; DB cascade removes all related rows.
+    - No heartbeat AND has agents registered → mark 'disconnected' so operators can investigate.
+    Already-disconnected integrations are skipped (idempotent).
+    """
+    stale_before = _now() - timedelta(minutes=STALE_THRESHOLD_MINUTES)
+    stale_q = await db.execute(
+        select(OpenClawIntegration).where(
+            and_(
+                OpenClawIntegration.last_seen_at < stale_before,
+                OpenClawIntegration.status != "disconnected",
+            )
+        )
+    )
+    stale = list(stale_q.scalars())
+    if not stale:
+        return {"deleted": 0, "disconnected": 0}
+
+    deleted = 0
+    disconnected = 0
+    now = _now()
+
+    for integration in stale:
+        count_q = await db.execute(
+            select(func.count(OpenClawRemoteAgent.id)).where(
+                OpenClawRemoteAgent.integration_id == integration.id
+            )
+        )
+        agent_count = int(count_q.scalar() or 0)
+
+        if agent_count == 0:
+            await db.delete(integration)
+            deleted += 1
+        else:
+            integration.status = "disconnected"
+            integration.updated_at = now
+            disconnected += 1
+
+    await db.commit()
+    return {"deleted": deleted, "disconnected": disconnected}
+
+
 async def resolve_plugin_integration(
     db: AsyncSession, plugin_instance_id: str, integration_secret: str
 ) -> OpenClawIntegration:

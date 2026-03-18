@@ -41,6 +41,7 @@ export async function runHandshake(
     log(`handshake:scope-preflight-warning ${err instanceof Error ? err.message : String(err)}`)
   }
   const agents = await discoverAgents(api)
+  log(`handshake:agents count=${agents.length} ids=${agents.map((a) => a.remote_agent_id).join(',') || 'none'}`)
   log(`handshake:start instanceId=${instanceId} agents=${agents.length}`)
   const resp = await doHandshake(cfg.knotworkBackendUrl, cfg.handshakeToken, instanceId, agents)
   state.pluginInstanceId = (resp.plugin_instance_id as string | undefined) ?? instanceId

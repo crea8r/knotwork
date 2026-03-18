@@ -46,6 +46,7 @@ import knotwork.escalations.models   # noqa: F401
 import knotwork.ratings.models       # noqa: F401
 import knotwork.audit.models         # noqa: F401
 import knotwork.notifications.models  # noqa: F401
+import knotwork.openclaw_integrations.models  # noqa: F401
 
 from arq import cron
 from arq.connections import RedisSettings
@@ -110,6 +111,22 @@ async def check_escalation_timeouts(ctx: dict) -> None:
         })
 
 
+async def check_stale_integrations(ctx: dict) -> None:
+    """
+    arq cron task: delete agent-less stale integrations; mark the rest 'disconnected'.
+    """
+    from knotwork.database import AsyncSessionLocal
+    from knotwork.openclaw_integrations.service import cleanup_stale_integrations
+
+    async with AsyncSessionLocal() as db:
+        result = await cleanup_stale_integrations(db)
+    logger.info(
+        "check_stale_integrations deleted=%d disconnected=%d",
+        result["deleted"],
+        result["disconnected"],
+    )
+
+
 class WorkerSettings:
     """arq worker configuration. Discovered via `arq knotwork.worker.tasks.WorkerSettings`."""
 
@@ -122,5 +139,7 @@ class WorkerSettings:
     cron_jobs = [
         # Run timeout check every 5 minutes
         cron(check_escalation_timeouts, minute={0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55}),
+        # Stale plugin cleanup every 10 minutes
+        cron(check_stale_integrations, minute={0, 10, 20, 30, 40, 50}),
     ]
     redis_settings = RedisSettings.from_dsn(settings.redis_url)

@@ -226,7 +226,14 @@ async def import_templates(
     handbook_manifest = load_handbook_manifest()
 
     async with AsyncSessionLocal() as db:
-        ws = await db.get(Workspace, workspace_id)
+        ws = None
+        for _attempt in range(5):
+            ws = await db.get(Workspace, workspace_id)
+            if ws is not None:
+                break
+            print(f"Workspace {workspace_id} not visible yet, retrying in 3s...")
+            await asyncio.sleep(3)
+            await db.expire_all()
         if ws is None:
             raise SystemExit(f"Workspace not found: {workspace_id}")
 

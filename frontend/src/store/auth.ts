@@ -31,6 +31,9 @@ export const useAuthStore = create<AuthState>()(
         set({ token, user: { id: userId, email: '', name: '' }, workspaceId, role }),
       clearAuth: () => set({ token: null, user: null, workspaceId: null, role: null }),
     }),
-    { name: 'knotwork_auth' }
+    {
+      name: 'knotwork_auth',
+      partialize: (state) => ({ token: state.token, user: state.user, role: state.role }),
+    }
   )
 )

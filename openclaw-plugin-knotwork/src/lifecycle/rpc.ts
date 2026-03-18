@@ -29,6 +29,8 @@ export function registerRpcMethods(ctx: RpcCtx): void {
 
   rpc('knotwork.status', (gwCtx: GatewayMethodContext) => {
     const cfg = getConfig(api)
+    const rawPluginConfig = (api as any).pluginConfig ?? null
+    const rawConfigEntries = (api as any).config?.plugins?.entries ?? null
     ok(gwCtx, {
       ...state,
       runtime: {
@@ -40,6 +42,7 @@ export function registerRpcMethods(ctx: RpcCtx): void {
         autoHandshakeOnStart: cfg.autoHandshakeOnStart ?? true,
         taskPollIntervalMs: cfg.taskPollIntervalMs ?? 2000,
       },
+      _debug: { rawPluginConfig, rawConfigEntries },
     })
   })
 
@@ -49,12 +52,14 @@ export function registerRpcMethods(ctx: RpcCtx): void {
 
   const handleHandshake = async (gwCtx: GatewayMethodContext): Promise<void> => {
     const payload = getPayload(gwCtx)
+    const overrides: Partial<PluginConfig> = {}
+    if (typeof payload.knotworkBackendUrl === 'string') overrides.knotworkBackendUrl = payload.knotworkBackendUrl
+    if (typeof payload.handshakeToken === 'string') overrides.handshakeToken = payload.handshakeToken
+    if (typeof payload.pluginInstanceId === 'string') overrides.pluginInstanceId = payload.pluginInstanceId
+    const cfg = getConfig(api)
+    log(`handshake:debug url=${cfg.knotworkBackendUrl ?? 'MISSING'} token=${cfg.handshakeToken ? 'present' : 'MISSING'} overrides=${JSON.stringify(overrides)}`)
     try {
-      const resp = await runHandshake({
-        knotworkBackendUrl: payload.knotworkBackendUrl as string | undefined,
-        handshakeToken: payload.handshakeToken as string | undefined,
-        pluginInstanceId: payload.pluginInstanceId as string | undefined,
-      })
+      const resp = await runHandshake(overrides)
       ok(gwCtx, { ok: true, pluginInstanceId: state.pluginInstanceId, result: resp })
     } catch (err) {
       const error = rememberError(err)
