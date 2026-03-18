@@ -58,6 +58,8 @@ class RegisteredAgentOut(BaseModel):
     preflight_status: PreflightStatusType = "never_run"
     preflight_run_at: datetime | None = None
     last_used_at: datetime | None = None
+    openclaw_integration_id: UUID | None = None
+    openclaw_remote_agent_id: str | None = None
     created_at: datetime
     updated_at: datetime
 
