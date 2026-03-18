@@ -414,7 +414,7 @@ port_in_use "$FRONTEND_HOST_PORT" && die "Frontend host port ${FRONTEND_HOST_POR
 
 if [[ "$DOMAIN" == "localhost" ]]; then
   prompt_with_default FRONTEND_URL "Frontend URL" "http://localhost:${FRONTEND_HOST_PORT}"
-  prompt_required OPENCLAW_PLUGIN_PACKAGE_URL "OpenClaw plugin package URL (.tar.gz)"
+  prompt_with_default OPENCLAW_PLUGIN_PACKAGE_URL "OpenClaw plugin package URL (.tar.gz)" "https://lab.crea8r.xyz/kw-plugin/latest"
   prompt_with_default RESEND_API "Resend API key (optional for local)" ""
   prompt_with_default EMAIL_FROM "Email from address (local default)" "noreply@localhost"
   BACKEND_URL="http://localhost:${BACKEND_HOST_PORT}"
@@ -422,7 +422,7 @@ if [[ "$DOMAIN" == "localhost" ]]; then
 else
   prompt_with_default FRONTEND_URL "Frontend URL" "https://${DOMAIN}"
   prompt_with_default BACKEND_URL "Backend URL" "https://api.${DOMAIN}"
-  prompt_required OPENCLAW_PLUGIN_PACKAGE_URL "OpenClaw plugin package URL (.tar.gz)"
+  prompt_with_default OPENCLAW_PLUGIN_PACKAGE_URL "OpenClaw plugin package URL (.tar.gz)" "https://lab.crea8r.xyz/kw-plugin/latest"
   prompt_required RESEND_API "Resend API key (re_...)"
   prompt_required EMAIL_FROM "From email (verified on Resend)"
   [[ "$FRONTEND_URL" =~ ^https:// ]] || die "FRONTEND_URL must use https:// for non-local domain"
