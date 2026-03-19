@@ -40,7 +40,10 @@ export default function RequireAuth({ children }: Props) {
   useEffect(() => {
     if (!isLocalhostApp) return
 
-    const shouldBootstrap = !token
+    // Re-bootstrap whenever token or workspaceId is missing.
+    // workspaceId is excluded from localStorage (partialize) so on refresh
+    // token is restored but workspaceId is null — we must re-fetch it.
+    const shouldBootstrap = !token || !workspaceId
 
     if (!shouldBootstrap) return
 
@@ -87,19 +90,23 @@ export default function RequireAuth({ children }: Props) {
     }
   }, [token, workspaceId, isLocalhostApp, login, clearAuth])
 
-  if (!token) {
-    if (isLocalhostApp && !bootstrapFailed) {
-      return (
-        <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
-          <div className="w-full max-w-md rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
-            <p className="text-sm font-medium text-gray-800">Preparing localhost session</p>
-            <p className="mt-2 text-sm text-gray-500">
-              Attempting automatic sign-in for this localhost install.
-            </p>
-          </div>
+  // Show loading while bootstrap is in-flight (no token yet, or token present but
+  // workspaceId is still null because we excluded it from localStorage persistence).
+  const bootstrapInFlight = isLocalhostApp && !bootstrapFailed && (!token || !workspaceId)
+  if (bootstrapInFlight) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
+        <div className="w-full max-w-md rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
+          <p className="text-sm font-medium text-gray-800">Preparing localhost session</p>
+          <p className="mt-2 text-sm text-gray-500">
+            Attempting automatic sign-in for this localhost install.
+          </p>
         </div>
-      )
-    }
+      </div>
+    )
+  }
+
+  if (!token) {
     return <Navigate to="/login" state={{ from: location }} replace />
   }
 

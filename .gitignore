@@ -30,6 +30,7 @@ frontend/.vite/
 # Logs
 *.log
 logs/
+runtime.lock
 
 # OS
 .DS_Store

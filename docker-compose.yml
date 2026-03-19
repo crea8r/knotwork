@@ -155,10 +155,9 @@ services:
       - ./frontend/src:/app/src
       - ./frontend/public:/app/public
     environment:
-      # Used by vite.config.ts server-side proxy (NOT browser env vars).
-      # Must point to the backend Docker service name, not localhost.
-      BACKEND_URL: http://backend-dev:8000
-      BACKEND_WS_URL: ws://backend-dev:8000
+      # Browser-visible env vars — the browser calls the backend directly,
+      # no server-side proxy. Must use the host-mapped port (localhost:8000).
+      VITE_API_URL: http://localhost:${BACKEND_DEV_HOST_PORT:-8000}/api/v1
       VITE_DEV_WORKSPACE_ID: ${VITE_DEV_WORKSPACE_ID:-}
     profiles: ["dev"]
     networks:

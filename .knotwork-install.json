@@ -1,0 +1,17 @@
+{
+  "install_mode": "localhost",
+  "compose_project_name": "knotwork-local",
+  "network_name": "knotwork-local-network",
+  "frontend_url": "http://localhost:3000",
+  "backend_url": "http://localhost:8000",
+  "frontend_host_port": "3000",
+  "backend_host_port": "8000",
+  "images": [
+    "knotwork-local-backend:latest",
+    "knotwork-local-worker:latest",
+    "knotwork-local-frontend-prod:latest",
+    "knotwork-local-backend-dev:latest",
+    "knotwork-local-worker-dev:latest",
+    "knotwork-local-frontend-dev:latest"
+  ]
+}

@@ -2,21 +2,17 @@
  * Axios instance for all API calls.
  * Reads JWT from the Zustand auth store (persisted to localStorage under 'knotwork_auth').
  * Handles 401 by redirecting to /login.
+ *
+ * VITE_API_URL must be an absolute URL (e.g. http://localhost:8000/api/v1).
+ * The frontend calls the backend directly — no proxy, no redirect.
  */
 import axios from 'axios'
 import { useAuthStore } from '@/store/auth'
 
-function resolveApiUrl(): URL {
-  const raw = import.meta.env.VITE_API_URL ?? '/api/v1'
-  const base = typeof window !== 'undefined' ? window.location.origin : 'http://localhost'
-  return new URL(raw, base)
-}
-
-const apiUrl = resolveApiUrl()
-
-export const API_BASE_URL = apiUrl.toString().replace(/\/$/, '')
-export const BACKEND_BASE_URL = apiUrl.origin
-export const WS_API_BASE_URL = API_BASE_URL.replace(/^http/, 'ws')
+const _raw: string = import.meta.env.VITE_API_URL ?? 'http://localhost:8000/api/v1'
+export const API_BASE_URL = _raw.replace(/\/$/, '')
+export const BACKEND_BASE_URL = new URL(API_BASE_URL).origin
+export const WS_API_BASE_URL = API_BASE_URL.replace(/^https?/, (s) => (s === 'https' ? 'wss' : 'ws'))
 
 export const api = axios.create({
   baseURL: API_BASE_URL,

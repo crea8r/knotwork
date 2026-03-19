@@ -65,7 +65,20 @@ async def get_workspace_member(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> WorkspaceMember:
-    """Require the current user to be a member of the specified workspace."""
+    """Require the current user to be a member of the specified workspace.
+
+    Dev bypass: if AUTH_DEV_BYPASS_USER_ID is set and this is the bypass user,
+    return a synthetic owner membership for any workspace so the bypass user can
+    operate regardless of which workspace the DB seed or bootstrap created.
+    """
+    bypass_id: str = getattr(settings, "auth_dev_bypass_user_id", "")
+    if bypass_id and str(user.id) == bypass_id:
+        return WorkspaceMember(
+            workspace_id=workspace_id,
+            user_id=user.id,
+            role="owner",
+        )
+
     result = await db.execute(
         select(WorkspaceMember).where(
             WorkspaceMember.workspace_id == workspace_id,
