@@ -121,9 +121,18 @@ export async function discoverAgents(api: OpenClawApi): Promise<RemoteAgent[]> {
   if (typeof api.agents?.list === 'function') {
     try {
       const res = await api.agents.list({})
+      // Diagnostic: log raw response to help understand why name isn't coming through.
+      try {
+        const raw = JSON.stringify(res)
+        if (raw && raw !== '{}' && raw !== 'null' && raw !== '[]') {
+          console.log(`[knotwork-bridge] handshake:agents-raw ${raw.slice(0, 400)}`)
+        }
+      } catch { /* ignore serialisation errors */ }
       const out = unpackAgentList(res).map(normalizeAgent).filter(Boolean) as RemoteAgent[]
       if (out.length) return out
-    } catch { /* fallthrough */ }
+    } catch (e) {
+      console.log(`[knotwork-bridge] handshake:agents-list-error ${e instanceof Error ? e.message : String(e)}`)
+    }
   }
   // 2. config.agents.list fallback
   const config = (api.config ?? {}) as LooseRecord
@@ -131,11 +140,14 @@ export async function discoverAgents(api: OpenClawApi): Promise<RemoteAgent[]> {
   const cfgList = unpackAgentList(agentsConfig.list)
   const fromCfg = cfgList.map(normalizeAgent).filter(Boolean) as RemoteAgent[]
   if (fromCfg.length) return fromCfg
-  // 4. defaults stub (single "Main Agent")
+  // 3. defaults stub — try to pick up any configured name before falling back to literal 'Main Agent'
   const defaults = agentsConfig.defaults as LooseRecord | undefined
   if (defaults) {
+    const name = String(
+      defaults.displayName ?? defaults.display_name ?? defaults.name ?? 'Main Agent'
+    )
     return [{
-      remote_agent_id: 'main', slug: 'main', display_name: 'Main Agent', tools: [],
+      remote_agent_id: 'main', slug: 'main', display_name: name, tools: [],
       constraints: { model: (defaults.model as LooseRecord | undefined)?.primary ?? null },
     }]
   }
