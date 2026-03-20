@@ -38,6 +38,7 @@ def _to_out(ra: RegisteredAgent) -> RegisteredAgentOut:
         workspace_id=ra.workspace_id,
         display_name=ra.display_name,
         avatar_url=ra.avatar_url,
+        bio=getattr(ra, "bio", None),
         provider=ra.provider,
         agent_ref=ra.agent_ref,
         api_key_hint=ra.credential_hint or _mask_hint(ra.api_key),

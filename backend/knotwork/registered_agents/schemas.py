@@ -33,6 +33,7 @@ class RegisteredAgentCreate(BaseModel):
 class RegisteredAgentUpdate(BaseModel):
     display_name: str | None = Field(default=None, min_length=1, max_length=200)
     avatar_url: str | None = Field(default=None, max_length=500)
+    bio: str | None = Field(default=None, max_length=1000)
 
 
 class AgentConnectivityUpdate(BaseModel):
@@ -45,6 +46,7 @@ class RegisteredAgentOut(BaseModel):
     workspace_id: UUID
     display_name: str
     avatar_url: str | None
+    bio: str | None = None
     provider: ProviderType
     agent_ref: str
     api_key_hint: str | None

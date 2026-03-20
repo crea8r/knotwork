@@ -68,6 +68,9 @@ class RegisteredAgent(Base):
     archived_at: Mapped[datetime | None] = mapped_column(
         sa.DateTime(timezone=True), nullable=True
     )
+    # Workspace-facing description of what this agent does
+    bio: Mapped[str | None] = mapped_column(sa.Text, nullable=True)
+
     # OpenClaw plugin-first binding metadata
     openclaw_integration_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), nullable=True

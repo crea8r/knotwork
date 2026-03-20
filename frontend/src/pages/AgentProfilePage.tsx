@@ -103,6 +103,8 @@ export default function AgentProfilePage() {
   const [avatarUrl, setAvatarUrl] = useState('')
   const [showAvatarPanel, setShowAvatarPanel] = useState(false)
   const [editingName, setEditingName] = useState(false)
+  const [bio, setBio] = useState('')
+  const [editingBio, setEditingBio] = useState(false)
 
   const [chatReady, setChatReady] = useState(false)
   const [chatStatusMsg, setChatStatusMsg] = useState('Connecting…')
@@ -137,6 +139,7 @@ export default function AgentProfilePage() {
     if (!agent) return
     setDisplayName(agent.display_name)
     setAvatarUrl(agent.avatar_url ?? '')
+    setBio(agent.bio ?? '')
     if (agent.provider !== 'openclaw') setTab('skills')
   }, [agent?.id, agent?.provider])
 
@@ -285,6 +288,32 @@ export default function AgentProfilePage() {
           </button>
         </div>
 
+        {/* Bio */}
+        {editingBio ? (
+          <textarea
+            autoFocus
+            value={bio}
+            onChange={(e) => setBio(e.target.value)}
+            onBlur={() => {
+              setEditingBio(false)
+              update.mutate({ display_name: displayName, avatar_url: avatarUrl || null, bio: bio.trim() || null })
+            }}
+            onKeyDown={(e) => { if (e.key === 'Escape') setEditingBio(false) }}
+            rows={2}
+            maxLength={1000}
+            placeholder="Describe what this agent does in your workspace…"
+            className="w-full text-sm text-gray-700 border border-brand-300 rounded-lg px-3 py-2 outline-none resize-none bg-white"
+          />
+        ) : (
+          <button
+            type="button"
+            onClick={() => setEditingBio(true)}
+            className="text-left w-full text-sm text-gray-500 hover:text-gray-700 italic"
+          >
+            {bio.trim() ? bio : <span className="text-gray-300">Add a short bio about what this agent does…</span>}
+          </button>
+        )}
+
         {/* Avatar edit panel */}
         {showAvatarPanel && (
           <div className="border border-gray-200 rounded-xl p-3 space-y-3 bg-gray-50">
@@ -311,8 +340,8 @@ export default function AgentProfilePage() {
                 <div className="grid grid-cols-7 gap-1.5">
                   {allAvatars.map((opt) => (
                     <button key={opt.id} type="button" onClick={() => { setAvatarUrl(opt.url); update.mutate({ display_name: displayName, avatar_url: opt.url }) }} title={opt.label}
-                      className={`rounded-full p-0.5 border ${avatarUrl === opt.url ? 'border-brand-500 ring-2 ring-brand-200' : 'border-gray-200 hover:border-gray-400'}`}>
-                      <img src={opt.url} alt={opt.label} className="w-9 h-9 rounded-full object-cover" />
+                      className={`rounded-xl p-0.5 border ${avatarUrl === opt.url ? 'border-brand-500 ring-2 ring-brand-200' : 'border-gray-200 hover:border-gray-400'}`}>
+                      <img src={opt.url} alt={opt.label} className="w-9 h-9 rounded-lg object-cover" />
                     </button>
                   ))}
                 </div>

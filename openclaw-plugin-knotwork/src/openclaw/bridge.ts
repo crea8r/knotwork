@@ -82,7 +82,7 @@ function normalizeAgent(raw: unknown): RemoteAgent | null {
   return {
     remote_agent_id: sid,
     slug: String(a.slug ?? sid),
-    display_name: String(a.displayName ?? a.name ?? sid),
+    display_name: String(a.displayName ?? a.display_name ?? a.name ?? sid),
     description,
     tools,
     constraints: {

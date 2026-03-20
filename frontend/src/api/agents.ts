@@ -16,6 +16,7 @@ export interface RegisteredAgent {
   workspace_id: string
   display_name: string
   avatar_url?: string | null
+  bio?: string | null
   provider: Provider
   agent_ref: string
   api_key_hint: string | null
@@ -52,6 +53,7 @@ export interface RegisteredAgentCreate {
 export interface RegisteredAgentUpdate {
   display_name?: string
   avatar_url?: string | null
+  bio?: string | null
 }
 
 export interface AgentConnectivityUpdate {

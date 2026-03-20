@@ -106,6 +106,8 @@ async def update_agent(
         ra.display_name = payload["display_name"]
     if "avatar_url" in payload:
         ra.avatar_url = payload["avatar_url"]
+    if "bio" in payload:
+        ra.bio = payload["bio"] or None  # blank string → null
     ra.updated_at = _now()
     await db.commit()
     await db.refresh(ra)
