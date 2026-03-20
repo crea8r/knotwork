@@ -2,12 +2,11 @@ import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
-import { ChevronLeft, ChevronRight, Pencil, Power, RefreshCw, X } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Pencil, RefreshCw, X } from 'lucide-react'
 import Spinner from '@/components/shared/Spinner'
 import Badge from '@/components/shared/Badge'
 import AgentChatTab from '@/components/agents/AgentChatTab'
 import {
-  useActivateAgent,
   useAgent,
   useAgentCapabilityLatest,
   useAgentDebugLinks,
@@ -15,14 +14,13 @@ import {
   useAgentMainChatMessages,
   useAskAgentMainChat,
   useEnsureAgentMainChat,
-  useDeactivateAgent,
   useOpenClawDebugState,
   useRefreshCapabilities,
   useUpdateAgent,
 } from '@/api/agents'
 import { AVATAR_OPTIONS } from '@/utils/agentAvatars'
 
-type ProfileTab = 'chat' | 'skills' | 'history' | 'debug'
+type ProfileTab = 'chat' | 'skills' | 'history' | 'logs'
 const USAGE_PAGE_SIZE = 15
 const SKILLS_REPLY_KEY = (id: string) => `knotwork:skills-reply:${id}`
 
@@ -98,10 +96,9 @@ export default function AgentProfilePage() {
   const ask = useAskAgentMainChat(agentId)
   const update = useUpdateAgent(agentId)
   const refresh = useRefreshCapabilities(agentId)
-  const activate = useActivateAgent(agentId)
-  const deactivate = useDeactivateAgent(agentId)
 
   const [tab, setTab] = useState<ProfileTab>('chat')
+  const [logFilter, setLogFilter] = useState('')
   const [displayName, setDisplayName] = useState('')
   const [avatarUrl, setAvatarUrl] = useState('')
   const [showAvatarPanel, setShowAvatarPanel] = useState(false)
@@ -159,8 +156,12 @@ export default function AgentProfilePage() {
           if (r.status === 'timeout') { if (!cancelled) setChatStatusMsg('Initialization timed out.'); return }
           if (!cancelled) setChatStatusMsg(r.message || 'Connecting…')
         } catch (e: any) {
-          if (!cancelled) setChatStatusMsg(e?.response?.data?.detail ?? 'Connection failed.')
-          return
+          const httpStatus: number = e?.response?.status ?? 0
+          const detail: string = e?.response?.data?.detail ?? e?.message ?? 'Connection failed.'
+          if (!cancelled) setChatStatusMsg(detail)
+          // 4xx = permanent config error (e.g. integration not bound) — stop retrying
+          if (httpStatus >= 400 && httpStatus < 500) return
+          // 5xx / network errors — keep retrying until deadline
         }
         await new Promise((r) => setTimeout(r, 2000))
       }
@@ -238,7 +239,7 @@ export default function AgentProfilePage() {
     { key: 'chat', label: 'Chat' },
     { key: 'skills', label: 'Skills & Tools' },
     { key: 'history', label: 'History' },
-    { key: 'debug', label: 'Debug' },
+    { key: 'logs', label: 'Logs' },
   ]
 
   return (
@@ -275,29 +276,13 @@ export default function AgentProfilePage() {
               </button>
             )}
 
-            <div className="flex items-center gap-1.5 flex-shrink-0">
-              <Badge variant={isOpenClaw ? 'purple' : 'gray'}>{agent.provider}</Badge>
-              <Badge variant={variantByStatus(agent.status)}>{agent.status}</Badge>
-            </div>
+            <Badge variant={isOpenClaw ? 'purple' : 'gray'} className="flex-shrink-0">{agent.provider}</Badge>
           </div>
 
-          <div className="flex items-center gap-2">
-            {agent.status === 'active' ? (
-              <button onClick={() => deactivate.mutate({ reason: 'manual' })}
-                className="text-xs px-2.5 py-1.5 border border-gray-200 rounded-lg bg-white text-gray-700 inline-flex items-center gap-1">
-                <Power size={11} /> Deactivate
-              </button>
-            ) : (
-              <button onClick={() => activate.mutate({ allow_warning: false })}
-                className="text-xs px-2.5 py-1.5 border border-gray-200 rounded-lg bg-white text-gray-700 inline-flex items-center gap-1">
-                <Power size={11} /> Activate
-              </button>
-            )}
-            <button onClick={() => navigate('/settings?tab=agents')}
-              className="text-xs px-3 py-1.5 border border-gray-200 rounded-lg hover:border-gray-400 text-gray-500">
-              ← Settings
-            </button>
-          </div>
+          <button onClick={() => navigate('/settings?tab=agents')}
+            className="text-xs px-3 py-1.5 border border-gray-200 rounded-lg hover:border-gray-400 text-gray-500">
+            ← Settings
+          </button>
         </div>
 
         {/* Avatar edit panel */}
@@ -529,14 +514,14 @@ export default function AgentProfilePage() {
           </div>
         )}
 
-        {/* Debug */}
-        {tab === 'debug' && (
-          <div className="p-6 space-y-5 max-w-3xl">
+        {/* Logs */}
+        {tab === 'logs' && (
+          <div className="p-6 space-y-5">
 
             {/* Bridge debug — OpenClaw only */}
             {isOpenClaw && (
               <div className="space-y-3">
-                <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Bridge debug</p>
+                <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Bridge logs</p>
                 {agentIntegrations.length === 0 && agentTasks.length === 0 ? (
                   <p className="text-sm text-gray-400 italic">No bridge activity for this agent yet.</p>
                 ) : (
@@ -560,59 +545,91 @@ export default function AgentProfilePage() {
                       )
                     })}
 
-                    {agentTasks.length > 0 && (
-                      <div className="border border-gray-200 rounded-lg overflow-hidden text-xs">
-                        <div className="px-3 py-2 bg-gray-50 border-b font-semibold text-gray-500 text-[11px] uppercase tracking-wide">
-                          Recent tasks
-                        </div>
-                        <div className="max-h-60 overflow-auto">
-                          <table className="w-full">
-                            <thead className="bg-white sticky top-0 border-b border-gray-100">
-                              <tr className="text-left text-gray-500">
-                                <th className="px-3 py-2">Task</th>
-                                <th className="px-3 py-2">Node</th>
-                                <th className="px-3 py-2">Status</th>
-                                <th className="px-3 py-2">Failed at</th>
-                                <th className="px-3 py-2">Events</th>
-                                <th className="px-3 py-2">Created</th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {agentTasks.map((t) => (
-                                <Fragment key={t.task_id}>
-                                  <tr className="border-t border-gray-50 align-top">
-                                    <td className="px-3 py-2 font-mono text-gray-700">{t.task_id.slice(0, 8)}</td>
-                                    <td className="px-3 py-2 text-gray-600">{t.node_id}</td>
-                                    <td className="px-3 py-2">
-                                      <Badge variant={t.status === 'completed' ? 'green' : t.status === 'failed' ? 'red' : t.status === 'pending' ? 'orange' : 'gray'}>
-                                        {t.status}
-                                      </Badge>
-                                    </td>
-                                    <td className="px-3 py-2 text-gray-500">
-                                      {t.status === 'failed' ? formatTimestamp(t.failed_at) : '—'}
-                                    </td>
-                                    <td className="px-3 py-2 text-gray-600">{t.event_count}</td>
-                                    <td className="px-3 py-2 text-gray-400">{formatTimestamp(t.created_at)}</td>
+                    {agentTasks.length > 0 && (() => {
+                      const q = logFilter.trim().toLowerCase()
+                      const filtered = q
+                        ? agentTasks.filter((t) =>
+                            t.task_id.toLowerCase().includes(q) ||
+                            (t.node_id ?? '').toLowerCase().includes(q) ||
+                            t.status.toLowerCase().includes(q) ||
+                            (t.run_id ?? '').toLowerCase().includes(q)
+                          )
+                        : agentTasks
+                      return (
+                        <div className="border border-gray-200 rounded-lg overflow-hidden text-xs">
+                          <div className="px-3 py-2 bg-gray-50 border-b flex items-center gap-2">
+                            <span className="font-semibold text-gray-500 text-[11px] uppercase tracking-wide flex-shrink-0">
+                              Tasks
+                            </span>
+                            <input
+                              type="text"
+                              value={logFilter}
+                              onChange={(e) => setLogFilter(e.target.value)}
+                              placeholder="Filter by task ID, node, status, run ID…"
+                              className="flex-1 text-xs border border-gray-200 rounded px-2 py-1 outline-none focus:border-brand-400 bg-white"
+                            />
+                            {logFilter && (
+                              <button onClick={() => setLogFilter('')} className="text-gray-400 hover:text-gray-600 flex-shrink-0">
+                                <X size={12} />
+                              </button>
+                            )}
+                            {q && (
+                              <span className="text-[10px] text-gray-400 flex-shrink-0">{filtered.length} / {agentTasks.length}</span>
+                            )}
+                          </div>
+                          <div className="max-h-[60vh] overflow-auto">
+                            <table className="w-full">
+                              <thead className="bg-white sticky top-0 border-b border-gray-100">
+                                <tr className="text-left text-gray-500">
+                                  <th className="px-3 py-2">Task</th>
+                                  <th className="px-3 py-2">Node</th>
+                                  <th className="px-3 py-2">Status</th>
+                                  <th className="px-3 py-2">Failed at</th>
+                                  <th className="px-3 py-2">Events</th>
+                                  <th className="px-3 py-2">Created</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {filtered.length === 0 ? (
+                                  <tr>
+                                    <td colSpan={6} className="px-3 py-4 text-center text-gray-400 italic">No tasks match "{logFilter}"</td>
                                   </tr>
-                                  {t.status === 'failed' && t.error_message && (
-                                    <tr className="border-t border-red-50 bg-red-50/60">
-                                      <td className="px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-red-700">
-                                        Error
+                                ) : filtered.map((t) => (
+                                  <Fragment key={t.task_id}>
+                                    <tr className="border-t border-gray-50 align-top">
+                                      <td className="px-3 py-2 font-mono text-gray-700">{t.task_id.slice(0, 8)}</td>
+                                      <td className="px-3 py-2 text-gray-600">{t.node_id}</td>
+                                      <td className="px-3 py-2">
+                                        <Badge variant={t.status === 'completed' ? 'green' : t.status === 'failed' ? 'red' : t.status === 'pending' ? 'orange' : 'gray'}>
+                                          {t.status}
+                                        </Badge>
                                       </td>
-                                      <td colSpan={5} className="px-3 py-2">
-                                        <pre className="whitespace-pre-wrap break-words text-[11px] leading-relaxed text-red-700">
-                                          {t.error_message}
-                                        </pre>
+                                      <td className="px-3 py-2 text-gray-500">
+                                        {t.status === 'failed' ? formatTimestamp(t.failed_at) : '—'}
                                       </td>
+                                      <td className="px-3 py-2 text-gray-600">{t.event_count}</td>
+                                      <td className="px-3 py-2 text-gray-400">{formatTimestamp(t.created_at)}</td>
                                     </tr>
-                                  )}
-                                </Fragment>
-                              ))}
-                            </tbody>
-                          </table>
+                                    {t.status === 'failed' && t.error_message && (
+                                      <tr className="border-t border-red-50 bg-red-50/60">
+                                        <td className="px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-red-700">
+                                          Error
+                                        </td>
+                                        <td colSpan={5} className="px-3 py-2">
+                                          <pre className="whitespace-pre-wrap break-words text-[11px] leading-relaxed text-red-700">
+                                            {t.error_message}
+                                          </pre>
+                                        </td>
+                                      </tr>
+                                    )}
+                                  </Fragment>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
                         </div>
-                      </div>
-                    )}
+                      )
+                    })()}
                   </div>
                 )}
               </div>
