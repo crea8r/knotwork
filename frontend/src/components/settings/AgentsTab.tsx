@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
-import { ChevronDown, ChevronRight, Copy, RefreshCw, Trash2 } from 'lucide-react'
+import { ChevronDown, ChevronRight, Copy, Trash2 } from 'lucide-react'
 import Card from '@/components/shared/Card'
 import Badge from '@/components/shared/Badge'
 import Spinner from '@/components/shared/Spinner'
@@ -8,39 +8,82 @@ import { BACKEND_BASE_URL } from '@/api/client'
 import {
   useDeleteOpenClawIntegration,
   useCreateOpenClawHandshakeToken,
+  useOpenClawDebugState,
   type OpenClawIntegration,
+  type OpenClawIntegrationDebugState,
+  type OpenClawTaskDebugItem,
   useOpenClawIntegrations,
   useOpenClawRemoteAgents,
-  useRefreshCapabilities,
   useRegisterOpenClawRemoteAgent,
   useRegisteredAgents,
   type OpenClawRemoteAgent,
   type RegisteredAgent,
 } from '@/api/agents'
 
-function statusVariant(s: string): 'green' | 'gray' | 'orange' | 'red' | 'purple' {
-  if (s === 'active') return 'green'
-  if (s === 'inactive') return 'gray'
-  if (s === 'fail') return 'red'
-  if (s === 'warning') return 'orange'
-  return 'purple'
+// ── Connection status helpers ─────────────────────────────────────────────────
+
+function relativeTime(iso: string): string {
+  const secs = Math.floor((Date.now() - new Date(iso).getTime()) / 1000)
+  if (secs < 60) return `${secs}s ago`
+  const mins = Math.floor(secs / 60)
+  if (mins < 60) return `${mins}m ago`
+  return `${Math.floor(mins / 60)}h ${mins % 60}m ago`
 }
 
-function freshnessVariant(f: string): 'green' | 'orange' | 'gray' {
-  if (f === 'fresh') return 'green'
-  if (f === 'stale') return 'orange'
-  return 'gray'
+function taskDuration(claimedAt: string): string {
+  const secs = Math.floor((Date.now() - new Date(claimedAt).getTime()) / 1000)
+  if (secs < 60) return `${secs}s`
+  const mins = Math.floor(secs / 60)
+  if (mins < 60) return `${mins}m ${secs % 60}s`
+  return `${Math.floor(mins / 60)}h ${mins % 60}m`
+}
+
+type ConnStatus = 'active' | 'recent' | 'stale'
+
+function connStatus(lastSeenAt: string): ConnStatus {
+  const diffMs = Date.now() - new Date(lastSeenAt).getTime()
+  if (diffMs < 30_000) return 'active'
+  if (diffMs < 120_000) return 'recent'
+  return 'stale'
+}
+
+const CONN_DOT: Record<ConnStatus, string> = {
+  active: 'bg-green-400',
+  recent: 'bg-amber-400',
+  stale: 'bg-gray-300',
+}
+
+const CONN_LABEL: Record<ConnStatus, string> = {
+  active: 'connected',
+  recent: 'idle',
+  stale: 'offline',
+}
+
+// ── Last task activity summary ────────────────────────────────────────────────
+// Picks the most informative task from a list: running > failed > completed > other.
+
+type TaskSummary =
+  | { kind: 'running'; task: OpenClawTaskDebugItem }
+  | { kind: 'completed'; task: OpenClawTaskDebugItem }
+  | { kind: 'failed'; task: OpenClawTaskDebugItem }
+  | { kind: 'none' }
+
+function summariseTasks(tasks: OpenClawTaskDebugItem[]): TaskSummary {
+  if (tasks.length === 0) return { kind: 'none' }
+  const running = tasks.find((t) => t.status === 'claimed')
+  if (running) return { kind: 'running', task: running }
+  const failed = tasks.find((t) => t.status === 'failed')
+  if (failed) return { kind: 'failed', task: failed }
+  const completed = tasks.find((t) => t.status === 'completed')
+  if (completed) return { kind: 'completed', task: completed }
+  return { kind: 'none' }
 }
 
 export default function AgentsTab() {
   const [q, setQ] = useState('')
-  const [statusFilter, setStatusFilter] = useState('')
   const [pluginOpen, setPluginOpen] = useState(false)
 
-  const { data: agents = [], isLoading } = useRegisteredAgents({
-    q: q || undefined,
-    status: statusFilter || undefined,
-  })
+  const { data: agents = [], isLoading } = useRegisteredAgents({ q: q || undefined })
   // Unfiltered list used only to compute which remote agents are already registered.
   // Must not use the search-filtered list — otherwise agents outside the current
   // search would re-appear as "unregistered" in the remote agent section.
@@ -50,6 +93,9 @@ export default function AgentsTab() {
   const token = handshake.data?.token ?? ''
 
   const { data: integrations = [] } = useOpenClawIntegrations()
+  // Debug state auto-refetches every 5s — source of truth for connection status + tasks.
+  const { data: debugState } = useOpenClawDebugState()
+
   const registeredRefs = new Set(allAgents.map((a) => a.agent_ref))
   const nonOpenClawAgents = agents.filter((agent) => agent.provider !== 'openclaw')
   const openClawRegisteredAgents = agents.filter((agent) => agent.provider === 'openclaw')
@@ -111,16 +157,10 @@ export default function AgentsTab() {
         )}
       </Card>
 
-      {/* Filters */}
-      <div className="flex gap-2 flex-wrap">
+      {/* Search */}
+      <div className="flex gap-2">
         <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search agents…"
           className="flex-1 min-w-0 border border-gray-200 rounded-lg px-3 py-2 text-sm" />
-        <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}
-          className="border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white">
-          <option value="">All agents</option>
-          <option value="active">Active</option>
-          <option value="inactive">Inactive</option>
-        </select>
       </div>
 
       {loading ? (
@@ -137,6 +177,8 @@ export default function AgentsTab() {
               integration={integration}
               registeredAgents={openClawRegisteredAgents.filter((agent) => agent.openclaw_integration_id === integration.id)}
               registeredRefs={registeredRefs}
+              integrationDebug={debugState?.integrations.find((i) => i.integration_id === integration.id)}
+              allRecentTasks={(debugState?.recent_tasks ?? []).filter((t) => t.integration_id === integration.id)}
             />
           ))}
 
@@ -146,7 +188,7 @@ export default function AgentsTab() {
                 <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Other agents</p>
               </div>
               <ul className="divide-y divide-gray-100">
-                {nonOpenClawAgents.map((agent) => <AgentRow key={agent.id} agent={agent} />)}
+                {nonOpenClawAgents.map((agent) => <AgentRow key={agent.id} agent={agent} recentTasks={[]} />)}
               </ul>
             </Card>
           )}
@@ -160,10 +202,14 @@ function OpenClawIntegrationSection({
   integration,
   registeredAgents,
   registeredRefs,
+  integrationDebug,
+  allRecentTasks,
 }: {
   integration: OpenClawIntegration
   registeredAgents: RegisteredAgent[]
   registeredRefs: Set<string>
+  integrationDebug?: OpenClawIntegrationDebugState
+  allRecentTasks: OpenClawTaskDebugItem[]
 }) {
   const { data: remoteAgents = [], isLoading } = useOpenClawRemoteAgents(integration.id)
   const registerRemote = useRegisterOpenClawRemoteAgent()
@@ -178,6 +224,13 @@ function OpenClawIntegrationSection({
     deleteIntegration.mutate(integration.id)
   }
 
+  // Connection status derived from debug state (refreshed every 5s).
+  const lastSeenAt = integrationDebug?.last_seen_at ?? integration.last_seen_at
+  const cs = connStatus(lastSeenAt)
+
+  // Tasks currently running — shown at integration level when no agents are registered yet.
+  const runningTasks = allRecentTasks.filter((t) => t.status === 'claimed')
+
   return (
     <Card className="overflow-hidden">
       <div className="px-4 py-3 border-b bg-gray-50/70 flex items-center justify-between gap-3 flex-wrap">
@@ -185,7 +238,10 @@ function OpenClawIntegrationSection({
           <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Plugin</p>
           <div className="mt-1 flex items-center gap-2 flex-wrap">
             <span className="font-mono text-sm text-gray-700">{integration.plugin_instance_id}</span>
-            <Badge variant="gray">{integration.status}</Badge>
+            <span className="inline-flex items-center gap-1.5">
+              <span className={`inline-block w-2 h-2 rounded-full ${CONN_DOT[cs]}`} />
+              <span className="text-xs text-gray-500">{CONN_LABEL[cs]} · {relativeTime(lastSeenAt)}</span>
+            </span>
             {integration.plugin_version && <Badge variant="purple">{integration.plugin_version}</Badge>}
           </div>
         </div>
@@ -200,6 +256,36 @@ function OpenClawIntegrationSection({
         </button>
       </div>
 
+      {/* Running tasks panel — shown when tasks are active but no agents registered yet,
+          so the user knows something is happening before they've completed setup. */}
+      {runningTasks.length > 0 && registeredAgents.length === 0 && (
+        <div className="px-4 py-3 border-b bg-blue-50/50">
+          <p className="text-[11px] font-semibold uppercase tracking-wide text-blue-600 mb-2">
+            {runningTasks.length} task{runningTasks.length > 1 ? 's' : ''} running
+          </p>
+          <ul className="space-y-1.5">
+            {runningTasks.map((task) => {
+              const stalled = task.latest_event_at
+                ? (Date.now() - new Date(task.latest_event_at).getTime()) > 5 * 60 * 1000
+                : false
+              return (
+                <li key={task.task_id} className="flex items-start gap-2 text-xs">
+                  <span className={`mt-0.5 w-1.5 h-1.5 rounded-full flex-shrink-0 ${stalled ? 'bg-amber-400' : 'bg-blue-400'}`} />
+                  <span className="font-mono text-gray-700">{task.node_id}</span>
+                  {task.run_id && <span className="text-gray-400">run:{task.run_id.slice(0, 8)}</span>}
+                  {task.claimed_at && <span className="text-gray-400">{taskDuration(task.claimed_at)}</span>}
+                  {task.latest_event_at && (
+                    <span className={stalled ? 'text-amber-600 font-medium' : 'text-gray-400'}>
+                      · {relativeTime(task.latest_event_at)}{stalled ? ' ⚠' : ''}
+                    </span>
+                  )}
+                </li>
+              )
+            })}
+          </ul>
+        </div>
+      )}
+
       {isLoading ? (
         <div className="p-4"><Spinner /></div>
       ) : (
@@ -210,7 +296,9 @@ function OpenClawIntegrationSection({
                 <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-400">Registered in Knotwork</p>
               </div>
               <ul className="divide-y divide-gray-100">
-                {registeredAgents.map((agent) => <AgentRow key={agent.id} agent={agent} />)}
+                {registeredAgents.map((agent) => (
+                  <AgentRow key={agent.id} agent={agent} recentTasks={allRecentTasks} />
+                ))}
               </ul>
             </>
           )}
@@ -244,11 +332,10 @@ function OpenClawIntegrationSection({
   )
 }
 
-function AgentRow({ agent }: { agent: RegisteredAgent }) {
-  const refresh = useRefreshCapabilities(agent.id)
-  const synced = agent.capability_refreshed_at
-    ? new Date(agent.capability_refreshed_at).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
-    : null
+// recentTasks: all tasks for this integration (all statuses), used to derive last activity.
+// Empty for non-OpenClaw agents.
+function AgentRow({ agent, recentTasks }: { agent: RegisteredAgent; recentTasks: OpenClawTaskDebugItem[] }) {
+  const summary = summariseTasks(recentTasks)
 
   return (
     <li className="px-4 py-3 flex items-center justify-between gap-3 flex-wrap">
@@ -261,30 +348,54 @@ function AgentRow({ agent }: { agent: RegisteredAgent }) {
           </div>
         )}
         <div className="min-w-0">
-          <div className="flex items-center gap-2 flex-wrap">
-            <Link to={`/agents/${agent.id}`} className="text-sm font-medium text-brand-700 hover:underline truncate">
-              {agent.display_name}
-            </Link>
-            <Badge variant={statusVariant(agent.status)}>{agent.status}</Badge>
-          </div>
+          <Link to={`/agents/${agent.id}`} className="text-sm font-medium text-brand-700 hover:underline truncate block">
+            {agent.display_name}
+          </Link>
           <p className="text-[11px] text-gray-400 mt-0.5 font-mono truncate">{agent.agent_ref}</p>
         </div>
       </div>
 
-      {/* Skills & Tools sync */}
-      <div className="flex items-center gap-2">
-        <div className="text-right">
-          <p className="text-xs font-medium text-gray-600">Skills &amp; Tools</p>
-          <div className="flex items-center gap-1.5 justify-end mt-0.5">
-            <Badge variant={freshnessVariant(agent.capability_freshness)}>{agent.capability_freshness}</Badge>
-            <span className="text-[11px] text-gray-400">{synced ? `synced ${synced}` : 'not synced'}</span>
-          </div>
-        </div>
-        <button onClick={() => refresh.mutate({ save_snapshot: true })} disabled={refresh.isPending}
-          title="Sync skills & tools now"
-          className="w-7 h-7 rounded-lg border border-gray-200 bg-white flex items-center justify-center text-gray-500 hover:text-brand-600 disabled:opacity-40">
-          <RefreshCw size={12} className={refresh.isPending ? 'animate-spin' : ''} />
-        </button>
+      {/* Last task activity */}
+      <div className="text-right flex-shrink-0">
+        {summary.kind === 'running' && (
+          <>
+            <div className="flex items-center justify-end gap-1.5">
+              <span className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse" />
+              <span className="text-xs font-medium text-blue-700">Running</span>
+            </div>
+            <p className="text-[11px] text-gray-400 mt-0.5">
+              {summary.task.node_id}
+              {summary.task.claimed_at && ` · ${taskDuration(summary.task.claimed_at)}`}
+              {summary.task.latest_event_at && (() => {
+                const stalled = Date.now() - new Date(summary.task.latest_event_at).getTime() > 5 * 60 * 1000
+                return stalled
+                  ? <span className="text-amber-600"> · last activity {relativeTime(summary.task.latest_event_at)} ⚠</span>
+                  : ` · ${relativeTime(summary.task.latest_event_at)}`
+              })()}
+            </p>
+          </>
+        )}
+        {summary.kind === 'completed' && (
+          <>
+            <span className="text-xs text-green-700">✓ Completed</span>
+            <p className="text-[11px] text-gray-400 mt-0.5">
+              {summary.task.node_id}
+              {summary.task.latest_event_at && ` · ${relativeTime(summary.task.latest_event_at)}`}
+            </p>
+          </>
+        )}
+        {summary.kind === 'failed' && (
+          <>
+            <span className="text-xs text-red-600 font-medium">✗ Failed</span>
+            <p className="text-[11px] text-gray-400 mt-0.5">
+              {summary.task.node_id}
+              {summary.task.latest_event_at && ` · ${relativeTime(summary.task.latest_event_at)}`}
+            </p>
+          </>
+        )}
+        {summary.kind === 'none' && (
+          <span className="text-[11px] text-gray-300">No runs yet</span>
+        )}
       </div>
     </li>
   )
