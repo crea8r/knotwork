@@ -70,13 +70,21 @@ type TaskSummary =
 
 function summariseTasks(tasks: OpenClawTaskDebugItem[]): TaskSummary {
   if (tasks.length === 0) return { kind: 'none' }
+  // Running takes priority regardless of time.
   const running = tasks.find((t) => t.status === 'claimed')
   if (running) return { kind: 'running', task: running }
-  const failed = tasks.find((t) => t.status === 'failed')
-  if (failed) return { kind: 'failed', task: failed }
-  const completed = tasks.find((t) => t.status === 'completed')
-  if (completed) return { kind: 'completed', task: completed }
-  return { kind: 'none' }
+  // For finished tasks, show the most recent one by latest_event_at (fallback: claimed_at).
+  // Never let an old failure overshadow a newer success.
+  const finished = tasks
+    .filter((t) => t.status === 'completed' || t.status === 'failed')
+    .sort((a, b) => {
+      const ta = a.latest_event_at ?? a.claimed_at ?? ''
+      const tb = b.latest_event_at ?? b.claimed_at ?? ''
+      return tb.localeCompare(ta)
+    })
+  const last = finished[0]
+  if (!last) return { kind: 'none' }
+  return { kind: last.status as 'completed' | 'failed', task: last }
 }
 
 export default function AgentsTab() {
