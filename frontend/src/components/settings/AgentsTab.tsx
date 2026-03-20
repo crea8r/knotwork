@@ -342,6 +342,10 @@ function OpenClawIntegrationSection({
 // Empty for non-OpenClaw agents.
 function AgentRow({ agent, recentTasks }: { agent: RegisteredAgent; recentTasks: OpenClawTaskDebugItem[] }) {
   const summary = summariseTasks(recentTasks)
+  // Failures are only relevant when more recent than the last success.
+  const mostRecentFailure = summary.failed[0]?.latest_event_at ?? summary.failed[0]?.claimed_at ?? ''
+  const lastSuccess = summary.lastCompleted?.latest_event_at ?? summary.lastCompleted?.claimed_at ?? ''
+  const hasRelevantFailures = summary.failed.length > 0 && mostRecentFailure > lastSuccess
 
   return (
     <li className="px-4 py-3 flex items-center justify-between gap-3 flex-wrap">
@@ -384,8 +388,8 @@ function AgentRow({ agent, recentTasks }: { agent: RegisteredAgent; recentTasks:
           </div>
         )}
 
-        {/* Failed — always shown when present, regardless of running */}
-        {summary.failed.length > 0 && (
+        {/* Failed — only shown when more recent than the last success */}
+        {hasRelevantFailures && (
           <div className="flex items-center justify-end gap-1.5">
             {summary.failed.length === 1 ? (
               <span className="text-xs text-red-600 font-medium">
@@ -397,8 +401,8 @@ function AgentRow({ agent, recentTasks }: { agent: RegisteredAgent; recentTasks:
           </div>
         )}
 
-        {/* Completed — only shown when nothing running or failed */}
-        {summary.running.length === 0 && summary.failed.length === 0 && summary.lastCompleted && (
+        {/* Completed — only shown when nothing running or relevant failures */}
+        {summary.running.length === 0 && !hasRelevantFailures && summary.lastCompleted && (
           <div className="flex items-center justify-end gap-1.5">
             <span className="text-xs text-green-700">
               ✓ Completed · {relativeTime(summary.lastCompleted.latest_event_at ?? summary.lastCompleted.claimed_at ?? '')}
@@ -407,7 +411,7 @@ function AgentRow({ agent, recentTasks }: { agent: RegisteredAgent; recentTasks:
         )}
 
         {/* Empty */}
-        {summary.running.length === 0 && summary.failed.length === 0 && !summary.lastCompleted && (
+        {summary.running.length === 0 && !hasRelevantFailures && !summary.lastCompleted && (
           <span className="text-[11px] text-gray-300">No runs yet</span>
         )}
       </div>
