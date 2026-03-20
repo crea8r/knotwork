@@ -60,31 +60,29 @@ const CONN_LABEL: Record<ConnStatus, string> = {
 }
 
 // ── Last task activity summary ────────────────────────────────────────────────
-// Picks the most informative task from a list: running > failed > completed > other.
 
-type TaskSummary =
-  | { kind: 'running'; task: OpenClawTaskDebugItem }
-  | { kind: 'completed'; task: OpenClawTaskDebugItem }
-  | { kind: 'failed'; task: OpenClawTaskDebugItem }
-  | { kind: 'none' }
+type TaskSummary = {
+  running: OpenClawTaskDebugItem[]   // status === 'claimed'
+  failed: OpenClawTaskDebugItem[]    // status === 'failed', most recent first
+  lastCompleted: OpenClawTaskDebugItem | null
+}
 
 function summariseTasks(tasks: OpenClawTaskDebugItem[]): TaskSummary {
-  if (tasks.length === 0) return { kind: 'none' }
-  // Running takes priority regardless of time.
-  const running = tasks.find((t) => t.status === 'claimed')
-  if (running) return { kind: 'running', task: running }
-  // For finished tasks, show the most recent one by latest_event_at (fallback: claimed_at).
-  // Never let an old failure overshadow a newer success.
-  const finished = tasks
-    .filter((t) => t.status === 'completed' || t.status === 'failed')
-    .sort((a, b) => {
-      const ta = a.latest_event_at ?? a.claimed_at ?? ''
-      const tb = b.latest_event_at ?? b.claimed_at ?? ''
-      return tb.localeCompare(ta)
-    })
-  const last = finished[0]
-  if (!last) return { kind: 'none' }
-  return { kind: last.status as 'completed' | 'failed', task: last }
+  const byRecency = (a: OpenClawTaskDebugItem, b: OpenClawTaskDebugItem) => {
+    const ta = a.latest_event_at ?? a.claimed_at ?? ''
+    const tb = b.latest_event_at ?? b.claimed_at ?? ''
+    return tb.localeCompare(ta)
+  }
+  return {
+    running: tasks.filter((t) => t.status === 'claimed'),
+    failed:  tasks.filter((t) => t.status === 'failed').sort(byRecency),
+    lastCompleted: tasks.filter((t) => t.status === 'completed').sort(byRecency)[0] ?? null,
+  }
+}
+
+function isStalled(task: OpenClawTaskDebugItem): boolean {
+  return !!task.latest_event_at &&
+    Date.now() - new Date(task.latest_event_at).getTime() > 5 * 60 * 1000
 }
 
 export default function AgentsTab() {
@@ -363,45 +361,53 @@ function AgentRow({ agent, recentTasks }: { agent: RegisteredAgent; recentTasks:
         </div>
       </div>
 
-      {/* Last task activity */}
-      <div className="text-right flex-shrink-0">
-        {summary.kind === 'running' && (
-          <>
-            <div className="flex items-center justify-end gap-1.5">
-              <span className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse" />
-              <span className="text-xs font-medium text-blue-700">Running</span>
-            </div>
-            <p className="text-[11px] text-gray-400 mt-0.5">
-              {summary.task.node_id}
-              {summary.task.claimed_at && ` · ${taskDuration(summary.task.claimed_at)}`}
-              {summary.task.latest_event_at && (() => {
-                const stalled = Date.now() - new Date(summary.task.latest_event_at).getTime() > 5 * 60 * 1000
-                return stalled
-                  ? <span className="text-amber-600"> · last activity {relativeTime(summary.task.latest_event_at)} ⚠</span>
-                  : ` · ${relativeTime(summary.task.latest_event_at)}`
-              })()}
-            </p>
-          </>
+      {/* Last task activity — counts when multiple; detail when single */}
+      <div className="text-right flex-shrink-0 space-y-0.5">
+        {/* Running */}
+        {summary.running.length > 0 && (
+          <div className="flex items-center justify-end gap-1.5">
+            <span className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse flex-shrink-0" />
+            {summary.running.length === 1 ? (
+              <span className="text-xs font-medium text-blue-700">
+                Running
+                {summary.running[0].claimed_at && ` · ${taskDuration(summary.running[0].claimed_at)}`}
+                {isStalled(summary.running[0]) && (
+                  <span className="text-amber-600"> · {relativeTime(summary.running[0].latest_event_at!)} ⚠</span>
+                )}
+              </span>
+            ) : (
+              <span className="text-xs font-medium text-blue-700">
+                {summary.running.length} running
+                {summary.running.some(isStalled) && <span className="text-amber-600"> ({summary.running.filter(isStalled).length} stalled)</span>}
+              </span>
+            )}
+          </div>
         )}
-        {summary.kind === 'completed' && (
-          <>
-            <span className="text-xs text-green-700">✓ Completed</span>
-            <p className="text-[11px] text-gray-400 mt-0.5">
-              {summary.task.node_id}
-              {summary.task.latest_event_at && ` · ${relativeTime(summary.task.latest_event_at)}`}
-            </p>
-          </>
+
+        {/* Failed — always shown when present, regardless of running */}
+        {summary.failed.length > 0 && (
+          <div className="flex items-center justify-end gap-1.5">
+            {summary.failed.length === 1 ? (
+              <span className="text-xs text-red-600 font-medium">
+                ✗ Failed · {relativeTime(summary.failed[0].latest_event_at ?? summary.failed[0].claimed_at ?? '')}
+              </span>
+            ) : (
+              <span className="text-xs text-red-600 font-medium">✗ {summary.failed.length} failed</span>
+            )}
+          </div>
         )}
-        {summary.kind === 'failed' && (
-          <>
-            <span className="text-xs text-red-600 font-medium">✗ Failed</span>
-            <p className="text-[11px] text-gray-400 mt-0.5">
-              {summary.task.node_id}
-              {summary.task.latest_event_at && ` · ${relativeTime(summary.task.latest_event_at)}`}
-            </p>
-          </>
+
+        {/* Completed — only shown when nothing running or failed */}
+        {summary.running.length === 0 && summary.failed.length === 0 && summary.lastCompleted && (
+          <div className="flex items-center justify-end gap-1.5">
+            <span className="text-xs text-green-700">
+              ✓ Completed · {relativeTime(summary.lastCompleted.latest_event_at ?? summary.lastCompleted.claimed_at ?? '')}
+            </span>
+          </div>
         )}
-        {summary.kind === 'none' && (
+
+        {/* Empty */}
+        {summary.running.length === 0 && summary.failed.length === 0 && !summary.lastCompleted && (
           <span className="text-[11px] text-gray-300">No runs yet</span>
         )}
       </div>
