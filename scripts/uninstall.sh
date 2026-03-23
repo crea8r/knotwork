@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-PARENT_DIR="$(dirname "$ROOT_DIR")"
-cd "$ROOT_DIR"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+ROOT_DIR=""
+PARENT_DIR=""
 TEMP_DIR=""
-INSTALL_MANIFEST="$ROOT_DIR/.knotwork-install.json"
+INSTALL_MANIFEST=""
 
 SUDO=""
 if [[ "${EUID}" -ne 0 ]]; then
@@ -53,6 +53,16 @@ prompt_with_default() {
     value="$default_value"
   fi
   printf -v "$var_name" "%s" "$value"
+}
+
+resolve_root_dir() {
+  local default_dir="${HOME}/.knotwork"
+  prompt_with_default ROOT_DIR "Installation directory" "$default_dir"
+  ROOT_DIR="${ROOT_DIR/#\~/$HOME}"
+  [[ -d "$ROOT_DIR" ]] || die "Installation directory not found: $ROOT_DIR"
+  PARENT_DIR="$(dirname "$ROOT_DIR")"
+  INSTALL_MANIFEST="$ROOT_DIR/.knotwork-install.json"
+  cd "$ROOT_DIR"
 }
 
 confirm_or_die() {
@@ -334,6 +344,14 @@ docker_cleanup() {
   compose_cmd --profile prod down --remove-orphans --volumes || warn "docker compose down reported errors"
   compose_cmd --profile dev down --remove-orphans --volumes || warn "docker compose dev down reported errors"
 
+  local net
+  net="$(manifest_value network_name 2>/dev/null || true)"
+  [[ -n "$net" ]] || net="${project}-network"
+  if docker network inspect "$net" >/dev/null 2>&1; then
+    log "Removing Docker network '${net}'..."
+    docker network rm "$net" >/dev/null 2>&1 || warn "Could not remove network: $net"
+  fi
+
   log "Removing project images only..."
   while IFS= read -r image; do
     [[ -n "$image" ]] || continue
@@ -366,6 +384,7 @@ cleanup_full_tree() {
 }
 
 main() {
+  resolve_root_dir
   parse_args "$@"
   require_cmd docker
   require_cmd python3

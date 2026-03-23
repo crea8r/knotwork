@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-cd "$ROOT_DIR"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+ROOT_DIR=""  # resolved interactively after helper functions are loaded
 
 SUDO=""
 if [[ "${EUID}" -ne 0 ]]; then
@@ -109,6 +109,15 @@ prompt_with_default() {
     value="$default_value"
   fi
   printf -v "$var_name" "%s" "$value"
+}
+
+resolve_root_dir() {
+  local default_dir="${HOME}/.knotwork"
+  prompt_with_default ROOT_DIR "Installation directory" "$default_dir"
+  # expand leading tilde
+  ROOT_DIR="${ROOT_DIR/#\~/$HOME}"
+  mkdir -p "$ROOT_DIR"
+  cd "$ROOT_DIR"
 }
 
 set_env_key() {
@@ -377,6 +386,8 @@ wait_backend_health() {
   die "Backend did not become healthy in time."
 }
 
+resolve_root_dir
+
 require_cmd curl
 require_cmd python3
 if ! command -v docker >/dev/null 2>&1; then
@@ -386,8 +397,8 @@ if ! docker compose version >/dev/null 2>&1; then
   die "Docker Compose plugin is required (docker compose ...). Install or enable it first."
 fi
 docker info >/dev/null 2>&1 || die "Docker daemon is not reachable. Start Docker first."
-[[ -f ".env.docker.example" ]] || die "Missing .env.docker.example"
-[[ -f "docker-compose.yml" ]] || die "Missing docker-compose.yml"
+[[ -f "$SCRIPT_DIR/.env.docker.example" ]] || die "Missing .env.docker.example in $SCRIPT_DIR"
+[[ -f "$SCRIPT_DIR/docker-compose.yml" ]] || die "Missing docker-compose.yml in $SCRIPT_DIR"
 
 if [[ "$INSTALL_MODE" == "dev" ]]; then
   echo "Knotwork dev installer (localhost only, hot-reload — code changes take effect without reinstalling)"
