@@ -559,6 +559,10 @@ write_env_file "$ROOT_DIR/.env"
 ln -sf "$ROOT_DIR/.env" "$SCRIPT_DIR/.env"
 write_install_manifest .knotwork-install.json
 
+# Create the external network now so compose can reuse it regardless of prior state
+log "Ensuring Docker network '${KNOTWORK_NETWORK_NAME}' exists..."
+docker network create "$KNOTWORK_NETWORK_NAME" 2>/dev/null || true
+
 COMPOSE_CMD=(docker compose --project-name "$COMPOSE_PROJECT_NAME" -f "$SCRIPT_DIR/docker-compose.yml" --env-file "$ROOT_DIR/.env")
 # Service names and compose profile differ by install mode.
 if [[ "$INSTALL_MODE" == "dev" ]]; then

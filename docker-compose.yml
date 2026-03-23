@@ -1,8 +1,12 @@
 networks:
   # Per-install isolated network. OpenClaw or other sidecars can join this
   # network explicitly by name if they need Docker-network access to Knotwork.
+  # external: true — Compose reuses the network if it already exists and never
+  # tries to create/remove it, so label mismatches never block installs.
+  # The install script creates it; the uninstall script removes it.
   knotwork-network:
     name: ${KNOTWORK_NETWORK_NAME:-knotwork-local-network}
+    external: true
 
 services:
   # ── Infrastructure ────────────────────────────────────────────────────────────
