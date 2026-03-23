@@ -542,7 +542,9 @@ else
 fi
 
 AUTH_DEV_BYPASS_USER_ID=""
-write_env_file .env
+write_env_file "$ROOT_DIR/.env"
+# docker-compose.yml uses `env_file: .env` (relative to SCRIPT_DIR) — symlink it to ROOT_DIR/.env
+ln -sf "$ROOT_DIR/.env" "$SCRIPT_DIR/.env"
 write_install_manifest .knotwork-install.json
 
 COMPOSE_CMD=(docker compose --project-name "$COMPOSE_PROJECT_NAME" -f "$SCRIPT_DIR/docker-compose.yml" --env-file "$ROOT_DIR/.env")
@@ -590,7 +592,7 @@ OWNER_USER_ID="$(printf "%s" "$BOOTSTRAP_JSON" | python3 -c 'import json,sys; pr
 if [[ "$DOMAIN" == "localhost" ]]; then
   log "Enabling localhost auth bypass for owner user ${OWNER_USER_ID}..."
   AUTH_DEV_BYPASS_USER_ID="$OWNER_USER_ID"
-  write_env_file .env
+  write_env_file "$ROOT_DIR/.env"
   verify_env_postconditions "$OWNER_USER_ID"
   "${COMPOSE_CMD[@]}" --profile "$COMPOSE_PROFILE" up -d --force-recreate \
     "$BACKEND_SERVICE" "$WORKER_SERVICE"
