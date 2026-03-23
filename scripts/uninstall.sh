@@ -333,6 +333,16 @@ with zipfile.ZipFile(backup_target, "w", compression=zipfile.ZIP_DEFLATED) as zf
 PY
 }
 
+force_remove_network() {
+  local _net="$1"
+  docker network inspect "$_net" >/dev/null 2>&1 || return 0
+  log "Force-removing Docker network '${_net}'..."
+  docker network inspect --format '{{range $id,$c:=.Containers}}{{$id}} {{end}}' "$_net" 2>/dev/null \
+    | tr ' ' '\n' | grep -v '^$' \
+    | while read -r _cid; do docker network disconnect -f "$_net" "$_cid" 2>/dev/null || true; done
+  docker network rm "$_net" 2>/dev/null || warn "Could not remove network: $_net"
+}
+
 docker_cleanup() {
   if ! docker info >/dev/null 2>&1; then
     warn "Docker daemon is not reachable; skipping container/image cleanup."
@@ -352,15 +362,7 @@ docker_cleanup() {
   [[ -n "$net" ]] || net="${project}-network"
   net_default="${project}_default"
   for _net in "$net" "$net_default"; do
-    if docker network inspect "$_net" >/dev/null 2>&1; then
-      log "Removing Docker network '${_net}'..."
-      # Disconnect any remaining containers first — compose down may have failed
-      # on networks with missing/incorrect compose labels
-      docker network inspect --format '{{range $id,$c:=.Containers}}{{$id}} {{end}}' "$_net" 2>/dev/null \
-        | tr ' ' '\n' | grep -v '^$' \
-        | while read -r _cid; do docker network disconnect -f "$_net" "$_cid" 2>/dev/null || true; done
-      docker network rm "$_net" 2>/dev/null || warn "Could not remove network: $_net"
-    fi
+    force_remove_network "$_net"
   done
 
   log "Removing project images only..."
@@ -415,6 +417,11 @@ main() {
       confirm_or_die "Full cleanup removes the project tree contents. Continue?"
     fi
   fi
+
+  # Remove stale networks before backup so compose can start postgres cleanly
+  local _pre_net
+  _pre_net="$(compose_project_name)-network"
+  force_remove_network "$_pre_net"
 
   create_backup_zip "$backup_zip" "$TEMP_DIR"
   docker_cleanup
