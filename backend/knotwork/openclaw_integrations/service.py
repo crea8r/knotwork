@@ -46,7 +46,7 @@ def _new_secret(prefix: str = "kwoc") -> str:
 
 def _agent_session_name(
     agent_ref: str,
-    run_id: UUID | None = None,
+    run_id: str | None = None,
     mode: str = "run",
     workspace_id: UUID | None = None,
     agent_key: str | None = None,
@@ -229,6 +229,8 @@ async def list_integrations(db: AsyncSession, workspace_id: UUID) -> list[OpenCl
             status=i.status,
             connected_at=i.connected_at,
             last_seen_at=i.last_seen_at,
+            tasks_running=i.tasks_running,
+            slots_available=i.slots_available,
             created_at=i.created_at,
             updated_at=i.updated_at,
         )
@@ -319,6 +321,8 @@ async def get_debug_state(db: AsyncSession, workspace_id: UUID) -> OpenClawDebug
                 status=integ.status,
                 connected_at=integ.connected_at,
                 last_seen_at=integ.last_seen_at,
+                tasks_running=integ.tasks_running,
+                slots_available=integ.slots_available,
                 pending_count=counts.get("pending", 0),
                 claimed_count=counts.get("claimed", 0),
                 completed_count=counts.get("completed", 0),
@@ -440,6 +444,12 @@ async def register_from_remote_agent(
     )
     existing = exists_q.scalar_one_or_none()
     if existing:
+        # Ensure the agent is active — handles agents created before auto-activation was added.
+        if existing.status != "active":
+            existing.status = "active"
+            existing.is_active = True
+            existing.updated_at = _now()
+            await db.commit()
         return RegisterFromOpenClawResponse(
             registered_agent_id=existing.id,
             display_name=existing.display_name,
@@ -453,10 +463,9 @@ async def register_from_remote_agent(
         display_name=display_name,
         provider="openclaw",
         agent_ref=agent_ref,
-        status="inactive",
-        is_active=False,
+        status="active",
+        is_active=True,
         capability_freshness="needs_refresh",
-        preflight_status="never_run",
         openclaw_integration_id=req.integration_id,
         openclaw_remote_agent_id=req.remote_agent_id,
         updated_at=now,
@@ -522,7 +531,11 @@ async def cleanup_stale_integrations(db: AsyncSession) -> dict:
 
 
 async def resolve_plugin_integration(
-    db: AsyncSession, plugin_instance_id: str, integration_secret: str
+    db: AsyncSession,
+    plugin_instance_id: str,
+    integration_secret: str,
+    tasks_running: int | None = None,
+    slots_available: int | None = None,
 ) -> OpenClawIntegration:
     row = await db.execute(
         select(OpenClawIntegration).where(
@@ -535,8 +548,13 @@ async def resolve_plugin_integration(
     integration = row.scalar_one_or_none()
     if integration is None:
         raise HTTPException(status_code=401, detail="Invalid plugin credentials")
-    integration.last_seen_at = _now()
-    integration.updated_at = _now()
+    now = _now()
+    integration.last_seen_at = now
+    integration.updated_at = now
+    if tasks_running is not None:
+        integration.tasks_running = tasks_running
+    if slots_available is not None:
+        integration.slots_available = slots_available
     await db.commit()
     return integration
 
@@ -545,8 +563,13 @@ async def plugin_pull_task(
     db: AsyncSession,
     plugin_instance_id: str,
     integration_secret: str,
+    tasks_running: int | None = None,
+    slots_available: int | None = None,
 ) -> dict:
-    integration = await resolve_plugin_integration(db, plugin_instance_id, integration_secret)
+    integration = await resolve_plugin_integration(
+        db, plugin_instance_id, integration_secret,
+        tasks_running=tasks_running, slots_available=slots_available,
+    )
 
     # Recover tasks stuck in claimed (plugin crashed or command hang) so UX does not stall forever.
     # Threshold is 15 min — 3× the adapter heartbeat interval (5 min). As long as the
@@ -669,9 +692,14 @@ async def plugin_submit_task_event(
         task.completed_at = now
     elif event_type == "escalation":
         task.status = "escalated"
-        task.escalation_question = str((payload or {}).get("question") or "")
+        # Support questions array; fall back to legacy single question field
+        questions = (payload or {}).get("questions")
+        if not questions:
+            q = (payload or {}).get("question")
+            questions = [str(q)] if q else []
+        task.escalation_questions_json = [str(q) for q in questions if q]
+        task.escalation_question = task.escalation_questions_json[0] if task.escalation_questions_json else ""
         task.escalation_options_json = (payload or {}).get("options") or []
-        # Preserve the full agent message body so the debug panel can show it.
         full_msg = (payload or {}).get("message")
         if full_msg:
             task.output_text = str(full_msg)

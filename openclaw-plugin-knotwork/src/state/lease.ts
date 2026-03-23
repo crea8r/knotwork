@@ -1,18 +1,39 @@
 // lease.ts — Runtime lease: ensures only one process runs the poll loop.
-// File lock at ~/.openclaw/knotwork-bridge-runtime.lock.
-// If the lock file exists but its pid is dead, it is stolen.
+// Resilient heartbeat design: the lease holder renews a timestamp every RENEW_INTERVAL_MS.
+// If the timestamp is older than LEASE_TTL_MS the lease is considered stale and stolen,
+// even if the previous PID is still alive (e.g. after a gateway restart that recycled PIDs).
+//
+// Invariants:
+//   RENEW_INTERVAL_MS < LEASE_TTL_MS / 2   (holder renews at least 2× per TTL window)
+//   On graceful shutdown process.once('exit') deletes the file immediately.
 
-import { mkdir, open, readFile, rm } from 'node:fs/promises'
-import { rmSync } from 'node:fs'
+import { mkdir, open, readFile, rm, writeFile } from 'node:fs/promises'
+import { rmSync, writeFileSync } from 'node:fs'
 import { dirname } from 'node:path'
 
 const PLUGIN_ID = 'knotwork-bridge'
+// How long a lease is valid without a heartbeat renewal.
+const LEASE_TTL_MS = 30_000
+// How often the holder should call renewRuntimeLease().
+export const LEASE_RENEW_INTERVAL_MS = 10_000
 
 export type LeaseResult = { acquired: boolean; pid: number | null }
+
+type LockData = { pid: number; acquired_at: string; renewed_at: string; plugin_id: string }
 
 function isProcessAlive(pid: number): boolean {
   if (!Number.isInteger(pid) || pid <= 0) return false
   try { process.kill(pid, 0); return true } catch { return false }
+}
+
+function isStale(data: LockData): boolean {
+  const renewedAt = new Date(data.renewed_at || data.acquired_at).getTime()
+  return Date.now() - renewedAt > LEASE_TTL_MS
+}
+
+function makeLockData(): LockData {
+  const now = new Date().toISOString()
+  return { pid: process?.pid ?? 0, acquired_at: now, renewed_at: now, plugin_id: PLUGIN_ID }
 }
 
 export async function acquireRuntimeLease(
@@ -23,24 +44,31 @@ export async function acquireRuntimeLease(
   const tryAcquire = async (): Promise<LeaseResult> => {
     try {
       const handle = await open(lockPath, 'wx')
-      const pid = process?.pid ?? null
-      await handle.writeFile(JSON.stringify(
-        { pid, acquired_at: new Date().toISOString(), plugin_id: PLUGIN_ID }, null, 2,
-      ))
+      const data = makeLockData()
+      await handle.writeFile(JSON.stringify(data, null, 2))
       await handle.close()
       onAcquired()
-      return { acquired: true, pid }
+      return { acquired: true, pid: data.pid }
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
       if (!/exist/i.test(msg)) return { acquired: false, pid: null }
+      // Lock file exists — inspect it.
       try {
         const raw = await readFile(lockPath, 'utf8')
-        const parsed = JSON.parse(raw) as { pid?: number }
-        if (!isProcessAlive(Number(parsed.pid ?? 0))) {
+        const data = JSON.parse(raw) as LockData
+        const lockedPid = Number(data.pid ?? 0)
+        // Self-lock: same PID recycled after crash (no cleanup ran). Safe to steal.
+        const isSelf = lockedPid === (process?.pid ?? -1)
+        // Dead process: stale lock from a previous process that is no longer alive.
+        const isDead = !isProcessAlive(lockedPid)
+        // Heartbeat timeout: holder has stopped renewing (crashed or hung).
+        const isHeartbeatStale = isStale(data)
+        if (isSelf || isDead || isHeartbeatStale) {
           await rm(lockPath, { force: true })
           return tryAcquire()
         }
       } catch {
+        // Corrupt lock file — remove and retry.
         await rm(lockPath, { force: true })
         return tryAcquire()
       }
@@ -49,6 +77,17 @@ export async function acquireRuntimeLease(
   }
 
   return tryAcquire()
+}
+
+/** Call this periodically (every LEASE_RENEW_INTERVAL_MS) while holding the lease. */
+export async function renewRuntimeLease(lockPath: string, isOwner: boolean): Promise<void> {
+  if (!isOwner || !lockPath) return
+  try {
+    const raw = await readFile(lockPath, 'utf8')
+    const data = JSON.parse(raw) as LockData
+    data.renewed_at = new Date().toISOString()
+    await writeFile(lockPath, JSON.stringify(data, null, 2))
+  } catch { /* ignore — lease may have been stolen */ }
 }
 
 export async function releaseRuntimeLease(lockPath: string, isOwner: boolean): Promise<void> {

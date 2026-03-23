@@ -20,6 +20,20 @@ Knotwork does not assume direct access to OpenClaw internal subsystems beyond se
 
 ---
 
+## Zero-Key Install
+
+No AI provider key is required to install or run Knotwork. The runtime falls back gracefully at each level:
+
+```
+registered_agent_id set  → fetch API key + agent_ref from RegisteredAgent table
+no registered_agent_id   → use workspace's OpenClaw connection (if connected)
+no OpenClaw connected    → route to human (HumanAdapter) — not an error state
+```
+
+Required environment variables: `DATABASE_URL`, `REDIS_URL`, `JWT_SECRET`. Provider keys (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`) are not used by the runtime — credentials are stored per-workspace in the `RegisteredAgent` table or abstracted via OpenClaw.
+
+---
+
 ## Agent Node Dispatch
 
 `make_agent_node()` (`runtime/nodes/agent.py`) returns an async LangGraph node function:
@@ -27,7 +41,7 @@ Knotwork does not assume direct access to OpenClaw internal subsystems beyond se
 ```python
 async def node_fn(state: RunState) -> dict:
     # 1. Resolve agent_ref (LEGACY type fallbacks via _resolve_agent_ref)
-    agent_ref = _resolve_agent_ref(node_def, settings.default_model)
+    agent_ref = _resolve_agent_ref(node_def)
 
     # 2. S7.1: if registered_agent_id is set, fetch per-workspace API key
     if registered_agent_id:
@@ -35,6 +49,8 @@ async def node_fn(state: RunState) -> dict:
         if ra and ra.is_active:
             api_key = ra.api_key
             agent_ref = ra.agent_ref  # honour registered model
+    # If no registered_agent_id and no OpenClaw connected → agent_ref = "human"
+    # (routes to HumanAdapter, not a failure)
 
     # 3. Load knowledge tree (folder-as-domain traversal)
     tree = await load_knowledge_tree(knowledge_paths, workspace_id)
@@ -110,7 +126,7 @@ Build prompt (GUIDELINES + THIS CASE)
     complete_node           → yield completed event, return
 ```
 
-Effective API key: `self._api_key or settings.anthropic_api_key or None`.
+Effective API key: `self._api_key` (from RegisteredAgent). No env-var fallback — credentials are workspace-scoped, not install-scoped.
 
 ### OpenAIAdapter (`adapters/openai_adapter.py`)
 

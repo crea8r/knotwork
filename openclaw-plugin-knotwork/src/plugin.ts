@@ -18,6 +18,21 @@ import { isOperatorScopeError } from './openclaw/session'
 import type { ExecutionTask, OpenClawApi, PluginState, RunningTaskInfo } from './types'
 
 const PLUGIN_ID = 'knotwork-bridge'
+
+// ── Activation state ─────────────────────────────────────────────────────────
+// OpenClaw calls activate() once for the background runtime AND again for each
+// `openclaw gateway call` invocation — all in the SAME Node.js process (shared
+// module state). Each call needs its own api context so that registerGatewayMethod
+// registers knotwork.* for that specific call's routing context. However only ONE
+// poll loop should ever run.
+//
+// _rpcCtxFactory is set SYNCHRONOUSLY in the first activate() call (before any
+// await), so it is immediately visible to any concurrent subsequent call. Any
+// activate() call that sees _rpcCtxFactory != null takes the fast path:
+// re-register RPC methods for the new api context and return without starting
+// a second poll loop.
+type RpcCtxFactory = (newApi: OpenClawApi) => Parameters<typeof registerRpcMethods>[0]
+let _rpcCtxFactory: RpcCtxFactory | null = null
 const STATE_FILE = 'knotwork-bridge-state.json'
 // Lock and credentials live inside the plugin extension dir so `rm -rf extensions/knotwork-bridge` cleans them up.
 const RUNTIME_LOCK_FILE = 'runtime.lock'
@@ -41,6 +56,16 @@ function backoffDelay(attempt: number): number {
 }
 
 export function activate(api: OpenClawApi): void {
+  // If a previous activate() has already set up state + handlers, re-register
+  // RPC methods only for this api context and return. _rpcCtxFactory is set
+  // synchronously below (before any await), so this guard fires immediately for
+  // any concurrent or subsequent activate() call — avoiding a second poll loop.
+  if (_rpcCtxFactory) {
+    console.log(`[${PLUGIN_ID}] activate() called again — re-registering RPC methods for new call context`)
+    registerRpcMethods(_rpcCtxFactory(api))
+    return
+  }
+
   let runtimeLockOwner = false
   let stateHydrated = false
   let snapshotWrite: Promise<void> = Promise.resolve()
@@ -116,13 +141,25 @@ export function activate(api: OpenClawApi): void {
   const recoverCredentials = (reason: string) => _recoverCredentials(hCtx, timerRef, reason)
   const wCtx = { state, api, log, rememberError, persistSnapshot, resetPersistedSecret, recoverCredentials }
 
-  registerRpcMethods({
-    state, api, log, rememberError,
-    runHandshake: (overrides) => runHandshake(hCtx, overrides),
-    pollAndRun: () => _pollAndRun(wCtx),
-    runClaimedTask: (task: ExecutionTask) => _runClaimedTask(wCtx, task),
-    resetPersistedSecret,
-  })
+  // Store a factory so subsequent activate() calls (gateway call contexts) can re-register
+  // RPC methods using their own api (required for registerGatewayMethod to bind to that
+  // call's routing context) while reusing the shared state + handlers from this activation.
+  _rpcCtxFactory = (callApi: OpenClawApi) => {
+    // wCtx carries the runtime api — but subagent.run() requires the CURRENT gateway
+    // request's api. Build a callCtx that replaces wCtx.api with callApi so that
+    // runClaimedTask / pollAndRun pass the correct api to executeTask → subagent.run().
+    const callCtx = { ...wCtx, api: callApi }
+    return {
+      api: callApi,
+      state, log, rememberError,
+      runHandshake: (overrides?: Partial<import('./openclaw/bridge').PluginConfig>) => runHandshake({ ...hCtx, api: callApi }, overrides),
+      pollAndRun: () => _pollAndRun(callCtx),
+      runClaimedTask: (task: ExecutionTask) => _runClaimedTask(callCtx, task),
+      resetPersistedSecret,
+    }
+  }
+
+  registerRpcMethods(_rpcCtxFactory(api))
 
   // ── Startup ───────────────────────────────────────────────────────────────────
 
@@ -244,7 +281,7 @@ export function activate(api: OpenClawApi): void {
 
       p.on('close', (code) => {
         const output = Buffer.concat(buf).toString().trim()
-        if (output) log(`spawn:output id=${taskId} attempt=${attempt} ${output.slice(0, 200)}`)
+        if (output) log(`spawn:output id=${taskId} attempt=${attempt} ${output.slice(0, 600)}`)
 
         if (isGatewayConnectionError(code, output)) {
           const remaining = retryWindowEnd - Date.now()
@@ -294,6 +331,9 @@ export function activate(api: OpenClawApi): void {
 
   const pollMs = Math.max(500, cfg.taskPollIntervalMs ?? 2000)
 
+  // .unref() on all intervals: prevents timers from keeping the subprocess alive after
+  // the gateway call completes. Without this, spawned subprocesses never exit (Node.js
+  // event loop stays open), filling activeSpawns to MAX_CONCURRENT and blocking the pool.
   setInterval(() => {
     if (!state.backgroundWorkerEnabled || !state.integrationSecret) return
     if (activeSpawns.size >= MAX_CONCURRENT) return  // at capacity
@@ -305,7 +345,9 @@ export function activate(api: OpenClawApi): void {
     void (async () => {
       try {
         // pullTask acts as the heartbeat (updates last_seen_at on the backend).
-        const task = await pullTask(baseUrl, instanceId, secret)
+        // Capacity is reported so the backend always knows the real running count.
+        const capacity = { tasksRunning: activeSpawns.size, slotsAvailable: Math.max(0, MAX_CONCURRENT - activeSpawns.size) }
+        const task = await pullTask(baseUrl, instanceId, secret, capacity)
         if (!task) return  // no pending work; heartbeat still sent
         void spawnExecuteTask(task, 'poll')
       } catch (err) {
@@ -324,12 +366,29 @@ export function activate(api: OpenClawApi): void {
         }
       }
     })()
-  }, pollMs)
+  }, pollMs).unref()
 
   // ── Lease renewal ─────────────────────────────────────────────────────────────
   setInterval(() => {
     void renewRuntimeLease(lockPath(), runtimeLockOwner)
-  }, LEASE_RENEW_INTERVAL_MS)
+  }, LEASE_RENEW_INTERVAL_MS).unref()
+
+  // ── Spawn TTL watchdog ─────────────────────────────────────────────────────────
+  // If a subprocess never fires its 'close' event (hung process), its entry stays in
+  // activeSpawns forever, permanently blocking the pool once MAX_CONCURRENT is reached.
+  // This watchdog evicts entries older than SPAWN_TTL_MS so the pool self-heals.
+  const SPAWN_TTL_MS = (cfg as any).spawnTtlMs ?? 2 * 60 * 60 * 1000  // default: 2 hours
+  setInterval(() => {
+    const now = Date.now()
+    for (const [id, info] of activeSpawns.entries()) {
+      const age = now - new Date(info.startedAt).getTime()
+      if (age > SPAWN_TTL_MS) {
+        log(`spawn:ttl-evict id=${id} age=${Math.round(age / 60000)}m — subprocess never exited, evicting from pool`)
+        activeSpawns.delete(id)
+        removeRunningTask(state, id)
+      }
+    }
+  }, 60_000).unref()  // check every minute
 
   // ── Graceful shutdown ─────────────────────────────────────────────────────────
   process.once('exit', () => { releaseRuntimeLeaseSync(lockPath(), runtimeLockOwner) })

@@ -30,6 +30,7 @@ interface CanvasState {
   addNode: (node: NodeDef) => void
   removeNode: (nodeId: string) => void
   addEdge: (edge: EdgeDef) => void
+  updateEdge: (edgeId: string, patch: Partial<EdgeDef>) => void
   removeEdge: (edgeId: string) => void
   setInputSchema: (fields: InputFieldDef[]) => void
   markSaved: () => void
@@ -153,6 +154,15 @@ export const useCanvasStore = create<CanvasState>((set) => ({
   addEdge: (edge) =>
     set((state) => ({
       definition: { ...state.definition, edges: [...state.definition.edges, edge] },
+      isDirty: true,
+    })),
+
+  updateEdge: (edgeId, patch) =>
+    set((state) => ({
+      definition: {
+        ...state.definition,
+        edges: state.definition.edges.map((e) => e.id === edgeId ? { ...e, ...patch } : e),
+      },
       isDirty: true,
     })),
 

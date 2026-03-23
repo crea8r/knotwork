@@ -9,7 +9,6 @@ function useWorkspaceId() {
 
 export type Provider = 'anthropic' | 'openai' | 'openclaw'
 export type AgentStatus = 'inactive' | 'active' | 'archived'
-export type PreflightStatus = 'never_run' | 'running' | 'pass' | 'warning' | 'fail'
 
 export interface RegisteredAgent {
   id: string
@@ -27,8 +26,6 @@ export interface RegisteredAgent {
   capability_hash: string | null
   capability_refreshed_at: string | null
   capability_freshness: 'fresh' | 'stale' | 'needs_refresh'
-  preflight_status: PreflightStatus
-  preflight_run_at: string | null
   last_used_at: string | null
   openclaw_integration_id: string | null
   openclaw_remote_agent_id: string | null
@@ -103,38 +100,6 @@ export interface CapabilitySnapshot extends CapabilityContract {
 export interface CapabilityRefreshResult {
   changed: boolean
   capability: CapabilityContract
-}
-
-export interface PreflightTest {
-  test_id: string
-  tool_name: string | null
-  required: boolean
-  status: 'pass' | 'fail' | 'warning' | 'skipped'
-  latency_ms: number | null
-  error_code: string | null
-  error_message: string | null
-  request_preview: Record<string, unknown>
-  response_preview: Record<string, unknown>
-}
-
-export interface PreflightRun {
-  id: string
-  agent_id: string
-  status: PreflightStatus
-  required_total: number
-  required_passed: number
-  optional_total: number
-  optional_passed: number
-  pass_rate: number
-  median_latency_ms: number | null
-  failed_count: number
-  is_baseline: boolean
-  started_at: string
-  completed_at: string | null
-}
-
-export interface PreflightRunDetail extends PreflightRun {
-  tests: PreflightTest[]
 }
 
 export interface AgentUsageItem {
@@ -215,6 +180,8 @@ export interface OpenClawIntegrationDebugState {
   status: string
   connected_at: string
   last_seen_at: string
+  tasks_running: number | null
+  slots_available: number | null
   pending_count: number
   claimed_count: number
   completed_count: number
@@ -257,7 +224,6 @@ function invalidateAgentQueries(qc: ReturnType<typeof useQueryClient>, agentId?:
     qc.invalidateQueries({ queryKey: ['agent-usage', workspaceId, agentId] })
     qc.invalidateQueries({ queryKey: ['agent-capability-latest', workspaceId, agentId] })
     qc.invalidateQueries({ queryKey: ['agent-capabilities', workspaceId, agentId] })
-    qc.invalidateQueries({ queryKey: ['agent-preflight-runs', workspaceId, agentId] })
     qc.invalidateQueries({ queryKey: ['agent-debug-links', workspaceId, agentId] })
   }
 }
@@ -266,11 +232,10 @@ export function useRegisteredAgents(filters?: {
   q?: string
   provider?: string
   status?: string
-  preflight_status?: string
 }) {
   const workspaceId = useWorkspaceId()
   return useQuery<RegisteredAgent[]>({
-    queryKey: ['agents', workspaceId, filters?.q ?? '', filters?.provider ?? '', filters?.status ?? '', filters?.preflight_status ?? ''],
+    queryKey: ['agents', workspaceId, filters?.q ?? '', filters?.provider ?? '', filters?.status ?? ''],
     queryFn: async () => {
       const { data } = await api.get(`/workspaces/${workspaceId}/agents`, { params: filters })
       return data
@@ -330,8 +295,8 @@ export function useActivateAgent(agentId: string) {
   const workspaceId = useWorkspaceId()
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: async (payload: { allow_warning?: boolean } = {}) => {
-      const { data } = await api.post(`/workspaces/${workspaceId}/agents/${agentId}/activate`, payload)
+    mutationFn: async () => {
+      const { data } = await api.post(`/workspaces/${workspaceId}/agents/${agentId}/activate`, {})
       return data as RegisteredAgent
     },
     onSuccess: () => invalidateAgentQueries(qc, agentId),
@@ -398,44 +363,6 @@ export function useAgentCapabilities(agentId: string, limit = 20) {
   })
 }
 
-export function useRunPreflight(agentId: string) {
-  const workspaceId = useWorkspaceId()
-  const qc = useQueryClient()
-  return useMutation({
-    mutationFn: async (payload: { suite?: string; include_optional?: boolean } = {}) => {
-      const { data } = await api.post(`/workspaces/${workspaceId}/agents/${agentId}/preflight-runs`, {
-        suite: payload.suite ?? 'default',
-        include_optional: payload.include_optional ?? false,
-      })
-      return data as PreflightRunDetail
-    },
-    onSuccess: () => invalidateAgentQueries(qc, agentId),
-  })
-}
-
-export function useAgentPreflightRuns(agentId: string, limit = 20) {
-  const workspaceId = useWorkspaceId()
-  return useQuery<PreflightRun[]>({
-    queryKey: ['agent-preflight-runs', workspaceId, agentId, limit],
-    queryFn: async () => {
-      const { data } = await api.get(`/workspaces/${workspaceId}/agents/${agentId}/preflight-runs`, { params: { limit } })
-      return data
-    },
-    enabled: !!agentId,
-  })
-}
-
-export function usePromotePreflightBaseline(agentId: string) {
-  const workspaceId = useWorkspaceId()
-  const qc = useQueryClient()
-  return useMutation({
-    mutationFn: async (preflightRunId: string) => {
-      const { data } = await api.post(`/workspaces/${workspaceId}/agents/${agentId}/preflight-runs/${preflightRunId}/promote-baseline`)
-      return data as PreflightRun
-    },
-    onSuccess: () => invalidateAgentQueries(qc, agentId),
-  })
-}
 
 export function useAgentHistory(agentId: string) {
   const workspaceId = useWorkspaceId()

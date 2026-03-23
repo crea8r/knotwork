@@ -50,41 +50,56 @@ class OpenAIAdapter(AgentAdapter):
         run_state: dict,
         knowledge_tree: "KnowledgeTree",
         session_token: str,
+        outgoing_edges: list[dict] | None = None,
+        targets: list[str] | None = None,
+        trust: float = 0.5,
+        retry_guidance: str | None = None,
     ) -> AsyncGenerator[NodeEvent, None]:
         import asyncio
 
         from openai import AsyncOpenAI
 
         from knotwork.config import settings
+        from knotwork.runtime.nodes.agent import _build_tail_blocks, _build_retry_user_prompt
         from knotwork.runtime.prompt_builder import build_agent_prompt
 
         config = node_def.get("config", {})
         agent_ref: str = node_def.get("agent_ref", f"openai:{settings.default_model}")
         model = _extract_model(agent_ref)
+        _edges = outgoing_edges or []
+        _targets = targets or []
 
-        # Build prompt
-        all_outputs: dict = run_state.get("node_outputs") or {}
-        input_sources: list[str] | None = config.get("input_sources")
-        if input_sources is None:
-            run_fields = run_state.get("input", {})
-            prior_outputs = dict(all_outputs) if all_outputs else None
+        # Build prompts — adapter owns the full prompt construction.
+        if retry_guidance:
+            system_prompt = ""
+            user_prompt = _build_retry_user_prompt(retry_guidance, _edges, _targets)
         else:
-            run_fields = run_state.get("input", {}) if "run_input" in input_sources else {}
-            selected = {nid: all_outputs[nid] for nid in input_sources if nid in all_outputs}
-            prior_outputs = selected if selected else None
+            all_outputs: dict = run_state.get("node_outputs") or {}
+            is_first_node = not all_outputs
+            run_fields = run_state.get("input", {}) if is_first_node else {}
+            context_files = run_state.get("context_files", []) if is_first_node else []
 
-        system_prompt, user_prompt = build_agent_prompt(
-            tree=knowledge_tree,
-            state_fields=run_fields,
-            context_files=run_state.get("context_files", []),
-            prior_outputs=prior_outputs,
-        )
-        extra = config.get("system_prompt") or config.get("instructions", "")
-        if extra:
-            system_prompt = f"{system_prompt}\n\n{extra}"
+            system_prompt, user_prompt = build_agent_prompt(
+                tree=knowledge_tree,
+                state_fields=run_fields,
+                context_files=context_files,
+                prior_outputs=None,
+            )
+            extra = config.get("system_prompt") or config.get("instructions", "")
+            if extra:
+                system_prompt = f"{system_prompt}\n\n{extra}"
+
+            system_prompt += (
+                f"\n\n=== AUTONOMY LEVEL ===\n"
+                f"Trust: {trust:.1f} — "
+                f"0.0 means always ask the human before deciding; "
+                f"1.0 means act fully autonomously."
+            )
+            user_prompt = f"{user_prompt}\n\n{_build_tail_blocks(_edges, _targets)}"
+
         effective_key = self._api_key or settings.openai_api_key or None
         client = AsyncOpenAI(api_key=effective_key)
-        yield NodeEvent("started", {"model": model})
+        yield NodeEvent("started", {"model": model, "system_prompt": system_prompt, "user_prompt": user_prompt})
 
         # Create assistant + thread
         assistant = await client.beta.assistants.create(

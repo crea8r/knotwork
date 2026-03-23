@@ -29,6 +29,10 @@ class HumanAdapter(AgentAdapter):
         run_state: dict,
         knowledge_tree: "KnowledgeTree",
         session_token: str,
+        outgoing_edges: list[dict] | None = None,
+        targets: list[str] | None = None,
+        trust: float = 0.5,
+        retry_guidance: str | None = None,
     ) -> AsyncGenerator[NodeEvent, None]:
         config = node_def.get("config", {})
         question = config.get("question") or "Awaiting human review."

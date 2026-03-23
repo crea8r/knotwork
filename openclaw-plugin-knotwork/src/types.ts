@@ -83,6 +83,18 @@ export type RecentTask = {
   error: string | null
 }
 
+/** Tracks a task whose gateway spawn is currently in-flight. */
+export type RunningTaskInfo = {
+  taskId: string
+  nodeId: string | null
+  runId: string | null
+  sessionName: string | null
+  /** ISO timestamp when the spawn was initiated. */
+  startedAt: string
+  /** How the task was triggered: background poll or explicit RPC call. */
+  spawnContext: 'poll' | 'rpc'
+}
+
 export type PluginState = {
   pluginInstanceId: string | null
   integrationSecret: string | null
@@ -94,7 +106,10 @@ export type PluginState = {
   lastHandshakeOk: boolean
   lastError: string | null
   lastTaskAt: string | null
+  /** @deprecated Use runningTasks[]. Kept for backward compat with persisted state. */
   runningTaskId: string | null
+  /** All currently in-flight task spawns. */
+  runningTasks: RunningTaskInfo[]
   runtimeLeaseOwnerPid: number | null
   recentTasks: RecentTask[]
   logs: string[]
@@ -102,6 +117,6 @@ export type PluginState = {
 
 export type TaskResult =
   | { type: 'completed'; output: string; next_branch: string | null }
-  | { type: 'escalation'; question: string; options: string[]; message?: string }
+  | { type: 'escalation'; questions: string[]; options: string[]; message?: string }
   | { type: 'failed'; error: string }
 

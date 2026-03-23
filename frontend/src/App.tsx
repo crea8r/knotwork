@@ -19,7 +19,6 @@ import ChannelDetailPage from './pages/ChannelDetailPage'
 import HandbookPage from './pages/HandbookPage'
 import KnowledgeFilePage from './pages/KnowledgeFilePage'
 import EscalationsPage from './pages/EscalationsPage'
-import EscalationDetailPage from './pages/EscalationDetailPage'
 import SettingsPage from './pages/SettingsPage'
 import AgentProfilePage from './pages/AgentProfilePage'
 import LoginPage from './pages/LoginPage'
@@ -63,7 +62,6 @@ export default function App() {
         <Route path="/runs" element={<RunsPage />} />
         <Route path="/runs/:runId" element={<RunDetailPage />} />
         <Route path="/escalations" element={<EscalationsPage />} />
-        <Route path="/escalations/:escalationId" element={<EscalationDetailPage />} />
         <Route path="/handbook" element={<HandbookPage />} />
         <Route path="/handbook/file" element={<KnowledgeFilePage />} />
         <Route path="/settings" element={<SettingsPage />} />

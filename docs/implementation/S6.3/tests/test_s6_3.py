@@ -105,7 +105,7 @@ async def test_patch_input_allowed_on_draft(client, db_session):
 
     # Force to draft
     from knotwork.runs.models import Run
-    run = await db_session.get(Run, uuid.UUID(run_id))
+    run = await db_session.get(Run, run_id)
     run.status = "draft"
     await db_session.commit()
 
@@ -127,7 +127,7 @@ async def test_patch_name_and_input_on_draft(client, db_session):
     run_id = await _create_run(client, s["ws_id"], s["graph_id"])
 
     from knotwork.runs.models import Run
-    run = await db_session.get(Run, uuid.UUID(run_id))
+    run = await db_session.get(Run, run_id)
     run.status = "draft"
     await db_session.commit()
 

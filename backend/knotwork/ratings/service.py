@@ -11,7 +11,7 @@ from knotwork.ratings.schemas import RatingCreate
 
 async def upsert_rating(
     db: AsyncSession,
-    run_id: UUID,
+    run_id: str,
     run_node_state_id: UUID,
     workspace_id: UUID,
     data: RatingCreate,

@@ -83,7 +83,7 @@ def make_llm_agent_node(node_def: dict):
         from knotwork.runtime.prompt_builder import build_agent_prompt
         from knotwork.runs.models import RunNodeState
 
-        run_id = UUID(state["run_id"])
+        run_id = str(state["run_id"])
         workspace_id = state["workspace_id"]
 
         model = model_override or settings.default_model

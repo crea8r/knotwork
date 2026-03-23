@@ -39,7 +39,7 @@ function getSubagent(api: OpenClawApi) {
   const subagent = (api as any).runtime?.subagent
   if (typeof subagent?.run !== 'function') throw new Error('api.runtime.subagent not available — ensure plugin exports default register')
   return subagent as {
-    run: (p: { sessionKey: string; message: string; extraSystemPrompt?: string; idempotencyKey?: string }) => Promise<{ runId: string }>
+    run: (p: { sessionKey: string; message: string; extraSystemPrompt?: string; idempotencyKey?: string; deliver?: boolean }) => Promise<{ runId: string }>
     waitForRun: (p: { runId: string; timeoutMs?: number }) => Promise<{ status: string; error?: string }>
     getSessionMessages: (p: { sessionKey: string; limit?: number }) => Promise<{ messages: unknown[] }>
   }
@@ -75,9 +75,17 @@ function parseDecisionBlock(text: string): TaskResult | null {
   try { d = JSON.parse(jsonStr) as LooseRecord } catch { return null }
   if (d.decision === 'escalate') {
     const message = text.slice(0, lastFence).trim()
+    // Support questions array or legacy single question
+    let questions: string[] = []
+    if (Array.isArray(d.questions) && d.questions.length > 0) {
+      questions = (d.questions as unknown[]).map((q) => String(q).trim()).filter(Boolean)
+    } else if (typeof d.question === 'string' && d.question.trim()) {
+      questions = [d.question.trim()]
+    }
+    if (questions.length === 0) questions = ['Need human input']
     return {
       type: 'escalation',
-      question: typeof d.question === 'string' && d.question.trim() ? d.question.trim() : 'Need human input',
+      questions,
       options: Array.isArray(d.options) ? (d.options as string[]) : [],
       message: message || undefined,
     }
@@ -104,9 +112,11 @@ export async function executeTask(api: OpenClawApi, task: ExecutionTask): Promis
       idempotencyKey: iKey,
       message: String(task.user_prompt ?? ''),
       extraSystemPrompt: String(task.system_prompt ?? '') || undefined,
+      deliver: false,
     })
   } catch (e) {
-    throw new Error(`subagent.run failed: ${toErrorMessage(e)}`)
+    const subagentKeys = Object.keys(subagent).join(',')
+    throw new Error(`subagent.run failed: ${toErrorMessage(e)} [subagent-keys: ${subagentKeys}]`)
   }
 
   const { runId } = started

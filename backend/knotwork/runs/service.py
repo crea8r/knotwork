@@ -5,6 +5,8 @@ from uuid import UUID
 from sqlalchemy import delete, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from knotwork.runs.id import generate_run_id  # noqa: F401 — re-export for callers
+
 from knotwork.graphs.service import get_graph, get_latest_version
 from knotwork.runs.models import OpenAICallLog, Run, RunHandbookProposal, RunNodeState, RunWorklogEntry
 from knotwork.runs.schemas import RunCreate, RunUpdate
@@ -141,11 +143,11 @@ async def create_run(
     return run
 
 
-async def get_run(db: AsyncSession, run_id: UUID) -> Run | None:
+async def get_run(db: AsyncSession, run_id: str) -> Run | None:
     return await db.get(Run, run_id)
 
 
-async def update_run(db: AsyncSession, run_id: UUID, data: RunUpdate) -> Run | None:
+async def update_run(db: AsyncSession, run_id: str, data: RunUpdate) -> Run | None:
     run = await db.get(Run, run_id)
     if not run:
         return None
@@ -160,7 +162,7 @@ async def update_run(db: AsyncSession, run_id: UUID, data: RunUpdate) -> Run | N
     return run
 
 
-async def list_run_node_states(db: AsyncSession, run_id: UUID) -> list[RunNodeState]:
+async def list_run_node_states(db: AsyncSession, run_id: str) -> list[RunNodeState]:
     result = await db.execute(
         select(RunNodeState).where(RunNodeState.run_id == run_id)
     )
@@ -213,7 +215,7 @@ async def list_workspace_runs(db: AsyncSession, workspace_id: UUID) -> list[dict
     return result
 
 
-async def clone_run_as_draft(db: AsyncSession, run_id: UUID) -> Run:
+async def clone_run_as_draft(db: AsyncSession, run_id: str) -> Run:
     source = await db.get(Run, run_id)
     if not source:
         raise ValueError("Run not found")
@@ -235,7 +237,7 @@ async def clone_run_as_draft(db: AsyncSession, run_id: UUID) -> Run:
     return draft
 
 
-async def list_worklog(db: AsyncSession, run_id: UUID) -> list[RunWorklogEntry]:
+async def list_worklog(db: AsyncSession, run_id: str) -> list[RunWorklogEntry]:
     result = await db.execute(
         select(RunWorklogEntry)
         .where(RunWorklogEntry.run_id == run_id)
@@ -244,7 +246,7 @@ async def list_worklog(db: AsyncSession, run_id: UUID) -> list[RunWorklogEntry]:
     return list(result.scalars())
 
 
-async def list_proposals(db: AsyncSession, run_id: UUID) -> list[RunHandbookProposal]:
+async def list_proposals(db: AsyncSession, run_id: str) -> list[RunHandbookProposal]:
     result = await db.execute(
         select(RunHandbookProposal)
         .where(RunHandbookProposal.run_id == run_id)
@@ -253,7 +255,7 @@ async def list_proposals(db: AsyncSession, run_id: UUID) -> list[RunHandbookProp
     return list(result.scalars())
 
 
-async def list_openai_logs(db: AsyncSession, run_id: UUID) -> list[OpenAICallLog]:
+async def list_openai_logs(db: AsyncSession, run_id: str) -> list[OpenAICallLog]:
     result = await db.execute(
         select(OpenAICallLog)
         .where(OpenAICallLog.run_id == run_id)
@@ -262,7 +264,7 @@ async def list_openai_logs(db: AsyncSession, run_id: UUID) -> list[OpenAICallLog
     return list(result.scalars())
 
 
-async def list_run_chat_messages(db: AsyncSession, run_id: UUID):
+async def list_run_chat_messages(db: AsyncSession, run_id: str):
     from knotwork.channels.models import ChannelMessage
 
     result = await db.execute(
@@ -273,7 +275,7 @@ async def list_run_chat_messages(db: AsyncSession, run_id: UUID):
     return list(result.scalars())
 
 
-async def delete_run(db: AsyncSession, run_id: UUID) -> None:
+async def delete_run(db: AsyncSession, run_id: str) -> None:
     """Hard-delete run and dependent records in FK-safe order."""
     run = await db.get(Run, run_id)
     if not run:

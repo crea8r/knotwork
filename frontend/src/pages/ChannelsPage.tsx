@@ -104,7 +104,7 @@ export default function ChannelsPage() {
   const q = search.trim().toLowerCase()
 
   const freeChats = useMemo(() => {
-    const normals = channels.filter((c) => c.channel_type === 'normal')
+    const normals = channels.filter((c) => c.channel_type === 'normal' || c.channel_type === 'agent_main')
     const filtered = q ? normals.filter((c) => c.name.toLowerCase().includes(q)) : normals
     return [...filtered].sort((a, b) => a.name.localeCompare(b.name))
   }, [channels, q])

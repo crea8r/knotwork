@@ -46,6 +46,14 @@ export function validateGraph(definition: GraphDefinition): string[] {
   const reachableFromStart = bfs(startIds, fwd)
   const canReachEnd = bfs(endIds, bwd)
 
+  // Count outgoing edges per work node
+  const outgoingCount: Record<string, number> = {}
+  for (const e of edges) {
+    if (workIds.includes(e.source)) {
+      outgoingCount[e.source] = (outgoingCount[e.source] ?? 0) + 1
+    }
+  }
+
   const errors: string[] = []
   for (const nid of workIds) {
     const node = nodes.find(n => n.id === nid)
@@ -67,5 +75,18 @@ export function validateGraph(definition: GraphDefinition): string[] {
       }
     }
   }
+
+  // Conditional edges must have condition_label so the agent knows what to evaluate
+  for (const e of edges) {
+    if (!workIds.includes(e.source)) continue
+    if ((outgoingCount[e.source] ?? 0) > 1 && !e.condition_label?.trim()) {
+      const src = nodes.find(n => n.id === e.source)
+      const tgt = nodes.find(n => n.id === e.target)
+      errors.push(
+        `Edge from "${src?.name ?? e.source}" to "${tgt?.name ?? e.target}" needs an evaluation condition`
+      )
+    }
+  }
+
   return errors
 }

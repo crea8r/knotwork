@@ -16,16 +16,67 @@ A graph is designed once and run many times. Each execution is a **Run**.
 
 ---
 
+## Project
+
+A **Project** is an objective-scoped work container. It is the thing humans actually care about — not the workflow template (Graph), but the specific pursuit: "Q2 enterprise onboarding push", "Hotel contract review for Acme".
+
+A project has:
+- An **objective** (text) — what success looks like
+- A **deadline** and **status** (open / in-progress / blocked / done)
+- A **dashboard** — quantitative progress (task completion %, run success rate) and qualitative assessment (S11+)
+- A set of **Tasks**
+- A **Project Document store** — project-scoped context (see ProjectDocument below)
+
+A project is not a Graph. A Graph is a reusable process template; a Project is a specific pursuit that uses many Graph instances across its Tasks.
+
+---
+
+## Task
+
+A **Task** is the user-facing work atom within a Project. Tasks are what humans track and manage day-to-day.
+
+A task has:
+- A name, description, and status (open / in-progress / blocked / done)
+- A **Channel** (task chat) — the communication surface for this task
+- Zero or more linked **Runs** — a task may trigger one or more graph executions
+
+Tasks without any agent connected are human-executed: the task is assigned to a person who does the work manually and updates the status. Tasks with an agent connected can trigger a Run against a Graph and receive the output automatically.
+
+The task is the user-facing atom. The Run is the execution detail.
+
+---
+
+## ProjectDocument
+
+A **ProjectDocument** is the third knowledge layer. It lives at the Project scope — neither workspace-wide (like the Handbook) nor ephemeral per-run (like Run Context).
+
+Project documents are the "project room" — the accumulated understanding of this specific pursuit: briefs, competitive analysis, decision logs, stakeholder notes, research. Any agent working on any task in the project loads them automatically.
+
+**Three knowledge layers in every agent run:**
+
+| Layer | Scope | Purpose |
+|---|---|---|
+| **Handbook** | Workspace | How to work — SOPs, reusable guidelines |
+| **Project Documents** | Project | What this project is about — brief, decisions, research |
+| **Run Context** | Run | What you're working on right now — this task's specific input |
+
+ProjectDocuments use the same StorageAdapter pattern as the Handbook, scoped to the Project.
+
+---
+
 ## Channel
 
-A **Channel** is the primary collaboration surface in Knotwork. Channels are flat (not nested)
-and come in two types:
+A **Channel** is the primary collaboration surface in Knotwork. Channels are flat (not nested) and exist in five scopes:
 
-- **Normal channel** — ad-hoc collaboration among humans and agents
-- **Workflow channel** — linked to a graph for structured execution and refinement
+- **Workspace bulletin** (S12+) — one per workspace. A shared board where any member (human or agent) can post workspace-wide updates, announcements, and status. Reduces the need for external chat tools for internal coordination.
+- **Project chat** (S10+) — one per project. A shared room open to all workspace members for project-level discussion alongside the focused per-task channels.
+- **Task-linked channel** (S10+) — the chat for a specific Task. Runs, escalations, and task updates appear as thread events here.
+- **Workflow-linked channel** — linked to a graph for design consultation and structured execution.
+- **Resource-linked channel** — attached to a handbook resource for collaborative editing and proposal discussion.
 
-Runs, escalations, and handbook suggestions appear as thread events within channels. Workflows
-remain first-class assets, but daily work is channel-first.
+Channels across all scopes share the same structure: immutable message history, explicit decision events, and thread-first display. The scope determines what events automatically appear in the thread.
+
+In Phase 1, all channels are accessible to all workspace members — no per-channel access restriction. **Phase 2** introduces permission scoping: fine-grained control over who can read or post in each channel.
 
 ---
 
@@ -124,6 +175,20 @@ Knotwork provides four **Knotwork-native tools** that every agent node always ha
 | `complete_node` | Signal completion with output and optional routing branch |
 
 Agents bring their own additional tools. Knotwork does not manage a tool registry — that is the agent's concern. See [tools.md](../tools.md) for full detail.
+
+---
+
+## Automation Spectrum
+
+Knotwork is useful at every level of automation. AI is additive, not required.
+
+```
+No agent     → Human-only tasks, manual runs. Fully valid.
+OpenClaw     → User's existing AI handles tasks. Zero-key install.
+Registered   → Dedicated agent identities per workflow. Power-user path.
+```
+
+When a node has no agent configured and no AI is connected to the workspace, it routes to a human automatically — this is not an error state. Required install environment variables: `DATABASE_URL`, `REDIS_URL`, `JWT_SECRET`. No AI provider keys needed at install time.
 
 ---
 

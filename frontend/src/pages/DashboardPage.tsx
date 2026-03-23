@@ -38,7 +38,7 @@ function EscalationCard({ esc }: { esc: Escalation }) {
           <p className="text-xs text-gray-400 font-mono mt-0.5">run {esc.run_id.slice(0, 8)}…</p>
         </div>
         <Link
-          to={`/escalations/${esc.id}`}
+          to={`/runs/${esc.run_id}`}
           className="text-xs bg-amber-500 text-white px-3 py-1.5 rounded-lg hover:bg-amber-600 font-medium"
         >
           Review →

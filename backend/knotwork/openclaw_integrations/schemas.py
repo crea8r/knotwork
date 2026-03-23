@@ -44,6 +44,8 @@ class OpenClawIntegrationOut(BaseModel):
     status: str
     connected_at: datetime
     last_seen_at: datetime
+    tasks_running: int | None = None
+    slots_available: int | None = None
     created_at: datetime
     updated_at: datetime
 
@@ -91,6 +93,10 @@ class RegisterFromOpenClawResponse(BaseModel):
 
 class PluginPullTaskRequest(BaseModel):
     plugin_instance_id: str = Field(..., min_length=1, max_length=200)
+    # Plugin-reported capacity — how many tasks are currently executing and how many
+    # slots remain. Absent on older plugin versions; treated as unknown when missing.
+    tasks_running: int = Field(default=0, ge=0)
+    slots_available: int | None = Field(default=None, ge=0)
 
 
 class PluginTaskEventRequest(BaseModel):
@@ -104,7 +110,7 @@ class OpenClawTaskDebugItem(BaseModel):
     integration_id: UUID
     status: str
     node_id: str
-    run_id: UUID | None = None
+    run_id: str | None = None
     agent_ref: str
     created_at: datetime
     claimed_at: datetime | None = None
@@ -122,6 +128,9 @@ class OpenClawIntegrationDebugState(BaseModel):
     status: str
     connected_at: datetime
     last_seen_at: datetime
+    # Plugin-reported capacity (source of truth — from heartbeat).
+    tasks_running: int | None = None
+    slots_available: int | None = None
     pending_count: int = 0
     claimed_count: int = 0
     completed_count: int = 0

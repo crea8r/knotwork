@@ -5,15 +5,18 @@ Flow:
 2. OpenClaw plugin pulls pending tasks and executes in OpenClaw runtime.
 3. Plugin posts task events back to Knotwork.
 4. Adapter polls task/events and yields NodeEvents.
+
+agent_ref must be "openclaw". The specific integration + remote agent
+are resolved via registered_agent_id on the node def.
 """
 from __future__ import annotations
 
 import asyncio
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, AsyncGenerator
-from uuid import UUID, uuid4
+from uuid import UUID, uuid4  # UUID still used for workspace_id/integration_id
 
-from sqlalchemy import and_, select
+from sqlalchemy import select
 
 from knotwork.database import AsyncSessionLocal
 from knotwork.openclaw_integrations.models import (
@@ -51,12 +54,9 @@ def _extract_run_attachments(context_files: list[dict]) -> list[dict]:
         except (TypeError, ValueError):
             size = 0
         out.append({
-            "key": key,
-            "url": url,
-            "filename": filename,
+            "key": key, "url": url, "filename": filename,
             "mime_type": str(item.get("mime_type") or "application/octet-stream"),
-            "size": size,
-            "attachment_id": attachment_id,
+            "size": size, "attachment_id": attachment_id,
         })
     return out
 
@@ -68,72 +68,18 @@ class OpenClawAdapter(AgentAdapter):
         run_state: dict,
         knowledge_tree: "KnowledgeTree",
         session_token: str,
+        outgoing_edges: list[dict] | None = None,
+        targets: list[str] | None = None,
+        trust: float = 0.5,
+        retry_guidance: str | None = None,
     ) -> AsyncGenerator[NodeEvent, None]:
-        from knotwork.runtime.prompt_builder import build_agent_prompt
-
         config = node_def.get("config", {})
-        agent_ref: str = node_def.get("agent_ref", "openclaw:main")
         node_id: str = node_def.get("id")
-        run_id = UUID(str(run_state["run_id"]))
+        run_id = str(run_state["run_id"])
+        _edges = outgoing_edges or []
+        _targets = targets or []
 
-        all_outputs: dict = run_state.get("node_outputs") or {}
-        input_sources: list[str] | None = config.get("input_sources")
-        if input_sources is None:
-            run_fields = run_state.get("input", {})
-            prior_outputs = dict(all_outputs) if all_outputs else None
-        else:
-            run_fields = run_state.get("input", {}) if "run_input" in input_sources else {}
-            selected = {nid: all_outputs[nid] for nid in input_sources if nid in all_outputs}
-            prior_outputs = selected if selected else None
-
-        system_prompt, user_prompt = build_agent_prompt(
-            tree=knowledge_tree,
-            state_fields=run_fields,
-            context_files=run_state.get("context_files", []),
-            prior_outputs=prior_outputs,
-        )
-        attachments_json = _extract_run_attachments(run_state.get("context_files", []))
-        if attachments_json:
-            attach_lines = "\n".join(
-                f"- {a['filename']} ({a['mime_type']}, {a['size']} bytes)\n  URL: {a['url']}"
-                for a in attachments_json
-            )
-            user_prompt = f"{user_prompt}\n\n[Attached files]\n{attach_lines}"
-        # Per-run override takes precedence over design-time node config
-        _node_prompts = (run_state.get("input") or {}).get("_node_system_prompts") or {}
-        extra = str(_node_prompts[node_id]) if node_id in _node_prompts else (
-            config.get("system_prompt") or config.get("instructions", "")
-        )
-        if extra:
-            system_prompt = f"{system_prompt}\n\n{extra}"
-            # Also embed node instructions in the user message so they are always
-            # visible in OpenClaw's chat UI and applied even on shared sessions
-            # where extraSystemPrompt is only set at session-creation time.
-            user_prompt = f"=== TASK INSTRUCTIONS ===\n{extra}\n\n---\n\n{user_prompt}"
-
-        system_prompt = (
-            f"{system_prompt}\n\n"
-            "=== TOOLING POLICY ===\n"
-            "- Use available tools before escalating.\n"
-            "- If uncertain, provide best-effort output with unknowns clearly marked.\n\n"
-            "=== COMPLETION PROTOCOL ===\n"
-            "When you have finished your work, end your FINAL message with a decision block.\n\n"
-            "If you are confident in your result:\n"
-            "```json-decision\n"
-            "{\"decision\": \"confident\", \"output\": \"<your complete answer>\", \"next_branch\": null}\n"
-            "```\n\n"
-            "If you need human review before the workflow can proceed:\n"
-            "```json-decision\n"
-            "{\"decision\": \"escalate\", \"question\": \"<specific question for the human>\", "
-            "\"options\": [\"Option A\", \"Option B\"]}\n"
-            "```\n\n"
-            "Rules:\n"
-            "- The json-decision block MUST be the very last thing in your message.\n"
-            "- `output` must contain your complete answer, not a summary.\n"
-            "- Only escalate if you genuinely cannot proceed without human input.\n"
-            "- `next_branch` is a routing hint (string) or null; set null if unsure."
-        )
-
+        # ── Resolve integration + remote agent via registered_agent_id ──────
         integration_id: UUID | None = None
         remote_agent_id: str | None = None
         registered_agent_id = node_def.get("registered_agent_id")
@@ -146,21 +92,66 @@ class OpenClawAdapter(AgentAdapter):
                     remote_agent_id = ra.openclaw_remote_agent_id
 
             if integration_id is None or remote_agent_id is None:
-                slug = agent_ref.removeprefix("openclaw:")
-                r = await db.execute(
-                    select(OpenClawRemoteAgent)
-                    .where(OpenClawRemoteAgent.slug == slug)
-                    .where(OpenClawRemoteAgent.workspace_id == UUID(str(run_state["workspace_id"])))
-                    .where(OpenClawRemoteAgent.is_active == True)  # noqa: E712
-                    .order_by(OpenClawRemoteAgent.last_synced_at.desc())
-                    .limit(1)
-                )
-                remote = r.scalar_one_or_none()
-                if remote is None:
-                    yield NodeEvent("failed", {"error": f"No OpenClaw binding found for {agent_ref}"})
-                    return
-                integration_id = remote.integration_id
-                remote_agent_id = remote.remote_agent_id
+                yield NodeEvent("failed", {
+                    "error": (
+                        f"Node '{node_id}' has no OpenClaw binding. "
+                        "Assign a registered OpenClaw agent in the node config."
+                    )
+                })
+                return
+
+            attachments_json = _extract_run_attachments(run_state.get("context_files", []))
+
+            # ── Reuse or create execution task ───────────────────────────────
+            # Build prompts first (needed for task creation)
+            from knotwork.runtime.nodes.agent import _build_routing_block, _build_completion_protocol
+            from knotwork.runtime.prompt_builder import build_agent_prompt
+
+            # OpenClaw subagent is killed after every task — no in-memory context survives.
+            # Always build the full prompt so GUIDELINES + COMPLETION PROTOCOL are present.
+            # On retry: append HUMAN INTERVENTION at the end (don't strip the base prompt).
+            all_outputs: dict = run_state.get("node_outputs") or {}
+            is_first_node = not all_outputs
+            run_fields = run_state.get("input", {}) if is_first_node else {}
+            context_files_for_prompt = run_state.get("context_files", []) if is_first_node else []
+
+            system_prompt, user_prompt = build_agent_prompt(
+                tree=knowledge_tree,
+                state_fields=run_fields,
+                context_files=context_files_for_prompt,
+                prior_outputs=None,
+            )
+            if is_first_node:
+                attachments_for_prompt = _extract_run_attachments(run_state.get("context_files", []))
+                if attachments_for_prompt:
+                    attach_lines = "\n".join(
+                        f"- {a['filename']} ({a['mime_type']}, {a['size']} bytes)\n  URL: {a['url']}"
+                        for a in attachments_for_prompt
+                    )
+                    user_prompt = f"{user_prompt}\n\n[Attached files]\n{attach_lines}"
+
+            _node_prompts = (run_state.get("input") or {}).get("_node_system_prompts") or {}
+            extra = str(_node_prompts[node_id]) if node_id in _node_prompts else (
+                config.get("system_prompt") or config.get("instructions", "")
+            )
+            if extra:
+                system_prompt = f"{system_prompt}\n\n{extra}"
+                user_prompt = f"=== TASK INSTRUCTIONS ===\n{extra}\n\n---\n\n{user_prompt}"
+
+            system_prompt += (
+                f"\n\n=== AUTONOMY LEVEL ===\n"
+                f"Trust: {trust:.1f} — "
+                f"0.0 means always ask the human before deciding; "
+                f"1.0 means act fully autonomously."
+            )
+            # ROUTING (if multi-branch) immediately before COMPLETION PROTOCOL in user_prompt.
+            routing_block = (
+                f"\n\n{_build_routing_block(_edges, _targets)}" if len(_targets) > 1 else ""
+            )
+            user_prompt = f"{user_prompt}{routing_block}\n\n{_build_completion_protocol(_targets)}"
+
+            if retry_guidance:
+                user_prompt = f"{user_prompt}\n\n=== HUMAN INTERVENTION ===\n{retry_guidance}"
 
             existing_q = await db.execute(
                 select(OpenClawExecutionTask)
@@ -184,7 +175,7 @@ class OpenClawAdapter(AgentAdapter):
                     integration_id=integration_id,
                     run_id=run_id,
                     node_id=node_id,
-                    agent_ref=agent_ref,
+                    agent_ref="openclaw",
                     remote_agent_id=remote_agent_id,
                     system_prompt=system_prompt,
                     user_prompt=user_prompt,
@@ -200,10 +191,12 @@ class OpenClawAdapter(AgentAdapter):
                 resumed_existing_task = False
 
         yield NodeEvent("started", {
-            "model": agent_ref,
+            "model": "openclaw",
             "bridge": "openclaw_plugin",
             "task_id": str(task_id),
             "resumed_existing_task": resumed_existing_task,
+            "system_prompt": system_prompt,
+            "user_prompt": user_prompt,
         })
 
         seen_event_ids: set[str] = set()
@@ -218,7 +211,6 @@ class OpenClawAdapter(AgentAdapter):
                     yield NodeEvent("failed", {"error": "OpenClaw task disappeared"})
                     return
 
-                # Exit if the run was stopped by an operator while we were waiting.
                 from knotwork.runs.models import Run
                 run_row = await db.get(Run, run_id)
                 if run_row and run_row.status == "stopped":
@@ -253,9 +245,12 @@ class OpenClawAdapter(AgentAdapter):
                 return
 
             if task.status == "escalated":
+                # Read questions array; fall back to legacy single question
+                questions: list[str] = getattr(task, "escalation_questions_json", None) or []
+                if not questions and task.escalation_question:
+                    questions = [task.escalation_question]
                 yield NodeEvent("escalation", {
-                    "question": task.escalation_question or "Need human input",
-                    "options": task.escalation_options_json or [],
+                    "questions": questions,
                     "output": task.output_text or "",
                 })
                 return
@@ -272,8 +267,6 @@ class OpenClawAdapter(AgentAdapter):
                     "content": f"OpenClaw task still running… (task_id={task_id})",
                     "metadata": {"task_id": str(task_id)},
                 })
-                # Touch updated_at so the stale-recovery logic in plugin_pull_task
-                # knows this task is alive and should not be reaped.
                 async with AsyncSessionLocal() as db:
                     t = await db.get(OpenClawExecutionTask, task_id)
                     if t is not None and t.status == "claimed":

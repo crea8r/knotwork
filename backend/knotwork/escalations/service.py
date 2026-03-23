@@ -13,7 +13,7 @@ from knotwork.escalations.schemas import EscalationResolve
 async def create_escalation(
     db: AsyncSession,
     *,
-    run_id: UUID,
+    run_id: str,
     run_node_state_id: UUID,
     workspace_id: UUID,
     type: str,
@@ -77,6 +77,8 @@ async def resolve_escalation(
         "override_output": override_output,
         "edited_output": override_output,  # backward-compatible key
         "guidance": data.guidance,
+        "answers": data.answers,
+        "next_branch": data.next_branch,
     }
     esc.resolved_at = datetime.now(timezone.utc)
     await db.commit()
@@ -84,7 +86,7 @@ async def resolve_escalation(
     return esc
 
 
-async def timeout_open_escalations(db: AsyncSession) -> list[UUID]:
+async def timeout_open_escalations(db: AsyncSession) -> list[str]:
     """
     Set status='timed_out' for escalations past their timeout_at.
     Returns list of affected run_ids for further status updates.

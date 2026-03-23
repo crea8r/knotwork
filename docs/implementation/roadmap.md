@@ -6,29 +6,34 @@ Each session lives in `docs/implementation/S<N>/` with its own spec, visual vali
 
 ---
 
-## Product Vision (updated after S8 planning)
+## Product Vision (updated post-S9 planning)
 
-Knotwork is a **structured workflow platform for external agents**. It is not an LLM execution
-engine — it is the layer that gives agents structure, knowledge, and human oversight.
+Knotwork is **digital organizational infrastructure** — the operating system for running a modern organization where the team is a mix of humans and agents.
 
-**Who it's for:** Solo experts and small teams who need one conversational surface for daily
-operations, while gradually distilling repeated work into reusable workflows.
+**Who it's for:** Solo experts and small teams running outcome-focused projects. Work is managed through Projects (objectives + tasks), not just workflow runs. The workspace is the digital organization; registered identities (human or agent) are the team.
 
-**What Knotwork provides agents and teams:**
-1. A structured sequence of steps (the workflow)
-2. Relevant knowledge per step (the Handbook fragment)
-3. Context from prior steps (prior node outputs)
-4. A way to write structured logs back into the run
-5. A way to propose Handbook improvements
-6. A human-in-the-loop gate at any step (agent calls `escalate`, human responds)
-7. A thread-first collaboration surface where humans, agents, and system decisions are visible together
+**What Knotwork provides:**
+1. A project layer: objectives, tasks, project documents — useful with zero AI
+2. A structured workflow layer: graphs, runs, knowledge (Handbook + Run Context)
+3. A knowledge layer: Handbook (how to work), Project Documents (what this project is about), Run Context (this task's input)
+4. A human-in-the-loop gate at any step (`escalate`, human responds)
+5. A thread-first collaboration surface (channels per task, workflow, or handbook resource)
+6. A workspace representative model: designated humans or agents handle external interactions and call Knotwork when structured work is needed
 
 **What Knotwork does NOT do:**
-- Own tools (agents bring their own — Knotwork does not manage them)
-- Run LLM calls directly after S7 (each node delegates to an external agent)
-- Act as an agent framework (that's openclaw, LangGraph, etc.)
+- Own tools (agents bring their own)
+- Run LLM calls directly (each node delegates to an external agent via adapter)
+- Act as an agent framework (that's OpenClaw, LangGraph, etc.)
+- Manage external communication channels (email, Slack, etc.) — representatives use their own tools
 
-**Agent systems supported:** OpenClaw (primary). Claude/OpenAI remain <span style="color:#c1121f;font-weight:700">LEGACY / TRANSITIONAL</span> adapters.
+**Agent systems supported:** OpenClaw (primary, zero-key install). Direct provider keys (Anthropic, OpenAI) supported via RegisteredAgent as power-user path. No AI required at all — Knotwork is fully useful with human-only workflows.
+
+**Automation spectrum:**
+```
+No agent     → Human-only tasks, manual runs. Fully valid.
+OpenClaw     → User's existing AI handles tasks. Zero-key install.
+Registered   → Dedicated agent identities per workflow. Power-user path.
+```
 
 ---
 
@@ -51,15 +56,21 @@ operations, while gradually distilling repeated work into reusable workflows.
 | **S8** | **Chat-first agent runtime.** Plugin-first OpenClaw connectivity remains, with split chat domains: agent main session chat for preflight, separate workflow chat for design consultation, and run-per-session chat timeline for execution. Capability is derived from chat-visible skills/tools, escalation continuity is preserved in run chat, and run detail uses persisted chat as source of truth. | S8.1 | ✅ Done — OpenClaw connected; chat domains live |
 | **S8.1** | **Early adopter sharing.** Full-stack Docker (dev hot-reload + prod profiles). Magic-link auth (no passwords, uses own SMTP). Workspace invitations (owner invites by email → magic link). JWT middleware wired to all workspace routes. Settings → Members tab (real data + invite form). OpenClaw plugin install URL (agent-triggered setup). Agent description field flows from OpenClaw → Knotwork on handshake. **Public workflow run trigger MVP:** owner-only publish links with required markdown description, token-protected public workflow/run pages, public trigger + redirect, final-output-only public run view, pending + email notify, basic rate limit, explicit "test / future paid" notice. Git flow guide. | S8.2 | ✅ Done — Early-adopter sharing + public trigger pages live |
 | **S8.2** | **Clean cloud deployment milestone (remote server).** Deploy Knotwork on a remote server with production docker profile, migration runbook, env/secrets checklist, reverse proxy + TLS guidance, and smoke-test checklist. Hide unfinished Settings surfaces (`Workspace`, `Notifications`) to match shipped scope. Includes OpenClaw bootstrap hardening for deployed installs: stable persisted `plugin_instance_id`/`integration_secret`, no auto-handshake in CLI/plugin-load contexts, and only the primary long-running runtime may auto-handshake/poll tasks. **Explicitly out of scope in S8.2:** workspace creation flow and notification system implementation. | S9 | Planned |
-| **S9** | **Human-usable Knotwork release.** Add workspace creation flow, implement notification system, harden workflow readiness validation (fail-fast invalid runs, block invalid public publish/trigger, surface blocking issues), refine core UI, refine node branching UX/logic, support intentional review/revision loop-back workflows with safeguards, upgrade OpenClaw transport from polling to WebSocket with reconnect/re-auth/retry/degraded-state reliability semantics, add OpenClaw gateway auth-mode auto-resolution (`none` / `token` / `password` / `trusted-proxy`) with a unified gateway client wrapper and diagnostics, add multi-task OpenClaw concurrency (default is `2` tasks per remote agent, capped per plugin instance), add full escalation answer/resume UX in run detail, add collaborative run-context participation/addressing across humans, clients, and agents, add workflow folders/tags with a Handbook-style tree view, add install/session-state hardening (`installation_id`, workspace cache revalidation, localhost bypass reset safety), define a supported installation update mechanism tied to repo releases, and deliver mobile-ready UI. | S10 | Planned |
-| **S10** | **Agent-usable Knotwork release.** Product mode where users can operate Knotwork through their own agents. Finalize access/trust model (including option where user-provided agent has full workspace access), agent-first interaction contract, and security boundaries for agent-driven operations. | — (Phase 1 complete) | Planned |
+| **S9** | **Human-usable Knotwork release.** Implement notification system, harden workflow readiness validation (fail-fast invalid runs, block invalid public publish/trigger, surface blocking issues), refine core UI, refine node branching UX/logic, support intentional review/revision loop-back workflows with safeguards, upgrade OpenClaw transport from polling to WebSocket with reconnect/re-auth/retry/degraded-state reliability semantics, add OpenClaw gateway auth-mode auto-resolution (`none` / `token` / `password` / `trusted-proxy`) with a unified gateway client wrapper and diagnostics, add multi-task OpenClaw concurrency (default is `2` tasks per remote agent, capped per plugin instance), add full escalation answer/resume UX in run detail, add collaborative run-context participation/addressing across humans, clients, and agents, add workflow folders/tags with a Handbook-style tree view, add install/session-state hardening (`installation_id`, workspace cache revalidation, localhost bypass reset safety), define a supported installation update mechanism tied to repo releases, and deliver mobile-ready UI. | S10 | Planned |
+| **S10** | **Projects, Tasks, and Project Documents.** The missing work container. `Project` (objective, deadline, status), `Task` (channel-linked, may trigger Run), `ProjectDocument` (project-scoped knowledge — third knowledge layer). **Project chat**: one shared channel per project for all workspace members. Project dashboard: task completion, run success, roadblock surface. Three-layer knowledge prompt: Handbook + Project Documents + Run Context. Fully useful with zero AI — agent-less nodes route to human. | S11 | Planned |
+| **S11** | **Agent-Aided Project Intelligence.** Project meta-agent synthesizes qualitative progress assessment on demand ("~60% toward objective, Z is blocked because..."). Proposes objective refinements (human approves — same proposal pattern as Handbook). Versioned assessments. Falls back gracefully if no AI connected. | S12 | Planned |
+| **S12** | **Workspace Representatives + Agent Zero + MCP Expansion.** Designate one or more representatives (WorkspaceMember or RegisteredAgent) as in charge of external interactions. Knotwork routes escalations/notifications to representatives. **Workspace bulletin**: one workspace-wide channel where any member (human or agent) can post updates and announcements. **Agent Zero**: optional orchestrator agent (`role: orchestrator`) — the workspace's COO. Runs a guided onboarding conversation post-install (re-runnable at any time) to bootstrap projects, Handbook entries, and agent recruitment. Monitors workspace health, surfaces what's blocked, proposes new agents. Always the primary representative when created. Connects via OpenClaw — no extra API key needed. MCP toolset expanded with project/task tools: `create_project`, `create_task`, `get_task_output`, `get_project_status`, `add_project_document`. Representatives call Knotwork via MCP from their native context (Claude Desktop, OpenClaw); Knotwork never manages external comm channels. | — (Phase 1 complete) | Planned |
 
 ---
 
-## Phase 2 (post-S10, not in scope for Phase 1)
+## Phase 2 (post-S12, not in scope for Phase 1)
 
+> Phase 1 is a fully open-source, single-tenant product. One workspace per installation, configured at install time. Phase 2 introduces multi-tenancy and the features that require it.
+
+- **Workspace creation flow** — UI-driven workspace setup; required for multi-tenant (Cloud) deployments. Single-tenant OSS installs have one workspace, bootstrapped at deploy time.
+- **Multi-tenant support** — multiple workspaces per installation (Knotwork Cloud only)
+- **Channel permission scoping** — fine-grained control over who can read or post in each channel scope; Phase 1 channels are open to all workspace members
 - Scheduled / cron run triggers
-- Slack integration
 - Advanced roles (beyond owner / operator)
 - Per-node conversation threads
 - Auto-improvement loop for workflows and handbook docs
@@ -69,7 +80,8 @@ operations, while gradually distilling repeated work into reusable workflows.
 - Self-hosted deployment option
 - Restore script to repopulate a workspace from an operator backup bundle
 - In-product backup/export function for operational stability
-- LLM provider OAuth PKCE — users connect their own OpenAI / Anthropic account directly
+
+> ⚠️ **Note:** "Slack integration" as a Knotwork-managed feature is no longer planned. Representatives use Slack (or any channel) via their own tools. Knotwork does not manage external comm clients.
 
 ---
 
@@ -77,15 +89,17 @@ operations, while gradually distilling repeated work into reusable workflows.
 
 These decisions are stable and should not be revisited without a documented breaking change:
 
-1. **One conversational surface for all work.** Inbox and channels are first-class shells for operations; workflows remain first-class distilled assets.
+1. **One conversational surface for all work.** Channels are first-class shells (scoped to task, workflow, or handbook resource); workflows and projects remain first-class assets.
 2. **Agents bring their own tools.** Knotwork does not manage tool registries after S7. The existing tool registry is <span style="color:#c1121f;font-weight:700">LEGACY / DEPRECATED</span> and should not be expanded.
 3. **Two Knotwork-native skills for agents:** `write_worklog` and `propose_handbook_update`. These are always available, never user-configured.
 4. **Messages are immutable for humans and agents.** Corrections happen through explicit decision events and follow-up artifacts, never by editing prior messages.
 5. **Session tokens are scoped to run + node.** An agent cannot write to the wrong place.
 6. **`propose` never writes to the handbook.** Human approval is always required.
 7. **All graphs must have Start and End nodes to run.** The <span style="color:#c1121f;font-weight:700">LEGACY</span> bypass is permanently removed.
-8. **Agent systems are pluggable via adapters, but OpenClaw is the primary path.** Claude/OpenAI are <span style="color:#c1121f;font-weight:700">LEGACY / TRANSITIONAL</span> until a final deprecation decision.
+8. **Agent systems are pluggable via adapters, but OpenClaw is the primary path.** Claude/OpenAI direct-key adapters are <span style="color:#c1121f;font-weight:700">LEGACY / TRANSITIONAL</span>. Zero-key install is the default; no AI provider key is required at install time.
 9. **Agent capability contract is mandatory for production use.** Tools, constraints, and testability must be visible before workflow execution.
 10. **Escalation resolution is decision-based.** `accept_output`, `override_output`, `request_revision`, and `abort_run` are explicit state transitions.
 11. **Handbook edits via agent remain human-governed by default.** Agent suggestions for file content/structure are proposal-based and require explicit approval before write.
 12. **Sidebar order is fixed.** Nav order encodes product mental model and is not user-reorderable.
+13. **Knotwork does not manage external communication channels.** Email, Slack, WhatsApp, etc. are used by representatives (human or agent) via their own tools. Knotwork exposes MCP/API so representatives can trigger structured work. Notification delivery (outbound only) remains for escalations and task events.
+14. **AI is additive, not required.** A workspace with no AI connected is a valid, fully-functional human-workflow platform. Agent-less nodes route to human rather than failing.

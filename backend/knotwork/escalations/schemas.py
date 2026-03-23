@@ -9,7 +9,7 @@ from pydantic import BaseModel
 
 class EscalationOut(BaseModel):
     id: UUID
-    run_id: UUID
+    run_id: str
     run_node_state_id: UUID
     workspace_id: UUID
     type: str
@@ -41,5 +41,7 @@ class EscalationResolve(BaseModel):
     override_output: dict | None = None
     edited_output: dict | None = None
     guidance: str | None = None
+    answers: list[str] | None = None    # Q&A escalation: indexed answers per question
+    next_branch: str | None = None      # routing escalation: human-chosen branch
     channel_id: UUID | None = None
     actor_name: str | None = None

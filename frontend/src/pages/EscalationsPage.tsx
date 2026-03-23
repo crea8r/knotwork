@@ -35,7 +35,7 @@ function EscalationCard({ esc }: { esc: Escalation }) {
           </p>
         </div>
         <Link
-          to={`/escalations/${esc.id}`}
+          to={`/runs/${esc.run_id}`}
           className="text-xs text-blue-600 hover:underline shrink-0"
         >
           {esc.status === 'open' ? 'Review →' : 'View →'}

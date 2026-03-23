@@ -11,7 +11,7 @@ class Escalation(Base):
     __tablename__ = "escalations"
 
     id: Mapped[UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid4)
-    run_id: Mapped[UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("runs.id"), nullable=False)
+    run_id: Mapped[str] = mapped_column(String(36), ForeignKey("runs.id"), nullable=False)
     run_node_state_id: Mapped[UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("run_node_states.id"), nullable=False)
     workspace_id: Mapped[UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("workspaces.id"), nullable=False)
     type: Mapped[str] = mapped_column(String, nullable=False)

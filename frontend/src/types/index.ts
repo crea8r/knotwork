@@ -3,7 +3,8 @@
 
 /** S7: 'agent' is the unified type. Legacy types kept for backward-compat display only. */
 export type NodeType = 'agent' | 'llm_agent' | 'human_checkpoint' | 'conditional_router' | 'tool_executor' | 'start' | 'end'
-export type TrustLevel = 'user_controlled' | 'supervised' | 'autonomous'
+/** trust_level is now a float 0.0–1.0. Legacy string enum kept for backward-compat display. */
+export type TrustLevel = number
 export type RunStatus = 'draft' | 'queued' | 'running' | 'paused' | 'completed' | 'failed' | 'stopped'
 export type NodeStatus = 'pending' | 'running' | 'paused' | 'completed' | 'failed' | 'skipped'
 export type EscalationType = 'low_confidence' | 'checkpoint_failure' | 'human_checkpoint' | 'agent_question' | 'confidence' | 'node_error'
@@ -233,7 +234,7 @@ export interface Channel {
   id: string
   workspace_id: string
   name: string
-  channel_type: 'normal' | 'workflow' | 'handbook'
+  channel_type: 'normal' | 'workflow' | 'handbook' | 'agent_main'
   graph_id: string | null
   archived_at: string | null
   created_at: string

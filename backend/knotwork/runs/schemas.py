@@ -38,7 +38,7 @@ class RunUpdate(BaseModel):
 
 class RunNodeStateOut(BaseModel):
     id: UUID
-    run_id: UUID
+    run_id: str
     node_id: str
     node_name: str | None = None
     agent_ref: str | None = None
@@ -60,7 +60,7 @@ class RunNodeStateOut(BaseModel):
 
 class RunWorklogEntryOut(BaseModel):
     id: UUID
-    run_id: UUID
+    run_id: str
     node_id: str
     agent_ref: str | None = None
     entry_type: str
@@ -73,7 +73,7 @@ class RunWorklogEntryOut(BaseModel):
 
 class RunHandbookProposalOut(BaseModel):
     id: UUID
-    run_id: UUID
+    run_id: str
     node_id: str
     agent_ref: str | None = None
     path: str
@@ -92,7 +92,7 @@ class OpenAICallLogOut(BaseModel):
     id: UUID
     workspace_id: UUID
     workflow_id: UUID | None = None
-    run_id: UUID
+    run_id: str
     run_node_state_id: UUID | None = None
     node_id: str
     agent_ref: str | None = None
@@ -110,7 +110,7 @@ class OpenAICallLogOut(BaseModel):
 
 
 class RunOut(BaseModel):
-    id: UUID
+    id: str
     workspace_id: UUID
     graph_id: UUID
     graph_version_id: UUID

@@ -5,6 +5,10 @@
  * S7: all llm_agent / human_checkpoint / conditional_router / tool_executor
  * nodes are replaced by the unified 'agent' type. Legacy types still render
  * via AgentNodeConfig with backward-compat defaults.
+ *
+ * Connections with ≥2 outgoing edges require a condition_label on each edge
+ * so the agent knows which branch to evaluate. Missing labels are flagged
+ * inline and also blocked by validate_graph() at run-start time.
  */
 import { useState } from 'react'
 import { X } from 'lucide-react'
@@ -18,6 +22,7 @@ interface Props {
   onConfigChange: (nodeId: string, patch: Record<string, unknown>) => void
   onRemove: (nodeId: string) => void
   onAddEdge: (edge: EdgeDef) => void
+  onUpdateEdge: (edgeId: string, patch: Partial<EdgeDef>) => void
   onRemoveEdge: (edgeId: string) => void
 }
 
@@ -34,9 +39,10 @@ const TYPE_LABEL: Record<string, string> = {
 const AGENT_TYPES = new Set(['agent', 'llm_agent', 'human_checkpoint', 'conditional_router'])
 
 export default function NodeConfigPanel({
-  node, allNodes, edges, onConfigChange, onRemove, onAddEdge, onRemoveEdge,
+  node, allNodes, edges, onConfigChange, onRemove, onAddEdge, onUpdateEdge, onRemoveEdge,
 }: Props) {
   const [connectTarget, setConnectTarget] = useState('')
+  const [newConditionLabel, setNewConditionLabel] = useState('')
 
   const otherNodes = allNodes.filter(n => n.id !== node.id)
   const predecessorIds = new Set(edges.filter(e => e.target === node.id).map(e => e.source))
@@ -45,28 +51,32 @@ export default function NodeConfigPanel({
   const connectedIds = new Set(outgoing.map(e => e.target))
   const unconnected = otherNodes.filter(n => !connectedIds.has(n.id))
 
+  // Edges become conditional (require labels) when there are ≥2 outgoing
+  const isMultiBranch = outgoing.length > 1
+  // Adding a new edge when there's already 1 will make it multi-branch
+  const newEdgeNeedsLabel = outgoing.length >= 1
+
   function handleAddEdge() {
     if (!connectTarget) return
+    if (newEdgeNeedsLabel && !newConditionLabel.trim()) return
+    const willBeMultiBranch = outgoing.length >= 1
     const edge: EdgeDef = {
       id: `e-${node.id}-${connectTarget}-${Date.now()}`,
-      source: node.id, target: connectTarget, type: 'direct',
+      source: node.id,
+      target: connectTarget,
+      type: willBeMultiBranch ? 'conditional' : 'direct',
+      condition_label: willBeMultiBranch ? newConditionLabel.trim() : undefined,
+    }
+    // Also convert the existing single edge to conditional when 2nd is added
+    if (outgoing.length === 1 && !outgoing[0].condition_label) {
+      onUpdateEdge(outgoing[0].id, { type: 'conditional' })
     }
     onAddEdge(edge)
     setConnectTarget('')
+    setNewConditionLabel('')
   }
 
-  /**
-   * AgentNodeConfig calls onChange(nodeFieldsPatch, configPatch?).
-   * nodeFieldsPatch contains top-level NodeDef fields (agent_ref, trust_level).
-   * configPatch contains nested config fields.
-   * We merge both into a single flat patch sent to onConfigChange.
-   */
   function handleAgentChange(nodeFieldsPatch: Record<string, unknown>, configPatch?: Record<string, unknown>) {
-    const merged: Record<string, unknown> = {}
-    // Top-level node fields are passed through as-is to onConfigChange
-    // (the store handles agent_ref / trust_level separately if they're set)
-    Object.assign(merged, nodeFieldsPatch)
-    if (configPatch) Object.assign(merged, { _config: configPatch })
     onConfigChange(node.id, { ...nodeFieldsPatch, ...(configPatch ? { _config: configPatch } : {}) })
   }
 
@@ -114,34 +124,69 @@ export default function NodeConfigPanel({
 
         <div>
           <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Connections</p>
+
+          {isMultiBranch && (
+            <p className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded px-2 py-1 mb-2">
+              Multi-branch node — each connection needs an evaluation condition.
+            </p>
+          )}
+
           {outgoing.length === 0 ? (
             <p className="text-xs text-gray-400 italic">No outgoing connections.</p>
           ) : (
-            <ul className="space-y-1 mb-2">
+            <ul className="space-y-2 mb-2">
               {outgoing.map(edge => {
                 const target = allNodes.find(n => n.id === edge.target)
+                const missingLabel = isMultiBranch && !edge.condition_label?.trim()
                 return (
-                  <li key={edge.id} className="flex items-center justify-between bg-gray-50 rounded px-2 py-1 text-xs">
-                    <span className="text-gray-700">→ {target?.name ?? edge.target}</span>
-                    <button onClick={() => onRemoveEdge(edge.id)} className="text-gray-300 hover:text-red-500 ml-2" title="Remove connection">
-                      <X size={12} />
-                    </button>
+                  <li key={edge.id} className="bg-gray-50 rounded px-2 py-1.5 text-xs space-y-1">
+                    <div className="flex items-center justify-between">
+                      <span className="text-gray-700 font-medium">→ {target?.name ?? edge.target}</span>
+                      <button onClick={() => onRemoveEdge(edge.id)} className="text-gray-300 hover:text-red-500 ml-2" title="Remove connection">
+                        <X size={12} />
+                      </button>
+                    </div>
+                    {isMultiBranch && (
+                      <input
+                        type="text"
+                        className={`w-full border rounded px-2 py-1 text-xs outline-none focus:ring-1 focus:ring-brand-500 ${missingLabel ? 'border-amber-400 bg-amber-50 placeholder-amber-400' : 'border-gray-200'}`}
+                        placeholder="Evaluation condition (required)…"
+                        value={edge.condition_label ?? ''}
+                        onChange={e => onUpdateEdge(edge.id, {
+                          condition_label: e.target.value,
+                          type: 'conditional',
+                        })}
+                      />
+                    )}
                   </li>
                 )
               })}
             </ul>
           )}
+
           {unconnected.length > 0 && (
-            <div className="flex gap-1 mt-2">
-              <select value={connectTarget} onChange={e => setConnectTarget(e.target.value)}
-                className="flex-1 border border-gray-200 rounded px-2 py-1 text-xs outline-none focus:ring-1 focus:ring-brand-500">
-                <option value="">Connect to…</option>
-                {unconnected.map(n => <option key={n.id} value={n.id}>{n.name}</option>)}
-              </select>
-              <button onClick={handleAddEdge} disabled={!connectTarget}
-                className="px-2 py-1 bg-brand-500 text-white rounded text-xs disabled:opacity-40 hover:bg-brand-600">
-                Add
-              </button>
+            <div className="space-y-1 mt-2">
+              <div className="flex gap-1">
+                <select value={connectTarget} onChange={e => setConnectTarget(e.target.value)}
+                  className="flex-1 border border-gray-200 rounded px-2 py-1 text-xs outline-none focus:ring-1 focus:ring-brand-500">
+                  <option value="">Connect to…</option>
+                  {unconnected.map(n => <option key={n.id} value={n.id}>{n.name}</option>)}
+                </select>
+                <button onClick={handleAddEdge}
+                  disabled={!connectTarget || (newEdgeNeedsLabel && !newConditionLabel.trim())}
+                  className="px-2 py-1 bg-brand-500 text-white rounded text-xs disabled:opacity-40 hover:bg-brand-600">
+                  Add
+                </button>
+              </div>
+              {newEdgeNeedsLabel && connectTarget && (
+                <input
+                  type="text"
+                  className="w-full border border-gray-200 rounded px-2 py-1 text-xs outline-none focus:ring-1 focus:ring-brand-500"
+                  placeholder="Evaluation condition for this branch (required)…"
+                  value={newConditionLabel}
+                  onChange={e => setNewConditionLabel(e.target.value)}
+                />
+              )}
             </div>
           )}
         </div>

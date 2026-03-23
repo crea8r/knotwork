@@ -333,7 +333,7 @@ async def set_public_run_email(db: AsyncSession, token: str, email: str) -> Publ
     return share
 
 
-async def notify_public_run_completion(db: AsyncSession, run_id: UUID) -> None:
+async def notify_public_run_completion(db: AsyncSession, run_id: str) -> None:
     rows = await db.execute(
         select(PublicRunShare)
         .where(
@@ -377,7 +377,7 @@ async def notify_public_run_completion(db: AsyncSession, run_id: UUID) -> None:
     await db.commit()
 
 
-async def notify_public_run_aborted(db: AsyncSession, run_id: UUID) -> None:
+async def notify_public_run_aborted(db: AsyncSession, run_id: str) -> None:
     rows = await db.execute(
         select(PublicRunShare)
         .where(

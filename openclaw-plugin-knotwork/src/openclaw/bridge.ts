@@ -196,10 +196,16 @@ export async function doHandshake(
 
 export async function pullTask(
   baseUrl: string, instanceId: string, secret: string,
+  capacity?: { tasksRunning: number; slotsAvailable: number },
 ): Promise<ExecutionTask | null> {
+  const body: LooseRecord = { plugin_instance_id: instanceId }
+  if (capacity) {
+    body.tasks_running = capacity.tasksRunning
+    body.slots_available = capacity.slotsAvailable
+  }
   const resp = await post<{ task?: ExecutionTask }>(
     `${baseUrl}/openclaw-plugin/pull-task`,
-    { plugin_instance_id: instanceId },
+    body,
     { 'X-Knotwork-Integration-Secret': secret },
   )
   if (!resp.ok) throw new Error(`Pull task failed (${resp.status}): ${resp.text.slice(0, 240)}`)

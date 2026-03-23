@@ -39,6 +39,10 @@ class OpenClawIntegration(Base):
     status: Mapped[str] = mapped_column(sa.String(30), nullable=False, server_default=sa.text("'connected'"))
     connected_at: Mapped[datetime] = mapped_column(sa.DateTime(timezone=True), nullable=False)
     last_seen_at: Mapped[datetime] = mapped_column(sa.DateTime(timezone=True), nullable=False)
+    # Plugin-reported capacity (updated on every pull-task heartbeat).
+    # None = plugin has never reported (old plugin version or first boot).
+    tasks_running: Mapped[int | None] = mapped_column(sa.Integer, nullable=True)
+    slots_available: Mapped[int | None] = mapped_column(sa.Integer, nullable=True)
     metadata_json: Mapped[dict] = mapped_column(sa.JSON, nullable=False, default=dict)
     created_at: Mapped[datetime] = mapped_column(sa.DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(sa.DateTime(timezone=True), server_default=func.now(), nullable=False)
@@ -76,8 +80,8 @@ class OpenClawExecutionTask(Base):
     integration_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), sa.ForeignKey("openclaw_integrations.id", ondelete="CASCADE"), nullable=False
     )
-    run_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True), sa.ForeignKey("runs.id", ondelete="CASCADE"), nullable=True
+    run_id: Mapped[str | None] = mapped_column(
+        sa.String(36), sa.ForeignKey("runs.id", ondelete="CASCADE"), nullable=True
     )
     node_id: Mapped[str] = mapped_column(sa.String(120), nullable=False)
     agent_ref: Mapped[str] = mapped_column(sa.String(200), nullable=False)
@@ -93,6 +97,7 @@ class OpenClawExecutionTask(Base):
     output_text: Mapped[str | None] = mapped_column(sa.Text, nullable=True)
     next_branch: Mapped[str | None] = mapped_column(sa.String(120), nullable=True)
     escalation_question: Mapped[str | None] = mapped_column(sa.Text, nullable=True)
+    escalation_questions_json: Mapped[list] = mapped_column(sa.JSON, nullable=False, default=list)
     escalation_options_json: Mapped[list] = mapped_column(sa.JSON, nullable=False, default=list)
     attachments_json: Mapped[list] = mapped_column(sa.JSON, nullable=False, default=list)
     error_message: Mapped[str | None] = mapped_column(sa.Text, nullable=True)

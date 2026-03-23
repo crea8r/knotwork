@@ -6,6 +6,8 @@ export interface EscalationResolve {
   resolution: 'accept_output' | 'override_output' | 'request_revision' | 'abort_run'
   override_output?: Record<string, unknown>
   guidance?: string
+  answers?: string[]       // Q&A escalation: indexed answers per question
+  next_branch?: string     // routing escalation: human-chosen branch node ID
   channel_id?: string
   actor_name?: string
 }

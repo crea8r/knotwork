@@ -111,6 +111,8 @@ async def plugin_pull_task(
         db,
         plugin_instance_id=data.plugin_instance_id,
         integration_secret=x_knotwork_integration_secret,
+        tasks_running=data.tasks_running,
+        slots_available=data.slots_available,
     )
 
 

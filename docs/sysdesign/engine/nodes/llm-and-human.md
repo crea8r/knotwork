@@ -52,8 +52,47 @@ For each attempt, runtime builds prompt context from:
 - Optional context files: `state.context_files`
 - Prior node outputs: filtered by `config.input_sources` when set
 
-Prompt structure is produced by `runtime/prompt_builder.py` and then extended by
-`config.system_prompt` (or <span style="color:#c1121f;font-weight:700">LEGACY</span> `instructions`).
+### System Prompt Block Order
+
+Blocks are assembled in this exact order (later blocks override nothing — all are additive):
+
+| # | Block | Source | Always? |
+|---|-------|--------|---------|
+| 1 | `=== GUIDELINES ===` | `build_agent_prompt()` — knowledge tree | Yes |
+| 2 | `=== THIS CASE ===` | `build_agent_prompt()` — run input + prior node outputs | Yes |
+| 3 | `[node system_prompt]` | `config.system_prompt` / `config.instructions` (LEGACY) | If set |
+| 4 | `=== AUTONOMY LEVEL ===` | `trust_level` float (0.0–1.0) | Yes |
+| 5 | `=== ROUTING ===` | Per-branch condition labels from outgoing edges | Only if node has >1 outgoing edge |
+| 6 | `=== COMPLETION PROTOCOL ===` | json-decision block format + rules | Yes |
+
+**On retry** (after escalation `request_revision`): only the human guidance is sent as `user_prompt`. `system_prompt = ""` — no blocks 1–6.
+
+### ROUTING block
+
+When a node has more than one outgoing edge, each edge must have a `condition_label` — the question/condition the agent evaluates to pick that branch. The runtime renders them as:
+
+```
+=== ROUTING ===
+After completing your work you MUST choose exactly one next step...
+  - "node-a": evaluate → Is the invoice amount > $10,000?
+  - "node-b": evaluate → Is the invoice amount ≤ $10,000?
+```
+
+Edges missing a `condition_label` on a multi-branch node are rejected by `validate_graph()` before the run starts.
+
+### COMPLETION PROTOCOL block
+
+Always the final block. Instructs the agent to end every response with a `\`\`\`json-decision` fenced block:
+
+```
+{ "decision": "confident", "output": "...", "next_branch": "<target-id>" }
+```
+or
+```
+{ "decision": "escalate", "questions": ["Q1", "Q2"] }
+```
+
+The plugin's `parseDecisionBlock()` reads this block. If absent, the full message is treated as a confident completion with `next_branch = null`.
 
 ---
 

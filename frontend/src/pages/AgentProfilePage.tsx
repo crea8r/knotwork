@@ -31,10 +31,10 @@ function initials(name: string) {
 }
 
 function variantByStatus(s?: string): 'green' | 'gray' | 'red' | 'orange' | 'purple' {
-  if (s === 'active' || s === 'pass') return 'green'
+  if (s === 'active') return 'green'
   if (s === 'fail') return 'red'
   if (s === 'warning') return 'orange'
-  if (s === 'inactive' || s === 'never_run') return 'gray'
+  if (s === 'inactive') return 'gray'
   return 'purple'
 }
 
@@ -340,8 +340,8 @@ export default function AgentProfilePage() {
                 <div className="grid grid-cols-7 gap-1.5">
                   {allAvatars.map((opt) => (
                     <button key={opt.id} type="button" onClick={() => { setAvatarUrl(opt.url); update.mutate({ display_name: displayName, avatar_url: opt.url }) }} title={opt.label}
-                      className={`rounded-xl p-0.5 border ${avatarUrl === opt.url ? 'border-brand-500 ring-2 ring-brand-200' : 'border-gray-200 hover:border-gray-400'}`}>
-                      <img src={opt.url} alt={opt.label} className="w-9 h-9 rounded-lg object-cover" />
+                      className={`rounded-xl p-0.5 border aspect-square ${avatarUrl === opt.url ? 'border-brand-500 ring-2 ring-brand-200' : 'border-gray-200 hover:border-gray-400'}`}>
+                      <img src={opt.url} alt={opt.label} className="w-full h-full rounded-lg object-cover" />
                     </button>
                   ))}
                 </div>

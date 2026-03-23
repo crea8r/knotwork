@@ -5,12 +5,13 @@ from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.sql import func
 
 from knotwork.database import Base
+from knotwork.runs.id import generate_run_id
 
 
 class Run(Base):
     __tablename__ = "runs"
 
-    id: Mapped[UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid4)
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=generate_run_id)
     workspace_id: Mapped[UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("workspaces.id"), nullable=False)
     graph_id: Mapped[UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("graphs.id"), nullable=False)
     graph_version_id: Mapped[UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("graph_versions.id"), nullable=False)
@@ -33,7 +34,7 @@ class RunNodeState(Base):
     __tablename__ = "run_node_states"
 
     id: Mapped[UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid4)
-    run_id: Mapped[UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("runs.id"), nullable=False)
+    run_id: Mapped[str] = mapped_column(String(36), ForeignKey("runs.id"), nullable=False)
     node_id: Mapped[str] = mapped_column(String, nullable=False)
     # S6.5: display name at time of run (denormalized so it survives graph edits)
     node_name: Mapped[str | None] = mapped_column(String, nullable=True)
@@ -60,7 +61,7 @@ class RunWorklogEntry(Base):
     __tablename__ = "run_worklog_entries"
 
     id: Mapped[UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid4)
-    run_id: Mapped[UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("runs.id", ondelete="CASCADE"), nullable=False)
+    run_id: Mapped[str] = mapped_column(String(36), ForeignKey("runs.id", ondelete="CASCADE"), nullable=False)
     node_id: Mapped[str] = mapped_column(String, nullable=False)
     agent_ref: Mapped[str | None] = mapped_column(String, nullable=True)
     # entry_type: 'observation' | 'tool_call' | 'decision' | 'proposal'
@@ -76,7 +77,7 @@ class RunHandbookProposal(Base):
     __tablename__ = "run_handbook_proposals"
 
     id: Mapped[UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid4)
-    run_id: Mapped[UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("runs.id", ondelete="CASCADE"), nullable=False)
+    run_id: Mapped[str] = mapped_column(String(36), ForeignKey("runs.id", ondelete="CASCADE"), nullable=False)
     node_id: Mapped[str] = mapped_column(String, nullable=False)
     agent_ref: Mapped[str | None] = mapped_column(String, nullable=True)
     path: Mapped[str] = mapped_column(String, nullable=False)
@@ -98,7 +99,7 @@ class OpenAICallLog(Base):
     id: Mapped[UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid4)
     workspace_id: Mapped[UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("workspaces.id"), nullable=False)
     workflow_id: Mapped[UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("graphs.id"), nullable=True)
-    run_id: Mapped[UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("runs.id", ondelete="CASCADE"), nullable=False)
+    run_id: Mapped[str] = mapped_column(String(36), ForeignKey("runs.id", ondelete="CASCADE"), nullable=False)
     run_node_state_id: Mapped[UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("run_node_states.id"), nullable=True)
     node_id: Mapped[str] = mapped_column(String, nullable=False)
     agent_ref: Mapped[str | None] = mapped_column(String, nullable=True)

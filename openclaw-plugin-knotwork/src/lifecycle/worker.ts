@@ -4,7 +4,7 @@ import { getConfig, postEvent, pullTask } from '../openclaw/bridge'
 import { executeTask } from '../openclaw/session'
 import { isInvalidCredentialsError } from './handshake'
 import { MAX_RECENT_TASKS } from '../state/persist'
-import type { ExecutionTask, LooseRecord, OpenClawApi, PluginState, RecentTask } from '../types'
+import type { ExecutionTask, LooseRecord, OpenClawApi, PluginState, RecentTask, RunningTaskInfo } from '../types'
 
 export type WorkerCtx = {
   state: PluginState
@@ -38,43 +38,46 @@ export function currentRecentTask(
   }
 }
 
-export async function pollAndRun(ctx: WorkerCtx): Promise<void> {
+/** Add or update the running task in state.runningTasks. */
+export function addRunningTask(state: PluginState, info: RunningTaskInfo): void {
+  state.runningTasks = [...state.runningTasks.filter((t) => t.taskId !== info.taskId), info]
+  // Keep legacy field in sync for backward compat.
+  state.runningTaskId = info.taskId
+}
+
+/** Remove a completed/failed task from state.runningTasks. */
+export function removeRunningTask(state: PluginState, taskId: string): void {
+  state.runningTasks = state.runningTasks.filter((t) => t.taskId !== taskId)
+  if (state.runningTaskId === taskId) {
+    state.runningTaskId = state.runningTasks[0]?.taskId ?? null
+  }
+}
+
+/**
+ * Execute a pre-claimed task inside a gateway request context.
+ * Called by the execute_task RPC handler with a task already pulled from the queue.
+ * Does NOT call pullTask — the caller is responsible for providing the claimed task.
+ */
+export async function runClaimedTask(ctx: WorkerCtx, task: ExecutionTask): Promise<void> {
   const { state, api, log, rememberError, persistSnapshot, resetPersistedSecret, recoverCredentials } = ctx
   const cfg = getConfig(api)
   const baseUrl = cfg.knotworkBackendUrl
-  const instanceId = state.pluginInstanceId
-  const secret = state.integrationSecret
 
-  if (!baseUrl || !instanceId || !secret) {
-    const missing = [!baseUrl && 'knotworkBackendUrl', !instanceId && 'pluginInstanceId', !secret && 'integrationSecret'].filter(Boolean).join(',')
-    log(`poll:skipped missing=${missing}`)
+  if (!baseUrl || !state.pluginInstanceId || !state.integrationSecret) {
+    const missing = [!baseUrl && 'knotworkBackendUrl', !state.pluginInstanceId && 'pluginInstanceId', !state.integrationSecret && 'integrationSecret'].filter(Boolean).join(',')
+    log(`task:skipped missing=${missing}`)
     return
   }
 
-  let task: ExecutionTask | null = null
-  log(`pull:start instanceId=${instanceId}`)
-  try {
-    task = await pullTask(baseUrl, instanceId, secret)
-  } catch (err) {
-    if (!isInvalidCredentialsError(err)) {
-      log(`pull:error instanceId=${instanceId} error=${rememberError(err)}`)
-      throw err
-    }
-    log('auth:pull-task-invalid-credentials')
-    await resetPersistedSecret()
-    const recovered = await recoverCredentials('pull_task_401')
-    if (!recovered || !state.integrationSecret || !state.pluginInstanceId) return
-    log(`pull:retry instanceId=${state.pluginInstanceId}`)
-    task = await pullTask(baseUrl, state.pluginInstanceId, state.integrationSecret)
-  }
-  if (!task) { log(`pull:empty instanceId=${instanceId}`); return }
-
   const taskId = String(task.task_id)
   const taskStartedAt = new Date().toISOString()
-  state.runningTaskId = taskId
-  state.lastTaskAt = taskStartedAt
   const persist = () => { void persistSnapshot() }
-  upsertRecentTask(state, persist, { ...currentRecentTask(state, task, taskId, taskStartedAt), status: 'claimed', finishedAt: null, error: null })
+  state.lastTaskAt = taskStartedAt
+
+  upsertRecentTask(state, persist, {
+    ...currentRecentTask(state, task, taskId, taskStartedAt),
+    status: 'claimed', finishedAt: null, error: null,
+  })
   log(`task:start id=${taskId} node=${task.node_id} run=${task.run_id ?? 'n/a'} session=${task.session_name}`)
 
   async function submitEvent(eventType: string, payload: LooseRecord): Promise<void> {
@@ -117,6 +120,8 @@ export async function pollAndRun(ctx: WorkerCtx): Promise<void> {
       }).catch(() => { /* non-fatal */ })
     }, 15000)
 
+    log(`debug:api-top-keys ${Object.keys(api).join(',')}`)
+    log(`debug:runtime-keys ${Object.keys((api as any).runtime ?? {}).join(',')}`)
     const result = await executeTask(api, task)
     if (heartbeat) clearInterval(heartbeat)
     log(`task:done id=${taskId} type=${result.type}`)
@@ -124,7 +129,7 @@ export async function pollAndRun(ctx: WorkerCtx): Promise<void> {
 
     if (result.type === 'escalation') {
       upsertRecentTask(state, persist, { ...currentRecentTask(state, task, taskId, taskStartedAt), status: 'escalation', finishedAt, error: null })
-      await submitEvent('escalation', { question: result.question, options: result.options, message: result.message })
+      await submitEvent('escalation', { questions: result.questions, options: result.options, message: result.message })
     } else if (result.type === 'failed') {
       upsertRecentTask(state, persist, { ...currentRecentTask(state, task, taskId, taskStartedAt), status: 'failed', finishedAt, error: result.error })
       await submitEvent('failed', { error: result.error })
@@ -141,7 +146,44 @@ export async function pollAndRun(ctx: WorkerCtx): Promise<void> {
     })
   } finally {
     if (heartbeat) clearInterval(heartbeat)
-    state.runningTaskId = null
     void persistSnapshot()
   }
+}
+
+/**
+ * Full poll-and-run cycle: pull a task from the queue, then execute it.
+ * Used as a fallback when execute_task is called without a pre-claimed task.
+ */
+export async function pollAndRun(ctx: WorkerCtx): Promise<void> {
+  const { state, api, log, rememberError, resetPersistedSecret, recoverCredentials } = ctx
+  const cfg = getConfig(api)
+  const baseUrl = cfg.knotworkBackendUrl
+  const instanceId = state.pluginInstanceId
+  const secret = state.integrationSecret
+
+  if (!baseUrl || !instanceId || !secret) {
+    const missing = [!baseUrl && 'knotworkBackendUrl', !instanceId && 'pluginInstanceId', !secret && 'integrationSecret'].filter(Boolean).join(',')
+    log(`poll:skipped missing=${missing}`)
+    return
+  }
+
+  let task: ExecutionTask | null = null
+  log(`pull:start instanceId=${instanceId}`)
+  try {
+    task = await pullTask(baseUrl, instanceId, secret)
+  } catch (err) {
+    if (!isInvalidCredentialsError(err)) {
+      log(`pull:error instanceId=${instanceId} error=${rememberError(err)}`)
+      throw err
+    }
+    log('auth:pull-task-invalid-credentials')
+    await resetPersistedSecret()
+    const recovered = await recoverCredentials('pull_task_401')
+    if (!recovered || !state.integrationSecret || !state.pluginInstanceId) return
+    log(`pull:retry instanceId=${state.pluginInstanceId}`)
+    task = await pullTask(baseUrl, state.pluginInstanceId, state.integrationSecret)
+  }
+  if (!task) { log(`pull:empty instanceId=${instanceId}`); return }
+
+  await runClaimedTask(ctx, task)
 }

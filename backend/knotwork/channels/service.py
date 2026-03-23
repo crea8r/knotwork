@@ -83,7 +83,7 @@ async def list_channels(db: AsyncSession, workspace_id: UUID) -> list[Channel]:
     result = await db.execute(
         select(Channel)
         .where(Channel.workspace_id == workspace_id, Channel.archived_at.is_(None))
-        .where(Channel.channel_type.in_(("normal", "workflow", "handbook")))
+        .where(Channel.channel_type.in_(("normal", "workflow", "handbook", "agent_main")))
         .order_by(Channel.channel_type.asc(), Channel.created_at.asc())
     )
     return list(result.scalars())
@@ -235,7 +235,7 @@ async def inbox_items(db: AsyncSession, workspace_id: UUID) -> list[dict]:
     return out
 
 
-async def find_workflow_channel_for_run(db: AsyncSession, run_id: UUID) -> UUID | None:
+async def find_workflow_channel_for_run(db: AsyncSession, run_id: str) -> UUID | None:
     from knotwork.runs.models import Run
 
     run = await db.get(Run, run_id)
@@ -253,7 +253,7 @@ async def find_workflow_channel_for_run(db: AsyncSession, run_id: UUID) -> UUID 
     return row[0] if row else None
 
 
-async def find_run_channel_for_run(db: AsyncSession, run_id: UUID) -> UUID | None:
+async def find_run_channel_for_run(db: AsyncSession, run_id: str) -> UUID | None:
     result = await db.execute(
         select(Channel.id).where(
             Channel.channel_type == "run",
@@ -268,7 +268,7 @@ async def find_run_channel_for_run(db: AsyncSession, run_id: UUID) -> UUID | Non
 async def get_or_create_run_channel(
     db: AsyncSession,
     workspace_id: UUID,
-    run_id: UUID,
+    run_id: str,
     graph_id: UUID | None = None,
 ) -> Channel:
     existing = await db.execute(
@@ -308,7 +308,7 @@ async def get_or_create_agent_main_channel(
             Channel.channel_type == "agent_main",
             Channel.name == name,
             Channel.archived_at.is_(None),
-        )
+        ).limit(1)
     )
     row = existing.scalar_one_or_none()
     if row:

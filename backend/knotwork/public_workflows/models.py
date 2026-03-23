@@ -39,8 +39,8 @@ class PublicRunShare(Base):
     workspace_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), sa.ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=False
     )
-    run_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), sa.ForeignKey("runs.id", ondelete="CASCADE"), nullable=False
+    run_id: Mapped[str] = mapped_column(
+        sa.String(36), sa.ForeignKey("runs.id", ondelete="CASCADE"), nullable=False
     )
     public_workflow_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), sa.ForeignKey("public_workflow_links.id", ondelete="CASCADE"), nullable=False

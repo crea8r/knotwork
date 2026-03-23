@@ -22,15 +22,21 @@ Visual agent workflow platform. Users design business processes via chat; canvas
 ### Knowledge loading — folder-as-domain
 **Never load all linked files blindly.** Use `load_knowledge_tree()` in `runtime/knowledge_loader.py`. It filters transitive links by folder domain. A `legal/` node must not load `finance/` files. Read `knowledge_loader.py` before touching this.
 
-### Prompt construction — GUIDELINES / CASE
-**Every LLM Agent node gets two sections, always.** Use `build_agent_prompt()` in `runtime/prompt_builder.py`. Never hand-build prompts inline in node code. The structure is:
-```
-=== GUIDELINES (how to work) ===
-[knowledge tree]
+### Prompt construction — block order
+**Every agent node gets these blocks in exact order.** Use `build_agent_prompt()` in `runtime/prompt_builder.py` for blocks 1–2. Never hand-build prompts inline in node code.
 
-=== THIS CASE (what you are working on) ===
-[run state fields + Run Context files]
-```
+| # | Block | Always? |
+|---|-------|---------|
+| 1 | `=== GUIDELINES ===` — knowledge tree | Yes |
+| 2 | `=== THIS CASE ===` — run input + prior node outputs | Yes |
+| 3 | `[node system_prompt]` — per-node config | If set |
+| 4 | `=== AUTONOMY LEVEL ===` — trust float 0.0–1.0 | Yes |
+| 5 | `=== ROUTING ===` — per-branch condition labels | Only if node has >1 outgoing edge |
+| 6 | `=== COMPLETION PROTOCOL ===` — json-decision block format | Yes, always last |
+
+**On retry** (after escalation): `system_prompt = ""`, `user_prompt = human_guidance` only — no blocks at all.
+
+**Conditional edges** (node with >1 outgoing) must have a `condition_label` on every edge — this is the question the agent evaluates to pick a branch. Missing labels are rejected by `validate_graph()` before the run starts.
 
 ### Layer separation
 - `models.py` — SQLAlchemy ORM models only
@@ -134,6 +140,47 @@ cd frontend
 npm install
 npm run dev
 ```
+
+## OpenClaw Plugin Dev Workflow
+
+Source lives in `openclaw-plugin-knotwork/`. The running plugin is at `~/.openclaw/extensions/knotwork-bridge/` (Docker bind-mount prevents a direct symlink). After any source change:
+
+```bash
+# 1. Sync source → extension dir
+cd openclaw-plugin-knotwork
+./sync-to-openclaw.sh
+
+# 2. Restart the gateway to pick up the new source
+docker restart openclaw-openclaw-gateway-1
+```
+
+Then verify the plugin loaded:
+```bash
+docker logs openclaw-openclaw-gateway-1 2>&1 | grep knotwork-bridge | tail -5
+# Should show: startup:background-enabled context=runtime
+```
+
+**File map:**
+```
+openclaw-plugin-knotwork/
+  src/plugin.ts          — activate(), poll loop, concurrent spawn, lease renewal
+  src/lifecycle/worker.ts — runClaimedTask(), pollAndRun(), task event posting
+  src/lifecycle/rpc.ts   — knotwork.* gateway RPC method registrations
+  src/lifecycle/handshake.ts — handshake + retry logic
+  src/openclaw/bridge.ts — pullTask(), postEvent(), config resolution
+  src/state/lease.ts     — heartbeat TTL runtime lease (prevents duplicate workers)
+  src/types.ts           — shared types (PluginState, ExecutionTask, RunningTaskInfo)
+  sync-to-openclaw.sh    — one-command sync script
+```
+
+**Key RPC methods** (callable via `openclaw gateway call <method>`):
+| Method | Purpose |
+|---|---|
+| `knotwork.status` | Live state: connection, config, running tasks |
+| `knotwork.logs` | Last 200 log lines |
+| `knotwork.handshake` | Re-pair with Knotwork backend |
+| `knotwork.execute_task` | Pull and run one task (or pass `--params '{"task":{...}}'`) |
+| `knotwork.reset_connection` | Clear persisted credentials and re-pair |
 
 ## Environment Variables (required)
 ```

@@ -65,7 +65,7 @@ class CompleteBody(BaseModel):
 @router.post("/log")
 async def log_entry(body: LogBody, authorization: str | None = Header(None)):
     claims = _decode(authorization)
-    run_id = UUID(claims["run_id"])
+    run_id = str(claims["run_id"])
     node_id = claims["node_id"]
 
     from knotwork.database import AsyncSessionLocal
@@ -91,7 +91,7 @@ async def log_entry(body: LogBody, authorization: str | None = Header(None)):
 @router.post("/propose")
 async def propose_handbook(body: ProposeBody, authorization: str | None = Header(None)):
     claims = _decode(authorization)
-    run_id = UUID(claims["run_id"])
+    run_id = str(claims["run_id"])
     node_id = claims["node_id"]
 
     from knotwork.database import AsyncSessionLocal
@@ -118,7 +118,7 @@ async def propose_handbook(body: ProposeBody, authorization: str | None = Header
 @router.post("/escalate")
 async def escalate(body: EscalateBody, authorization: str | None = Header(None)):
     claims = _decode(authorization)
-    run_id = UUID(claims["run_id"])
+    run_id = str(claims["run_id"])
     node_id = claims["node_id"]
     workspace_id = UUID(claims["workspace_id"])
 
@@ -159,7 +159,7 @@ async def escalate(body: EscalateBody, authorization: str | None = Header(None))
 @router.post("/complete")
 async def complete_node(body: CompleteBody, authorization: str | None = Header(None)):
     claims = _decode(authorization)
-    run_id = UUID(claims["run_id"])
+    run_id = str(claims["run_id"])
     node_id = claims["node_id"]
 
     from sqlalchemy import select

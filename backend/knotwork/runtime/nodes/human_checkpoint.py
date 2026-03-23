@@ -37,7 +37,7 @@ def make_human_checkpoint_node(node_def: dict):
         from knotwork.runtime.events import publish_event
         from knotwork.runs.models import RunNodeState
 
-        run_id = UUID(state["run_id"])
+        run_id = str(state["run_id"])
         workspace_id = state["workspace_id"]
         current_output = state.get("current_output")
 

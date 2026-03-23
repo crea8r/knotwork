@@ -5,7 +5,6 @@ Sub-module layout:
   service_crud.py         — list / create / get / update / activate / archive / delete
   service_contract.py     — capability contract builders (_build_default_contract, …)
   service_capabilities.py — refresh, get_latest, list, compatibility_check
-  service_preflight.py    — preflight run/list/get/baseline
   service_history.py      — agent history, usage, debug links
   service_main_chat.py    — OpenClaw main chat (ensure_ready, ask, wait_task)
 """
@@ -51,10 +50,4 @@ from knotwork.registered_agents.service_main_chat import (  # noqa: F401
     ask_main_chat,
     ensure_main_chat_ready,
     list_main_chat_messages,
-)
-from knotwork.registered_agents.service_preflight import (  # noqa: F401
-    get_preflight_run,
-    list_preflight_runs,
-    promote_preflight_baseline,
-    run_preflight,
 )

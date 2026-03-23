@@ -70,6 +70,13 @@ def validate_graph(definition: dict) -> list[str]:
     reachable_from_start = bfs(start_ids, fwd) - start_ids
     can_reach_end = bfs(end_ids, bwd) - end_ids
 
+    # Count outgoing edges per source (work nodes only)
+    outgoing_count: dict[str, int] = {}
+    for edge in edges:
+        src = edge.get("source")
+        if src in work_ids:
+            outgoing_count[src] = outgoing_count.get(src, 0) + 1
+
     errors: list[str] = []
     for nid in work_ids:
         node = next((n for n in nodes if n["id"] == nid), {})
@@ -83,5 +90,21 @@ def validate_graph(definition: dict) -> list[str]:
             model = (node.get("config") or {}).get("model")
             if model and model not in VALID_MODELS:
                 errors.append(f'Node "{name}": unknown model "{model}"')
+
+    # Conditional edges must have a condition_label so the agent knows what to evaluate
+    if outgoing_count:
+        for edge in edges:
+            src = edge.get("source")
+            if src not in work_ids:
+                continue
+            if outgoing_count.get(src, 0) > 1 and not edge.get("condition_label"):
+                src_node = next((n for n in nodes if n["id"] == src), {})
+                tgt_node = next((n for n in nodes if n["id"] == edge.get("target")), {})
+                src_name = src_node.get("name", src)
+                tgt_name = tgt_node.get("name", edge.get("target", "?"))
+                errors.append(
+                    f'Edge from "{src_name}" to "{tgt_name}" needs a condition label '
+                    f"(the question the agent evaluates to choose this branch)"
+                )
 
     return errors

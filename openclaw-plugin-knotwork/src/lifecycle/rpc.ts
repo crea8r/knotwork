@@ -2,7 +2,7 @@
 // Callable from any terminal: `openclaw gateway call knotwork.<method>`
 
 import { getConfig } from '../openclaw/bridge'
-import type { GatewayMethodContext, HandshakeResponse, LooseRecord, OpenClawApi, PluginConfig, PluginState } from '../types'
+import type { ExecutionTask, GatewayMethodContext, HandshakeResponse, LooseRecord, OpenClawApi, PluginConfig, PluginState } from '../types'
 
 export type RpcCtx = {
   state: PluginState
@@ -11,6 +11,7 @@ export type RpcCtx = {
   rememberError: (err: unknown) => string
   runHandshake: (overrides?: Partial<PluginConfig>) => Promise<HandshakeResponse>
   pollAndRun: () => Promise<void>
+  runClaimedTask: (task: ExecutionTask) => Promise<void>
   resetPersistedSecret: (resetInstanceId?: boolean) => Promise<void>
 }
 
@@ -23,8 +24,13 @@ function ok(ctx: GatewayMethodContext, payload: LooseRecord): void {
 }
 
 export function registerRpcMethods(ctx: RpcCtx): void {
-  const { api, state, log, rememberError, runHandshake, pollAndRun, resetPersistedSecret } = ctx
-  if (typeof api.registerGatewayMethod !== 'function') return
+  const { api, state, log, rememberError, runHandshake, pollAndRun, runClaimedTask, resetPersistedSecret } = ctx
+  const apiKeys = Object.keys(api as object).join(',')
+  if (typeof api.registerGatewayMethod !== 'function') {
+    console.log(`[knotwork-bridge] rpc:register-skipped registerGatewayMethod not a function — api keys: ${apiKeys}`)
+    return
+  }
+  console.log(`[knotwork-bridge] rpc:registering-methods api-keys=${apiKeys}`)
   const rpc = api.registerGatewayMethod.bind(api)
 
   rpc('knotwork.status', (gwCtx: GatewayMethodContext) => {
@@ -73,16 +79,33 @@ export function registerRpcMethods(ctx: RpcCtx): void {
   rpc('knotwork.handshake', handleHandshake)
   rpc('knotwork.sync_agents', handleHandshake) // alias — re-handshake re-syncs agents
 
-  rpc('knotwork.process_once', async (gwCtx: GatewayMethodContext) => {
+  // Execute a task inside a gateway request context (required for subagent.run()).
+  // Primary path: caller passes a pre-claimed task via --params { task: {...} }.
+  // Fallback path: no task in params → full pull-then-run cycle (legacy/manual use).
+  //
+  // NOTE: ok() must be called AFTER awaiting the task — subagent.run() is bound to the
+  // gateway request context (gwCtx). Calling ok() first terminates that context and
+  // subagent.run() fails immediately with no task:start logged.
+  // The subprocess therefore lives for the full duration of the agent session.
+  // The TTL watchdog in plugin.ts handles the stuck-subprocess (half-open TCP) case.
+  const handleExecuteTask = async (gwCtx: GatewayMethodContext): Promise<void> => {
+    const payload = getPayload(gwCtx)
+    const preClaimedTask = (payload.task ?? null) as ExecutionTask | null
     try {
-      await pollAndRun()
+      if (preClaimedTask) {
+        await runClaimedTask(preClaimedTask)
+      } else {
+        await pollAndRun()
+      }
       ok(gwCtx, { ok: true })
     } catch (err) {
       const error = rememberError(err)
-      log(`process_once:error ${error}`)
+      log(`execute_task:error ${error}`)
       ok(gwCtx, { ok: false, error })
     }
-  })
+  }
+  rpc('knotwork.execute_task', handleExecuteTask)
+  rpc('knotwork.process_once', handleExecuteTask) // backward-compat alias
 
   rpc('knotwork.reset_connection', async (gwCtx: GatewayMethodContext) => {
     const payload = getPayload(gwCtx)

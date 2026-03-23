@@ -27,7 +27,6 @@ async def list_agents(
     q: str | None = None,
     provider: str | None = None,
     status_filter: str | None = None,
-    preflight_status: str | None = None,
 ) -> list[RegisteredAgentOut]:
     stmt = select(RegisteredAgent).where(RegisteredAgent.workspace_id == workspace_id)
     stmt = stmt.where(RegisteredAgent.status != "archived")
@@ -38,8 +37,6 @@ async def list_agents(
         stmt = stmt.where(RegisteredAgent.provider == provider)
     if status_filter:
         stmt = stmt.where(RegisteredAgent.status == status_filter)
-    if preflight_status:
-        stmt = stmt.where(RegisteredAgent.preflight_status == preflight_status)
     stmt = stmt.order_by(desc(RegisteredAgent.updated_at), desc(RegisteredAgent.created_at))
     result = await db.execute(stmt)
     return [_to_out(ra) for ra in result.scalars()]
@@ -75,14 +72,13 @@ async def create_agent(
         credential_hint=credential_hint,
         credential_ciphertext=credential_ciphertext,
         capability_freshness="needs_refresh",
-        preflight_status="never_run",
         updated_at=_now(),
     )
     db.add(ra)
     await db.commit()
     await db.refresh(ra)
 
-    if data.activate_after_preflight and data.provider != "openclaw":
+    if data.activate_after_preflight:
         ra.status = "active"
         ra.is_active = True
         ra.updated_at = _now()
@@ -126,10 +122,8 @@ async def update_connectivity(
             ra.api_key = data.credentials.api_key
             ra.credential_ciphertext = data.credentials.api_key
             ra.credential_hint = _mask_hint(data.credentials.api_key)
-    # Connectivity changes force re-validation.
+    # Connectivity changes force capability re-fetch.
     ra.capability_freshness = "needs_refresh"
-    ra.preflight_status = "never_run"
-    ra.preflight_run_at = None
     ra.status = "inactive"
     ra.is_active = False
     ra.updated_at = _now()
@@ -144,12 +138,6 @@ async def activate_agent(
     ra = await _get_agent_row(db, workspace_id, agent_id)
     if ra.status == "archived":
         raise HTTPException(status_code=400, detail="Archived agent cannot be activated")
-    if ra.preflight_status == "fail":
-        raise HTTPException(status_code=400, detail="Preflight failed; cannot activate")
-    if ra.preflight_status == "warning" and not data.allow_warning:
-        raise HTTPException(status_code=400, detail="Preflight warning; set allow_warning to activate")
-    if ra.preflight_status in ("never_run", "running") and ra.provider == "openclaw":
-        raise HTTPException(status_code=400, detail="Preflight required before activation")
     ra.status = "active"
     ra.is_active = True
     ra.updated_at = _now()

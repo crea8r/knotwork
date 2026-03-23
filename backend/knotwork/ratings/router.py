@@ -20,7 +20,7 @@ router = APIRouter(prefix="/workspaces", tags=["ratings"])
 )
 async def submit_rating(
     workspace_id: UUID,
-    run_id: UUID,
+    run_id: str,
     node_state_id: UUID,
     data: RatingCreate,
     db: AsyncSession = Depends(get_db),

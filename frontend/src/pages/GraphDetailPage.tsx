@@ -49,6 +49,7 @@ export default function GraphDetailPage() {
   const updateNodeConfig = useCanvasStore((s) => s.updateNodeConfig)
   const removeNode = useCanvasStore((s) => s.removeNode)
   const removeEdge = useCanvasStore((s) => s.removeEdge)
+  const updateEdge = useCanvasStore((s) => s.updateEdge)
   const setInputSchema = useCanvasStore((s) => s.setInputSchema)
 
   // Initialize store when navigating to a different graph (eager, not lazy).
@@ -117,7 +118,7 @@ export default function GraphDetailPage() {
       : `${newNodeType}-${Date.now()}`
     const node: NodeDef = {
       id, type: newNodeType, name: newNodeName.trim(), config: {},
-      ...(newNodeType === 'agent' ? { agent_ref: 'anthropic:claude-sonnet-4-6', trust_level: 'supervised' } : {}),
+      ...(newNodeType === 'agent' ? { agent_ref: 'openclaw', trust_level: 0.5 } : {}),
     }
     addNode(node)
     const nodes = isDirty ? storeDefinition.nodes : serverDef.nodes
@@ -346,6 +347,7 @@ export default function GraphDetailPage() {
                   onConfigChange={(nodeId, patch) => updateNodeConfig(nodeId, patch)}
                   onRemove={(nodeId) => { removeNode(nodeId); selectNode(null) }}
                   onAddEdge={(edge) => addEdge(edge)}
+                  onUpdateEdge={(edgeId, patch) => updateEdge(edgeId, patch)}
                   onRemoveEdge={(edgeId) => removeEdge(edgeId)}
                 />
               ) : null}

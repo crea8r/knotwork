@@ -147,7 +147,7 @@ async def test_delete_running_run_rejected(client, db_session):
     # Force to running
     from knotwork.runs.models import Run
     from uuid import UUID
-    run = await db_session.get(Run, UUID(run_id))
+    run = await db_session.get(Run, run_id)
     run.status = "running"
     await db_session.commit()
 
@@ -163,7 +163,7 @@ async def test_delete_paused_run(client, db_session):
 
     from knotwork.runs.models import Run
     from uuid import UUID
-    run = await db_session.get(Run, UUID(run_id))
+    run = await db_session.get(Run, run_id)
     run.status = "paused"
     await db_session.commit()
 

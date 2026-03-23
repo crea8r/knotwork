@@ -14,13 +14,12 @@ logger = logging.getLogger(__name__)
 
 
 async def _load_run_definition(run_id: str) -> tuple | None:
-    from uuid import UUID
     from knotwork.database import AsyncSessionLocal
     from knotwork.graphs.models import GraphVersion
     from knotwork.runs.models import Run
 
     async with AsyncSessionLocal() as db:
-        run = await db.get(Run, UUID(run_id))
+        run = await db.get(Run, run_id)
         if not run or run.status in ("completed", "failed", "stopped"):
             return None
         version = await db.get(GraphVersion, run.graph_version_id)
@@ -33,13 +32,12 @@ async def _update_run_status(
     run_id: str, from_status: str, final_status: str, error: str | None = None
 ) -> None:
     from datetime import datetime, timezone
-    from uuid import UUID
     from knotwork.database import AsyncSessionLocal
     from knotwork.runs.models import Run
     from knotwork.public_workflows.service import notify_public_run_completion
 
     async with AsyncSessionLocal() as db:
-        run = await db.get(Run, UUID(run_id))
+        run = await db.get(Run, run_id)
         if run and run.status not in ("completed", "failed", "stopped"):
             run.status = final_status
             if final_status in ("completed", "failed"):
@@ -54,7 +52,6 @@ async def _update_run_status(
 async def execute_run(run_id: str) -> None:
     """Drive a queued run to completion or until interrupted by a checkpoint."""
     from datetime import datetime, timezone
-    from uuid import UUID
     from knotwork.database import AsyncSessionLocal
     from knotwork.runs.models import Run
     from knotwork.runtime.engine import compile_graph, _checkpointer
@@ -66,7 +63,7 @@ async def execute_run(run_id: str) -> None:
     workspace_id, graph_id, run_input, context_files, definition = loaded
 
     async with AsyncSessionLocal() as db:
-        run = await db.get(Run, UUID(run_id))
+        run = await db.get(Run, run_id)
         if run:
             run.status = "running"
             run.started_at = datetime.now(timezone.utc)
@@ -88,9 +85,16 @@ async def execute_run(run_id: str) -> None:
             isinstance(result, dict) and result.get("__interrupt__")
         ) else "completed"
     except Exception as exc:
-        logger.error("execute_run %s failed:\n%s", run_id, traceback.format_exc())
-        final_status = "failed"
-        error_msg = f"{type(exc).__name__}: {exc}"
+        # LangGraph interrupt/checkpoint exceptions mean the run paused for
+        # human input — treat as "paused", not "failed".
+        if type(exc).__name__ in ("GraphInterrupt", "NodeInterrupt", "Interrupt"):
+            logger.info("execute_run %s paused via interrupt exception", run_id)
+            final_status = "paused"
+            error_msg = None
+        else:
+            logger.error("execute_run %s failed:\n%s", run_id, traceback.format_exc())
+            final_status = "failed"
+            error_msg = f"{type(exc).__name__}: {exc}"
     else:
         error_msg = None
 
@@ -103,7 +107,6 @@ async def execute_run(run_id: str) -> None:
 async def resume_run(run_id: str, resolution: dict) -> None:
     """Resume a paused run using LangGraph Command(resume=resolution)."""
     from datetime import datetime, timezone
-    from uuid import UUID
     from knotwork.database import AsyncSessionLocal
     from knotwork.graphs.models import GraphVersion
     from knotwork.runs.models import Run
@@ -111,7 +114,7 @@ async def resume_run(run_id: str, resolution: dict) -> None:
     from knotwork.runtime.events import publish_event
 
     async with AsyncSessionLocal() as db:
-        run = await db.get(Run, UUID(run_id))
+        run = await db.get(Run, run_id)
         if not run or run.status != "paused":
             return
         version = await db.get(GraphVersion, run.graph_version_id)
@@ -135,9 +138,14 @@ async def resume_run(run_id: str, resolution: dict) -> None:
             isinstance(result, dict) and result.get("__interrupt__")
         ) else "completed"
     except Exception as exc:
-        logger.error("resume_run %s failed:\n%s", run_id, traceback.format_exc())
-        final_status = "failed"
-        error_msg = f"{type(exc).__name__}: {exc}"
+        if type(exc).__name__ in ("GraphInterrupt", "NodeInterrupt", "Interrupt"):
+            logger.info("resume_run %s paused via interrupt exception", run_id)
+            final_status = "paused"
+            error_msg = None
+        else:
+            logger.error("resume_run %s failed:\n%s", run_id, traceback.format_exc())
+            final_status = "failed"
+            error_msg = f"{type(exc).__name__}: {exc}"
     else:
         error_msg = None
 
@@ -163,7 +171,6 @@ async def _persist_run_output_from_result(
     result: object,
     db: "AsyncSession | None" = None,
 ) -> None:
-    from uuid import UUID
     from sqlalchemy.ext.asyncio import AsyncSession
     from knotwork.database import AsyncSessionLocal
     from knotwork.runs.models import Run
@@ -173,7 +180,7 @@ async def _persist_run_output_from_result(
         return
 
     async def _apply(session: AsyncSession) -> None:
-        run = await session.get(Run, UUID(run_id))
+        run = await session.get(Run, run_id)
         if run is None:
             return
         run.output = {"text": final_text}

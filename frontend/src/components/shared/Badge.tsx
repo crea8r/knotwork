@@ -3,6 +3,7 @@ import type { ReactNode } from 'react'
 interface BadgeProps {
   variant?: 'blue' | 'green' | 'orange' | 'red' | 'gray' | 'purple'
   size?: 'sm' | 'md'
+  className?: string
   children: ReactNode
 }
 
@@ -20,9 +21,9 @@ const SIZE = {
   md: 'px-2 py-1 text-sm',
 }
 
-export default function Badge({ variant = 'gray', size = 'sm', children }: BadgeProps) {
+export default function Badge({ variant = 'gray', size = 'sm', className = '', children }: BadgeProps) {
   return (
-    <span className={`inline-block rounded-full font-medium ${VARIANT[variant]} ${SIZE[size]}`}>
+    <span className={`inline-block rounded-full font-medium ${VARIANT[variant]} ${SIZE[size]} ${className}`}>
       {children}
     </span>
   )

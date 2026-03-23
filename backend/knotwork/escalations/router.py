@@ -124,7 +124,7 @@ async def _enqueue_resume(run_id: str, data: EscalationResolve) -> None:
     asyncio.create_task(_resume_if_still_paused(run_id, data.model_dump(), delay_seconds=3.0))
 
 
-async def _abort_run(db: AsyncSession, run_id: UUID) -> None:
+async def _abort_run(db: AsyncSession, run_id: str) -> None:
     from knotwork.public_workflows.service import notify_public_run_aborted
     from knotwork.runs.models import Run
 
@@ -154,7 +154,6 @@ def _normalize_resolution(value: str) -> str:
 async def _resume_if_still_paused(run_id: str, resolution: dict, delay_seconds: float = 3.0) -> None:
     import asyncio
     from sqlalchemy import select
-    from uuid import UUID
 
     from knotwork.database import AsyncSessionLocal
     from knotwork.escalations.models import Escalation
@@ -164,17 +163,18 @@ async def _resume_if_still_paused(run_id: str, resolution: dict, delay_seconds: 
     await asyncio.sleep(delay_seconds)
 
     async with AsyncSessionLocal() as db:
-        run = await db.get(Run, UUID(run_id))
+        run = await db.get(Run, run_id)
         if not run or run.status != "paused":
             return
         # If a new escalation is already open, resume was consumed and the run
         # is legitimately paused waiting for another human answer.
         open_esc = await db.execute(
             select(Escalation.id).where(
-                Escalation.run_id == UUID(run_id),
+                Escalation.run_id == run_id,
                 Escalation.status == "open",
             )
         )
+
         if open_esc.first() is not None:
             return
 

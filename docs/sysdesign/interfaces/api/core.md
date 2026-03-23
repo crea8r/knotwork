@@ -190,3 +190,95 @@ GET  /api/v1/workspaces/:workspace_id/handbook/proposals
 POST /api/v1/workspaces/:workspace_id/handbook/proposals/:proposal_id/approve
 POST /api/v1/workspaces/:workspace_id/handbook/proposals/:proposal_id/reject
 ```
+
+---
+
+## Projects (S10+)
+
+```
+GET    /api/v1/workspaces/:workspace_id/projects
+POST   /api/v1/workspaces/:workspace_id/projects
+GET    /api/v1/workspaces/:workspace_id/projects/:project_id
+PATCH  /api/v1/workspaces/:workspace_id/projects/:project_id
+DELETE /api/v1/workspaces/:workspace_id/projects/:project_id
+```
+
+POST/PATCH body:
+```json
+{
+  "name": "Q2 Enterprise Onboarding",
+  "objective": "Onboard 5 enterprise clients before June 30",
+  "deadline": "2026-06-30",
+  "status": "in_progress"
+}
+```
+
+---
+
+## Tasks (S10+)
+
+```
+GET    /api/v1/workspaces/:workspace_id/projects/:project_id/tasks
+POST   /api/v1/workspaces/:workspace_id/projects/:project_id/tasks
+GET    /api/v1/workspaces/:workspace_id/projects/:project_id/tasks/:task_id
+PATCH  /api/v1/workspaces/:workspace_id/projects/:project_id/tasks/:task_id
+DELETE /api/v1/workspaces/:workspace_id/projects/:project_id/tasks/:task_id
+```
+
+POST/PATCH body:
+```json
+{
+  "name": "Review Acme contract",
+  "description": "...",
+  "status": "open",
+  "graph_id": "uuid",     // optional: graph to trigger as a Run
+  "run_input": { ... }    // optional: input for the run
+}
+```
+
+Each task has an associated Channel (task chat). Runs triggered from a task appear as thread events in that channel.
+
+---
+
+## Project Documents (S10+)
+
+Project-scoped knowledge store. Same StorageAdapter pattern as the Handbook, scoped to a Project.
+
+```
+GET    /api/v1/workspaces/:workspace_id/projects/:project_id/documents
+POST   /api/v1/workspaces/:workspace_id/projects/:project_id/documents
+GET    /api/v1/workspaces/:workspace_id/projects/:project_id/documents/:doc_id
+PATCH  /api/v1/workspaces/:workspace_id/projects/:project_id/documents/:doc_id
+DELETE /api/v1/workspaces/:workspace_id/projects/:project_id/documents/:doc_id
+```
+
+POST/PATCH body:
+```json
+{
+  "title": "Project Brief",
+  "content": "...",         // markdown
+  "path": "brief.md"       // optional: storage path hint
+}
+```
+
+---
+
+## Workspace Representatives (S12+)
+
+Designate WorkspaceMembers or RegisteredAgents as responsible for external interactions.
+Knotwork routes escalations and notifications to representatives.
+
+```
+GET    /api/v1/workspaces/:workspace_id/representatives
+POST   /api/v1/workspaces/:workspace_id/representatives
+DELETE /api/v1/workspaces/:workspace_id/representatives/:representative_id
+```
+
+POST body (exactly one of `member_id` or `agent_id`):
+```json
+{
+  "member_id": "uuid",   // WorkspaceMember
+  "agent_id":  "uuid",   // RegisteredAgent
+  "is_primary": true
+}
+```

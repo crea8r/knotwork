@@ -52,16 +52,6 @@ class RegisteredAgent(Base):
         sa.String(30), nullable=False, server_default=sa.text("'needs_refresh'")
     )
 
-    # S8 preflight metadata
-    preflight_status: Mapped[str] = mapped_column(
-        sa.String(30), nullable=False, server_default=sa.text("'never_run'")
-    )
-    preflight_run_at: Mapped[datetime | None] = mapped_column(
-        sa.DateTime(timezone=True), nullable=True
-    )
-    baseline_preflight_run_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True), nullable=True
-    )
     last_used_at: Mapped[datetime | None] = mapped_column(
         sa.DateTime(timezone=True), nullable=True
     )
@@ -122,89 +112,3 @@ class AgentCapabilitySnapshot(Base):
     )
 
 
-class AgentPreflightRun(Base):
-    __tablename__ = "agent_preflight_runs"
-
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
-    workspace_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True),
-        sa.ForeignKey("workspaces.id", ondelete="CASCADE"),
-        nullable=False,
-    )
-    agent_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True),
-        sa.ForeignKey("registered_agents.id", ondelete="CASCADE"),
-        nullable=False,
-    )
-    suite_name: Mapped[str] = mapped_column(
-        sa.String(80), nullable=False, server_default=sa.text("'default'")
-    )
-    include_optional: Mapped[bool] = mapped_column(
-        sa.Boolean, nullable=False, server_default=sa.text("false")
-    )
-    status: Mapped[str] = mapped_column(sa.String(20), nullable=False)
-    required_total: Mapped[int] = mapped_column(sa.Integer, nullable=False, default=0)
-    required_passed: Mapped[int] = mapped_column(sa.Integer, nullable=False, default=0)
-    optional_total: Mapped[int] = mapped_column(sa.Integer, nullable=False, default=0)
-    optional_passed: Mapped[int] = mapped_column(sa.Integer, nullable=False, default=0)
-    pass_rate: Mapped[float] = mapped_column(sa.Float, nullable=False, default=0)
-    median_latency_ms: Mapped[int | None] = mapped_column(sa.Integer, nullable=True)
-    failed_count: Mapped[int] = mapped_column(sa.Integer, nullable=False, default=0)
-    is_baseline: Mapped[bool] = mapped_column(
-        sa.Boolean, nullable=False, server_default=sa.text("false")
-    )
-    created_by: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True), sa.ForeignKey("users.id"), nullable=True
-    )
-    started_at: Mapped[datetime] = mapped_column(
-        sa.DateTime(timezone=True), nullable=False
-    )
-    completed_at: Mapped[datetime | None] = mapped_column(
-        sa.DateTime(timezone=True), nullable=True
-    )
-    created_at: Mapped[datetime] = mapped_column(
-        sa.DateTime(timezone=True), server_default=func.now(), nullable=False
-    )
-
-
-class AgentPreflightTest(Base):
-    __tablename__ = "agent_preflight_tests"
-
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
-    workspace_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True),
-        sa.ForeignKey("workspaces.id", ondelete="CASCADE"),
-        nullable=False,
-    )
-    preflight_run_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True),
-        sa.ForeignKey("agent_preflight_runs.id", ondelete="CASCADE"),
-        nullable=False,
-    )
-    agent_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True),
-        sa.ForeignKey("registered_agents.id", ondelete="CASCADE"),
-        nullable=False,
-    )
-    test_id: Mapped[str] = mapped_column(sa.String(120), nullable=False)
-    tool_name: Mapped[str | None] = mapped_column(sa.String(120), nullable=True)
-    required: Mapped[bool] = mapped_column(
-        sa.Boolean, nullable=False, server_default=sa.text("true")
-    )
-    status: Mapped[str] = mapped_column(sa.String(20), nullable=False)
-    latency_ms: Mapped[int | None] = mapped_column(sa.Integer, nullable=True)
-    error_code: Mapped[str | None] = mapped_column(sa.String(80), nullable=True)
-    error_message: Mapped[str | None] = mapped_column(sa.Text, nullable=True)
-    request_preview_json: Mapped[dict] = mapped_column(sa.JSON, nullable=False, default=dict)
-    response_preview_json: Mapped[dict] = mapped_column(sa.JSON, nullable=False, default=dict)
-    started_at: Mapped[datetime] = mapped_column(sa.DateTime(timezone=True), nullable=False)
-    completed_at: Mapped[datetime | None] = mapped_column(
-        sa.DateTime(timezone=True), nullable=True
-    )
-    created_at: Mapped[datetime] = mapped_column(
-        sa.DateTime(timezone=True), server_default=func.now(), nullable=False
-    )

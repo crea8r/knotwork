@@ -49,8 +49,6 @@ def _to_out(ra: RegisteredAgent) -> RegisteredAgentOut:
         capability_hash=ra.capability_hash,
         capability_refreshed_at=ra.capability_refreshed_at,
         capability_freshness=ra.capability_freshness,
-        preflight_status=ra.preflight_status,
-        preflight_run_at=ra.preflight_run_at,
         last_used_at=ra.last_used_at,
         openclaw_integration_id=getattr(ra, "openclaw_integration_id", None),
         openclaw_remote_agent_id=getattr(ra, "openclaw_remote_agent_id", None),

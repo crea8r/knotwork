@@ -222,19 +222,27 @@ function OpenClawIntegrationSection({
   const deleteIntegration = useDeleteOpenClawIntegration()
   const unregistered = remoteAgents.filter((ra) => !registeredRefs.has(`openclaw:${ra.slug}`))
 
+  const [confirmingDelete, setConfirmingDelete] = useState(false)
+
   const handleDelete = () => {
-    const confirmed = window.confirm(
-      `Delete all Knotwork agents and OpenClaw integration data for plugin "${integration.plugin_instance_id}"? This archives registered agents for this plugin and removes the current handshake/integration state.`,
-    )
-    if (!confirmed) return
+    setConfirmingDelete(true)
+  }
+  const confirmDelete = () => {
     deleteIntegration.mutate(integration.id)
+    setConfirmingDelete(false)
   }
 
   // Connection status derived from debug state (refreshed every 5s).
   const lastSeenAt = integrationDebug?.last_seen_at ?? integration.last_seen_at
   const cs = connStatus(lastSeenAt)
 
-  // Tasks currently running — shown at integration level when no agents are registered yet.
+  // Plugin-reported capacity (source of truth from heartbeat).
+  // Falls back to counting claimed tasks from debug state when plugin hasn't reported yet.
+  const tasksRunning = integrationDebug?.tasks_running ?? allRecentTasks.filter((t) => t.status === 'claimed').length
+  const slotsAvailable = integrationDebug?.slots_available ?? null
+  const totalSlots = slotsAvailable !== null ? tasksRunning + slotsAvailable : null
+
+  // Running tasks list — for the panel shown when no agents registered yet.
   const runningTasks = allRecentTasks.filter((t) => t.status === 'claimed')
 
   return (
@@ -248,19 +256,62 @@ function OpenClawIntegrationSection({
               <span className={`inline-block w-2 h-2 rounded-full ${CONN_DOT[cs]}`} />
               <span className="text-xs text-gray-500">{CONN_LABEL[cs]} · {relativeTime(lastSeenAt)}</span>
             </span>
+            {cs !== 'stale' && totalSlots !== null && (
+              <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+                tasksRunning >= totalSlots
+                  ? 'bg-amber-100 text-amber-700'
+                  : tasksRunning > 0
+                    ? 'bg-blue-100 text-blue-700'
+                    : 'bg-gray-100 text-gray-500'
+              }`}>
+                {tasksRunning}/{totalSlots} slots
+              </span>
+            )}
             {integration.plugin_version && <Badge variant="purple">{integration.plugin_version}</Badge>}
           </div>
         </div>
-        <button
-          type="button"
-          onClick={handleDelete}
-          disabled={deleteIntegration.isPending}
-          className="px-3 py-1.5 rounded-lg border border-red-200 bg-red-50 text-red-700 text-xs inline-flex items-center gap-1 disabled:opacity-50"
-        >
-          <Trash2 size={12} />
-          {deleteIntegration.isPending ? 'Deleting…' : 'Delete all agents'}
-        </button>
+        {confirmingDelete ? (
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-red-700">Delete plugin + all agents?</span>
+            <button
+              type="button"
+              onClick={confirmDelete}
+              disabled={deleteIntegration.isPending}
+              className="px-2.5 py-1 rounded-lg bg-red-600 text-white text-xs font-medium disabled:opacity-50"
+            >
+              {deleteIntegration.isPending ? 'Deleting…' : 'Yes, delete'}
+            </button>
+            <button
+              type="button"
+              onClick={() => setConfirmingDelete(false)}
+              className="px-2.5 py-1 rounded-lg border border-gray-300 text-gray-600 text-xs"
+            >
+              Cancel
+            </button>
+          </div>
+        ) : (
+          <button
+            type="button"
+            onClick={handleDelete}
+            disabled={deleteIntegration.isPending}
+            className="px-3 py-1.5 rounded-lg border border-red-200 bg-red-50 text-red-700 text-xs inline-flex items-center gap-1 disabled:opacity-50"
+          >
+            <Trash2 size={12} />
+            Delete all agents
+          </button>
+        )}
       </div>
+
+      {/* At-capacity warning — shown whenever the plugin has no free slots.
+          Updates every 5 s via the debug-state poll (heartbeat cadence). */}
+      {cs !== 'stale' && slotsAvailable === 0 && totalSlots !== null && (
+        <div className="px-4 py-2.5 border-b bg-amber-50 flex items-center gap-2">
+          <span className="w-2 h-2 rounded-full bg-amber-400 flex-shrink-0 animate-pulse" />
+          <span className="text-xs font-medium text-amber-800">
+            Plugin at capacity — {tasksRunning}/{totalSlots} slots in use. New tasks will queue until a slot opens.
+          </span>
+        </div>
+      )}
 
       {/* Running tasks panel — shown when tasks are active but no agents registered yet,
           so the user knows something is happening before they've completed setup. */}
@@ -303,7 +354,11 @@ function OpenClawIntegrationSection({
               </div>
               <ul className="divide-y divide-gray-100">
                 {registeredAgents.map((agent) => (
-                  <AgentRow key={agent.id} agent={agent} recentTasks={allRecentTasks} />
+                  <AgentRow
+                    key={agent.id}
+                    agent={agent}
+                    recentTasks={allRecentTasks.filter((t) => t.agent_ref === agent.agent_ref)}
+                  />
                 ))}
               </ul>
             </>

@@ -55,6 +55,15 @@ async def _checkpointer():
     2) Derive from DATABASE_URL when it's Postgres async URL
        (postgresql+asyncpg://... -> postgresql://...)
     3) MemorySaver fallback
+
+    NOTE: We deliberately do NOT wrap `yield saver` inside `async with
+    AsyncPostgresSaver` because AsyncPostgresSaver.__aexit__ suppresses
+    LangGraph's NodeInterrupt/GraphInterrupt exceptions (returns True to
+    signal "I handled it").  When an exception is suppressed inside an
+    asynccontextmanager generator the generator continues normally and
+    Python raises "RuntimeError: generator didn't stop after athrow()".
+    Instead we manually __aenter__/__aexit__ the saver and use a plain
+    try/finally around the yield so exceptions always propagate cleanly.
     """
     from knotwork.config import settings
     url = settings.database_url_sync
@@ -65,14 +74,33 @@ async def _checkpointer():
         elif db_url.startswith("postgresql://"):
             url = db_url
     if url:
+        saver_cm = None
+        saver = None
         try:
             from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver  # type: ignore[import]
-            async with AsyncPostgresSaver.from_conn_string(url) as saver:
-                await saver.setup()
-                yield saver
-                return
+            saver_cm = AsyncPostgresSaver.from_conn_string(url)
+            saver = await saver_cm.__aenter__()
+            await saver.setup()
         except Exception as exc:
+            if saver_cm is not None:
+                try:
+                    await saver_cm.__aexit__(None, None, None)
+                except Exception:
+                    pass
             logger.warning("AsyncPostgresSaver unavailable for URL '%s' (%s), using MemorySaver", url, exc)
+            saver = None
+
+        if saver is not None:
+            try:
+                yield saver
+            finally:
+                # Close connection without passing exception info — avoids
+                # __aexit__ suppressing graph-level exceptions.
+                try:
+                    await saver_cm.__aexit__(None, None, None)  # type: ignore[union-attr]
+                except Exception:
+                    pass
+            return
 
     from langgraph.checkpoint.memory import MemorySaver
     yield MemorySaver()
@@ -107,6 +135,23 @@ def compile_graph(graph_def: dict, checkpointer: Any = None) -> CompiledGraph:
     workflow = StateGraph(RunState)
     node_ids: set[str] = set()
 
+    # Pre-compute per-source outgoing edges (with condition_label) before building
+    # nodes so routing hints can be passed to make_agent_node.
+    # Include edges to end nodes — they are valid branch targets for ROUTING and
+    # must be represented as conditional edges (not dual direct edges) in LangGraph.
+    outgoing: dict[str, list[dict]] = {}
+    for edge in graph_def.get("edges", []):
+        src, tgt = edge["source"], edge["target"]
+        if src in skip_ids:  # never accumulate edges FROM start/end nodes
+            continue
+        if src not in outgoing:
+            outgoing[src] = []
+        if not any(e["target"] == tgt for e in outgoing[src]):
+            outgoing[src].append({
+                "target": tgt,
+                "condition_label": edge.get("condition_label") or None,
+            })
+
     for node in nodes:
         nid = node["id"]
         if nid in skip_ids:
@@ -116,34 +161,32 @@ def compile_graph(graph_def: dict, checkpointer: Any = None) -> CompiledGraph:
                 f"Node '{nid}' has type 'tool_executor' which was removed in S7. "
                 "Delete this node or replace it with an agent node."
             )
-        workflow.add_node(nid, make_agent_node(node))
+        workflow.add_node(nid, make_agent_node(node, outgoing_edges=outgoing.get(nid, [])))
         node_ids.add(nid)
 
-    # Pre-compute per-source outgoing targets for branch routing
-    outgoing: dict[str, list[str]] = {nid: [] for nid in node_ids}
+    # Wire start → entry nodes
     for edge in graph_def.get("edges", []):
         src, tgt = edge["source"], edge["target"]
-        if src in node_ids and tgt in node_ids and tgt not in outgoing.get(src, []):
-            outgoing[src].append(tgt)
+        if src in start_ids and tgt in node_ids:
+            workflow.add_edge(LG_START, tgt)
 
-    for edge in graph_def.get("edges", []):
-        src, tgt = edge["source"], edge["target"]
-        if src in start_ids:
-            if tgt in node_ids:
-                workflow.add_edge(LG_START, tgt)
-        elif tgt in end_ids:
-            if src in node_ids:
-                workflow.add_edge(src, END)
-        elif src in node_ids and tgt in node_ids:
-            targets = outgoing.get(src, [])
-            if len(targets) > 1:
-                workflow.add_conditional_edges(
-                    src, _make_branch_router(targets), {t: t for t in targets},
-                )
-            else:
-                workflow.add_edge(src, tgt)
-        elif src in node_ids:
-            workflow.add_edge(src, END)
+    # Wire regular nodes — each node is wired exactly once from its outgoing edge list.
+    # End-node targets map to LangGraph END in the routing map so the agent can
+    # route to them by outputting next_branch = <end_node_id>.
+    for nid in node_ids:
+        edges_out = outgoing.get(nid, [])
+        targets_out = [e["target"] for e in edges_out]
+        if len(targets_out) == 0:
+            workflow.add_edge(nid, END)
+        elif len(targets_out) == 1:
+            tgt = targets_out[0]
+            workflow.add_edge(nid, tgt if tgt in node_ids else END)
+        else:
+            # Multi-branch: map end-node IDs to LangGraph END, regular IDs to themselves
+            routing_map = {t: t if t in node_ids else END for t in targets_out}
+            workflow.add_conditional_edges(
+                nid, _make_branch_router(targets_out), routing_map,
+            )
 
     if not start_ids:  # legacy graph with no start node
         entry = graph_def.get("entry_point") or (nodes[0]["id"] if nodes else None)

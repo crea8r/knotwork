@@ -45,7 +45,7 @@ class PublicRunTriggerRequest(BaseModel):
 
 
 class PublicRunTriggerOut(BaseModel):
-    run_id: UUID
+    run_id: str
     run_token: str
     run_public_url: str
 

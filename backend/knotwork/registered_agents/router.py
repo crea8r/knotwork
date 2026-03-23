@@ -23,7 +23,6 @@ async def list_agents(
     q: str | None = None,
     provider: str | None = None,
     status_filter: str | None = Query(default=None, alias="status"),
-    preflight_status: str | None = None,
     db: AsyncSession = Depends(get_db),
 ):
     return await service.list_agents(
@@ -32,7 +31,6 @@ async def list_agents(
         q=q,
         provider=provider,
         status_filter=status_filter,
-        preflight_status=preflight_status,
     )
 
 
@@ -163,58 +161,6 @@ async def list_capabilities(
 ):
     return await service.list_capabilities(db, workspace_id, agent_id, limit=limit)
 
-
-@router.post(
-    "/workspaces/{workspace_id}/agents/{agent_id}/preflight-runs",
-    response_model=schemas.PreflightRunDetailOut,
-    status_code=status.HTTP_201_CREATED,
-)
-async def run_preflight(
-    workspace_id: UUID,
-    agent_id: UUID,
-    data: schemas.PreflightRunRequest,
-    db: AsyncSession = Depends(get_db),
-):
-    return await service.run_preflight(db, workspace_id, agent_id, data)
-
-
-@router.get(
-    "/workspaces/{workspace_id}/agents/{agent_id}/preflight-runs",
-    response_model=list[schemas.PreflightRunOut],
-)
-async def list_preflight_runs(
-    workspace_id: UUID,
-    agent_id: UUID,
-    limit: int = 20,
-    db: AsyncSession = Depends(get_db),
-):
-    return await service.list_preflight_runs(db, workspace_id, agent_id, limit=limit)
-
-
-@router.get(
-    "/workspaces/{workspace_id}/agents/{agent_id}/preflight-runs/{preflight_run_id}",
-    response_model=schemas.PreflightRunDetailOut,
-)
-async def get_preflight_run(
-    workspace_id: UUID,
-    agent_id: UUID,
-    preflight_run_id: UUID,
-    db: AsyncSession = Depends(get_db),
-):
-    return await service.get_preflight_run(db, workspace_id, agent_id, preflight_run_id)
-
-
-@router.post(
-    "/workspaces/{workspace_id}/agents/{agent_id}/preflight-runs/{preflight_run_id}/promote-baseline",
-    response_model=schemas.PreflightRunOut,
-)
-async def promote_baseline(
-    workspace_id: UUID,
-    agent_id: UUID,
-    preflight_run_id: UUID,
-    db: AsyncSession = Depends(get_db),
-):
-    return await service.promote_preflight_baseline(db, workspace_id, agent_id, preflight_run_id)
 
 
 @router.post(

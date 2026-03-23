@@ -5,7 +5,7 @@ import mimetypes
 from pathlib import Path
 from uuid import UUID, uuid4
 
-from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile
+from fastapi import APIRouter, Depends, File, HTTPException, Path as PathParam, Query, Request, UploadFile
 from fastapi.responses import Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -128,7 +128,7 @@ async def list_workspace_runs(workspace_id: UUID, db: AsyncSession = Depends(get
 
 
 @router.get("/{workspace_id}/runs/{run_id}", response_model=RunOut)
-async def get_run(workspace_id: UUID, run_id: UUID, db: AsyncSession = Depends(get_db)):
+async def get_run(workspace_id: UUID, run_id: str = PathParam(..., min_length=8, max_length=36), db: AsyncSession = Depends(get_db)):
     run = await service.get_run(db, run_id)
     if not run or run.workspace_id != workspace_id:
         raise HTTPException(404, "Run not found")
@@ -138,8 +138,8 @@ async def get_run(workspace_id: UUID, run_id: UUID, db: AsyncSession = Depends(g
 @router.patch("/{workspace_id}/runs/{run_id}", response_model=RunOut)
 async def update_run(
     workspace_id: UUID,
-    run_id: UUID,
     data: RunUpdate,
+    run_id: str = PathParam(..., min_length=8, max_length=36),
     db: AsyncSession = Depends(get_db),
 ):
     run = await service.get_run(db, run_id)
@@ -154,7 +154,7 @@ async def update_run(
 
 @router.get("/{workspace_id}/runs/{run_id}/nodes", response_model=list[RunNodeStateOut])
 async def list_run_nodes(
-    workspace_id: UUID, run_id: UUID, db: AsyncSession = Depends(get_db)
+    workspace_id: UUID, run_id: str = PathParam(..., min_length=8, max_length=36), db: AsyncSession = Depends(get_db)
 ):
     run = await service.get_run(db, run_id)
     if not run or run.workspace_id != workspace_id:
@@ -166,8 +166,8 @@ async def list_run_nodes(
 @router.post("/{workspace_id}/runs/{run_id}/resume")
 async def resume_run(
     workspace_id: UUID,
-    run_id: UUID,
     data: ResumeRun,
+    run_id: str = PathParam(..., min_length=8, max_length=36),
     db: AsyncSession = Depends(get_db),
 ):
     run = await service.get_run(db, run_id)
@@ -202,7 +202,7 @@ async def resume_run(
 
 @router.post("/{workspace_id}/runs/{run_id}/abort", status_code=200)
 async def abort_run(
-    workspace_id: UUID, run_id: UUID, db: AsyncSession = Depends(get_db)
+    workspace_id: UUID, run_id: str = PathParam(..., min_length=8, max_length=36), db: AsyncSession = Depends(get_db)
 ):
     from datetime import datetime, timezone
     from knotwork.public_workflows.service import notify_public_run_aborted
@@ -222,7 +222,7 @@ async def abort_run(
 
 @router.delete("/{workspace_id}/runs/{run_id}", status_code=204)
 async def delete_run(
-    workspace_id: UUID, run_id: UUID, db: AsyncSession = Depends(get_db)
+    workspace_id: UUID, run_id: str = PathParam(..., min_length=8, max_length=36), db: AsyncSession = Depends(get_db)
 ):
     run = await service.get_run(db, run_id)
     if not run or run.workspace_id != workspace_id:
@@ -234,7 +234,7 @@ async def delete_run(
 
 @router.post("/{workspace_id}/runs/{run_id}/execute", status_code=200)
 async def execute_run_inline(
-    workspace_id: UUID, run_id: UUID, db: AsyncSession = Depends(get_db)
+    workspace_id: UUID, run_id: str = PathParam(..., min_length=8, max_length=36), db: AsyncSession = Depends(get_db)
 ):
     """Execute a queued/draft run immediately (dev helper — no worker needed)."""
     run = await service.get_run(db, run_id)
@@ -250,7 +250,7 @@ async def execute_run_inline(
 
 @router.post("/{workspace_id}/runs/{run_id}/clone", response_model=RunOut, status_code=201)
 async def clone_run(
-    workspace_id: UUID, run_id: UUID, db: AsyncSession = Depends(get_db)
+    workspace_id: UUID, run_id: str = PathParam(..., min_length=8, max_length=36), db: AsyncSession = Depends(get_db)
 ):
     run = await service.get_run(db, run_id)
     if not run or run.workspace_id != workspace_id:
@@ -272,7 +272,7 @@ async def list_graph_runs(
 
 @router.get("/{workspace_id}/runs/{run_id}/worklog", response_model=list[RunWorklogEntryOut])
 async def get_run_worklog(
-    workspace_id: UUID, run_id: UUID, db: AsyncSession = Depends(get_db)
+    workspace_id: UUID, run_id: str = PathParam(..., min_length=8, max_length=36), db: AsyncSession = Depends(get_db)
 ):
     run = await service.get_run(db, run_id)
     if not run or run.workspace_id != workspace_id:
@@ -286,7 +286,7 @@ async def get_run_worklog(
     response_model=list[RunHandbookProposalOut],
 )
 async def get_run_proposals(
-    workspace_id: UUID, run_id: UUID, db: AsyncSession = Depends(get_db)
+    workspace_id: UUID, run_id: str = PathParam(..., min_length=8, max_length=36), db: AsyncSession = Depends(get_db)
 ):
     run = await service.get_run(db, run_id)
     if not run or run.workspace_id != workspace_id:
@@ -297,7 +297,7 @@ async def get_run_proposals(
 
 @router.get("/{workspace_id}/runs/{run_id}/openai-logs", response_model=list[OpenAICallLogOut])
 async def get_run_openai_logs(
-    workspace_id: UUID, run_id: UUID, db: AsyncSession = Depends(get_db)
+    workspace_id: UUID, run_id: str = PathParam(..., min_length=8, max_length=36), db: AsyncSession = Depends(get_db)
 ):
     run = await service.get_run(db, run_id)
     if not run or run.workspace_id != workspace_id:
@@ -308,7 +308,7 @@ async def get_run_openai_logs(
 
 @router.get("/{workspace_id}/runs/{run_id}/chat-messages", response_model=list[ChannelMessageOut])
 async def get_run_chat_messages(
-    workspace_id: UUID, run_id: UUID, db: AsyncSession = Depends(get_db)
+    workspace_id: UUID, run_id: str = PathParam(..., min_length=8, max_length=36), db: AsyncSession = Depends(get_db)
 ):
     run = await service.get_run(db, run_id)
     if not run or run.workspace_id != workspace_id:
@@ -327,14 +327,14 @@ async def _resume_if_still_paused(run_id: str, resolution: dict, delay_seconds: 
 
     await asyncio.sleep(delay_seconds)
     async with AsyncSessionLocal() as db:
-        run = await db.get(Run, UUID(run_id))
+        run = await db.get(Run, run_id)
         if not run or run.status != "paused":
             return
         # Avoid duplicate resumes when the first resume already created
         # a fresh open escalation and the run is intentionally paused.
         open_esc = await db.execute(
             select(Escalation.id).where(
-                Escalation.run_id == UUID(run_id),
+                Escalation.run_id == run_id,
                 Escalation.status == "open",
             )
         )

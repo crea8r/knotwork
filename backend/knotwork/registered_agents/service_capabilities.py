@@ -113,8 +113,6 @@ async def refresh_capabilities(
     ra.capability_hash = contract_hash
     ra.capability_refreshed_at = _now()
     ra.capability_freshness = "fresh"
-    if changed and ra.preflight_status in ("pass", "warning"):
-        ra.preflight_status = "never_run"
     ra.updated_at = _now()
     await db.commit()
 

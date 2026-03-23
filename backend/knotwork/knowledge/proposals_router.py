@@ -21,7 +21,7 @@ router = APIRouter(prefix="/workspaces", tags=["proposals"])
 
 class ProposalOut(BaseModel):
     id: UUID
-    run_id: UUID
+    run_id: str
     node_id: str
     agent_ref: str | None
     path: str

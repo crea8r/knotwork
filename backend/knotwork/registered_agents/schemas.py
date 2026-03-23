@@ -10,7 +10,6 @@ from pydantic import BaseModel, Field
 
 ProviderType = Literal["anthropic", "openai", "openclaw"]
 AgentStatusType = Literal["inactive", "active", "archived"]
-PreflightStatusType = Literal["never_run", "running", "pass", "warning", "fail"]
 CapabilityFreshnessType = Literal["fresh", "stale", "needs_refresh"]
 
 
@@ -27,7 +26,7 @@ class RegisteredAgentCreate(BaseModel):
     api_key: str | None = None  # backward-compatible request shape
     endpoint: str | None = None
     credentials: AgentCredentials | None = None
-    activate_after_preflight: bool = False
+    activate_after_preflight: bool = False  # kept for API compat; activates immediately on create
 
 
 class RegisteredAgentUpdate(BaseModel):
@@ -57,8 +56,6 @@ class RegisteredAgentOut(BaseModel):
     capability_hash: str | None = None
     capability_refreshed_at: datetime | None = None
     capability_freshness: CapabilityFreshnessType = "needs_refresh"
-    preflight_status: PreflightStatusType = "never_run"
-    preflight_run_at: datetime | None = None
     last_used_at: datetime | None = None
     openclaw_integration_id: UUID | None = None
     openclaw_remote_agent_id: str | None = None
@@ -69,7 +66,7 @@ class RegisteredAgentOut(BaseModel):
 
 
 class RegisteredAgentHistoryItem(BaseModel):
-    run_id: UUID
+    run_id: str
     run_name: str | None = None
     run_status: str
     run_created_at: datetime
@@ -113,45 +110,8 @@ class CapabilityRefreshOut(BaseModel):
     capability: CapabilityContractOut
 
 
-class PreflightRunRequest(BaseModel):
-    suite: str = "default"
-    include_optional: bool = False
-
-
-class PreflightTestOut(BaseModel):
-    test_id: str
-    tool_name: str | None = None
-    required: bool
-    status: Literal["pass", "fail", "warning", "skipped"]
-    latency_ms: int | None = None
-    error_code: str | None = None
-    error_message: str | None = None
-    request_preview: dict[str, Any] = {}
-    response_preview: dict[str, Any] = {}
-
-
-class PreflightRunOut(BaseModel):
-    id: UUID
-    agent_id: UUID
-    status: PreflightStatusType
-    required_total: int
-    required_passed: int
-    optional_total: int
-    optional_passed: int
-    pass_rate: float
-    median_latency_ms: int | None = None
-    failed_count: int
-    is_baseline: bool
-    started_at: datetime
-    completed_at: datetime | None = None
-
-
-class PreflightRunDetailOut(PreflightRunOut):
-    tests: list[PreflightTestOut] = []
-
-
 class ActivateAgentRequest(BaseModel):
-    allow_warning: bool = False
+    pass
 
 
 class DeactivateAgentRequest(BaseModel):
@@ -179,7 +139,7 @@ class CompatibilityCheckOut(BaseModel):
 
 class AgentUsageItem(BaseModel):
     type: Literal["run", "workflow"]
-    run_id: UUID | None = None
+    run_id: str | None = None
     workflow_id: UUID | None = None
     workflow_name: str | None = None
     status: str | None = None
@@ -187,7 +147,7 @@ class AgentUsageItem(BaseModel):
 
 
 class DebugLinkItem(BaseModel):
-    run_id: UUID
+    run_id: str
     node_id: str | None = None
     provider_request_id: str | None = None
     provider_response_id: str | None = None

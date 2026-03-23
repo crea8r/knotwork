@@ -33,28 +33,43 @@ def _tool_result(tool_use_id: str, content: Any) -> dict:
     }
 
 
-def _build_prompts(run_state: dict, config: dict, knowledge_tree: "KnowledgeTree") -> tuple[str, str]:
+def _build_prompts(
+    run_state: dict,
+    config: dict,
+    knowledge_tree: "KnowledgeTree",
+    outgoing_edges: list[dict],
+    targets: list[str],
+    trust: float,
+    retry_guidance: str | None,
+) -> tuple[str, str]:
+    from knotwork.runtime.nodes.agent import _build_tail_blocks, _build_retry_user_prompt
     from knotwork.runtime.prompt_builder import build_agent_prompt
 
+    if retry_guidance:
+        return "", _build_retry_user_prompt(retry_guidance, outgoing_edges, targets)
+
     all_outputs: dict = run_state.get("node_outputs") or {}
-    input_sources: list[str] | None = config.get("input_sources")
-    if input_sources is None:
-        run_fields = run_state.get("input", {})
-        prior_outputs = dict(all_outputs) if all_outputs else None
-    else:
-        run_fields = run_state.get("input", {}) if "run_input" in input_sources else {}
-        selected = {nid: all_outputs[nid] for nid in input_sources if nid in all_outputs}
-        prior_outputs = selected if selected else None
+    is_first_node = not all_outputs
+    run_fields = run_state.get("input", {}) if is_first_node else {}
+    context_files = run_state.get("context_files", []) if is_first_node else []
 
     system_p, user_p = build_agent_prompt(
         tree=knowledge_tree,
         state_fields=run_fields,
-        context_files=run_state.get("context_files", []),
-        prior_outputs=prior_outputs,
+        context_files=context_files,
+        prior_outputs=None,
     )
     extra = config.get("system_prompt") or config.get("instructions", "")
     if extra:
         system_p = f"{system_p}\n\n{extra}"
+
+    system_p += (
+        f"\n\n=== AUTONOMY LEVEL ===\n"
+        f"Trust: {trust:.1f} — "
+        f"0.0 means always ask the human before deciding; "
+        f"1.0 means act fully autonomously."
+    )
+    user_p = f"{user_p}\n\n{_build_tail_blocks(outgoing_edges, targets)}"
     return system_p, user_p
 
 
@@ -71,6 +86,10 @@ class ClaudeAdapter(AgentAdapter):
         run_state: dict,
         knowledge_tree: "KnowledgeTree",
         session_token: str,
+        outgoing_edges: list[dict] | None = None,
+        targets: list[str] | None = None,
+        trust: float = 0.5,
+        retry_guidance: str | None = None,
     ) -> AsyncGenerator[NodeEvent, None]:
         from anthropic import AsyncAnthropic
 
@@ -80,12 +99,18 @@ class ClaudeAdapter(AgentAdapter):
         agent_ref: str = node_def.get("agent_ref", f"anthropic:{settings.default_model}")
         model = _extract_model(agent_ref)
 
-        system_prompt, user_prompt = _build_prompts(run_state, config, knowledge_tree)
+        system_prompt, user_prompt = _build_prompts(
+            run_state, config, knowledge_tree,
+            outgoing_edges=outgoing_edges or [],
+            targets=targets or [],
+            trust=trust,
+            retry_guidance=retry_guidance,
+        )
         effective_key = self._api_key or settings.anthropic_api_key or None
         client = AsyncAnthropic(api_key=effective_key)
         messages: list[dict] = [{"role": "user", "content": user_prompt}]
 
-        yield NodeEvent("started", {"model": model})
+        yield NodeEvent("started", {"model": model, "system_prompt": system_prompt, "user_prompt": user_prompt})
 
         for _ in range(_MAX_TURNS):
             response = await client.messages.create(

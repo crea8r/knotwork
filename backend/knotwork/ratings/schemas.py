@@ -14,7 +14,7 @@ class RatingCreate(BaseModel):
 
 class RatingOut(BaseModel):
     id: UUID
-    run_id: UUID
+    run_id: str
     run_node_state_id: UUID
     workspace_id: UUID
     rated_by: UUID | None

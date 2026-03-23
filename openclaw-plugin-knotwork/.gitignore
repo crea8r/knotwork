@@ -1,0 +1,6 @@
+dist/
+node_modules/
+
+# Runtime files written by the plugin (co-located with bundle when symlinked)
+credentials.json
+runtime.lock
