@@ -120,3 +120,12 @@ export type TaskResult =
   | { type: 'escalation'; questions: string[]; options: string[]; message?: string }
   | { type: 'failed'; error: string }
 
+/** Parameters passed to a subprocess via --params so it can run without reading persisted state. */
+export type SubprocessParams = {
+  task: ExecutionTask
+  pluginInstanceId: string
+  integrationSecret: string
+  knotworkUrl: string
+  taskLogPath: string
+}
+

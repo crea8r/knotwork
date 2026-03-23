@@ -1,8 +1,11 @@
 // rpc.ts — Gateway RPC method registrations (knotwork.* methods).
 // Callable from any terminal: `openclaw gateway call knotwork.<method>`
 
+import { join } from 'node:path'
 import { getConfig } from '../openclaw/bridge'
-import type { ExecutionTask, GatewayMethodContext, HandshakeResponse, LooseRecord, OpenClawApi, PluginConfig, PluginState } from '../types'
+import { createTaskLogger } from '../state/tasklog'
+import { runClaimedTask as _runClaimedTask } from './worker'
+import type { ExecutionTask, GatewayMethodContext, HandshakeResponse, LooseRecord, OpenClawApi, PluginConfig, PluginState, SubprocessParams } from '../types'
 
 export type RpcCtx = {
   state: PluginState
@@ -13,6 +16,8 @@ export type RpcCtx = {
   pollAndRun: () => Promise<void>
   runClaimedTask: (task: ExecutionTask) => Promise<void>
   resetPersistedSecret: (resetInstanceId?: boolean) => Promise<void>
+  /** Absolute path where runtime.lock will be written — derived from __dirname in plugin.ts */
+  computedLockPath: string
 }
 
 function getPayload(ctx: GatewayMethodContext): LooseRecord {
@@ -24,21 +29,28 @@ function ok(ctx: GatewayMethodContext, payload: LooseRecord): void {
 }
 
 export function registerRpcMethods(ctx: RpcCtx): void {
-  const { api, state, log, rememberError, runHandshake, pollAndRun, runClaimedTask, resetPersistedSecret } = ctx
+  const { api, state, log, rememberError, runHandshake, pollAndRun, runClaimedTask, resetPersistedSecret, computedLockPath } = ctx
   const apiKeys = Object.keys(api as object).join(',')
   if (typeof api.registerGatewayMethod !== 'function') {
     console.log(`[knotwork-bridge] rpc:register-skipped registerGatewayMethod not a function — api keys: ${apiKeys}`)
     return
   }
-  console.log(`[knotwork-bridge] rpc:registering-methods api-keys=${apiKeys}`)
+  // console.log(`[knotwork-bridge] rpc:registering-methods api-keys=${apiKeys}`)
   const rpc = api.registerGatewayMethod.bind(api)
 
   rpc('knotwork.status', (gwCtx: GatewayMethodContext) => {
     const cfg = getConfig(api)
     const rawPluginConfig = (api as any).pluginConfig ?? null
     const rawConfigEntries = (api as any).config?.plugins?.entries ?? null
+    const runningTasks = Array.isArray(state.runningTasks) ? state.runningTasks : []
+    const pendingTasks = Array.isArray(state.recentTasks)
+      ? state.recentTasks.filter((t) => t.status !== 'completed' && t.status !== 'failed')
+      : []
     ok(gwCtx, {
       ...state,
+      runningCount: runningTasks.length,
+      runningTasks,
+      pendingTasks,
       runtime: {
         runtimeLeaseOwnerPid: state.runtimeLeaseOwnerPid,
         currentPid: process?.pid ?? null,
@@ -49,11 +61,29 @@ export function registerRpcMethods(ctx: RpcCtx): void {
         taskPollIntervalMs: cfg.taskPollIntervalMs ?? 2000,
       },
       _debug: { rawPluginConfig, rawConfigEntries },
+      diag: {
+        activationContext: state.activationContext,
+        backgroundWorkerEnabled: state.backgroundWorkerEnabled,
+        computedLockPath,
+        runtimeLockPath: state.runtimeLockPath,
+        leaseOwnerPid: state.runtimeLeaseOwnerPid,
+        currentPid: process?.pid ?? null,
+        isLeaseOwner: state.runtimeLeaseOwnerPid === (process?.pid ?? null),
+      },
     })
   })
 
   rpc('knotwork.logs', async (gwCtx: GatewayMethodContext) => {
     ok(gwCtx, { logs: state.logs, count: state.logs.length, recentTasks: state.recentTasks })
+  })
+
+  rpc('knotwork.clear_log', (_gwCtx: GatewayMethodContext) => {
+    const count = state.logs.length
+    // Mutate in-place so any existing reference to the array also sees the clear.
+    state.logs.splice(0, state.logs.length)
+    // Write to console only — calling log() would immediately add an entry back.
+    console.log(`[knotwork-bridge] logs:cleared count=${count}`)
+    ok(_gwCtx, { ok: true, cleared: count })
   })
 
   const handleHandshake = async (gwCtx: GatewayMethodContext): Promise<void> => {
@@ -80,7 +110,7 @@ export function registerRpcMethods(ctx: RpcCtx): void {
   rpc('knotwork.sync_agents', handleHandshake) // alias — re-handshake re-syncs agents
 
   // Execute a task inside a gateway request context (required for subagent.run()).
-  // Primary path: caller passes a pre-claimed task via --params { task: {...} }.
+  // Primary path: subprocess passes full SubprocessParams { task, pluginInstanceId, integrationSecret, knotworkUrl, taskLogPath }.
   // Fallback path: no task in params → full pull-then-run cycle (legacy/manual use).
   //
   // NOTE: ok() must be called AFTER awaiting the task — subagent.run() is bound to the
@@ -93,7 +123,36 @@ export function registerRpcMethods(ctx: RpcCtx): void {
     const preClaimedTask = (payload.task ?? null) as ExecutionTask | null
     try {
       if (preClaimedTask) {
-        await runClaimedTask(preClaimedTask)
+        // Check if subprocess credentials were provided in params (new stateless path).
+        const hasSubprocessCreds =
+          typeof payload.pluginInstanceId === 'string' &&
+          typeof payload.integrationSecret === 'string' &&
+          typeof payload.knotworkUrl === 'string'
+
+        if (hasSubprocessCreds) {
+          const sp = payload as unknown as SubprocessParams
+          const taskLogPath = typeof sp.taskLogPath === 'string' ? sp.taskLogPath : undefined
+          const taskLog = createTaskLogger(taskLogPath ?? join(__dirname, 'tasks.log'))
+          // Build a minimal ctx — state fields are unused when creds are explicit.
+          const minimalCtx = {
+            state: {
+              pluginInstanceId: sp.pluginInstanceId, integrationSecret: sp.integrationSecret,
+              stateFilePath: null, runtimeLockPath: null, activationContext: 'cli_gateway_call',
+              backgroundWorkerEnabled: false, lastHandshakeAt: null, lastHandshakeOk: false,
+              lastError: null, lastTaskAt: null, runningTaskId: null, runningTasks: [],
+              runtimeLeaseOwnerPid: null, recentTasks: [], logs: [],
+            },
+            api, log, rememberError,
+            persistSnapshot: async () => { /* no-op: subprocess does not persist */ },
+            resetPersistedSecret: async () => { /* no-op */ },
+            recoverCredentials: async () => false,
+            taskLog,
+          }
+          await _runClaimedTask(minimalCtx, preClaimedTask, { pluginInstanceId: sp.pluginInstanceId, integrationSecret: sp.integrationSecret, knotworkUrl: sp.knotworkUrl })
+        } else {
+          // Legacy path: credentials come from state (same-process runtime call).
+          await runClaimedTask(preClaimedTask)
+        }
       } else {
         await pollAndRun()
       }

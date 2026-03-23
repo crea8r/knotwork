@@ -4,6 +4,7 @@ import { getConfig, postEvent, pullTask } from '../openclaw/bridge'
 import { executeTask } from '../openclaw/session'
 import { isInvalidCredentialsError } from './handshake'
 import { MAX_RECENT_TASKS } from '../state/persist'
+import type { TaskLogger } from '../state/tasklog'
 import type { ExecutionTask, LooseRecord, OpenClawApi, PluginState, RecentTask, RunningTaskInfo } from '../types'
 
 export type WorkerCtx = {
@@ -14,6 +15,15 @@ export type WorkerCtx = {
   persistSnapshot: () => Promise<void>
   resetPersistedSecret: (resetInstanceId?: boolean) => Promise<void>
   recoverCredentials: (reason: string) => Promise<boolean>
+  taskLog: TaskLogger
+}
+
+/** Minimal credentials context for running a pre-claimed task without full PluginState. */
+export type TaskCredentials = {
+  pluginInstanceId: string
+  integrationSecret: string
+  knotworkUrl: string
+  taskLogPath?: string
 }
 
 export function upsertRecentTask(state: PluginState, persistFn: () => void, task: RecentTask): void {
@@ -57,14 +67,18 @@ export function removeRunningTask(state: PluginState, taskId: string): void {
  * Execute a pre-claimed task inside a gateway request context.
  * Called by the execute_task RPC handler with a task already pulled from the queue.
  * Does NOT call pullTask — the caller is responsible for providing the claimed task.
+ *
+ * Accepts explicit credentials so the subprocess never needs to read persisted state.
  */
-export async function runClaimedTask(ctx: WorkerCtx, task: ExecutionTask): Promise<void> {
-  const { state, api, log, rememberError, persistSnapshot, resetPersistedSecret, recoverCredentials } = ctx
-  const cfg = getConfig(api)
-  const baseUrl = cfg.knotworkBackendUrl
+export async function runClaimedTask(ctx: WorkerCtx, task: ExecutionTask, creds?: TaskCredentials): Promise<void> {
+  const { state, api, log, rememberError, persistSnapshot, resetPersistedSecret, recoverCredentials, taskLog } = ctx
+  // Prefer explicit credentials; fall back to state for backward compat (poll path).
+  const baseUrl = creds?.knotworkUrl || getConfig(api).knotworkBackendUrl
+  const instanceId = creds?.pluginInstanceId || state.pluginInstanceId
+  const integrationSecret = creds?.integrationSecret || state.integrationSecret
 
-  if (!baseUrl || !state.pluginInstanceId || !state.integrationSecret) {
-    const missing = [!baseUrl && 'knotworkBackendUrl', !state.pluginInstanceId && 'pluginInstanceId', !state.integrationSecret && 'integrationSecret'].filter(Boolean).join(',')
+  if (!baseUrl || !instanceId || !integrationSecret) {
+    const missing = [!baseUrl && 'knotworkUrl', !instanceId && 'pluginInstanceId', !integrationSecret && 'integrationSecret'].filter(Boolean).join(',')
     log(`task:skipped missing=${missing}`)
     return
   }
@@ -74,6 +88,10 @@ export async function runClaimedTask(ctx: WorkerCtx, task: ExecutionTask): Promi
   const persist = () => { void persistSnapshot() }
   state.lastTaskAt = taskStartedAt
 
+  // (1) task received
+  taskLog('task:received', taskId, {
+    node: task.node_id ?? '', run: task.run_id ?? '', session: task.session_name ?? '',
+  })
   upsertRecentTask(state, persist, {
     ...currentRecentTask(state, task, taskId, taskStartedAt),
     status: 'claimed', finishedAt: null, error: null,
@@ -81,15 +99,17 @@ export async function runClaimedTask(ctx: WorkerCtx, task: ExecutionTask): Promi
   log(`task:start id=${taskId} node=${task.node_id} run=${task.run_id ?? 'n/a'} session=${task.session_name}`)
 
   async function submitEvent(eventType: string, payload: LooseRecord): Promise<void> {
-    const curId = state.pluginInstanceId
-    const curSecret = state.integrationSecret
+    // Use explicit creds if provided; otherwise fall back to live state (supports credential recovery).
+    const curId = creds ? instanceId : (state.pluginInstanceId ?? instanceId)
+    const curSecret = creds ? integrationSecret : (state.integrationSecret ?? integrationSecret)
     if (!baseUrl || !curId || !curSecret) throw new Error(`Cannot submit ${eventType}: plugin credentials unavailable`)
     log(`event:post:start id=${taskId} type=${eventType}`)
     try {
       await postEvent(baseUrl, curId, curSecret, taskId, eventType, payload)
       log(`event:post:ok id=${taskId} type=${eventType}`)
     } catch (err) {
-      if (!isInvalidCredentialsError(err)) {
+      if (!isInvalidCredentialsError(err) || creds) {
+        // With explicit creds, skip recovery — creds are baked in at spawn time.
         log(`event:post:error id=${taskId} type=${eventType} error=${rememberError(err)}`)
         throw err
       }
@@ -102,7 +122,10 @@ export async function runClaimedTask(ctx: WorkerCtx, task: ExecutionTask): Promi
     }
   }
 
-  await submitEvent('log', {
+  // Fire-and-forget: do NOT await before executeTask.
+  // Awaiting an HTTP call here breaks OpenClaw's gateway request context,
+  // causing subagent.run() to throw "only available during a gateway request".
+  void submitEvent('log', {
     entry_type: 'action',
     content: 'Plugin started task execution',
     metadata: { node_id: task.node_id, run_id: task.run_id, session_name: task.session_name },
@@ -120,8 +143,6 @@ export async function runClaimedTask(ctx: WorkerCtx, task: ExecutionTask): Promi
       }).catch(() => { /* non-fatal */ })
     }, 15000)
 
-    log(`debug:api-top-keys ${Object.keys(api).join(',')}`)
-    log(`debug:runtime-keys ${Object.keys((api as any).runtime ?? {}).join(',')}`)
     const result = await executeTask(api, task)
     if (heartbeat) clearInterval(heartbeat)
     log(`task:done id=${taskId} type=${result.type}`)
@@ -129,18 +150,22 @@ export async function runClaimedTask(ctx: WorkerCtx, task: ExecutionTask): Promi
 
     if (result.type === 'escalation') {
       upsertRecentTask(state, persist, { ...currentRecentTask(state, task, taskId, taskStartedAt), status: 'escalation', finishedAt, error: null })
+      taskLog('task:sent', taskId, { type: 'escalation' })  // (4)
       await submitEvent('escalation', { questions: result.questions, options: result.options, message: result.message })
     } else if (result.type === 'failed') {
       upsertRecentTask(state, persist, { ...currentRecentTask(state, task, taskId, taskStartedAt), status: 'failed', finishedAt, error: result.error })
+      taskLog('task:sent', taskId, { type: 'failed', error: result.error.slice(0, 200) })  // (4)
       await submitEvent('failed', { error: result.error })
     } else {
       upsertRecentTask(state, persist, { ...currentRecentTask(state, task, taskId, taskStartedAt), status: 'completed', finishedAt, error: null })
+      taskLog('task:sent', taskId, { type: 'completed', next_branch: result.next_branch ?? '' })  // (4)
       await submitEvent('completed', { output: result.output, next_branch: result.next_branch })
     }
   } catch (err) {
     const error = rememberError(err)
     upsertRecentTask(state, persist, { ...currentRecentTask(state, task, taskId, taskStartedAt), status: 'failed', finishedAt: new Date().toISOString(), error })
     log(`task:error id=${taskId} ${error}`)
+    taskLog('task:sent', taskId, { type: 'failed', error: error.slice(0, 200) })  // (4)
     await submitEvent('failed', { error }).catch((submitErr) => {
       log(`task:error-report-failed id=${taskId} error=${rememberError(submitErr)}`)
     })
