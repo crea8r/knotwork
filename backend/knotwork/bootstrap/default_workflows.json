@@ -26,8 +26,7 @@
           "name": "Marketing text",
           "config": {
             "system_prompt": "Create a marketing text for the business including a hook, selling points, trust elements, brand message, and a call to action.",
-            "knowledge_paths": ["marketing/cmo-profile.md", "marketing/hssbc.md", "marketing/copywriting-skill.md"],
-            "input_sources": ["agent-1772526654710"]
+            "knowledge_paths": ["marketing/cmo-profile.md", "marketing/hssbc.md", "marketing/copywriting-skill.md"]
           },
           "note": null,
           "agent_ref": "openclaw:main",
@@ -39,8 +38,7 @@
           "name": "Brand guideline",
           "config": {
             "system_prompt": "Develop a brand guideline for the business, starting with color palette, font choices, do's and don'ts of photos, and explanations.",
-            "knowledge_paths": ["marketing/design"],
-            "input_sources": ["agent-1772526710793"]
+            "knowledge_paths": ["marketing/design"]
           },
           "note": null,
           "agent_ref": "openclaw:main",
@@ -52,8 +50,7 @@
           "name": "Build landing page",
           "config": {
             "system_prompt": "Based on the marketing text and brand guideline, build a landing page and send me the link",
-            "knowledge_paths": ["marketing/hssbc", "marketing/design"],
-            "input_sources": ["agent-1772526725280"]
+            "knowledge_paths": ["marketing/hssbc", "marketing/design"]
           },
           "note": null,
           "agent_ref": "openclaw:main",
