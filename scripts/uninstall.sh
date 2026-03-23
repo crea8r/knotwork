@@ -103,7 +103,7 @@ parse_args() {
 }
 
 project_name() {
-  basename "$ROOT_DIR"
+  basename "$ROOT_DIR" | sed 's/^\.//'
 }
 
 manifest_value() {
@@ -140,7 +140,9 @@ compose_project_name() {
 }
 
 compose_cmd() {
-  docker compose --project-name "$(compose_project_name)" -f "$SCRIPT_DIR/docker-compose.yml" "$@"
+  local env_args=()
+  [[ -f "$ROOT_DIR/.env" ]] && env_args=(--env-file "$ROOT_DIR/.env")
+  docker compose --project-name "$(compose_project_name)" -f "$SCRIPT_DIR/docker-compose.yml" "${env_args[@]}" "$@"
 }
 
 owned_image_names() {
@@ -207,11 +209,11 @@ detect_backend_service() {
   [[ -n "$service" ]] && { echo "$service"; return; }
   service="$(compose_cmd ps --services 2>/dev/null | awk '$1=="backend-dev"{print; exit}')"
   [[ -n "$service" ]] && { echo "$service"; return; }
-  if grep -qE '^  backend:' "$ROOT_DIR/docker-compose.yml"; then
+  if grep -qE '^  backend:' "$SCRIPT_DIR/docker-compose.yml"; then
     echo "backend"
     return
   fi
-  if grep -qE '^  backend-dev:' "$ROOT_DIR/docker-compose.yml"; then
+  if grep -qE '^  backend-dev:' "$SCRIPT_DIR/docker-compose.yml"; then
     echo "backend-dev"
     return
   fi
@@ -267,11 +269,11 @@ backup_handbook() {
 }
 
 current_git_commit() {
-  git rev-parse HEAD 2>/dev/null || echo ""
+  git -C "$SCRIPT_DIR" rev-parse HEAD 2>/dev/null || echo ""
 }
 
 current_git_branch() {
-  git rev-parse --abbrev-ref HEAD 2>/dev/null || echo ""
+  git -C "$SCRIPT_DIR" rev-parse --abbrev-ref HEAD 2>/dev/null || echo ""
 }
 
 write_manifest() {
@@ -341,16 +343,20 @@ docker_cleanup() {
   project="$(compose_project_name)"
 
   log "Stopping and removing docker resources owned by compose project '${project}'..."
-  compose_cmd --profile prod down --remove-orphans --volumes || warn "docker compose down reported errors"
+  compose_cmd down --remove-orphans --volumes || warn "docker compose down reported errors"
+  compose_cmd --profile prod down --remove-orphans --volumes || warn "docker compose prod down reported errors"
   compose_cmd --profile dev down --remove-orphans --volumes || warn "docker compose dev down reported errors"
 
-  local net
+  local net net_default
   net="$(manifest_value network_name 2>/dev/null || true)"
   [[ -n "$net" ]] || net="${project}-network"
-  if docker network inspect "$net" >/dev/null 2>&1; then
-    log "Removing Docker network '${net}'..."
-    docker network rm "$net" >/dev/null 2>&1 || warn "Could not remove network: $net"
-  fi
+  net_default="${project}_default"
+  for _net in "$net" "$net_default"; do
+    if docker network inspect "$_net" >/dev/null 2>&1; then
+      log "Removing Docker network '${_net}'..."
+      docker network rm "$_net" >/dev/null 2>&1 || warn "Could not remove network: $_net"
+    fi
+  done
 
   log "Removing project images only..."
   while IFS= read -r image; do
@@ -370,12 +376,8 @@ cleanup_runtime_files() {
     "$ROOT_DIR/.env" \
     "$ROOT_DIR/.knotwork-install.json" \
     "$ROOT_DIR"/.env.backup.* \
-    "$ROOT_DIR/backend/data" \
-    "$ROOT_DIR/backend/logs" \
     "$ROOT_DIR/data" \
-    "$ROOT_DIR/frontend/dist" \
-    "$ROOT_DIR/frontend/.vite" \
-    "$ROOT_DIR/.pytest_cache"
+    "$ROOT_DIR/logs"
 }
 
 cleanup_full_tree() {
