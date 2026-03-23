@@ -418,7 +418,15 @@ if [[ -f ".env" ]]; then
       --profile prod down --remove-orphans --volumes 2>/dev/null || true
     docker compose --project-name "$PREV_PROJECT" -f "$SCRIPT_DIR/docker-compose.yml" --env-file "$ROOT_DIR/.env" \
       --profile dev down --remove-orphans --volumes 2>/dev/null || true
-    # compose down may fail on mislabelled networks; remove explicitly
+    # Force-remove all containers matching the project name prefix —
+    # compose down skips unlabelled containers, which keep the network alive
+    log "Force-removing any leftover containers for project '${PREV_PROJECT}'..."
+    while IFS= read -r _cid; do
+      [[ -n "$_cid" ]] || continue
+      docker rm -f "$_cid" 2>/dev/null || true
+    done < <(docker ps -a --filter "name=^${PREV_PROJECT}" --format '{{.ID}}')
+
+    # Now remove the network — no containers should be holding it open
     local _prev_net="${PREV_PROJECT}-network"
     if docker network inspect "$_prev_net" >/dev/null 2>&1; then
       log "Force-removing leftover network '${_prev_net}'..."
