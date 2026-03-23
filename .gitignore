@@ -49,3 +49,5 @@ data/
 
 # Docker
 *.pid
+
+openclaw-plugin-knotwork/artifacts/*
