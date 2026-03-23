@@ -353,9 +353,25 @@ docker_cleanup() {
   project="$(compose_project_name)"
 
   log "Stopping and removing docker resources owned by compose project '${project}'..."
-  compose_cmd down --remove-orphans --volumes || warn "docker compose down reported errors"
-  compose_cmd --profile prod down --remove-orphans --volumes || warn "docker compose prod down reported errors"
-  compose_cmd --profile dev down --remove-orphans --volumes || warn "docker compose dev down reported errors"
+  compose_cmd down --remove-orphans --volumes 2>/dev/null || true
+  compose_cmd --profile prod down --remove-orphans --volumes 2>/dev/null || true
+  compose_cmd --profile dev down --remove-orphans --volumes 2>/dev/null || true
+
+  # Force-remove any containers whose name starts with the project name —
+  # these are stragglers not owned by compose (no labels) that compose down skips
+  log "Force-removing any leftover containers matching '${project}*'..."
+  while IFS= read -r _cid; do
+    [[ -n "$_cid" ]] || continue
+    log "  removing container $_cid"
+    docker rm -f "$_cid" 2>/dev/null || warn "Could not remove container $_cid"
+  done < <(docker ps -a --filter "name=^${project}" --format '{{.ID}}')
+
+  # Also remove any volumes prefixed with the project name
+  log "Removing any leftover volumes matching '${project}*'..."
+  while IFS= read -r _vol; do
+    [[ -n "$_vol" ]] || continue
+    docker volume rm "$_vol" 2>/dev/null || warn "Could not remove volume $_vol"
+  done < <(docker volume ls --filter "name=^${project}" --format '{{.Name}}')
 
   local net net_default
   net="$(manifest_value network_name 2>/dev/null || true)"
