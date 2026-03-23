@@ -140,7 +140,7 @@ compose_project_name() {
 }
 
 compose_cmd() {
-  docker compose --project-name "$(compose_project_name)" "$@"
+  docker compose --project-name "$(compose_project_name)" -f "$SCRIPT_DIR/docker-compose.yml" "$@"
 }
 
 owned_image_names() {

@@ -498,7 +498,7 @@ AUTH_DEV_BYPASS_USER_ID=""
 write_env_file .env
 write_install_manifest .knotwork-install.json
 
-COMPOSE_CMD=(docker compose --project-name "$COMPOSE_PROJECT_NAME")
+COMPOSE_CMD=(docker compose --project-name "$COMPOSE_PROJECT_NAME" -f "$SCRIPT_DIR/docker-compose.yml")
 # Service names and compose profile differ by install mode.
 if [[ "$INSTALL_MODE" == "dev" ]]; then
   COMPOSE_PROFILE="dev"
