@@ -156,6 +156,7 @@ write_env_file() {
     printf 'FRONTEND_URL=%s\n'                "$FRONTEND_URL"
     printf 'BACKEND_URL=%s\n'                 "$BACKEND_URL"
     printf 'OPENCLAW_PLUGIN_PACKAGE_URL=%s\n' "$OPENCLAW_PLUGIN_PACKAGE_URL"
+    printf 'OPENCLAW_BACKEND_URL=%s\n'         "$OPENCLAW_BACKEND_URL"
     printf 'RESEND_API=%s\n'                  "$RESEND_API"
     printf 'EMAIL_FROM=%s\n'                  "$EMAIL_FROM"
     printf 'BACKEND_HOST_PORT=%s\n'           "$BACKEND_HOST_PORT"
@@ -498,33 +499,27 @@ fi
 
 if [[ "$DOMAIN" == "localhost" ]]; then
   prompt_with_default FRONTEND_URL "Frontend URL" "http://localhost:${FRONTEND_HOST_PORT}"
+  BACKEND_URL="http://localhost:${BACKEND_HOST_PORT}"
+
+  # OpenClaw accesses Knotwork's backend — host depends on whether OpenClaw is in Docker or native
   echo ""
-  echo "OpenClaw plugin source:"
-  echo "  1) Remote URL  (default — https://lab.crea8r.xyz/kw-plugin/latest)"
-  echo "  2) Docker host (OpenClaw runs in Docker — use host.docker.internal)"
-  echo "  3) Native host (OpenClaw runs natively — use localhost)"
-  read -r -p "Choice [1]: " _oc_src
-  case "${_oc_src:-1}" in
-    2)
-      prompt_with_default _oc_port "OpenClaw plugin server port" "8080"
-      _oc_default="http://host.docker.internal:${_oc_port}/knotwork-bridge-latest.tar.gz"
-      ;;
-    3)
-      prompt_with_default _oc_port "OpenClaw plugin server port" "8080"
-      _oc_default="http://localhost:${_oc_port}/knotwork-bridge-latest.tar.gz"
-      ;;
-    *)
-      _oc_default="https://lab.crea8r.xyz/kw-plugin/latest"
-      ;;
-  esac
-  prompt_with_default OPENCLAW_PLUGIN_PACKAGE_URL "OpenClaw plugin package URL (.tar.gz)" "$_oc_default"
+  echo "Is OpenClaw running inside Docker? (affects how it reaches this Knotwork backend)"
+  read -r -p "OpenClaw runs in Docker? [y/N]: " _oc_docker
+  _oc_docker="$(echo "$_oc_docker" | tr '[:upper:]' '[:lower:]' | sed 's/^ *//;s/ *$//')"
+  if [[ "$_oc_docker" == "y" || "$_oc_docker" == "yes" ]]; then
+    OPENCLAW_BACKEND_URL="http://host.docker.internal:${BACKEND_HOST_PORT}"
+  else
+    OPENCLAW_BACKEND_URL="http://localhost:${BACKEND_HOST_PORT}"
+  fi
+
+  prompt_with_default OPENCLAW_PLUGIN_PACKAGE_URL "OpenClaw plugin package URL (.tar.gz)" "https://lab.crea8r.xyz/kw-plugin/latest"
   prompt_with_default RESEND_API "Resend API key (optional for local)" ""
   prompt_with_default EMAIL_FROM "Email from address (local default)" "noreply@localhost"
-  BACKEND_URL="http://localhost:${BACKEND_HOST_PORT}"
   COMPOSE_PROJECT_NAME="knotwork-local"
 else
   prompt_with_default FRONTEND_URL "Frontend URL" "https://${DOMAIN}"
   prompt_with_default BACKEND_URL "Backend URL" "https://api.${DOMAIN}"
+  OPENCLAW_BACKEND_URL="$BACKEND_URL"
   prompt_with_default OPENCLAW_PLUGIN_PACKAGE_URL "OpenClaw plugin package URL (.tar.gz)" "https://lab.crea8r.xyz/kw-plugin/latest"
   prompt_required RESEND_API "Resend API key (re_...)"
   prompt_required EMAIL_FROM "From email (verified on Resend)"
