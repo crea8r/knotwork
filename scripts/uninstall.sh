@@ -354,7 +354,12 @@ docker_cleanup() {
   for _net in "$net" "$net_default"; do
     if docker network inspect "$_net" >/dev/null 2>&1; then
       log "Removing Docker network '${_net}'..."
-      docker network rm "$_net" >/dev/null 2>&1 || warn "Could not remove network: $_net"
+      # Disconnect any remaining containers first — compose down may have failed
+      # on networks with missing/incorrect compose labels
+      docker network inspect --format '{{range $id,$c:=.Containers}}{{$id}} {{end}}' "$_net" 2>/dev/null \
+        | tr ' ' '\n' | grep -v '^$' \
+        | while read -r _cid; do docker network disconnect -f "$_net" "$_cid" 2>/dev/null || true; done
+      docker network rm "$_net" 2>/dev/null || warn "Could not remove network: $_net"
     fi
   done
 

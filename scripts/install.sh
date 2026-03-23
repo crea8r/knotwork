@@ -418,6 +418,15 @@ if [[ -f ".env" ]]; then
       --profile prod down --remove-orphans --volumes 2>/dev/null || true
     docker compose --project-name "$PREV_PROJECT" -f "$SCRIPT_DIR/docker-compose.yml" --env-file "$ROOT_DIR/.env" \
       --profile dev down --remove-orphans --volumes 2>/dev/null || true
+    # compose down may fail on mislabelled networks; remove explicitly
+    local _prev_net="${PREV_PROJECT}-network"
+    if docker network inspect "$_prev_net" >/dev/null 2>&1; then
+      log "Force-removing leftover network '${_prev_net}'..."
+      docker network inspect --format '{{range $id,$c:=.Containers}}{{$id}} {{end}}' "$_prev_net" 2>/dev/null \
+        | tr ' ' '\n' | grep -v '^$' \
+        | while read -r _cid; do docker network disconnect -f "$_prev_net" "$_cid" 2>/dev/null || true; done
+      docker network rm "$_prev_net" 2>/dev/null || warn "Could not remove network ${_prev_net}"
+    fi
   fi
   cp .env ".env.backup.$(date +%Y%m%d%H%M%S)"
 fi
