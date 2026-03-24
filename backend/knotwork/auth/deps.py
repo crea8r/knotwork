@@ -30,9 +30,20 @@ async def get_current_user(
 ) -> User:
     """Extract and verify the JWT from the Authorization header.
 
+    Localhost auto-bypass: when frontend_url is localhost and no credentials are
+    supplied, authenticate as the first user in the DB. This lets single-tenant
+    dev installs auto-sign-in without any configuration.
+
     Dev bypass: if AUTH_DEV_BYPASS_USER_ID is set in config, skip JWT verification
     and return that user directly. This keeps integration tests working without tokens.
     """
+    if settings.is_local_app and creds is None:
+        from sqlalchemy import select as _sel
+        result = await db.execute(_sel(User).order_by(User.created_at).limit(1))
+        user = result.scalar_one_or_none()
+        if user is not None:
+            return user
+
     bypass_id: str = getattr(settings, "auth_dev_bypass_user_id", "")
     if bypass_id:
         try:
@@ -40,7 +51,6 @@ async def get_current_user(
             if user is not None:
                 return user
         except ValueError:
-            # Ignore malformed dev bypass config and continue with normal JWT auth.
             pass
 
     if creds is None:

@@ -40,6 +40,175 @@ export function useGraphVersion(workspaceId: string, versionId: string) {
   })
 }
 
+/** S9.1: List all named versions (with attached drafts + run counts) for a graph. */
+export function useGraphVersions(workspaceId: string, graphId: string, includeArchived = false) {
+  return useQuery({
+    queryKey: ['graph-versions', graphId, includeArchived],
+    queryFn: () =>
+      api
+        .get<GraphVersion[]>(`/workspaces/${workspaceId}/graphs/${graphId}/versions`, {
+          params: { include_archived: includeArchived },
+        })
+        .then((r) => r.data),
+    enabled: !!workspaceId && !!graphId,
+  })
+}
+
+/** S9.1: Get the draft for a specific version. */
+export function useVersionDraft(workspaceId: string, graphId: string, versionRowId: string) {
+  return useQuery({
+    queryKey: ['version-draft', graphId, versionRowId],
+    queryFn: () =>
+      api
+        .get<GraphVersion>(
+          `/workspaces/${workspaceId}/graphs/${graphId}/versions/${versionRowId}/draft`,
+        )
+        .then((r) => r.data),
+    enabled: !!workspaceId && !!graphId && !!versionRowId,
+  })
+}
+
+/** S9.1: Upsert the draft for a version (auto-save). */
+export function useUpsertVersionDraft(workspaceId: string, graphId: string, versionRowId: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (definition: GraphDefinition) =>
+      api
+        .put<GraphVersion>(
+          `/workspaces/${workspaceId}/graphs/${graphId}/versions/${versionRowId}/draft`,
+          { definition },
+        )
+        .then((r) => r.data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['version-draft', graphId, versionRowId] })
+      qc.invalidateQueries({ queryKey: ['graph-versions', graphId] })
+    },
+  })
+}
+
+/** S9.1: Upsert the root draft (no parent version). */
+export function useUpsertRootDraft(workspaceId: string, graphId: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (definition: GraphDefinition) =>
+      api
+        .put<GraphVersion>(`/workspaces/${workspaceId}/graphs/${graphId}/root-draft`, { definition })
+        .then((r) => r.data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['graph-versions', graphId] })
+      qc.invalidateQueries({ queryKey: ['graph', graphId] })
+    },
+  })
+}
+
+/** S9.1: Promote a version's draft into a named version. */
+export function usePromoteDraft(workspaceId: string, graphId: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (versionRowId: string) =>
+      api
+        .post<GraphVersion>(
+          `/workspaces/${workspaceId}/graphs/${graphId}/versions/${versionRowId}/promote`,
+        )
+        .then((r) => r.data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['graph-versions', graphId] })
+      qc.invalidateQueries({ queryKey: ['graph', graphId] })
+    },
+  })
+}
+
+/** S9.1: Promote the root draft (no parent version) into the first named version. */
+export function usePromoteRootDraft(workspaceId: string, graphId: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: () =>
+      api
+        .post<GraphVersion>(`/workspaces/${workspaceId}/graphs/${graphId}/root-draft/promote`)
+        .then((r) => r.data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['graph-versions', graphId] })
+      qc.invalidateQueries({ queryKey: ['graph', graphId] })
+    },
+  })
+}
+
+/** S9.1: Rename a version. */
+export function useRenameVersion(workspaceId: string, graphId: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ versionRowId, name }: { versionRowId: string; name: string }) =>
+      api
+        .patch<GraphVersion>(
+          `/workspaces/${workspaceId}/graphs/${graphId}/versions/${versionRowId}`,
+          { name },
+        )
+        .then((r) => r.data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['graph-versions', graphId] }),
+  })
+}
+
+/** S9.1: Set a version as production. */
+export function useSetProduction(workspaceId: string, graphId: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (versionRowId: string) =>
+      api
+        .post<Graph>(
+          `/workspaces/${workspaceId}/graphs/${graphId}/versions/${versionRowId}/production`,
+        )
+        .then((r) => r.data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['graph', graphId] })
+      qc.invalidateQueries({ queryKey: ['graph-versions', graphId] })
+    },
+  })
+}
+
+/** S9.1: Archive a version. */
+export function useArchiveVersion(workspaceId: string, graphId: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (versionRowId: string) =>
+      api
+        .post<GraphVersion>(
+          `/workspaces/${workspaceId}/graphs/${graphId}/versions/${versionRowId}/archive`,
+        )
+        .then((r) => r.data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['graph-versions', graphId] }),
+  })
+}
+
+/** S9.1: Delete a version (guarded). */
+export function useDeleteVersion(workspaceId: string, graphId: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (versionRowId: string) =>
+      api
+        .delete(`/workspaces/${workspaceId}/graphs/${graphId}/versions/${versionRowId}`)
+        .then((r) => r.data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['graph-versions', graphId] })
+      qc.invalidateQueries({ queryKey: ['graph', graphId] })
+    },
+  })
+}
+
+/** S9.1: Fork a version into a new independent workflow. */
+export function useForkVersion(workspaceId: string, graphId: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ versionRowId, name }: { versionRowId: string; name: string }) =>
+      api
+        .post<Graph>(
+          `/workspaces/${workspaceId}/graphs/${graphId}/versions/${versionRowId}/fork`,
+          { name },
+        )
+        .then((r) => r.data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['graphs', workspaceId] }),
+  })
+}
+
 export function useSaveGraphVersion(workspaceId: string, graphId: string) {
   const qc = useQueryClient()
   return useMutation({

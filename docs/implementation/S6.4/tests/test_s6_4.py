@@ -82,8 +82,8 @@ def test_validate_dead_end_node():
         ],
         "edges": [
             {"source": "start", "target": "a"},
-            {"source": "a", "target": "dead"},
-            {"source": "a", "target": "end"},
+            {"source": "a", "target": "dead", "condition_label": "needs more review"},
+            {"source": "a", "target": "end", "condition_label": "review complete"},
         ],
     }
     errors = validate_graph(defn)

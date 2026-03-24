@@ -40,8 +40,8 @@ services:
   backend:
     image: ${COMPOSE_PROJECT_NAME:-knotwork}-backend:latest
     build:
-      context: .
-      dockerfile: Dockerfile.backend
+      context: ./backend
+      dockerfile: Dockerfile
     env_file: .env
     environment:
       # Docker-internal DB/Redis URLs override .env if set
@@ -71,8 +71,8 @@ services:
   backend-dev:
     image: ${COMPOSE_PROJECT_NAME:-knotwork}-backend-dev:latest
     build:
-      context: .
-      dockerfile: Dockerfile.backend
+      context: ./backend
+      dockerfile: Dockerfile
     env_file: .env
     environment:
       DATABASE_URL: postgresql+asyncpg://knotwork:knotwork@postgres:5432/knotwork
@@ -101,8 +101,8 @@ services:
   worker:
     image: ${COMPOSE_PROJECT_NAME:-knotwork}-worker:latest
     build:
-      context: .
-      dockerfile: Dockerfile.backend
+      context: ./backend
+      dockerfile: Dockerfile
     env_file: .env
     environment:
       DATABASE_URL: postgresql+asyncpg://knotwork:knotwork@postgres:5432/knotwork
@@ -124,8 +124,8 @@ services:
   worker-dev:
     image: ${COMPOSE_PROJECT_NAME:-knotwork}-worker-dev:latest
     build:
-      context: .
-      dockerfile: Dockerfile.backend
+      context: ./backend
+      dockerfile: Dockerfile
     env_file: .env
     environment:
       DATABASE_URL: postgresql+asyncpg://knotwork:knotwork@postgres:5432/knotwork
@@ -150,8 +150,8 @@ services:
   frontend-dev:
     image: ${COMPOSE_PROJECT_NAME:-knotwork}-frontend-dev:latest
     build:
-      context: .
-      dockerfile: Dockerfile.frontend
+      context: ./frontend
+      dockerfile: Dockerfile
       target: dev
     ports:
       - "${FRONTEND_DEV_HOST_PORT:-3000}:3000"
@@ -167,15 +167,17 @@ services:
     networks:
       - knotwork-network
 
-  # ── Frontend (prod: nginx static) ─────────────────────────────────────────────
+  # ── Frontend (prod: nginx static, runtime API_URL via env.js) ────────────────
   frontend-prod:
     image: ${COMPOSE_PROJECT_NAME:-knotwork}-frontend-prod:latest
     build:
-      context: .
-      dockerfile: Dockerfile.frontend
+      context: ./frontend
+      dockerfile: Dockerfile
       target: prod
-      args:
-        VITE_API_URL: ${VITE_API_URL:-http://localhost:8000/api/v1}
+    environment:
+      # Passed to docker-entrypoint.sh which substitutes it into env.js at start.
+      # Reuses VITE_API_URL from .env so only one variable needs to be set.
+      API_URL: ${VITE_API_URL:-http://localhost:8000/api/v1}
     ports:
       - "${FRONTEND_HOST_PORT:-3000}:80"
     depends_on:

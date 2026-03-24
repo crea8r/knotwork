@@ -11,6 +11,16 @@ Visual agent workflow platform. Users design business processes via chat; canvas
 - **Token counting**: tiktoken
 - **Notifications**: SMTP email, Telegram Bot API, WhatsApp Business API
 
+## Shared Utilities
+
+### Name generation (`coolname`)
+**Available since S9.1.** Use `knotwork/utils/namegen.py::generate_name()` for any human-readable identifier (version names, run names, fork names, API key slugs, etc.). Returns `adjective-noun-number` slugs like `swift-falcon-42`. Never inline name generation — always use this utility.
+
+```python
+from knotwork.utils.namegen import generate_name
+name = generate_name()  # e.g. "gigantic-kakapo-7"
+```
+
 ## Non-Negotiable Rules
 
 ### Module size
@@ -143,11 +153,11 @@ npm run dev
 
 ## OpenClaw Plugin Dev Workflow
 
-Source lives in `openclaw-plugin-knotwork/`. The running plugin is at `~/.openclaw/extensions/knotwork-bridge/` (Docker bind-mount prevents a direct symlink). After any source change:
+Source lives in `plugins/openclaw/`. The running plugin is at `~/.openclaw/extensions/knotwork-bridge/` (Docker bind-mount prevents a direct symlink). After any source change:
 
 ```bash
 # 1. Sync source → extension dir
-cd openclaw-plugin-knotwork
+cd plugins/openclaw
 ./sync-to-openclaw.sh
 
 # 2. Restart the gateway to pick up the new source
@@ -162,15 +172,16 @@ docker logs openclaw-openclaw-gateway-1 2>&1 | grep knotwork-bridge | tail -5
 
 **File map:**
 ```
-openclaw-plugin-knotwork/
-  src/plugin.ts          — activate(), poll loop, concurrent spawn, lease renewal
-  src/lifecycle/worker.ts — runClaimedTask(), pollAndRun(), task event posting
-  src/lifecycle/rpc.ts   — knotwork.* gateway RPC method registrations
-  src/lifecycle/handshake.ts — handshake + retry logic
-  src/openclaw/bridge.ts — pullTask(), postEvent(), config resolution
-  src/state/lease.ts     — heartbeat TTL runtime lease (prevents duplicate workers)
-  src/types.ts           — shared types (PluginState, ExecutionTask, RunningTaskInfo)
-  sync-to-openclaw.sh    — one-command sync script
+plugins/
+  openclaw/              — OpenClaw integration plugin (other plugins follow same pattern)
+    src/plugin.ts          — activate(), poll loop, concurrent spawn, lease renewal
+    src/lifecycle/worker.ts — runClaimedTask(), pollAndRun(), task event posting
+    src/lifecycle/rpc.ts   — knotwork.* gateway RPC method registrations
+    src/lifecycle/handshake.ts — handshake + retry logic
+    src/openclaw/bridge.ts — pullTask(), postEvent(), config resolution
+    src/state/lease.ts     — heartbeat TTL runtime lease (prevents duplicate workers)
+    src/types.ts           — shared types (PluginState, ExecutionTask, RunningTaskInfo)
+    sync-to-openclaw.sh    — one-command sync script
 ```
 
 **Key RPC methods** (callable via `openclaw gateway call <method>`):

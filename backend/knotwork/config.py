@@ -57,6 +57,11 @@ class Settings(BaseSettings):
     token_count_min: int = 300
     token_count_max: int = 6000
 
+    # Plugin compatibility — minimum versions required by this backend release.
+    # The /health endpoint exposes these so operators and update scripts can verify
+    # that installed plugins are compatible before going live.
+    min_openclaw_version: str = "1.0.0"
+
     # Run defaults
     confidence_threshold_default: float = 0.70
     retry_limit_default: int = 2

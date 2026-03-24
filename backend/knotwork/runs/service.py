@@ -65,22 +65,42 @@ async def create_run(
     force_graph_version_id: UUID | None = None,
     trigger_meta: dict | None = None,
 ) -> Run:
+    from datetime import datetime, timezone
     from knotwork.runtime.validation import validate_graph
+    from knotwork.graphs.models import GraphVersion
 
     graph = await get_graph(db, graph_id)
     if not graph:
         raise ValueError("Graph not found")
 
-    if force_graph_version_id is not None:
-        from knotwork.graphs.models import GraphVersion
+    is_draft_run = False
+    draft_definition = None
+    draft_snapshot_at = None
 
+    if force_graph_version_id is not None:
         version = await db.get(GraphVersion, force_graph_version_id)
         if version is None or version.graph_id != graph_id:
             raise ValueError("Invalid graph version")
+        # If the forced record is a draft (no version_id), treat as draft run
+        if version.version_id is None:
+            is_draft_run = True
+            draft_definition = version.definition
+            draft_snapshot_at = version.updated_at
     else:
-        version = await get_latest_version(db, graph_id)
-        if not version:
-            raise ValueError("Graph has no versions")
+        # Default: use production version if set, else latest named version
+        if graph.production_version_id is not None:
+            version = await db.get(GraphVersion, graph.production_version_id)
+        else:
+            version = await get_latest_version(db, graph_id)
+        if version is None:
+            # Fall back to any draft
+            from knotwork.graphs.service import get_any_draft
+            version = await get_any_draft(db, graph_id)
+            if version is None:
+                raise ValueError("Graph has no versions or drafts")
+            is_draft_run = True
+            draft_definition = version.definition
+            draft_snapshot_at = version.updated_at
 
     errors = validate_graph(version.definition)
     if errors:
@@ -92,6 +112,8 @@ async def create_run(
         workspace_id=workspace_id,
         graph_id=graph_id,
         graph_version_id=version.id,
+        draft_definition=draft_definition if is_draft_run else None,
+        draft_snapshot_at=draft_snapshot_at if is_draft_run else None,
         name=data.name,
         input=data.input,
         context_files=context_files,

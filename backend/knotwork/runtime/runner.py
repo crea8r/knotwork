@@ -22,6 +22,11 @@ async def _load_run_definition(run_id: str) -> tuple | None:
         run = await db.get(Run, run_id)
         if not run or run.status in ("completed", "failed", "stopped"):
             return None
+        # Draft runs carry a frozen snapshot — no DB lookup needed
+        if run.draft_definition is not None:
+            return (str(run.workspace_id), str(run.graph_id), run.input, run.context_files, run.draft_definition)
+        if run.graph_version_id is None:
+            return None
         version = await db.get(GraphVersion, run.graph_version_id)
         if not version:
             return None

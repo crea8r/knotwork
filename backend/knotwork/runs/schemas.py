@@ -113,7 +113,10 @@ class RunOut(BaseModel):
     id: str
     workspace_id: UUID
     graph_id: UUID
-    graph_version_id: UUID
+    graph_version_id: UUID | None = None
+    # Draft run metadata — non-null when run was executed against a draft
+    draft_snapshot_at: datetime | None = None
+    draft_parent_version_id: UUID | None = None  # enriched from graph_version_id FK
     name: str | None = None
     status: str
     trigger: str

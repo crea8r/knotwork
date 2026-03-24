@@ -89,7 +89,7 @@ sequenceDiagram
 ### From poll timer
 - `taskPollIntervalMs` from config (default: 2000ms, minimum: 500ms clamped at L635)
 
-Source: [`plugin.ts`](../../../../../../openclaw-plugin-knotwork/src/plugin.ts)
+Source: [`plugin.ts`](../../../../../../plugins/openclaw/src/plugin.ts)
 
 ### From in-memory state
 ```typescript
@@ -114,7 +114,7 @@ state.backgroundWorkerEnabled  // must be true
 }
 ```
 
-Source: [`types.ts:ExecutionTask`](../../../../../../openclaw-plugin-knotwork/src/types.ts#L73), [`service.py:plugin_pull_task L562`](../../../../../../backend/knotwork/openclaw_integrations/service.py#L562)
+Source: [`types.ts:ExecutionTask`](../../../../../../plugins/openclaw/src/types.ts#L73), [`service.py:plugin_pull_task L562`](../../../../../../backend/knotwork/openclaw_integrations/service.py#L562)
 
 ---
 
@@ -161,7 +161,7 @@ Source: [`types.ts:ExecutionTask`](../../../../../../openclaw-plugin-knotwork/sr
 }
 ```
 
-Source: [`lifecycle/worker.ts:pollAndRun`](../../../../../../openclaw-plugin-knotwork/src/lifecycle/worker.ts), [`openclaw/bridge.ts:postEvent`](../../../../../../openclaw-plugin-knotwork/src/openclaw/bridge.ts)
+Source: [`lifecycle/worker.ts:pollAndRun`](../../../../../../plugins/openclaw/src/lifecycle/worker.ts), [`openclaw/bridge.ts:postEvent`](../../../../../../plugins/openclaw/src/openclaw/bridge.ts)
 
 ---
 
@@ -175,7 +175,7 @@ None directly. Config is already loaded into `state` and `cfg` in memory.
 |---|---|---|
 | `~/.openclaw/knotwork-bridge-state.json` | After every event post + on task finish | Updated `recentTasks`, `runningTaskId`, `lastTaskAt`, `logs` |
 
-Source: [`lifecycle/worker.ts:upsertRecentTask`](../../../../../../openclaw-plugin-knotwork/src/lifecycle/worker.ts), [`plugin.ts:persistSnapshot`](../../../../../../openclaw-plugin-knotwork/src/plugin.ts)
+Source: [`lifecycle/worker.ts:upsertRecentTask`](../../../../../../plugins/openclaw/src/lifecycle/worker.ts), [`plugin.ts:persistSnapshot`](../../../../../../plugins/openclaw/src/plugin.ts)
 
 ## DB Tables Written (backend — during pull-task)
 
@@ -190,7 +190,7 @@ Source: [`lifecycle/worker.ts:upsertRecentTask`](../../../../../../openclaw-plug
 
 ## Concurrency
 
-The `busy` flag in [`plugin.ts`](../../../../../../openclaw-plugin-knotwork/src/plugin.ts) ensures only one task runs at a time, and the `integrationSecret` guard prevents any polling before handshake completes:
+The `busy` flag in [`plugin.ts`](../../../../../../plugins/openclaw/src/plugin.ts) ensures only one task runs at a time, and the `integrationSecret` guard prevents any polling before handshake completes:
 
 ```typescript
 let busy = false

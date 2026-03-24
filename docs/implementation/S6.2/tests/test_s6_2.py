@@ -52,7 +52,17 @@ async def _setup(client: AsyncClient) -> dict:
     graph_id = g.json()["id"]
     v = await client.post(
         f"/api/v1/workspaces/{ws_id}/graphs/{graph_id}/versions",
-        json={"definition": {"nodes": [{"id": "n1", "type": "llm_agent", "name": "N1", "config": {}}], "edges": []}},
+        json={"definition": {
+            "nodes": [
+                {"id": "start", "type": "start", "name": "Start", "config": {}},
+                {"id": "n1", "type": "llm_agent", "name": "N1", "config": {}},
+                {"id": "end", "type": "end", "name": "End", "config": {}},
+            ],
+            "edges": [
+                {"id": "e1", "source": "start", "target": "n1"},
+                {"id": "e2", "source": "n1", "target": "end"},
+            ],
+        }},
     )
     assert v.status_code == 201
     return {"ws_id": ws_id, "graph_id": graph_id}

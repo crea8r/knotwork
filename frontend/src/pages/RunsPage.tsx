@@ -10,7 +10,9 @@ import StatusBadge from '@/components/shared/StatusBadge'
 import EmptyState from '@/components/shared/EmptyState'
 import Spinner from '@/components/shared/Spinner'
 import RunTriggerModal from '@/components/operator/RunTriggerModal'
+import { DraftRunBadge } from '@/components/shared/DraftRunBadge'
 import { validateGraph } from '@/utils/validateGraph'
+import { isDraftRun } from '@/types'
 import type { Run, RunStatus, GraphDefinition } from '@/types'
 
 const DEV_WORKSPACE = import.meta.env.VITE_DEV_WORKSPACE_ID ?? 'dev-workspace'
@@ -96,6 +98,7 @@ export default function RunsPage() {
   const navigate = useNavigate()
   const workspaceId = useAuthStore((s) => s.workspaceId) ?? DEV_WORKSPACE
   const [filter, setFilter] = useState<Filter>('all')
+  const [showDraftRuns, setShowDraftRuns] = useState(false)
   const { data: runs = [], isLoading } = useRuns(workspaceId)
   const { data: graphs = [] } = useGraphs(workspaceId)
   const deleteRun = useDeleteRun(workspaceId)
@@ -118,7 +121,9 @@ export default function RunsPage() {
 
   const graphNameById = Object.fromEntries(graphs.map((g) => [g.id, g.name]))
   const statuses = FILTER_STATUSES[filter]
-  const filteredByStatus = statuses ? runs.filter((r) => statuses.includes(r.status)) : runs
+  // By default exclude draft runs; show them only when toggle is on
+  const filteredByDraft = showDraftRuns ? runs : runs.filter((r) => !isDraftRun(r))
+  const filteredByStatus = statuses ? filteredByDraft.filter((r) => statuses.includes(r.status)) : filteredByDraft
   const q = search.trim().toLowerCase()
   const filtered = q
     ? filteredByStatus.filter((r) => {
@@ -170,7 +175,7 @@ export default function RunsPage() {
         )}
       />
 
-      <div className="flex gap-2 mb-6">
+      <div className="flex items-center gap-2 mb-6 flex-wrap">
         {(['all', 'active', 'completed', 'failed'] as Filter[]).map((f) => (
           <button
             key={f}
@@ -182,6 +187,15 @@ export default function RunsPage() {
             {f}
           </button>
         ))}
+        <label className="ml-auto flex items-center gap-1.5 text-xs text-gray-500 cursor-pointer select-none">
+          <input
+            type="checkbox"
+            checked={showDraftRuns}
+            onChange={(e) => setShowDraftRuns(e.target.checked)}
+            className="h-3 w-3 rounded"
+          />
+          Show draft runs
+        </label>
       </div>
 
       <input
@@ -226,8 +240,9 @@ export default function RunsPage() {
                     {graphNameById[run.graph_id] ?? <span className="text-gray-400">—</span>}
                   </td>
                   <td className="px-3 py-2">
-                    <div className="flex items-center gap-1.5">
+                    <div className="flex items-center gap-1.5 flex-wrap">
                       <StatusBadge status={run.status} />
+                      {isDraftRun(run) && <DraftRunBadge />}
                       {run.needs_attention && (
                         <span className="text-[10px] bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded-full font-medium">
                           ⚠ Review

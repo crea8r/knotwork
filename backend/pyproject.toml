@@ -50,6 +50,8 @@ dependencies = [
     "markdownify>=0.11",
     # .doc (Word 97-2003) extraction
     "olefile>=0.47",
+    # Human-readable name generation (version names, run names, etc.)
+    "coolname>=2.2",
 ]
 
 [project.optional-dependencies]

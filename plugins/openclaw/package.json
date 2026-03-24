@@ -1,6 +1,6 @@
 {
   "name": "@knotwork/knotwork-bridge",
-  "version": "0.2.0",
+  "version": "1.0.0",
   "description": "Knotwork bridge plugin for OpenClaw — connects OpenClaw agents to Knotwork workflows",
   "private": false,
   "type": "module",

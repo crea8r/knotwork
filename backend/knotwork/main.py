@@ -1,7 +1,11 @@
 import logging
+import os
 import sys
+import time
+import uuid
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
+from pathlib import Path
 from time import monotonic
 
 from fastapi import FastAPI
@@ -68,13 +72,53 @@ from knotwork.database import AsyncSessionLocal
 
 _STARTED_AT = datetime.now(timezone.utc)
 _START_MONOTONIC = monotonic()
+_INSTALLATION_ID: str = ""
+_SCHEMA_VERSION: str = ""
+
+
+async def _read_worker_status() -> dict:
+    try:
+        import redis.asyncio as aioredis
+        from knotwork.config import settings as _s
+        r = aioredis.from_url(_s.redis_url)
+        val = await r.get("knotwork:worker:heartbeat")
+        await r.aclose()
+        if val:
+            age = int(time.time() - float(val.decode()))
+            return {"alive": age < 90, "last_seen_seconds_ago": age}
+        return {"alive": False, "last_seen_seconds_ago": None}
+    except Exception:
+        return {"alive": None, "last_seen_seconds_ago": None}
+
+
+async def _read_schema_version() -> str:
+    try:
+        async with AsyncSessionLocal() as db:
+            result = await db.execute(text("SELECT version_num FROM alembic_version LIMIT 1"))
+            val = result.scalar()
+            return str(val) if val else "none"
+    except Exception:
+        return "none"
+
+
+def _load_or_create_installation_id() -> str:
+    id_path = Path(os.getcwd()) / "data" / ".installation_id"
+    id_path.parent.mkdir(parents=True, exist_ok=True)
+    if id_path.exists():
+        val = id_path.read_text().strip()
+        if val:
+            return val
+    val = str(uuid.uuid4())
+    id_path.write_text(val)
+    return val
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Startup: initialise storage adapter, verify DB connection
+    global _INSTALLATION_ID, _SCHEMA_VERSION
+    _INSTALLATION_ID = _load_or_create_installation_id()
+    _SCHEMA_VERSION = await _read_schema_version()
     yield
-    # Shutdown: close connections
 
 
 def create_app() -> FastAPI:
@@ -126,10 +170,16 @@ def create_app() -> FastAPI:
 
         now = datetime.now(timezone.utc)
         uptime_seconds = round(monotonic() - _START_MONOTONIC, 2)
+        from knotwork.config import settings as _settings
+        worker = await _read_worker_status()
         payload = {
             "service": "knotwork-api",
             "status": "ok" if db_status == "ok" else "degraded",
             "version": app.version,
+            "installation_id": _INSTALLATION_ID,
+            "schema_version": _SCHEMA_VERSION,
+            "min_openclaw_version": _settings.min_openclaw_version,
+            "worker": worker,
             "now_utc": now.isoformat(),
             "started_at_utc": _STARTED_AT.isoformat(),
             "uptime_seconds": uptime_seconds,

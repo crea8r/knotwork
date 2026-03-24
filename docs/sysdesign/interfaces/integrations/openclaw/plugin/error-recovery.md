@@ -42,7 +42,7 @@ sequenceDiagram
     end
 ```
 
-Source: [`plugin.ts:recoverCredentials`](../../../../../../openclaw-plugin-knotwork/src/plugin.ts#L311), [`plugin.ts:pollAndRun L356`](../../../../../../openclaw-plugin-knotwork/src/plugin.ts#L356)
+Source: [`plugin.ts:recoverCredentials`](../../../../../../plugins/openclaw/src/plugin.ts#L311), [`plugin.ts:pollAndRun L356`](../../../../../../plugins/openclaw/src/plugin.ts#L356)
 
 ---
 
@@ -76,7 +76,7 @@ sequenceDiagram
     Note over Plugin: Human must reinstall plugin with correct scopes,<br/>then run: openclaw gateway call knotwork.handshake
 ```
 
-Source: [`openclaw/scope.ts:missingScope`](../../../../../../openclaw-plugin-knotwork/src/openclaw/scope.ts#L30), [`openclaw/scope.ts:isOperatorScopeError`](../../../../../../openclaw-plugin-knotwork/src/openclaw/scope.ts#L38), [`lifecycle/handshake.ts:scheduleHandshakeRetry`](../../../../../../openclaw-plugin-knotwork/src/lifecycle/handshake.ts)
+Source: [`openclaw/scope.ts:missingScope`](../../../../../../plugins/openclaw/src/openclaw/scope.ts#L30), [`openclaw/scope.ts:isOperatorScopeError`](../../../../../../plugins/openclaw/src/openclaw/scope.ts#L38), [`lifecycle/handshake.ts:scheduleHandshakeRetry`](../../../../../../plugins/openclaw/src/lifecycle/handshake.ts)
 
 ---
 
@@ -112,7 +112,7 @@ sequenceDiagram
     end
 ```
 
-Source: [`plugin.ts:scheduleHandshakeRetry`](../../../../../../openclaw-plugin-knotwork/src/plugin.ts#L266)
+Source: [`plugin.ts:scheduleHandshakeRetry`](../../../../../../plugins/openclaw/src/plugin.ts#L266)
 
 ---
 
@@ -144,7 +144,7 @@ sequenceDiagram
     end
 ```
 
-Source: [`openclaw/session.ts:executeTask`](../../../../../../openclaw-plugin-knotwork/src/openclaw/session.ts)
+Source: [`openclaw/session.ts:executeTask`](../../../../../../plugins/openclaw/src/openclaw/session.ts)
 
 ---
 
@@ -204,7 +204,7 @@ sequenceDiagram
     end
 ```
 
-Source: [`openclaw/gateway.ts:gatewayRpc`](../../../../../../openclaw-plugin-knotwork/src/openclaw/gateway.ts)
+Source: [`openclaw/gateway.ts:gatewayRpc`](../../../../../../plugins/openclaw/src/openclaw/gateway.ts)
 
 ---
 
@@ -228,7 +228,7 @@ Source: [`openclaw/gateway.ts:gatewayRpc`](../../../../../../openclaw-plugin-kno
 | `~/.openclaw/knotwork-bridge-state.json` | On credential reset | WRITE: clear `integrationSecret` |
 | `~/.openclaw/knotwork-bridge-state.json` | After successful recovery handshake | WRITE: new `integrationSecret` + `lastHandshakeAt` |
 
-Source: [`plugin.ts:resetPersistedSecret`](../../../../../../openclaw-plugin-knotwork/src/plugin.ts#L253), [`plugin.ts:persistState`](../../../../../../openclaw-plugin-knotwork/src/plugin.ts#L180)
+Source: [`plugin.ts:resetPersistedSecret`](../../../../../../plugins/openclaw/src/plugin.ts#L253), [`plugin.ts:persistState`](../../../../../../plugins/openclaw/src/plugin.ts#L180)
 
 ## DB Tables Written (backend — on failed event)
 

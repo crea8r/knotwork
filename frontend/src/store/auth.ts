@@ -12,10 +12,13 @@ interface AuthState {
   user: UserInfo | null
   workspaceId: string | null
   role: 'owner' | 'operator' | null
+  /** UUID returned by /health. Persisted so drift can be detected after a page reload. */
+  installationId: string | null
   login: (token: string, user: UserInfo, workspaceId?: string, role?: 'owner' | 'operator') => void
   // Legacy compat: some older code calls setAuth with positional args
   setAuth: (token: string, userId: string, workspaceId: string, role: 'owner' | 'operator') => void
   clearAuth: () => void
+  setInstallationId: (id: string) => void
 }
 
 export const useAuthStore = create<AuthState>()(
@@ -25,15 +28,22 @@ export const useAuthStore = create<AuthState>()(
       user: null,
       workspaceId: null,
       role: null,
+      installationId: null,
       login: (token, user, workspaceId, role) =>
         set({ token, user, workspaceId: workspaceId ?? null, role: role ?? null }),
       setAuth: (token, userId, workspaceId, role) =>
         set({ token, user: { id: userId, email: '', name: '' }, workspaceId, role }),
       clearAuth: () => set({ token: null, user: null, workspaceId: null, role: null }),
+      setInstallationId: (id) => set({ installationId: id }),
     }),
     {
       name: 'knotwork_auth',
-      partialize: (state) => ({ token: state.token, user: state.user, role: state.role }),
+      partialize: (state) => ({
+        token: state.token,
+        user: state.user,
+        role: state.role,
+        installationId: state.installationId,
+      }),
     }
   )
 )

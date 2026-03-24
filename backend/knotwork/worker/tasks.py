@@ -111,6 +111,15 @@ async def check_escalation_timeouts(ctx: dict) -> None:
         })
 
 
+async def worker_heartbeat(ctx: dict) -> None:
+    """arq cron: write a liveness timestamp to Redis every 30 s (TTL 90 s)."""
+    import time as _time
+    import redis.asyncio as aioredis
+    r = aioredis.from_url(settings.redis_url)
+    await r.set("knotwork:worker:heartbeat", str(_time.time()), ex=90)
+    await r.aclose()
+
+
 async def check_stale_integrations(ctx: dict) -> None:
     """
     arq cron task: delete agent-less stale integrations; mark the rest 'disconnected'.
@@ -137,6 +146,8 @@ class WorkerSettings:
 
     functions = [execute_run, resume_run]
     cron_jobs = [
+        # Liveness heartbeat every 30 seconds — read by /health to confirm worker is up
+        cron(worker_heartbeat, second={0, 30}),
         # Run timeout check every 5 minutes
         cron(check_escalation_timeouts, minute={0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55}),
         # Stale plugin cleanup every 10 minutes

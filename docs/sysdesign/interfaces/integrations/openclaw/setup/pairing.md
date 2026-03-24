@@ -92,7 +92,7 @@ sequenceDiagram
   }}}
 }
 ```
-Source: [`openclaw/bridge.ts:getConfig`](../../../../../../openclaw-plugin-knotwork/src/openclaw/bridge.ts#L30) — merges `api.pluginConfig`, `api.config.plugins.entries`, and env vars.
+Source: [`openclaw/bridge.ts:getConfig`](../../../../../../plugins/openclaw/src/openclaw/bridge.ts#L30) — merges `api.pluginConfig`, `api.config.plugins.entries`, and env vars.
 
 **Note — `pluginInstanceId` is not set in `openclaw.json`.** The plugin resolves it with the following priority (see `plugin.ts` L108–109):
 
@@ -119,7 +119,7 @@ After a successful handshake the backend confirms (or reassigns) the ID in its r
   ]
 }
 ```
-Source: [`bridge.ts:doHandshake`](../../../../../../openclaw-plugin-knotwork/src/openclaw/bridge.ts#L179)
+Source: [`bridge.ts:doHandshake`](../../../../../../plugins/openclaw/src/openclaw/bridge.ts#L179)
 
 ---
 
@@ -183,7 +183,7 @@ Before calling `doHandshake`, the plugin discovers available OpenClaw agents via
 5. default stub: [{ remote_agent_id: 'main', slug: 'main' }]
 ```
 
-Source: [`bridge.ts:discoverAgents`](../../../../../../openclaw-plugin-knotwork/src/openclaw/bridge.ts#L117)
+Source: [`bridge.ts:discoverAgents`](../../../../../../plugins/openclaw/src/openclaw/bridge.ts#L117)
 
 The discovered agents are sent in the handshake payload and persisted as `OpenClawRemoteAgent` rows.
 
@@ -199,11 +199,11 @@ await rpc('chat.history', {})  // probes operator.read
 await rpc('agent', {})         // probes operator.write
 ```
 
-Source: [`openclaw/session.ts:verifyGatewayOperatorScopes`](../../../../../../openclaw-plugin-knotwork/src/openclaw/session.ts)
+Source: [`openclaw/session.ts:verifyGatewayOperatorScopes`](../../../../../../plugins/openclaw/src/openclaw/session.ts)
 
 If either probe returns a scope error, `isOperatorScopeError` returns true and the startup stops with a clear error message. Any non-scope error (business-logic rejection) is treated as proof the scope was granted.
 
-Source: [`openclaw/scope.ts:isOperatorScopeError`](../../../../../../openclaw-plugin-knotwork/src/openclaw/scope.ts)
+Source: [`openclaw/scope.ts:isOperatorScopeError`](../../../../../../plugins/openclaw/src/openclaw/scope.ts)
 
 ---
 
@@ -215,7 +215,7 @@ If the `integrationSecret` is invalidated (backend returns 401), the plugin auto
 openclaw gateway call knotwork.handshake
 ```
 
-Source: [`plugin.ts` RPC handler `knotwork.handshake`](../../../../../../openclaw-plugin-knotwork/src/plugin.ts#L538)
+Source: [`plugin.ts` RPC handler `knotwork.handshake`](../../../../../../plugins/openclaw/src/plugin.ts#L538)
 
 To fully reset (useful after reconnecting to a different workspace):
 
@@ -223,4 +223,4 @@ To fully reset (useful after reconnecting to a different workspace):
 openclaw gateway call knotwork.reset_connection
 ```
 
-Source: [`plugin.ts` RPC handler `knotwork.reset_connection`](../../../../../../openclaw-plugin-knotwork/src/plugin.ts#L552)
+Source: [`plugin.ts` RPC handler `knotwork.reset_connection`](../../../../../../plugins/openclaw/src/plugin.ts#L552)

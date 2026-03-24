@@ -161,10 +161,10 @@ Run: `cd backend && alembic upgrade head`
 - `src/components/settings/AgentsTab.tsx` — setup URL button + description display
 
 ### Plugin
-- `openclaw-plugin-knotwork/src/types.ts` — added description to RemoteAgent
-- `openclaw-plugin-knotwork/src/bridge.ts` — pick description in normalizeAgent
-- `openclaw-plugin-knotwork/package.json` — npm publish config
-- `openclaw-plugin-knotwork/.npmignore` — **NEW**
+- `plugins/openclaw/src/types.ts` — added description to RemoteAgent
+- `plugins/openclaw/src/bridge.ts` — pick description in normalizeAgent
+- `plugins/openclaw/package.json` — npm publish config
+- `plugins/openclaw/.npmignore` — **NEW**
 
 ### Docker
 - `Dockerfile.backend` — **NEW**

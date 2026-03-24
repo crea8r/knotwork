@@ -27,10 +27,36 @@ async def get_graph(db: AsyncSession, graph_id: UUID) -> Graph | None:
 
 
 async def get_latest_version(db: AsyncSession, graph_id: UUID) -> GraphVersion | None:
+    """Return the most recently created named version (not draft)."""
     result = await db.execute(
         select(GraphVersion)
-        .where(GraphVersion.graph_id == graph_id)
-        .order_by(GraphVersion.created_at.desc())
+        .where(GraphVersion.graph_id == graph_id, GraphVersion.version_id.isnot(None))
+        .order_by(GraphVersion.version_created_at.desc())
+        .limit(1)
+    )
+    return result.scalar_one_or_none()
+
+
+async def get_root_draft(db: AsyncSession, graph_id: UUID) -> GraphVersion | None:
+    """Return the root draft (parent_version_id IS NULL) for a graph."""
+    result = await db.execute(
+        select(GraphVersion)
+        .where(
+            GraphVersion.graph_id == graph_id,
+            GraphVersion.version_id.is_(None),
+            GraphVersion.parent_version_id.is_(None),
+        )
+        .limit(1)
+    )
+    return result.scalar_one_or_none()
+
+
+async def get_any_draft(db: AsyncSession, graph_id: UUID) -> GraphVersion | None:
+    """Return any draft for a graph (newest by updated_at). Used by designer."""
+    result = await db.execute(
+        select(GraphVersion)
+        .where(GraphVersion.graph_id == graph_id, GraphVersion.version_id.is_(None))
+        .order_by(GraphVersion.updated_at.desc())
         .limit(1)
     )
     return result.scalar_one_or_none()
@@ -52,12 +78,13 @@ async def create_graph(
     db.add(graph)
     await db.flush()
 
-    version = GraphVersion(
+    # S9.1: new workflows start with a bare draft (no parent version, no version_id)
+    draft = GraphVersion(
         graph_id=graph.id,
         definition=data.definition.model_dump(),
         created_by=created_by,
     )
-    db.add(version)
+    db.add(draft)
     await db.commit()
     await db.refresh(graph)
     return graph
@@ -149,10 +176,18 @@ async def save_version(
     data: GraphVersionCreate,
     created_by: UUID | None = None,
 ) -> GraphVersion:
+    """Legacy: create a new named version directly (used by older tests)."""
+    from knotwork.utils.namegen import generate_name
+    from knotwork.graphs.version_service import _make_version_id
+    from datetime import datetime, timezone
+
     version = GraphVersion(
         graph_id=graph_id,
         definition=data.definition.model_dump(),
         note=data.note,
+        version_id=_make_version_id(),
+        version_name=generate_name(),
+        version_created_at=datetime.now(timezone.utc),
         created_by=created_by,
     )
     db.add(version)

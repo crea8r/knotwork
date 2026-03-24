@@ -78,14 +78,42 @@ class GraphVersionCreate(BaseModel):
     note: str | None = None
 
 
+class DraftUpsertRequest(BaseModel):
+    """Create or update the draft for a given parent version (or root draft)."""
+    definition: GraphDefinitionSchema
+
+
+class VersionRenameRequest(BaseModel):
+    name: str
+
+
+class ForkRequest(BaseModel):
+    name: str  # name of the new workflow
+
+
 class GraphVersionOut(BaseModel):
     id: UUID
     graph_id: UUID
     definition: dict
     note: str | None
+    # Versioning
+    version_id: str | None = None
+    version_name: str | None = None
+    version_created_at: datetime | None = None
+    parent_version_id: UUID | None = None
+    archived_at: datetime | None = None
+    is_public: bool = False
+    updated_at: datetime
     created_at: datetime
+    # Enriched: attached draft (if any), run count — populated by list endpoints
+    draft: GraphVersionOut | None = None
+    run_count: int = 0
 
     model_config = {"from_attributes": True}
+
+
+# Forward reference needed for self-referential `draft` field
+GraphVersionOut.model_rebuild()
 
 
 class GraphOut(BaseModel):
@@ -95,6 +123,8 @@ class GraphOut(BaseModel):
     description: str | None
     status: str
     default_model: str | None
+    production_version_id: UUID | None = None
+    slug: str | None = None
     run_count: int = 0
     latest_version: GraphVersionOut | None = None
     created_at: datetime

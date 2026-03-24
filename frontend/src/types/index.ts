@@ -24,7 +24,18 @@ export interface GraphVersion {
   graph_id: string
   definition: GraphDefinition
   note: string | null
+  // S9.1 versioning fields — null while record is a draft
+  version_id: string | null        // 9-char stable ID; null = draft
+  version_name: string | null      // coolname slug; null for drafts
+  version_created_at: string | null
+  parent_version_id: string | null // lineage pointer
+  archived_at: string | null
+  is_public: boolean
+  updated_at: string
   created_at: string
+  // Enriched by list endpoint
+  draft: GraphVersion | null       // the draft based on this version (if any)
+  run_count: number
 }
 
 export interface Graph {
@@ -34,6 +45,8 @@ export interface Graph {
   description: string | null
   status: 'draft' | 'active' | 'archived'
   default_model: string | null
+  production_version_id: string | null  // S9.1
+  slug: string | null                   // S9.1 public URL slug
   run_count: number
   latest_version: GraphVersion | null
   created_at: string
@@ -83,7 +96,10 @@ export interface Run {
   id: string
   workspace_id: string
   graph_id: string
-  graph_version_id: string
+  graph_version_id: string | null   // S9.1: nullable; null for legacy runs
+  // S9.1 draft run metadata
+  draft_snapshot_at: string | null
+  draft_parent_version_id: string | null
   name: string | null
   status: RunStatus
   trigger: 'manual' | 'api' | 'schedule'
@@ -98,6 +114,11 @@ export interface Run {
   total_tokens: number | null
   output_summary: string | null
   needs_attention: boolean
+}
+
+/** True when a run was executed against a draft (not a named version). */
+export function isDraftRun(run: Run): boolean {
+  return run.draft_snapshot_at != null
 }
 
 export interface PublicWorkflowLink {

@@ -24,6 +24,7 @@ def test_get_adapter_human():
     assert isinstance(adapter, HumanAdapter)
 
 
+@pytest.mark.xfail(reason="superseded by S8: direct LLM adapters replaced by openclaw plugin executor; get_adapter no longer returns ClaudeAdapter for anthropic refs")
 def test_get_adapter_anthropic():
     from knotwork.runtime.adapters import get_adapter
     from knotwork.runtime.adapters.claude import ClaudeAdapter
@@ -31,6 +32,7 @@ def test_get_adapter_anthropic():
     assert isinstance(adapter, ClaudeAdapter)
 
 
+@pytest.mark.xfail(reason="superseded by S8: direct LLM adapters replaced by openclaw plugin executor; get_adapter no longer returns OpenAIAdapter for openai refs")
 def test_get_adapter_openai():
     from knotwork.runtime.adapters import get_adapter
     from knotwork.runtime.adapters.openai_adapter import OpenAIAdapter

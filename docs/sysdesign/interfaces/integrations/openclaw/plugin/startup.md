@@ -89,7 +89,7 @@ sequenceDiagram
 - `api: OpenClawApi` — the OpenClaw plugin API object passed to `activate()`
 - `process.argv` — used to detect activation context
 
-Source: [`plugin.ts:activate`](../../../../../../openclaw-plugin-knotwork/src/plugin.ts#L43), [`plugin.ts:detectActivationContext`](../../../../../../openclaw-plugin-knotwork/src/plugin.ts#L124)
+Source: [`plugin.ts:activate`](../../../../../../plugins/openclaw/src/plugin.ts#L43), [`plugin.ts:detectActivationContext`](../../../../../../plugins/openclaw/src/plugin.ts#L124)
 
 ### From filesystem
 - `~/.openclaw/knotwork-bridge-state.json` — persisted identity + history (`pluginInstanceId`, `recentTasks`, logs)
@@ -101,7 +101,7 @@ Source: [`plugin.ts:activate`](../../../../../../openclaw-plugin-knotwork/src/pl
 - `gateway.auth.token` / `OPENCLAW_GATEWAY_TOKEN` — auth token for gateway
 - `plugins.entries.knotwork-bridge.config.taskPollIntervalMs` — poll interval (default: 2000ms)
 
-Source: [`openclaw/bridge.ts:getGatewayConfig`](../../../../../../openclaw-plugin-knotwork/src/openclaw/bridge.ts#L60), [`openclaw/bridge.ts:getConfig`](../../../../../../openclaw-plugin-knotwork/src/openclaw/bridge.ts#L30)
+Source: [`openclaw/bridge.ts:getGatewayConfig`](../../../../../../plugins/openclaw/src/openclaw/bridge.ts#L60), [`openclaw/bridge.ts:getConfig`](../../../../../../plugins/openclaw/src/openclaw/bridge.ts#L30)
 
 ---
 
@@ -129,7 +129,7 @@ Source: [`openclaw/bridge.ts:getGatewayConfig`](../../../../../../openclaw-plugi
 }
 ```
 
-Source: [`types.ts:PluginState`](../../../../../../openclaw-plugin-knotwork/src/types.ts#L97)
+Source: [`types.ts:PluginState`](../../../../../../plugins/openclaw/src/types.ts#L97)
 
 ### Files written
 
@@ -139,7 +139,7 @@ Source: [`types.ts:PluginState`](../../../../../../openclaw-plugin-knotwork/src/
 | `~/.openclaw/extensions/knotwork-bridge/credentials.json` | After successful handshake | `{ integrationSecret }` |
 | `~/.openclaw/extensions/knotwork-bridge/runtime.lock` | On lease acquisition | `{ pid, acquired_at, plugin_id }` |
 
-Source: [`plugin.ts:persistSnapshot`](../../../../../../openclaw-plugin-knotwork/src/plugin.ts#L157), [`plugin.ts:acquireRuntimeLease`](../../../../../../openclaw-plugin-knotwork/src/plugin.ts#L214)
+Source: [`plugin.ts:persistSnapshot`](../../../../../../plugins/openclaw/src/plugin.ts#L157), [`plugin.ts:acquireRuntimeLease`](../../../../../../plugins/openclaw/src/plugin.ts#L214)
 
 ---
 
@@ -172,7 +172,7 @@ On lease acquisition failure, the incumbent PID is checked with `process.kill(pi
 
 On clean exit (`SIGTERM`, `SIGINT`, `process.exit`), the lock file is removed. On crash, the next startup detects the dead PID and cleans up.
 
-Source: [`plugin.ts:acquireRuntimeLease`](../../../../../../openclaw-plugin-knotwork/src/plugin.ts#L214), [`plugin.ts:releaseRuntimeLease`](../../../../../../openclaw-plugin-knotwork/src/plugin.ts#L184), [`plugin.ts:releaseRuntimeLeaseSync`](../../../../../../openclaw-plugin-knotwork/src/plugin.ts#L194)
+Source: [`plugin.ts:acquireRuntimeLease`](../../../../../../plugins/openclaw/src/plugin.ts#L214), [`plugin.ts:releaseRuntimeLease`](../../../../../../plugins/openclaw/src/plugin.ts#L184), [`plugin.ts:releaseRuntimeLeaseSync`](../../../../../../plugins/openclaw/src/plugin.ts#L194)
 
 ---
 
@@ -191,4 +191,4 @@ startup:handshake-stopped reason=missing_required_operator_scope
 
 All lines written to: stdout + `state.logs` ring buffer (last 200 lines).
 
-Source: [`plugin.ts:log`](../../../../../../openclaw-plugin-knotwork/src/plugin.ts#L66)
+Source: [`plugin.ts:log`](../../../../../../plugins/openclaw/src/plugin.ts#L66)

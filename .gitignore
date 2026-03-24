@@ -50,4 +50,5 @@ data/
 # Docker
 *.pid
 
-openclaw-plugin-knotwork/artifacts/*
+plugins/**/artifacts/**
+plugins/openclaw/sync-to-openclaw.sh

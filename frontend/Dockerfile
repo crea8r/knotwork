@@ -1,19 +1,20 @@
 # ── Stage 1: build ─────────────────────────────────────────────────────────────
 FROM node:20-alpine AS builder
 WORKDIR /app
-COPY frontend/package*.json ./
+COPY package*.json ./
 RUN npm ci
-COPY frontend/ ./
-# Build args for Vite env vars — frontend calls the backend directly; no proxy.
-ARG VITE_API_URL=http://localhost:8000/api/v1
-ENV VITE_API_URL=$VITE_API_URL
+COPY . ./
+# No VITE_API_URL build arg — URL is injected at runtime via window._env.
+# The fallback in client.ts (http://localhost:8000/api/v1) is only used in
+# local npm-run-dev mode; the Docker prod container always has API_URL set.
 RUN npm run build
 
-# ── Stage 2: serve (prod) ───────────────────────────────────────────────────────
+# ── Stage 2: serve (prod) — runtime API_URL via env.js substitution ────────────
 FROM nginx:alpine AS prod
 COPY --from=builder /app/dist /usr/share/nginx/html
-# Serve the SPA only. The browser calls the backend directly via VITE_API_URL —
-# no /api/ or /ws/ proxy directives here.
+COPY docker-entrypoint.sh /docker-entrypoint.sh
+RUN chmod +x /docker-entrypoint.sh
+# SPA routing: all paths fall back to index.html
 RUN printf 'server {\n\
     listen 80;\n\
     root /usr/share/nginx/html;\n\
@@ -21,13 +22,13 @@ RUN printf 'server {\n\
     location / { try_files $uri $uri/ /index.html; }\n\
 }\n' > /etc/nginx/conf.d/default.conf
 EXPOSE 80
-CMD ["nginx", "-g", "daemon off;"]
+ENTRYPOINT ["/docker-entrypoint.sh"]
 
 # ── Stage 3: dev (Vite HMR) ────────────────────────────────────────────────────
 FROM node:20-alpine AS dev
 WORKDIR /app
-COPY frontend/package*.json ./
+COPY package*.json ./
 RUN npm ci
-COPY frontend/ ./
+COPY . ./
 EXPOSE 3000
 CMD ["npm", "run", "dev", "--", "--host", "0.0.0.0"]

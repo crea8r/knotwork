@@ -162,6 +162,7 @@ async def test_delete_wrong_workspace_returns_404(client, workspace, db):
 
 # ── Adapter api_key pass-through ──────────────────────────────────────────────
 
+@pytest.mark.xfail(reason="superseded by S8: direct LLM adapters replaced by openclaw plugin executor; get_adapter no longer returns ClaudeAdapter for anthropic refs")
 def test_get_adapter_passes_api_key_to_claude():
     from knotwork.runtime.adapters import get_adapter
     from knotwork.runtime.adapters.claude import ClaudeAdapter
@@ -170,6 +171,7 @@ def test_get_adapter_passes_api_key_to_claude():
     assert adapter._api_key == "sk-custom"
 
 
+@pytest.mark.xfail(reason="superseded by S8: direct LLM adapters replaced by openclaw plugin executor; get_adapter no longer returns OpenAIAdapter for openai refs")
 def test_get_adapter_passes_api_key_to_openai():
     from knotwork.runtime.adapters import get_adapter
     from knotwork.runtime.adapters.openai_adapter import OpenAIAdapter
@@ -178,6 +180,7 @@ def test_get_adapter_passes_api_key_to_openai():
     assert adapter._api_key == "sk-custom-openai"
 
 
+@pytest.mark.xfail(reason="superseded by S8: direct LLM adapters replaced by openclaw plugin executor; get_adapter no longer returns ClaudeAdapter for anthropic refs")
 def test_get_adapter_no_key_defaults_to_none():
     from knotwork.runtime.adapters import get_adapter
     from knotwork.runtime.adapters.claude import ClaudeAdapter

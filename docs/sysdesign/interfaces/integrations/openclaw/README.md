@@ -139,27 +139,27 @@ After deletion, any `pending` tasks for this integration are orphaned — the pl
 
 ## Key Files
 
-### Plugin (TypeScript) — `openclaw-plugin-knotwork/src/`
+### Plugin (TypeScript) — `plugins/openclaw/src/`
 
 | File | Role |
 |---|---|
-| [`types.ts`](../../../../../openclaw-plugin-knotwork/src/types.ts) | All shared types: `ExecutionTask`, `TaskResult`, `PluginState`, `OpenClawApi`, `PluginConfig` |
-| [`openclaw/bridge.ts`](../../../../../openclaw-plugin-knotwork/src/openclaw/bridge.ts) | Config resolution, agent discovery, HTTP calls to Knotwork (`doHandshake`, `pullTask`, `postEvent`) |
-| [`openclaw/gateway.ts`](../../../../../openclaw-plugin-knotwork/src/openclaw/gateway.ts) | Raw WebSocket RPC transport: `gatewayRpc` |
-| [`openclaw/scope.ts`](../../../../../openclaw-plugin-knotwork/src/openclaw/scope.ts) | Scope error detection: `missingScope`, `isOperatorScopeError`, `scopeHelp` |
-| [`openclaw/session.ts`](../../../../../openclaw-plugin-knotwork/src/openclaw/session.ts) | Task execution: `executeTask`, `parseDecisionBlock`, session key construction |
-| [`state/persist.ts`](../../../../../openclaw-plugin-knotwork/src/state/persist.ts) | State file read: `readPersistedState`, `PersistedPluginState` |
-| [`state/lease.ts`](../../../../../openclaw-plugin-knotwork/src/state/lease.ts) | Runtime process lock: `acquireRuntimeLease`, `releaseRuntimeLease` |
-| [`lifecycle/handshake.ts`](../../../../../openclaw-plugin-knotwork/src/lifecycle/handshake.ts) | Handshake, credential recovery, retry scheduling |
-| [`lifecycle/worker.ts`](../../../../../openclaw-plugin-knotwork/src/lifecycle/worker.ts) | Task poll loop: `pollAndRun`, heartbeat, event posting |
-| [`lifecycle/rpc.ts`](../../../../../openclaw-plugin-knotwork/src/lifecycle/rpc.ts) | Inbound gateway RPC registrations: `knotwork.*` methods |
-| [`plugin.ts`](../../../../../openclaw-plugin-knotwork/src/plugin.ts) | Entry point: `activate()`, state init, context wiring, poll interval, exit handlers |
+| [`types.ts`](../../../../../plugins/openclaw/src/types.ts) | All shared types: `ExecutionTask`, `TaskResult`, `PluginState`, `OpenClawApi`, `PluginConfig` |
+| [`openclaw/bridge.ts`](../../../../../plugins/openclaw/src/openclaw/bridge.ts) | Config resolution, agent discovery, HTTP calls to Knotwork (`doHandshake`, `pullTask`, `postEvent`) |
+| [`openclaw/gateway.ts`](../../../../../plugins/openclaw/src/openclaw/gateway.ts) | Raw WebSocket RPC transport: `gatewayRpc` |
+| [`openclaw/scope.ts`](../../../../../plugins/openclaw/src/openclaw/scope.ts) | Scope error detection: `missingScope`, `isOperatorScopeError`, `scopeHelp` |
+| [`openclaw/session.ts`](../../../../../plugins/openclaw/src/openclaw/session.ts) | Task execution: `executeTask`, `parseDecisionBlock`, session key construction |
+| [`state/persist.ts`](../../../../../plugins/openclaw/src/state/persist.ts) | State file read: `readPersistedState`, `PersistedPluginState` |
+| [`state/lease.ts`](../../../../../plugins/openclaw/src/state/lease.ts) | Runtime process lock: `acquireRuntimeLease`, `releaseRuntimeLease` |
+| [`lifecycle/handshake.ts`](../../../../../plugins/openclaw/src/lifecycle/handshake.ts) | Handshake, credential recovery, retry scheduling |
+| [`lifecycle/worker.ts`](../../../../../plugins/openclaw/src/lifecycle/worker.ts) | Task poll loop: `pollAndRun`, heartbeat, event posting |
+| [`lifecycle/rpc.ts`](../../../../../plugins/openclaw/src/lifecycle/rpc.ts) | Inbound gateway RPC registrations: `knotwork.*` methods |
+| [`plugin.ts`](../../../../../plugins/openclaw/src/plugin.ts) | Entry point: `activate()`, state init, context wiring, poll interval, exit handlers |
 
 ### Plugin (compiled artifact)
 
 | File | Role |
 |---|---|
-| [`openclaw-plugin-knotwork/artifacts/knotwork-bridge-0.2.0.tar.gz`](../../../../../openclaw-plugin-knotwork/artifacts/knotwork-bridge-0.2.0.tar.gz) | Pre-built plugin artifact. Rebuild: `cd openclaw-plugin-knotwork && npm run build` |
+| [`plugins/openclaw/artifacts/knotwork-bridge-0.2.0.tar.gz`](../../../../../plugins/openclaw/artifacts/knotwork-bridge-0.2.0.tar.gz) | Pre-built plugin artifact. Rebuild: `cd plugins/openclaw && npm run build` |
 
 ### Backend (Python) — `backend/knotwork/openclaw_integrations/`
 
@@ -181,8 +181,8 @@ The `OpenClawAdapter` (referenced in this doc as the Knotwork side of the pollin
 
 | Path | Written by | Purpose |
 |---|---|---|
-| `~/.openclaw/knotwork-bridge-state.json` | [`plugin.ts:persistSnapshot`](../../../../../openclaw-plugin-knotwork/src/plugin.ts#L157) | Persists `pluginInstanceId`, `integrationSecret`, last handshake info, recent task history, log ring buffer |
-| `~/.openclaw/knotwork-bridge-runtime.lock` | [`plugin.ts:acquireRuntimeLease`](../../../../../openclaw-plugin-knotwork/src/plugin.ts#L214) | Mutex: only one process runs the background poll loop. Contains `{ pid, acquired_at }` |
+| `~/.openclaw/knotwork-bridge-state.json` | [`plugin.ts:persistSnapshot`](../../../../../plugins/openclaw/src/plugin.ts#L157) | Persists `pluginInstanceId`, `integrationSecret`, last handshake info, recent task history, log ring buffer |
+| `~/.openclaw/knotwork-bridge-runtime.lock` | [`plugin.ts:acquireRuntimeLease`](../../../../../plugins/openclaw/src/plugin.ts#L214) | Mutex: only one process runs the background poll loop. Contains `{ pid, acquired_at }` |
 
 ---
 
