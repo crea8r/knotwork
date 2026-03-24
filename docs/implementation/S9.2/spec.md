@@ -35,7 +35,7 @@ Currently the system creates a task and the plugin claims it when ready. If the 
 
 ## Out of Scope
 
-- WebSocket transport upgrade — S9.4.
+- WebSocket transport upgrade — deferred to S12.1.
 - Per-task priority queue or weighted fair scheduling (Phase 2).
 
 ## Acceptance Criteria

@@ -10,7 +10,7 @@ export default defineConfig({
     alias: { '@': path.resolve(__dirname, './src') },
   },
   server: {
-    port: 3000,
+    port: parseInt(process.env.PORT ?? '3000'),
     // No proxy — the browser calls the backend directly via VITE_API_URL.
   },
 })

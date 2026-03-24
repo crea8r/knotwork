@@ -16,6 +16,7 @@ if TYPE_CHECKING:
     from knotwork.runtime.engine import RunState
 
 # run_id in RunState is a plain string (12-char hex or legacy 36-char UUID string).
+MAX_NODE_VISITS_PER_RUN = 5
 
 
 def _resolve_agent_ref(node_def: dict) -> str:
@@ -146,6 +147,35 @@ def make_agent_node(node_def: dict, outgoing_edges: list[dict] | None = None):
         workspace_id = state["workspace_id"]
         agent_ref = _resolve_agent_ref(node_def)
         trust = _trust_level_to_float(node_def)
+        visit_counts = state.get("node_visit_counts") or {}
+        current_visit = int(visit_counts.get(node_id) or 0) + 1
+        if current_visit > MAX_NODE_VISITS_PER_RUN:
+            from knotwork.database import AsyncSessionLocal
+            from knotwork.runs.models import RunWorklogEntry
+
+            async with AsyncSessionLocal() as db:
+                db.add(RunWorklogEntry(
+                    id=uuid4(),
+                    run_id=run_id,
+                    node_id=node_id,
+                    agent_ref=agent_ref,
+                    entry_type="action",
+                    content=(
+                        f"Loop safety limit reached at {node_name}. "
+                        f"Visit {current_visit} would exceed the maximum of {MAX_NODE_VISITS_PER_RUN}."
+                    ),
+                    metadata_={
+                        "kind": "loop_limit_reached",
+                        "visit_index": current_visit,
+                        "max_visits": MAX_NODE_VISITS_PER_RUN,
+                        "node_name": node_name,
+                    },
+                ))
+                await db.commit()
+            raise RuntimeError(
+                f"Loop safety limit reached for node '{node_name}' "
+                f"(visit {current_visit} exceeds max {MAX_NODE_VISITS_PER_RUN})"
+            )
 
         # Fetch registered agent credentials
         api_key: str | None = None
@@ -262,6 +292,9 @@ def make_agent_node(node_def: dict, outgoing_edges: list[dict] | None = None):
                             "prior_outputs": None,
                             "human_guidance": retry_guidance,
                             "session_token": session_token,
+                            "visit_index": current_visit,
+                            "max_visits": MAX_NODE_VISITS_PER_RUN,
+                            "is_repeat_visit": current_visit > 1,
                         })
                         ns.input = merged
                         await db.commit()
@@ -279,6 +312,9 @@ def make_agent_node(node_def: dict, outgoing_edges: list[dict] | None = None):
                             "prior_outputs": None,
                             "human_guidance": retry_guidance,
                             "session_token": session_token,
+                            "visit_index": current_visit,
+                            "max_visits": MAX_NODE_VISITS_PER_RUN,
+                            "is_repeat_visit": current_visit > 1,
                         },
                         knowledge_snapshot=tree.version_snapshot,
                         started_at=datetime.now(timezone.utc),
@@ -564,6 +600,35 @@ def make_agent_node(node_def: dict, outgoing_edges: list[dict] | None = None):
                 ns2.completed_at = datetime.now(timezone.utc)
                 await db.commit()
 
+            chosen_edge = next((edge for edge in _edges if edge["target"] == next_branch_val), None)
+            if next_branch_val and len(_targets) > 1:
+                next_target_visit = int((state.get("node_visit_counts") or {}).get(next_branch_val) or 0) + 1
+                loop_back = next_target_visit > 1
+                branch_label = str((chosen_edge or {}).get("condition_label") or "").strip()
+                content = (
+                    f"Selected branch to {next_branch_val}"
+                    + (f" — {branch_label}" if branch_label else "")
+                    + (f". Returning for visit {next_target_visit}." if loop_back else "")
+                )
+                db.add(RunWorklogEntry(
+                    id=uuid4(),
+                    run_id=run_id,
+                    node_id=node_id,
+                    agent_ref=agent_ref,
+                    entry_type="action",
+                    content=content,
+                    metadata_={
+                        "kind": "branch_selected",
+                        "next_branch": next_branch_val,
+                        "branch_label": branch_label or None,
+                        "visit_index": current_visit,
+                        "max_visits": MAX_NODE_VISITS_PER_RUN,
+                        "loop_back": loop_back,
+                        "next_target_visit": next_target_visit,
+                    },
+                ))
+                await db.commit()
+
             if output_text:
                 run_channel = await channel_service.get_or_create_run_channel(
                     db, workspace_id=UUID(workspace_id), run_id=run_id,
@@ -585,6 +650,7 @@ def make_agent_node(node_def: dict, outgoing_edges: list[dict] | None = None):
         return {
             "current_output": output_text,
             "node_outputs": {node_id: output_text},
+            "node_visit_counts": {node_id: current_visit},
             "next_branch": next_branch_val,
             "messages": [{"role": "assistant", "content": output_text, "node_id": node_id}],
         }

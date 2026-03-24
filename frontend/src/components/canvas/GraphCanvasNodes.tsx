@@ -54,7 +54,7 @@ export function StartEndOval({
 }
 
 export function NodeBox({
-  node, x, y, selected, neighbor, dimmed, pulse, statusColor, onClick,
+  node, x, y, selected, neighbor, dimmed, pulse, statusColor, branchCount = 0, onClick,
 }: {
   node: NodeDef
   x: number
@@ -64,6 +64,7 @@ export function NodeBox({
   dimmed: boolean
   pulse: boolean
   statusColor?: string
+  branchCount?: number
   onClick: () => void
 }) {
   const fill = statusColor ?? NODE_COLORS[node.type] ?? '#6b7280'
@@ -108,6 +109,28 @@ export function NodeBox({
       <text x={16} y={38} fontSize={13} fontWeight="600" fill="#1f2937" fontFamily="sans-serif">
         {node.name.length > 20 ? node.name.slice(0, 18) + '…' : node.name}
       </text>
+      {branchCount > 1 && (
+        <g transform={`translate(${NODE_W - 56},10)`}>
+          <rect
+            width={46}
+            height={18}
+            rx={9}
+            fill="#eef2ff"
+            stroke="#c7d2fe"
+          />
+          <text
+            x={23}
+            y={12.5}
+            fontSize={10}
+            fontWeight="600"
+            fill="#4338ca"
+            fontFamily="sans-serif"
+            textAnchor="middle"
+          >
+            {branchCount} paths
+          </text>
+        </g>
+      )}
     </g>
   )
 }
@@ -128,13 +151,42 @@ export function EdgePath({
   const stroke = selected ? SELECT_RING : (neighbor ? '#64748b' : '#d1d5db')
   const strokeWidth = selected ? 2.75 : (neighbor ? 2.1 : 1.5)
   const opacity = dimmed ? 0.35 : 1
+  const branchLabel = (edge.condition_label ?? '').trim()
+
+  function renderLabel(x: number, y: number) {
+    if (!branchLabel) return null
+    const label = branchLabel.length > 26 ? `${branchLabel.slice(0, 24)}…` : branchLabel
+    const width = Math.max(54, Math.min(170, label.length * 6.2 + 16))
+    return (
+      <g transform={`translate(${x - width / 2},${y - 12})`} style={{ pointerEvents: 'none', opacity }}>
+        <rect width={width} height={20} rx={10} fill="#ffffff" stroke={selected ? '#93c5fd' : '#dbeafe'} />
+        <text
+          x={width / 2}
+          y={13}
+          fontSize={10}
+          fontWeight="600"
+          fill={selected ? '#1d4ed8' : '#475569'}
+          fontFamily="sans-serif"
+          textAnchor="middle"
+        >
+          {label}
+        </text>
+      </g>
+    )
+  }
 
   // Try dagre's routed points first (works reliably for forward edges)
   const edgeData = g.edge({ v: edge.source, w: edge.target, name: edge.id })
   if (edgeData?.points?.length) {
     const pts = edgeData.points as Array<{ x: number; y: number }>
     const d = pts.map((p, i) => `${i === 0 ? 'M' : 'L'}${p.x},${p.y}`).join(' ')
-    return <path d={d} fill="none" stroke={stroke} opacity={opacity} strokeWidth={strokeWidth} markerEnd={selected ? 'url(#arrow-selected)' : 'url(#arrow)'} />
+    const mid = pts[Math.floor(pts.length / 2)]
+    return (
+      <g>
+        <path d={d} fill="none" stroke={stroke} opacity={opacity} strokeWidth={strokeWidth} markerEnd={selected ? 'url(#arrow-selected)' : 'url(#arrow)'} />
+        {mid ? renderLabel(mid.x, mid.y) : null}
+      </g>
+    )
   }
 
   // Fallback for back-edges (loops): draw a curved Bezier path hugging the left side.
@@ -145,7 +197,10 @@ export function EdgePath({
   const cx = Math.min(sx, tx) - 72
   const d = `M ${sx},${sy} C ${cx},${sy} ${cx},${ty} ${tx},${ty}`
   return (
-    <path d={d} fill="none" stroke={selected ? SELECT_RING : '#8b5cf6'} opacity={opacity} strokeWidth={selected ? 2.75 : 1.5}
-      strokeDasharray="6,3" markerEnd={selected ? 'url(#arrow-selected)' : 'url(#arrow-loop)'} />
+    <g>
+      <path d={d} fill="none" stroke={selected ? SELECT_RING : '#8b5cf6'} opacity={opacity} strokeWidth={selected ? 2.75 : 1.5}
+        strokeDasharray="6,3" markerEnd={selected ? 'url(#arrow-selected)' : 'url(#arrow-loop)'} />
+      {renderLabel(cx, (sy + ty) / 2)}
+    </g>
   )
 }

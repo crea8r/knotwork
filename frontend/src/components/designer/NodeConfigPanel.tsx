@@ -12,13 +12,17 @@
  */
 import { useState } from 'react'
 import { X } from 'lucide-react'
-import type { NodeDef, EdgeDef } from '@/types'
+import type { NodeDef, EdgeDef, InputFieldDef } from '@/types'
 import AgentNodeConfig from './config/AgentNodeConfig'
+import InputSchemaEditor from './InputSchemaEditor'
 
 interface Props {
   node: NodeDef
   allNodes: NodeDef[]
   edges: EdgeDef[]
+  inputFields?: InputFieldDef[]
+  readOnly?: boolean
+  onInputSchemaChange?: (fields: InputFieldDef[]) => void
   onConfigChange: (nodeId: string, patch: Record<string, unknown>) => void
   onRemove: (nodeId: string) => void
   onAddEdge: (edge: EdgeDef) => void
@@ -39,10 +43,11 @@ const TYPE_LABEL: Record<string, string> = {
 const AGENT_TYPES = new Set(['agent', 'llm_agent', 'human_checkpoint', 'conditional_router'])
 
 export default function NodeConfigPanel({
-  node, allNodes, edges, onConfigChange, onRemove, onAddEdge, onUpdateEdge, onRemoveEdge,
+  node, allNodes, edges, inputFields = [], readOnly = false, onInputSchemaChange, onConfigChange, onRemove, onAddEdge, onUpdateEdge, onRemoveEdge,
 }: Props) {
   const [connectTarget, setConnectTarget] = useState('')
   const [newConditionLabel, setNewConditionLabel] = useState('')
+  const [connectError, setConnectError] = useState('')
 
   const otherNodes = allNodes.filter(n => n.id !== node.id)
   const predecessorIds = new Set(edges.filter(e => e.target === node.id).map(e => e.source))
@@ -50,6 +55,7 @@ export default function NodeConfigPanel({
   const outgoing = edges.filter(e => e.source === node.id)
   const connectedIds = new Set(outgoing.map(e => e.target))
   const unconnected = otherNodes.filter(n => !connectedIds.has(n.id))
+  const canAddOutgoing = node.type !== 'end' && !(node.type === 'start' && outgoing.length >= 1)
 
   // Edges become conditional (require labels) when there are ≥2 outgoing
   const isMultiBranch = outgoing.length > 1
@@ -57,8 +63,13 @@ export default function NodeConfigPanel({
   const newEdgeNeedsLabel = outgoing.length >= 1
 
   function handleAddEdge() {
+    setConnectError('')
     if (!connectTarget) return
     if (newEdgeNeedsLabel && !newConditionLabel.trim()) return
+    if (outgoing.length === 1 && !outgoing[0].condition_label?.trim()) {
+      setConnectError('Label the existing path before adding another branch.')
+      return
+    }
     const willBeMultiBranch = outgoing.length >= 1
     const edge: EdgeDef = {
       id: `e-${node.id}-${connectTarget}-${Date.now()}`,
@@ -81,31 +92,45 @@ export default function NodeConfigPanel({
   }
 
   const isStartOrEnd = node.type === 'start' || node.type === 'end'
+  const showHeader = !isStartOrEnd
   const isToolExecutor = node.type === 'tool_executor'
+  const contentClass = node.type === 'start'
+    ? 'flex-1 overflow-y-auto px-0 py-0'
+    : 'flex-1 overflow-y-auto px-4 py-4 space-y-6'
 
   return (
     <div className="flex flex-col h-full">
-      <div className="px-4 py-3 border-b">
-        <div className="flex items-start justify-between">
-          <div>
-            <h2 className="font-medium text-gray-900 text-sm">{node.name}</h2>
-            <p className="text-xs text-gray-400 mt-0.5">{TYPE_LABEL[node.type] ?? node.type}</p>
-            <p className="text-xs font-mono text-gray-300 mt-0.5">{node.id}</p>
+      {showHeader && (
+        <div className="px-4 py-3 border-b">
+          <div className="flex items-start justify-between">
+            <div>
+              <h2 className="font-medium text-gray-900 text-sm">{node.name}</h2>
+              <p className="text-xs text-gray-400 mt-0.5">{TYPE_LABEL[node.type] ?? node.type}</p>
+              <p className="text-xs font-mono text-gray-300 mt-0.5">{node.id}</p>
+            </div>
+            {!isStartOrEnd && !readOnly && (
+              <button onClick={() => onRemove(node.id)} className="text-xs text-red-400 hover:text-red-600 mt-0.5">
+                Remove
+              </button>
+            )}
           </div>
-          {!isStartOrEnd && (
-            <button onClick={() => onRemove(node.id)} className="text-xs text-red-400 hover:text-red-600 mt-0.5">
-              Remove
-            </button>
-          )}
         </div>
-      </div>
+      )}
 
-      <div className="flex-1 overflow-y-auto px-4 py-4 space-y-6">
-        <div>
+      <div className={contentClass}>
+        <div className={node.type === 'start' ? '' : 'space-y-6'}>
           {isStartOrEnd && (
-            <p className="text-sm text-gray-400 italic">
-              {node.type === 'start' ? 'Start of workflow — no configuration needed.' : 'End of workflow — no configuration needed.'}
-            </p>
+            node.type === 'start' ? (
+              <InputSchemaEditor
+                fields={inputFields}
+                readOnly={readOnly}
+                onChange={(fields) => onInputSchemaChange?.(fields)}
+              />
+            ) : (
+              <p className="text-sm text-gray-400 italic">
+                End of workflow — no configuration needed.
+              </p>
+            )
           )}
           {isToolExecutor && (
             <div className="bg-red-50 border border-red-200 rounded p-3 text-xs text-red-700">
@@ -118,11 +143,12 @@ export default function NodeConfigPanel({
               node={node}
               onChange={handleAgentChange}
               predecessorNodes={predecessorNodes}
+              readOnly={readOnly}
             />
           )}
         </div>
 
-        <div>
+        <div className={node.type === 'start' ? 'px-4 py-4 border-t border-gray-100' : ''}>
           <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Connections</p>
 
           {isMultiBranch && (
@@ -135,28 +161,36 @@ export default function NodeConfigPanel({
             <p className="text-xs text-gray-400 italic">No outgoing connections.</p>
           ) : (
             <ul className="space-y-2 mb-2">
-              {outgoing.map(edge => {
+              {outgoing.map((edge, index) => {
                 const target = allNodes.find(n => n.id === edge.target)
                 const missingLabel = isMultiBranch && !edge.condition_label?.trim()
                 return (
                   <li key={edge.id} className="bg-gray-50 rounded px-2 py-1.5 text-xs space-y-1">
                     <div className="flex items-center justify-between">
-                      <span className="text-gray-700 font-medium">→ {target?.name ?? edge.target}</span>
-                      <button onClick={() => onRemoveEdge(edge.id)} className="text-gray-300 hover:text-red-500 ml-2" title="Remove connection">
-                        <X size={12} />
-                      </button>
+                      <span className="text-gray-700 font-medium">
+                        {isMultiBranch ? `Branch ${index + 1}` : 'Next step'}: {target?.name ?? edge.target}
+                      </span>
+                      {!readOnly && (
+                        <button onClick={() => onRemoveEdge(edge.id)} className="text-gray-300 hover:text-red-500 ml-2" title="Remove connection">
+                          <X size={12} />
+                        </button>
+                      )}
                     </div>
                     {isMultiBranch && (
                       <input
                         type="text"
                         className={`w-full border rounded px-2 py-1 text-xs outline-none focus:ring-1 focus:ring-brand-500 ${missingLabel ? 'border-amber-400 bg-amber-50 placeholder-amber-400' : 'border-gray-200'}`}
-                        placeholder="Evaluation condition (required)…"
+                        placeholder="Condition for taking this branch (required)…"
                         value={edge.condition_label ?? ''}
+                        disabled={readOnly}
                         onChange={e => onUpdateEdge(edge.id, {
                           condition_label: e.target.value,
                           type: 'conditional',
                         })}
                       />
+                    )}
+                    {!isMultiBranch && (
+                      <p className="text-[11px] text-gray-400">Single path node. Add another path to turn this into branching.</p>
                     )}
                   </li>
                 )
@@ -164,30 +198,36 @@ export default function NodeConfigPanel({
             </ul>
           )}
 
-          {unconnected.length > 0 && (
+          {!readOnly && canAddOutgoing && unconnected.length > 0 && (
             <div className="space-y-1 mt-2">
               <div className="flex gap-1">
                 <select value={connectTarget} onChange={e => setConnectTarget(e.target.value)}
                   className="flex-1 border border-gray-200 rounded px-2 py-1 text-xs outline-none focus:ring-1 focus:ring-brand-500">
-                  <option value="">Connect to…</option>
+                  <option value="">{newEdgeNeedsLabel ? 'Add branch to…' : 'Connect to…'}</option>
                   {unconnected.map(n => <option key={n.id} value={n.id}>{n.name}</option>)}
                 </select>
                 <button onClick={handleAddEdge}
                   disabled={!connectTarget || (newEdgeNeedsLabel && !newConditionLabel.trim())}
                   className="px-2 py-1 bg-brand-500 text-white rounded text-xs disabled:opacity-40 hover:bg-brand-600">
-                  Add
+                  {newEdgeNeedsLabel ? 'Add branch' : 'Set next'}
                 </button>
               </div>
               {newEdgeNeedsLabel && connectTarget && (
                 <input
                   type="text"
                   className="w-full border border-gray-200 rounded px-2 py-1 text-xs outline-none focus:ring-1 focus:ring-brand-500"
-                  placeholder="Evaluation condition for this branch (required)…"
+                  placeholder="Condition for taking this branch (required)…"
                   value={newConditionLabel}
                   onChange={e => setNewConditionLabel(e.target.value)}
                 />
               )}
+              {connectError && (
+                <p className="text-xs text-amber-600">{connectError}</p>
+              )}
             </div>
+          )}
+          {node.type === 'start' && outgoing.length >= 1 && (
+            <p className="text-xs text-gray-400 italic">Start can connect to only one next node.</p>
           )}
         </div>
       </div>

@@ -8,11 +8,19 @@ import type { InputFieldDef } from '@/types'
 interface Props {
   fields: InputFieldDef[]
   onChange: (fields: InputFieldDef[]) => void
+  readOnly?: boolean
 }
 
-const FIELD_TYPES: InputFieldDef['type'][] = ['text', 'textarea', 'number']
+function toFieldKey(label: string, fallbackIndex: number) {
+  const normalized = label
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '')
+  return normalized || `field_${fallbackIndex + 1}`
+}
 
-export default function InputSchemaEditor({ fields, onChange }: Props) {
+export default function InputSchemaEditor({ fields, onChange, readOnly = false }: Props) {
   function update(index: number, patch: Partial<InputFieldDef>) {
     onChange(fields.map((f, i) => i === index ? { ...f, ...patch } : f))
   }
@@ -48,43 +56,53 @@ export default function InputSchemaEditor({ fields, onChange }: Props) {
         )}
         {fields.map((f, i) => (
           <div key={i} className="border border-gray-200 rounded-lg p-3 space-y-2 bg-gray-50">
-            <div className="flex items-center justify-between gap-1">
+            <div className="flex items-start justify-between gap-2">
               <input
-                className={`${inputCls} flex-1`}
-                placeholder="field_key"
-                value={f.name}
-                onChange={e => update(i, { name: e.target.value })}
+                className={`${inputCls} flex-1 min-w-0`}
+                placeholder="Field label"
+                value={f.label}
+                disabled={readOnly}
+                onChange={e => {
+                  const label = e.target.value
+                  update(i, { label, name: toFieldKey(label, i) })
+                }}
               />
-              <select
-                className={inputCls}
-                value={f.type}
-                onChange={e => update(i, { type: e.target.value as InputFieldDef['type'] })}
-              >
-                {FIELD_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
-              </select>
-              <label className="flex items-center gap-1 text-xs text-gray-500 cursor-pointer">
+              <div className="flex items-center gap-2 pt-1">
+                <input
+                  type="checkbox"
+                  checked={f.type === 'textarea'}
+                  disabled={readOnly}
+                  onChange={e => update(i, { type: e.target.checked ? 'textarea' : 'text' })}
+                  className="rounded"
+                />
+                <span className="text-xs text-gray-500 whitespace-nowrap">Multi-line</span>
+              </div>
+            </div>
+            <div className="flex items-center justify-between gap-2">
+              <p className="min-w-0 flex-1 truncate text-[11px] text-gray-400">
+                <span className="font-mono">{f.name || toFieldKey(f.label, i)}</span>
+              </p>
+              <label className="flex items-center gap-1 text-xs text-gray-500 cursor-pointer whitespace-nowrap">
                 <input
                   type="checkbox"
                   checked={f.required}
+                  disabled={readOnly}
                   onChange={e => update(i, { required: e.target.checked })}
                   className="rounded"
                 />
-                req
+                Required
               </label>
             </div>
-            <input
-              className={`${inputCls} w-full`}
-              placeholder="Label (shown to operator)"
-              value={f.label}
-              onChange={e => update(i, { label: e.target.value })}
-            />
-            <input
-              className={`${inputCls} w-full`}
-              placeholder="Description (optional)"
+            <textarea
+              className={`${inputCls} w-full resize-none`}
+              rows={2}
+              placeholder="Helper text (optional)"
               value={f.description}
+              disabled={readOnly}
               onChange={e => update(i, { description: e.target.value })}
             />
-            <div className="flex justify-end gap-1">
+            {!readOnly && (
+              <div className="flex justify-end gap-1 pt-1">
               <button onClick={() => move(i, -1)} disabled={i === 0} className="text-gray-300 hover:text-gray-500 disabled:opacity-30 p-0.5">
                 <ChevronUp size={13} />
               </button>
@@ -94,19 +112,22 @@ export default function InputSchemaEditor({ fields, onChange }: Props) {
               <button onClick={() => remove(i)} className="text-gray-300 hover:text-red-500 p-0.5 ml-1">
                 <Trash2 size={13} />
               </button>
-            </div>
+              </div>
+            )}
           </div>
         ))}
       </div>
 
-      <div className="px-4 py-3 border-t flex-shrink-0">
+      {!readOnly && (
+        <div className="px-4 py-3 border-t flex-shrink-0">
         <button
           onClick={addField}
           className="flex items-center gap-1.5 text-xs text-brand-600 hover:text-brand-700 font-medium"
         >
           <Plus size={13} /> Add field
         </button>
-      </div>
+        </div>
+      )}
     </div>
   )
 }

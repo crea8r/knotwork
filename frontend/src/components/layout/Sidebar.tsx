@@ -1,9 +1,8 @@
-import { NavLink, useNavigate } from 'react-router-dom'
+import { NavLink, useLocation, useNavigate } from 'react-router-dom'
 import {
-  BookOpen,
   ChevronLeft,
   ChevronRight,
-  GitBranch,
+  Globe,
   Hash,
   Inbox,
   PlayCircle,
@@ -14,7 +13,14 @@ import knotworkLogo from '@/assets/knotwork-logo.svg'
 
 // ── Full nav item ─────────────────────────────────────────────────────────────
 
-function NavItem({ to, icon, label, onClick }: { to: string; icon: React.ReactNode; label: string; onClick?: () => void }) {
+function NavItem({
+  to, icon, label, onClick,
+}: {
+  to: string
+  icon: React.ReactNode
+  label: string
+  onClick?: React.MouseEventHandler<HTMLAnchorElement>
+}) {
   return (
     <NavLink to={to} onClick={onClick}
       className={({ isActive }) =>
@@ -29,7 +35,14 @@ function NavItem({ to, icon, label, onClick }: { to: string; icon: React.ReactNo
 
 // ── Icon-only nav item (collapsed) ────────────────────────────────────────────
 
-function IconNavItem({ to, icon, label, onClick }: { to: string; icon: React.ReactNode; label: string; onClick?: () => void }) {
+function IconNavItem({
+  to, icon, label, onClick,
+}: {
+  to: string
+  icon: React.ReactNode
+  label: string
+  onClick?: React.MouseEventHandler<HTMLAnchorElement>
+}) {
   return (
     <NavLink to={to} onClick={onClick} title={label}
       className={({ isActive }) =>
@@ -60,8 +73,15 @@ export default function Sidebar({
   onToggleCollapse?: () => void
 }) {
   const navigate = useNavigate()
+  const location = useLocation()
   const Item = collapsed ? IconNavItem : NavItem
   const iconSize = collapsed ? 18 : 16
+  const handleHandbookClick: React.MouseEventHandler<HTMLAnchorElement> = (e) => {
+    onCloseMobile?.()
+    if (!location.pathname.startsWith('/handbook')) return
+    e.preventDefault()
+    navigate('/handbook')
+  }
 
   return (
     <aside className={`fixed md:static inset-y-0 left-0 z-40 flex-shrink-0 bg-white border-r border-gray-200 flex flex-col h-screen transform transition-all duration-200 ${
@@ -95,8 +115,7 @@ export default function Sidebar({
         <Item to="/channels" icon={<Hash       size={iconSize} />} label="Channels"  onClick={onCloseMobile} />
         <Divider collapsed={collapsed} />
         <Item to="/runs"     icon={<PlayCircle size={iconSize} />} label="Runs"      onClick={onCloseMobile} />
-        <Item to="/graphs"   icon={<GitBranch  size={iconSize} />} label="Workflows" onClick={onCloseMobile} />
-        <Item to="/handbook" icon={<BookOpen   size={iconSize} />} label="Handbook"  onClick={onCloseMobile} />
+        <Item to="/handbook" icon={<Globe      size={iconSize} />} label="Handbook" onClick={handleHandbookClick} />
         <Divider collapsed={collapsed} />
         <Item to="/settings" icon={<Settings   size={iconSize} />} label="Settings"  onClick={onCloseMobile} />
       </nav>

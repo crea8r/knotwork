@@ -32,6 +32,7 @@ export default function PublicLinksModal({ workspaceId, graphId, currentVersionI
 
   const modalTitle = mode === 'create' ? 'Create public link' : 'Edit public link'
   const canSave = description.trim().length > 0 && description.trim().length <= 1000
+  const canPinCurrentVersion = currentVersionId !== null
   const publicBase = useMemo(() => window.location.origin, [])
 
   function beginCreate() {
@@ -137,11 +138,14 @@ export default function PublicLinksModal({ workspaceId, graphId, currentVersionI
                   type="checkbox"
                   checked={pinCurrentVersion}
                   onChange={(e) => setPinCurrentVersion(e.target.checked)}
+                  disabled={!canPinCurrentVersion}
                 />
                 Pin to current workflow version
               </label>
               <p className="text-xs text-gray-500 mt-1">
-                {pinCurrentVersion
+                {!canPinCurrentVersion
+                  ? 'No named version is available yet. Save the draft as a version first.'
+                  : pinCurrentVersion
                   ? 'Stable preview: this link always runs the current saved version at publish time.'
                   : 'Dynamic preview: this link runs the latest saved version at trigger time.'}
               </p>

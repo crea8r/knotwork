@@ -189,6 +189,7 @@ async def fork_version(
 ) -> Graph:
     """Fork a version into a brand new independent workflow."""
     source_version = await db.get(GraphVersion, version_row_id)
+    source_graph = await db.get(Graph, source_graph_id)
     if source_version is None or source_version.graph_id != source_graph_id:
         raise ValueError("Version not found")
     if source_version.version_id is None:
@@ -197,6 +198,7 @@ async def fork_version(
     new_graph = Graph(
         workspace_id=workspace_id,
         name=new_workflow_name,
+        path=source_graph.path if source_graph else "",
         created_by=created_by,
     )
     db.add(new_graph)

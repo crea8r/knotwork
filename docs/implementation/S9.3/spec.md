@@ -1,142 +1,191 @@
-# Session 9.3 — Collaborative Run-Context + Notification System
+# Session 9.3 — Participant-Specific Event Delivery
 
 ## Goal
 
-Give agents and humans in a run a stable, explicit participant model — and give participants a reliable way to be reached outside the app when they are needed. Notification delivery is part of the participant model: knowing *who* to notify and *how* to reach them is the same problem as knowing who is in the run.
+Give runs and chat contexts a stable participant model, then route events to specific participants through their registered communication means instead of treating notifications as workspace-wide broadcast. In S9.3, the key shift is not "more notification channels"; it is moving from workspace-level alerting to participant-specific delivery.
+
+See also: `docs/implementation/S9.3/gameplan.md` for the execution plan, milestones, component-by-component breakdown, and testing plan.
 
 ## Context
 
-In S9, run execution is effectively a one-way flow: an agent escalates → any workspace member can respond. There is no model for *who* is participating in a given run, no way for an agent to target a specific human or agent with a question, and no safe way to involve an external client. Notifications exist in the codebase (email, Telegram, WhatsApp models from S6) but the channel registration, deliverability verification, and deep-link behavior have not been fully built or hardened.
+In S9, run execution is effectively a one-way flow: an agent escalates and any workspace member can respond. The current implementation has no explicit participant model behind run events and inbox items, and notification settings are effectively workspace-wide rather than participant-specific. OpenClaw plugin delivery already exists for agent task execution, but it is treated as a separate path rather than one communication mean among others. S9.3 should unify routing semantics without redesigning the plugin transport itself.
 
 ---
 
-## Part A — Collaborative Run-Context
+## Part A — Participant Model
 
 ### Participant identity
 
-- Workspace members (humans) have a stable `participant_id` tied to their workspace membership.
-- Workspace agents (registered agents) are addressable by their registered agent identity.
-- External clients can be added to a run as scoped participants — they receive a run-scoped token granting access only to their run context (no general workspace access).
+- Workspace members and registered agents are both first-class participants.
+- Each participant has a stable `participant_id`.
+- Participant identity is the routing primitive; "human" vs "agent" is descriptive metadata, not a separate delivery model.
 - Participant list is visible in run detail.
 
-### Agent addressing semantics
+### Addressing semantics
 
-- Agent can target a specific participant when escalating or requesting input — addressing must be explicit (`to: participant_id`).
+- Agents and system events can target a specific participant explicitly (`to: participant_id`).
 - Un-addressed escalations fall through to any available workspace member (current behavior preserved as default).
 - Addressed escalations appear in the targeted participant's inbox/notification, not globally.
 
-### Run timeline and inbox
+### Chat events and inbox
 
-- Targeted requests are visible in run timeline with participant attribution.
+- Events belong to a chat context such as a run, workflow channel, or agent main channel.
+- Event delivery is participant-specific.
+- Targeted requests are visible in the run timeline with participant attribution.
 - Targeted participant sees a dedicated inbox entry, not a generic escalation.
 - Replies are attributed to the exact participant and fed back into execution context.
 
-### External client flow
-
-- External client interaction is scoped to the run — they see only the question/context addressed to them.
-- External clients cannot browse workspace resources, other runs, or Handbook content.
-- Invite/access link is run-scoped and time-limited.
-
 ### Execution context integration
 
-- Human or client reply is injected into the agent's next prompt as attributed input.
+- Human or agent reply is injected into the agent's next prompt as attributed input.
 - Attribution is preserved in node input/output logs.
 
 ---
 
-## Part B — Notification System
+## Part B — Communication Means and Event Delivery
 
 ### Channel registration and validation
 
-Notification channels are per-user preferences. Three channels supported: **email**, **Telegram**, **WhatsApp**.
+Communication means are registered per participant, per event type. S9.3 supports three means:
+
+- **App** — always available in the Knotwork UI; default fallback
+- **Email** — optional participant-bound delivery
+- **OpenClaw plugin** — optional participant-bound delivery for registered agents
+
+The OpenClaw plugin is treated as a communication mean for routing purposes in S9.3. Its existing transport and task protocol remain unchanged in this session.
+
+### Event types
+
+Every delivered item is a chat event. Typical event types include:
+
+- `escalation_created`
+- `task_assigned`
+- `mentioned_message`
+- `run_failed`
+- `run_completed`
+
+Not every communication mean must register for every event type. This avoids treating the plugin as a special-case architecture while still allowing it to opt into only the event types it can handle.
 
 **Email**
 - Already registered via magic-link auth; email address is known.
 - Requires deliverability verification: on first notification setup, send a test email and prompt user to confirm receipt in the app.
 - Re-verify if email address changes.
 
-**Telegram**
-- User starts a conversation with the workspace Telegram bot.
-- Bot sends a 6-digit link code; user pastes it in Settings → Notifications to bind their chat ID.
-- Binding is confirmed by the bot sending an acknowledgement message back to the user.
-- Bot token is a workspace-level config (`TELEGRAM_BOT_TOKEN`).
-
-**WhatsApp**
-- User enters their WhatsApp number in Settings → Notifications.
-- System sends a verification message via Business API with a 6-digit code.
-- User enters the code in the app to confirm the number is reachable.
-- WhatsApp Business API credentials are workspace-level config.
+**OpenClaw plugin**
+- Already paired to a registered agent through the current OpenClaw integration flow.
+- Receives only the event types the participant has registered the plugin for.
+- Is reclassified as one delivery mean in the participant routing model, but its handshake/task execution behavior is not redesigned in S9.3.
 
 ### Permission testing
 
 Channel registration is not complete until the user confirms receipt of a test message. This is more than config validation — it verifies:
-- Credentials are correct (API keys, bot tokens)
+- Credentials are correct
 - The message was actually delivered
-- The deep link in the test message is clickable and routes correctly
+- The deep link or app routing path behaves correctly for that communication mean
 
 Each registered channel shows: last test result, last test date, and a "Send test" button available at any time. A channel with a failed or never-tested status shows a warning in Settings and in the notification preference selector.
 
-### What triggers a notification
+### Participant event preferences
 
-Notifications are sent for events that require human attention:
+Participants register communication means per event type, not per run. Example:
+
+- a human participant enables `app` and `email` for `mentioned_message`
+- an agent participant enables `openclaw_plugin` for `task_assigned`
+- a participant disables all non-app delivery for `run_completed`
+
+### What triggers delivery
+
+Events are delivered when they require participant attention:
 - Escalation created and addressed to a specific participant
 - Escalation created un-addressed (sent to all workspace members with escalation permission)
+- Task assigned to an agent participant
+- Mentioned message in a chat context
 - Run completed (opt-in per workflow)
 - Run failed
-- External client invited to a run (sent to the client's email)
-
-Notification preference is per-user per-event-type, not per-run. Users set: "send me escalation notifications via Telegram; send me run-completed via email."
 
 ### Deep links — localhost vs deployed
 
-Every notification includes a deep link to the specific run and escalation so the user can act immediately.
+Every delivered event includes enough context for the participant to act immediately. For app and email, this includes a deep link to the specific run or chat context.
 
 **Deployed installs:** link base is the server's public URL. Always works from any device.
 
-**Localhost installs:** `http://localhost:PORT` links work from the same machine (browser on desktop) but are dead from a mobile phone — which is where Telegram and WhatsApp notifications are read.
+**Localhost installs:** `http://localhost:PORT` links work from the same machine but may be unreachable from elsewhere.
 
 Behavior:
 - Backend reads `PUBLIC_BASE_URL` env var to construct all notification links.
 - If `PUBLIC_BASE_URL` is unset on a localhost install, the system warns in Settings → Notifications: "Links in notifications will only work from this machine. Set `PUBLIC_BASE_URL` to a reachable address to fix this."
-- The warning is also shown inline when registering a Telegram or WhatsApp channel on a localhost install.
+- The warning is also shown inline when registering email delivery on a localhost install.
 - Notification messages still send even without `PUBLIC_BASE_URL`; they include the full context (run name, escalation question) so the user knows what they are returning to — the link is just not clickable from mobile.
 
-### Notification content
+### Event content
 
-Each notification must carry enough context that the user understands the situation before opening the app:
+Each delivered event must carry enough context that the participant understands the situation before opening the app:
 - Run name and workflow name
 - Which node escalated (if applicable)
-- The escalation question or a summary (not truncated beyond readability)
+- The event-specific question, task, or summary
 - Who asked / who is addressed
-- The deep link with the escalation highlighted
-
-External client notifications (email only) include only what is addressed to them — no workspace or run metadata they were not explicitly shown.
+- The deep link with the relevant event highlighted where applicable
 
 ---
 
 ## Out of Scope
 
+- External clients and run-scoped guest access
+- Telegram delivery
+- WhatsApp delivery
 - Push notifications (browser or mobile app) — Phase 2.
 - Slack integration — representatives use Slack via their own tools; Knotwork does not manage Slack.
 - Notification scheduling or digest mode — Phase 2.
 - Channel permission scoping — Phase 2.
+- Plugin/MCP separation of concerns — deferred to S12.
 
 ---
 
 ## Acceptance Criteria
 
-1. Agent can explicitly address a workspace human, workspace agent, or external client when escalating.
+1. Agent can explicitly address a workspace human or workspace agent when escalating.
 2. Addressed escalation appears in the targeted participant's inbox, not as a global run escalation.
-3. External client can answer a question via a run-scoped link without gaining workspace/backend access.
-4. Participant replies are attributed in the run timeline and fed back into the agent's execution context.
-5. Un-addressed escalations continue to work as before (any workspace member can respond).
-6. Participant list is visible in run detail.
-7. Email channel can be verified end-to-end via a test message with user confirmation.
-8. Telegram channel can be registered via the bot link-code flow; bot sends acknowledgement on success.
-9. WhatsApp channel can be registered via number + 6-digit verification code.
-10. Each registered channel shows last test result and a "Send test" button; unverified channels show a warning.
-11. Notifications fire for: addressed escalation, un-addressed escalation, run failed, run completed (opt-in), external client invite.
-12. Notification content includes run name, workflow name, escalation question, and deep link.
-13. Deep links route to the correct run with the escalation highlighted.
-14. On localhost installs without `PUBLIC_BASE_URL` set, Settings shows a clear warning that notification links will not work from mobile. The warning appears when registering Telegram or WhatsApp channels.
-15. On deployed installs with `PUBLIC_BASE_URL` set, notification links work correctly from any device including mobile.
+3. Participant replies are attributed in the run timeline and fed back into the agent's execution context.
+4. Un-addressed escalations continue to work as before (any workspace member can respond).
+5. Participant list is visible in run detail.
+6. Event delivery is participant-specific rather than workspace-wide.
+7. Participants can register communication means per event type.
+8. Supported communication means in S9.3 are app, email, and OpenClaw plugin.
+9. Email delivery can be verified end-to-end via a test message with user confirmation.
+10. OpenClaw plugin can be selected as a participant communication mean for supported event types without redesigning the current plugin protocol.
+11. Delivery fires for addressed escalation, un-addressed escalation, task assignment to plugin-backed agents, run failed, and run completed when enabled.
+12. Delivered event content includes run name, workflow name, event-specific summary, participant attribution, and deep link where applicable.
+13. Deep links route to the correct run or chat context with the relevant event highlighted.
+14. On localhost installs without `PUBLIC_BASE_URL` set, Settings shows a clear warning that external links may only work from the current machine.
+15. Telegram, WhatsApp, external client access, and plugin/MCP separation are explicitly deferred beyond S9.3.
+
+---
+
+## Implementation Shape
+
+S9.3 should be built as a routing-and-identity phase, not a transport redesign. The implementation should preserve the current OpenClaw plugin behavior while reclassifying plugin delivery as one participant-bound communication mean.
+
+### Recommended architecture
+
+- **Participant identity layer** — stable `participant_id` for workspace members and registered agents
+- **Event layer** — deliverable chat/run events such as `escalation_created`, `task_assigned`, `run_failed`, `run_completed`
+- **Recipient resolution layer** — resolves explicit target participants or fallback broadcast rules
+- **Delivery layer** — app inbox, email, OpenClaw plugin
+- **Delivery attempt logging** — records delivery status separately from the business event itself
+
+### Build constraints
+
+- Do not redesign plugin handshake, task protocol, or transport in S9.3.
+- Do not introduce external clients or run-scoped guest auth.
+- Do not make Telegram or WhatsApp block the phase.
+- Do not infer delivery preferences solely from participant type; store them explicitly.
+- Keep un-addressed escalation fallback behavior intact for backward compatibility.
+
+### Recommended milestone order
+
+1. Lock schema and API shape for participants, preferences, recipients, and delivery attempts.
+2. Build participant resolution and participant-specific inbox filtering.
+3. Add explicit recipient support for addressed escalations.
+4. Add participant communication preferences and delivery routing for app/email/plugin.
+5. Extend routing beyond escalations to selected system events (`task_assigned`, `run_failed`, `run_completed`).
+6. Harden fallback rules, delivery observability, and `PUBLIC_BASE_URL` warning behavior.

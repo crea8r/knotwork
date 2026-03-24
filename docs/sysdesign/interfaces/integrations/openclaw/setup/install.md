@@ -80,7 +80,8 @@ sequenceDiagram
         KB-->>Plugin: integration_secret
         Plugin->>FS: write ~/.openclaw/knotwork-bridge-state.json
         Note right of FS: pluginInstanceId + integrationSecret
-        Plugin->>Plugin: setInterval pollAndRun — poll loop started
+        Plugin->>Plugin: setInterval timer loop started
+        Note over Plugin: each tick updates plugin liveness/capacity via pull-task and may spawn `knotwork.execute_task`
     end
 
     rect rgb(248, 240, 255)

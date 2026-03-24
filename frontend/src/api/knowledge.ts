@@ -20,6 +20,8 @@ export interface KnowledgeFile {
   current_version_id: string | null
   health_score: number | null
   health_updated_at: string | null
+  file_type: string        // 'md' | 'pdf' | 'docx' | 'image' | 'other'
+  is_editable: boolean
   created_at: string
   updated_at: string
 }
@@ -57,9 +59,7 @@ export function useSearchKnowledgeFiles(query: string) {
   return useQuery<KnowledgeFile[]>({
     queryKey: ['knowledge-search', workspaceId, q],
     queryFn: () =>
-      api
-        .get(`/workspaces/${workspaceId}/knowledge/search`, { params: { q } })
-        .then((r) => r.data),
+      api.get(`/workspaces/${workspaceId}/knowledge/search`, { params: { q } }).then(r => r.data),
     enabled: q.length > 0,
   })
 }
@@ -104,13 +104,27 @@ export function useKnowledgeSuggestions(path: string | null) {
   })
 }
 
+/** Build a URL that serves the raw binary file for a given path. */
+export function useRawFileUrl(path: string | null): string | null {
+  const workspaceId = useWorkspaceId()
+  if (!path) return null
+  return `${API_BASE_URL}/workspaces/${workspaceId}/knowledge/file/raw?path=${encodeURIComponent(path)}`
+}
+
+/** Build a URL that serves DOCX converted to HTML. */
+export function useDocxHtmlUrl(path: string | null): string | null {
+  const workspaceId = useWorkspaceId()
+  if (!path) return null
+  return `${API_BASE_URL}/workspaces/${workspaceId}/knowledge/file/html?path=${encodeURIComponent(path)}`
+}
+
 // ── Mutations ─────────────────────────────────────────────────────────────────
 
 export function useCreateKnowledgeFile() {
   const workspaceId = useWorkspaceId()
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (body: { path: string; title: string; content: string; change_summary?: string }) =>
+    mutationFn: (body: { path: string; title?: string; content: string; change_summary?: string }) =>
       api.post(`/workspaces/${workspaceId}/knowledge`, body).then(r => r.data),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['knowledge', workspaceId] }),
   })
@@ -121,9 +135,7 @@ export function useUpdateKnowledgeFile(path: string) {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: (body: { content: string; change_summary?: string }) =>
-      api
-        .put(`/workspaces/${workspaceId}/knowledge/file`, body, { params: { path } })
-        .then(r => r.data),
+      api.put(`/workspaces/${workspaceId}/knowledge/file`, body, { params: { path } }).then(r => r.data),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['knowledge', workspaceId, path] })
       qc.invalidateQueries({ queryKey: ['knowledge-history', workspaceId, path] })
@@ -132,12 +144,21 @@ export function useUpdateKnowledgeFile(path: string) {
   })
 }
 
+export function useRenameKnowledgeFile() {
+  const workspaceId = useWorkspaceId()
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ path, new_path }: { path: string; new_path: string }) =>
+      api.patch(`/workspaces/${workspaceId}/knowledge/file/rename`, { new_path }, { params: { path } }).then(r => r.data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['knowledge', workspaceId] }),
+  })
+}
+
 export function useSummarizeKnowledgeDiff(path: string) {
   const workspaceId = useWorkspaceId()
   return useMutation({
     mutationFn: (body: { content: string }) =>
-      api
-        .post(`/workspaces/${workspaceId}/knowledge/summarize-diff`, body, { params: { path } })
+      api.post(`/workspaces/${workspaceId}/knowledge/summarize-diff`, body, { params: { path } })
         .then(r => r.data as { summary: string }),
   })
 }
@@ -167,27 +188,40 @@ export function useUploadFile() {
       const form = new FormData()
       form.append('file', file)
       const params = folder ? `?folder=${encodeURIComponent(folder)}` : ''
-      // Use fetch (not axios) so the browser sets Content-Type: multipart/form-data
-      // with the correct boundary. Axios's instance-level Content-Type: application/json
-      // default overrides FormData detection and causes a 422 from FastAPI.
       const token = localStorage.getItem('knotwork_token')
       const headers: HeadersInit = {}
       if (token) headers['Authorization'] = `Bearer ${token}`
       const res = await fetch(`${API_BASE_URL}/workspaces/${workspaceId}/handbook/upload${params}`, {
-        method: 'POST',
-        body: form,
-        headers,
+        method: 'POST', body: form, headers,
       })
-      if (!res.ok) {
-        const detail = await res.text().catch(() => res.statusText)
-        throw new Error(detail)
-      }
+      if (!res.ok) throw new Error(await res.text().catch(() => res.statusText))
       return res.json() as Promise<UploadPreview>
     },
   })
 }
 
-// ── Handbook proposals (S7) ───────────────────────────────────────────────────
+export function useUploadRawFile() {
+  const workspaceId = useWorkspaceId()
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async ({ file, folder }: { file: File; folder?: string }) => {
+      const form = new FormData()
+      form.append('file', file)
+      const params = folder ? `?folder=${encodeURIComponent(folder)}` : ''
+      const token = localStorage.getItem('knotwork_token')
+      const headers: HeadersInit = {}
+      if (token) headers['Authorization'] = `Bearer ${token}`
+      const res = await fetch(`${API_BASE_URL}/workspaces/${workspaceId}/handbook/upload-raw${params}`, {
+        method: 'POST', body: form, headers,
+      })
+      if (!res.ok) throw new Error(await res.text().catch(() => res.statusText))
+      return res.json() as Promise<KnowledgeFile>
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['knowledge', workspaceId] }),
+  })
+}
+
+// ── Handbook proposals ────────────────────────────────────────────────────────
 
 export interface HandbookProposal {
   id: string
@@ -235,9 +269,7 @@ export function useRestoreKnowledgeFile(path: string) {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: (version_id: string) =>
-      api
-        .post(`/workspaces/${workspaceId}/knowledge/restore`, { version_id }, { params: { path } })
-        .then(r => r.data),
+      api.post(`/workspaces/${workspaceId}/knowledge/restore`, { version_id }, { params: { path } }).then(r => r.data),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['knowledge', workspaceId, path] })
       qc.invalidateQueries({ queryKey: ['knowledge-history', workspaceId, path] })

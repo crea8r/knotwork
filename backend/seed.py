@@ -73,7 +73,7 @@ async def main() -> None:
         )
         graph = result.scalar_one_or_none()
         if graph is None:
-            graph = Graph(workspace_id=ws.id, name="Demo — Analyse & Review")
+            graph = Graph(workspace_id=ws.id, name="Demo — Analyse & Review", path="building")
             db.add(graph)
             await db.flush()
             version = GraphVersion(graph_id=graph.id, definition=DEMO_GRAPH)

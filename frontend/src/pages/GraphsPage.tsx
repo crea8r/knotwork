@@ -118,13 +118,13 @@ export default function GraphsPage() {
   }
 
   return (
-    <div className="p-8 max-w-4xl mx-auto">
+    <div className="p-4 md:p-8 max-w-4xl mx-auto">
       <PageHeader
         title="Workflows"
         subtitle="Build and edit agent workflows."
         actions={
-          <Btn size="sm" onClick={() => setShowModal(true)}>
-            <Plus size={14} /> New Graph
+          <Btn size="sm" onClick={() => setShowModal(true)} title="New Graph">
+            <Plus size={14} /><span className="hidden md:inline"> New Graph</span>
           </Btn>
         }
       />
@@ -169,7 +169,9 @@ export default function GraphsPage() {
                     title={(g.run_count ?? 0) > 0 ? 'Archive workflow' : 'Delete workflow'}
                   >
                     {(g.run_count ?? 0) > 0 ? <Archive size={12} /> : <Trash2 size={12} />}
-                    {(g.run_count ?? 0) > 0 ? 'Archive' : 'Delete'}
+                    <span className="hidden md:inline">
+                      {(g.run_count ?? 0) > 0 ? ' Archive' : ' Delete'}
+                    </span>
                   </Btn>
                 </div>
               </div>

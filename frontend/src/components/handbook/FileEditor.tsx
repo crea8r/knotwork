@@ -19,6 +19,7 @@ import Badge from '@/components/shared/Badge'
 import Spinner from '@/components/shared/Spinner'
 import MarkdownViewer from '@/components/shared/MarkdownViewer'
 import MarkdownWysiwygEditor from '@/components/handbook/MarkdownWysiwygEditor'
+import FileViewer from '@/components/handbook/FileViewer'
 
 type Tab = 'editor' | 'history' | 'health'
 
@@ -117,6 +118,11 @@ export default function FileEditor({ path }: Props) {
   if (error) return <div className="p-6 text-red-500 text-sm">File not found.</div>
   if (!file) return null
 
+  // Binary view-only files (PDF, DOCX, image) bypass the editor entirely
+  if (!file.is_editable) {
+    return <FileViewer path={file.path} file_type={file.file_type} title={file.title} />
+  }
+
   const tokenCount = file.raw_token_count
   const tokenWarn = tokenCount < 300 || tokenCount > 6000
 
@@ -124,12 +130,23 @@ export default function FileEditor({ path }: Props) {
     <div className="flex flex-col h-full">
       {/* File header */}
       <div className="px-5 pt-5 pb-3 border-b">
-        <div className="flex items-start justify-between">
-          <div>
-            <h2 className="font-semibold text-gray-900">{file.title}</h2>
-            <p className="font-mono text-xs text-gray-400 mt-0.5">{file.path}</p>
+        <div className="flex items-center justify-between gap-4 mt-1">
+          <div className="flex gap-4 text-sm">
+            {(['editor', 'history', 'health'] as Tab[]).map((t) => (
+              <button
+                key={t}
+                onClick={() => setTab(t)}
+                className={`pb-1.5 capitalize transition-colors ${
+                  tab === t
+                    ? 'border-b-2 border-brand-500 text-brand-600 font-medium'
+                    : 'text-gray-500 hover:text-gray-700'
+                }`}
+              >
+                {t === 'health' ? 'Health' : t}
+              </button>
+            ))}
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-shrink-0">
             <span className={`text-xs ${tokenWarn ? 'text-amber-600 font-medium' : 'text-gray-400'}`}>
               {tokenCount} tok{tokenWarn ? ' ⚠' : ''}
             </span>
@@ -152,23 +169,6 @@ export default function FileEditor({ path }: Props) {
             )}
           </div>
         </div>
-
-        {/* Tabs */}
-        <div className="flex gap-4 mt-3 text-sm">
-          {(['editor', 'history', 'health'] as Tab[]).map((t) => (
-            <button
-              key={t}
-              onClick={() => setTab(t)}
-              className={`pb-1.5 capitalize transition-colors ${
-                tab === t
-                  ? 'border-b-2 border-brand-500 text-brand-600 font-medium'
-                  : 'text-gray-500 hover:text-gray-700'
-              }`}
-            >
-              {t === 'health' ? 'Health' : t}
-            </button>
-          ))}
-        </div>
       </div>
 
       {/* Panel content */}
@@ -177,7 +177,7 @@ export default function FileEditor({ path }: Props) {
           <div className="space-y-3">
             {mode === 'view' ? (
               <div className="border border-gray-200 rounded-lg p-4 bg-white">
-                <MarkdownViewer content={file.content} maxHeight="32rem" />
+                <MarkdownViewer content={file.content} />
               </div>
             ) : (
               <>

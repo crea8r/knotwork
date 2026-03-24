@@ -23,9 +23,21 @@ export function useGraph(workspaceId: string, graphId: string) {
 export function useCreateGraph(workspaceId: string) {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (data: { name: string; description?: string }) =>
+    mutationFn: (data: { name: string; path?: string; description?: string }) =>
       api.post<Graph>(`/workspaces/${workspaceId}/graphs`, data).then((r) => r.data),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['graphs', workspaceId] }),
+  })
+}
+
+export function useUpdateGraph(workspaceId: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ graphId, ...data }: { graphId: string; name?: string; path?: string; description?: string; status?: string; default_model?: string | null }) =>
+      api.patch<Graph>(`/workspaces/${workspaceId}/graphs/${graphId}`, data).then((r) => r.data),
+    onSuccess: (_, { graphId }) => {
+      qc.invalidateQueries({ queryKey: ['graphs', workspaceId] })
+      qc.invalidateQueries({ queryKey: ['graph', graphId] })
+    },
   })
 }
 
@@ -173,6 +185,20 @@ export function useArchiveVersion(workspaceId: string, graphId: string) {
       api
         .post<GraphVersion>(
           `/workspaces/${workspaceId}/graphs/${graphId}/versions/${versionRowId}/archive`,
+        )
+        .then((r) => r.data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['graph-versions', graphId] }),
+  })
+}
+
+/** S9.1: Unarchive a version. */
+export function useUnarchiveVersion(workspaceId: string, graphId: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (versionRowId: string) =>
+      api
+        .post<GraphVersion>(
+          `/workspaces/${workspaceId}/graphs/${graphId}/versions/${versionRowId}/unarchive`,
         )
         .then((r) => r.data),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['graph-versions', graphId] }),

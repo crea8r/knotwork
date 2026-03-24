@@ -42,6 +42,7 @@ class RunState(TypedDict):
     messages: Annotated[list, add]
     current_output: str | None
     node_outputs: Annotated[dict, _merge_outputs]  # {node_id: output_text}
+    node_visit_counts: Annotated[dict, _merge_outputs]  # {node_id: visit_count}
     next_branch: str | None                         # routing hint from agent
 
 

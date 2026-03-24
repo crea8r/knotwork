@@ -1,6 +1,6 @@
 # Activity 02 — Plugin Startup
 
-Happens every time OpenClaw starts or loads the plugin. The plugin must load persisted state, determine whether it is the primary runtime (lease), optionally auto-handshake, then start the background poll loop.
+Happens every time OpenClaw starts or loads the plugin. The plugin must load persisted state, determine whether it is the primary runtime (lease), optionally auto-handshake, then start the background timer loop.
 
 Key constraint: **only one process runs the poll loop at a time**. Multiple OpenClaw contexts (CLI calls, plugin-list commands) all invoke `activate()`, but only the `runtime` context acquires the lease and starts background work.
 
@@ -75,9 +75,9 @@ sequenceDiagram
         end
 
         Plugin->>Plugin: setInterval every taskPollIntervalMs
-        Note over Plugin: each tick is a no-op until both backgroundWorkerEnabled=true AND integrationSecret≠null<br/>polling activates automatically once runHandshake sets the secret (no separate trigger needed)
+        Note over Plugin: each tick is a no-op until both backgroundWorkerEnabled=true AND integrationSecret≠null<br/>each active tick reports capacity to Knotwork and may claim one task for subprocess execution
         Plugin->>Plugin: register SIGTERM / SIGINT / exit handlers
-        Note over Plugin: plugin running — polling begins only after successful handshake
+        Note over Plugin: plugin running — timer loop begins only after successful handshake
     end
 ```
 

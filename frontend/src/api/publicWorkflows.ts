@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import type { RunAttachmentRef } from '@/api/runs'
 import type {
   PublicRunTriggerOut,
   PublicRunView,
@@ -68,8 +69,23 @@ export function usePublicWorkflow(token: string) {
 
 export function useTriggerPublicRun(token: string) {
   return useMutation({
-    mutationFn: (payload: { input: Record<string, unknown>; email?: string }) =>
+    mutationFn: (payload: { input: Record<string, unknown>; email?: string; context_files?: RunAttachmentRef[] }) =>
       api.post<PublicRunTriggerOut>(`/public/workflows/${token}/trigger`, payload).then((r) => r.data),
+  })
+}
+
+export function useUploadPublicWorkflowAttachment(token: string) {
+  return useMutation({
+    mutationFn: async (file: File) => {
+      const form = new FormData()
+      form.append('file', file)
+      const { data } = await api.post<RunAttachmentRef>(
+        `/public/workflows/${token}/attachments`,
+        form,
+        { headers: { 'Content-Type': 'multipart/form-data' } },
+      )
+      return data
+    },
   })
 }
 

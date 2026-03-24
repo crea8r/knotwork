@@ -49,6 +49,8 @@ from knotwork.auth.router import router as auth_router
 from knotwork.escalations.router import router as escalations_router
 from knotwork.graphs.router import router as graphs_router
 from knotwork.knowledge.router import router as knowledge_router
+from knotwork.knowledge.folder_router import router as knowledge_folder_router
+from knotwork.knowledge.upload_router import router as knowledge_upload_router
 from knotwork.knowledge.proposals_router import router as proposals_router
 from knotwork.ratings.router import router as ratings_router
 from knotwork.runs.router import router as runs_router
@@ -138,6 +140,8 @@ def create_app() -> FastAPI:
     app.include_router(graphs_router, prefix=prefix)
     app.include_router(runs_router, prefix=prefix)
     app.include_router(knowledge_router, prefix=prefix)
+    app.include_router(knowledge_folder_router, prefix=prefix)
+    app.include_router(knowledge_upload_router, prefix=prefix)
     app.include_router(proposals_router, prefix=prefix)
     app.include_router(tools_router, prefix=prefix)
     app.include_router(notifications_router, prefix=prefix)

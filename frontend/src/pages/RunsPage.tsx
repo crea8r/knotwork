@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Trash2, Pencil, Check, Play } from 'lucide-react'
+import { Trash2, Pencil, Check, Play, ChevronRight } from 'lucide-react'
 import axios from 'axios'
 import { useRuns, useDeleteRun, useRenameRun } from '@/api/runs'
 import { useGraphs } from '@/api/graphs'
@@ -94,6 +94,55 @@ function InlineName({ run, workspaceId }: { run: Run; workspaceId: string }) {
   )
 }
 
+function RunCard({
+  run,
+  graphName,
+  onDelete,
+  deleteIsPending,
+}: {
+  run: Run
+  graphName: string
+  onDelete: (e: React.MouseEvent, runId: string) => void
+  deleteIsPending: boolean
+}) {
+  const navigate = useNavigate()
+  return (
+    <div
+      onClick={() => navigate(`/runs/${run.id}`)}
+      className="bg-white rounded-xl border border-gray-200 px-4 py-3 cursor-pointer hover:border-gray-300 hover:bg-gray-50 transition-colors"
+    >
+      <div className="flex items-center gap-2">
+        <StatusBadge status={run.status} />
+        {isDraftRun(run) && <DraftRunBadge />}
+        <span className="flex-1 text-sm font-medium text-gray-800 truncate min-w-0">
+          {graphName || <span className="text-gray-400">—</span>}
+        </span>
+        {ROW_DELETE_STATUSES.has(run.status) && (
+          <button
+            onClick={(e) => onDelete(e, run.id)}
+            disabled={deleteIsPending}
+            title="Delete run"
+            className="p-1 rounded text-red-400 hover:text-red-600 disabled:opacity-40 flex-shrink-0"
+          >
+            <Trash2 size={14} />
+          </button>
+        )}
+        <ChevronRight size={14} className="text-gray-300 flex-shrink-0" />
+      </div>
+      <p className="text-xs text-gray-500 mt-1.5 truncate">{inputSummary(run.input)}</p>
+      <p className="text-[11px] text-gray-400 mt-1">
+        {run.started_at ? timeAgo(run.started_at) : '—'}
+        {' · '}
+        {duration(run.created_at, run.completed_at)}
+        {run.total_tokens != null && ` · ${run.total_tokens.toLocaleString()} tok`}
+      </p>
+      {run.status === 'failed' && run.error && (
+        <p className="text-[11px] text-red-500 mt-1 truncate" title={run.error}>{run.error}</p>
+      )}
+    </div>
+  )
+}
+
 export default function RunsPage() {
   const navigate = useNavigate()
   const workspaceId = useAuthStore((s) => s.workspaceId) ?? DEV_WORKSPACE
@@ -161,16 +210,17 @@ export default function RunsPage() {
   }
 
   return (
-    <div className="p-8 max-w-7xl mx-auto">
+    <div className="p-4 md:p-8 max-w-7xl mx-auto">
       <PageHeader
         title="Runs"
         actions={(
           <button
             onClick={() => setShowNewRun(true)}
+            title="New run"
             className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-brand-600 text-white text-sm"
           >
             <Play size={14} />
-            New run
+            <span className="hidden md:inline">New run</span>
           </button>
         )}
       />
@@ -210,86 +260,102 @@ export default function RunsPage() {
       ) : filtered.length === 0 ? (
         <EmptyState heading="No runs found" subtext="Trigger a graph from the Designer to see runs here." />
       ) : (
-        <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="text-xs text-gray-500 uppercase border-b bg-gray-50">
-                <th className="text-left px-3 py-3">Name / ID</th>
-                <th className="text-left px-3 py-3">Graph</th>
-                <th className="text-left px-3 py-3">Status</th>
-                <th className="text-left px-3 py-3">Input</th>
-                <th className="text-left px-3 py-3">Output</th>
-                <th className="text-left px-3 py-3">Tokens</th>
-                <th className="text-left px-3 py-3">Started</th>
-                <th className="text-left px-3 py-3">Duration</th>
-                <th className="px-3 py-3"></th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-100">
-              {visibleRuns.map((run) => (
-                <tr
-                  key={run.id}
-                  onClick={() => navigate(`/runs/${run.id}`)}
-                  className="hover:bg-gray-50 cursor-pointer"
-                >
-                  <td className="px-3 py-2">
-                    <InlineName run={run} workspaceId={workspaceId} />
-                    <p className="font-mono text-[10px] text-gray-300">{run.id.slice(0, 8)}…</p>
-                  </td>
-                  <td className="px-3 py-2 text-xs text-gray-700">
-                    {graphNameById[run.graph_id] ?? <span className="text-gray-400">—</span>}
-                  </td>
-                  <td className="px-3 py-2">
-                    <div className="flex items-center gap-1.5 flex-wrap">
-                      <StatusBadge status={run.status} />
-                      {isDraftRun(run) && <DraftRunBadge />}
-                      {run.needs_attention && (
-                        <span className="text-[10px] bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded-full font-medium">
-                          ⚠ Review
-                        </span>
-                      )}
-                    </div>
-                    {run.status === 'failed' && run.error && (
-                      <p className="text-[10px] text-red-500 mt-0.5 max-w-[180px] truncate" title={run.error}>
-                        {run.error}
-                      </p>
-                    )}
-                  </td>
-                  <td className="px-3 py-2 text-xs text-gray-500 max-w-[140px] truncate">
-                    {inputSummary(run.input)}
-                  </td>
-                  <td className="px-3 py-2 text-xs text-gray-500 max-w-[180px] truncate">
-                    {run.output_summary
-                      ? run.output_summary
-                      : <span className="text-gray-300">—</span>}
-                  </td>
-                  <td className="px-3 py-2 text-xs text-gray-400">
-                    {run.total_tokens != null ? run.total_tokens.toLocaleString() : '—'}
-                  </td>
-                  <td className="px-3 py-2 text-xs text-gray-500">
-                    {run.started_at ? timeAgo(run.started_at) : '—'}
-                  </td>
-                  <td className="px-3 py-2 text-xs text-gray-500">
-                    {duration(run.created_at, run.completed_at)}
-                  </td>
-                  <td className="px-3 py-2 text-right">
-                    {ROW_DELETE_STATUSES.has(run.status) && (
-                      <button
-                        onClick={(e) => handleDelete(e, run.id)}
-                        disabled={deleteRun.isPending}
-                        className="inline-flex items-center gap-1 text-xs text-red-600 hover:text-red-700 p-1 rounded disabled:opacity-40"
-                        title="Delete run"
-                      >
-                        <Trash2 size={14} />
-                        Delete
-                      </button>
-                    )}
-                  </td>
+        <>
+          {/* Desktop table */}
+          <div className="hidden md:block bg-white rounded-xl border border-gray-200 overflow-hidden">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-xs text-gray-500 uppercase border-b bg-gray-50">
+                  <th className="text-left px-3 py-3">Name / ID</th>
+                  <th className="text-left px-3 py-3">Graph</th>
+                  <th className="text-left px-3 py-3">Status</th>
+                  <th className="text-left px-3 py-3">Input</th>
+                  <th className="text-left px-3 py-3">Output</th>
+                  <th className="text-left px-3 py-3">Tokens</th>
+                  <th className="text-left px-3 py-3">Started</th>
+                  <th className="text-left px-3 py-3">Duration</th>
+                  <th className="px-3 py-3"></th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {visibleRuns.map((run) => (
+                  <tr
+                    key={run.id}
+                    onClick={() => navigate(`/runs/${run.id}`)}
+                    className="hover:bg-gray-50 cursor-pointer"
+                  >
+                    <td className="px-3 py-2">
+                      <InlineName run={run} workspaceId={workspaceId} />
+                      <p className="font-mono text-[10px] text-gray-300">{run.id.slice(0, 8)}…</p>
+                    </td>
+                    <td className="px-3 py-2 text-xs text-gray-700">
+                      {graphNameById[run.graph_id] ?? <span className="text-gray-400">—</span>}
+                    </td>
+                    <td className="px-3 py-2">
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <StatusBadge status={run.status} />
+                        {isDraftRun(run) && <DraftRunBadge />}
+                        {run.needs_attention && (
+                          <span className="text-[10px] bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded-full font-medium">
+                            ⚠ Review
+                          </span>
+                        )}
+                      </div>
+                      {run.status === 'failed' && run.error && (
+                        <p className="text-[10px] text-red-500 mt-0.5 max-w-[180px] truncate" title={run.error}>
+                          {run.error}
+                        </p>
+                      )}
+                    </td>
+                    <td className="px-3 py-2 text-xs text-gray-500 max-w-[140px] truncate">
+                      {inputSummary(run.input)}
+                    </td>
+                    <td className="px-3 py-2 text-xs text-gray-500 max-w-[180px] truncate">
+                      {run.output_summary
+                        ? run.output_summary
+                        : <span className="text-gray-300">—</span>}
+                    </td>
+                    <td className="px-3 py-2 text-xs text-gray-400">
+                      {run.total_tokens != null ? run.total_tokens.toLocaleString() : '—'}
+                    </td>
+                    <td className="px-3 py-2 text-xs text-gray-500">
+                      {run.started_at ? timeAgo(run.started_at) : '—'}
+                    </td>
+                    <td className="px-3 py-2 text-xs text-gray-500">
+                      {duration(run.created_at, run.completed_at)}
+                    </td>
+                    <td className="px-3 py-2 text-right">
+                      {ROW_DELETE_STATUSES.has(run.status) && (
+                        <button
+                          onClick={(e) => handleDelete(e, run.id)}
+                          disabled={deleteRun.isPending}
+                          className="inline-flex items-center gap-1 text-xs text-red-600 hover:text-red-700 p-1 rounded disabled:opacity-40"
+                          title="Delete run"
+                        >
+                          <Trash2 size={14} />
+                          Delete
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Mobile card list */}
+          <div className="md:hidden space-y-2">
+            {visibleRuns.map((run) => (
+              <RunCard
+                key={run.id}
+                run={run}
+                graphName={graphNameById[run.graph_id] ?? ''}
+                onDelete={handleDelete}
+                deleteIsPending={deleteRun.isPending}
+              />
+            ))}
+          </div>
+        </>
       )}
 
       {!isLoading && filtered.length > PAGE_SIZE && (

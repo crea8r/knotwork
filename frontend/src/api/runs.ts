@@ -106,7 +106,12 @@ export function useRunChatMessages(
 
 export function useTriggerRun(workspaceId: string, graphId: string) {
   return useMutation({
-    mutationFn: (data: { input: Record<string, unknown>; name?: string; context_files?: RunAttachmentRef[] }) =>
+    mutationFn: (data: {
+      input: Record<string, unknown>
+      name?: string
+      context_files?: RunAttachmentRef[]
+      graph_version_id?: string
+    }) =>
       api
         .post<Run>(`/workspaces/${workspaceId}/graphs/${graphId}/runs`, data)
         .then((r) => r.data),
@@ -115,12 +120,19 @@ export function useTriggerRun(workspaceId: string, graphId: string) {
 
 export function useTriggerRunAny(workspaceId: string) {
   return useMutation({
-    mutationFn: (data: { graphId: string; input: Record<string, unknown>; name?: string; context_files?: RunAttachmentRef[] }) =>
+    mutationFn: (data: {
+      graphId: string
+      input: Record<string, unknown>
+      name?: string
+      context_files?: RunAttachmentRef[]
+      graph_version_id?: string
+    }) =>
       api
         .post<Run>(`/workspaces/${workspaceId}/graphs/${data.graphId}/runs`, {
           input: data.input,
           name: data.name,
           context_files: data.context_files ?? [],
+          graph_version_id: data.graph_version_id,
         })
         .then((r) => r.data),
   })

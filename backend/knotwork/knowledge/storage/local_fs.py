@@ -2,11 +2,9 @@
 LocalFSAdapter: filesystem-backed storage for development.
 
 Layout:
-  {root}/{workspace_id}/{path}             — current file content
+  {root}/{workspace_id}/{path}             — current text content (md or agent view)
   {root}/{workspace_id}/{path}.meta.json   — {"deleted": bool, "versions": [...]}
-
-Each version entry stores content inline (files are markdown — small).
-Soft-delete sets meta["deleted"] = True; bytes are retained.
+  {root}/{workspace_id}/._raw/{path}       — binary files (PDF, DOCX, images)
 """
 
 from __future__ import annotations
@@ -20,6 +18,8 @@ import aiofiles
 
 from knotwork.knowledge.storage.adapter import FileContent, FileVersion, StorageAdapter
 
+_INTERNAL_PREFIXES = ("._raw/", "._raw\\")
+
 
 class LocalFSAdapter(StorageAdapter):
     def __init__(self, root: str | Path) -> None:
@@ -30,6 +30,9 @@ class LocalFSAdapter(StorageAdapter):
 
     def _meta_path(self, workspace_id: str, path: str) -> Path:
         return self.root / workspace_id / (path + ".meta.json")
+
+    def _raw_path(self, workspace_id: str, path: str) -> Path:
+        return self.root / workspace_id / "._raw" / path
 
     async def _read_meta(self, workspace_id: str, path: str) -> dict:
         try:
@@ -95,8 +98,15 @@ class LocalFSAdapter(StorageAdapter):
         if not base.exists():
             return []
         result = []
-        for p in base.rglob("*.md"):
-            rel = str(p.relative_to(self.root / workspace_id))
+        for p in base.rglob("*"):
+            if p.is_dir():
+                continue
+            rel = str(p.relative_to(self.root / workspace_id)).replace("\\", "/")
+            # Skip internal dirs and meta sidecars
+            if any(rel.startswith(pfx) for pfx in ("._raw/", "._sys/")):
+                continue
+            if rel.endswith(".meta.json"):
+                continue
             meta = await self._read_meta(workspace_id, rel)
             if not meta.get("deleted"):
                 result.append(rel)
@@ -127,3 +137,38 @@ class LocalFSAdapter(StorageAdapter):
     async def exists(self, workspace_id: str, path: str) -> bool:
         meta = await self._read_meta(workspace_id, path)
         return not meta.get("deleted") and self._file_path(workspace_id, path).exists()
+
+    async def move(self, workspace_id: str, old_path: str, new_path: str, moved_by: str) -> str:
+        """Copy content to new_path, soft-delete old_path, move raw binary if present."""
+        try:
+            fc = await self.read(workspace_id, old_path)
+            content = fc.content
+        except FileNotFoundError:
+            content = ""
+        new_version_id = await self.write(
+            workspace_id, new_path, content, moved_by, change_summary=f"Moved from {old_path}"
+        )
+        await self.delete(workspace_id, old_path)
+        # Move raw binary if exists
+        raw_old = self._raw_path(workspace_id, old_path)
+        if raw_old.exists():
+            raw_new = self._raw_path(workspace_id, new_path)
+            raw_new.parent.mkdir(parents=True, exist_ok=True)
+            raw_old.rename(raw_new)
+        return new_version_id
+
+    async def write_raw(self, workspace_id: str, path: str, content_bytes: bytes) -> None:
+        """Store binary bytes under ._raw/ subdirectory."""
+        rp = self._raw_path(workspace_id, path)
+        rp.parent.mkdir(parents=True, exist_ok=True)
+        async with aiofiles.open(rp, "wb") as f:
+            await f.write(content_bytes)
+
+    async def read_raw(self, workspace_id: str, path: str) -> bytes:
+        """Read binary bytes. Raises FileNotFoundError if not stored as raw."""
+        rp = self._raw_path(workspace_id, path)
+        try:
+            async with aiofiles.open(rp, "rb") as f:
+                return await f.read()
+        except FileNotFoundError:
+            raise FileNotFoundError(f"No raw binary for {path}")

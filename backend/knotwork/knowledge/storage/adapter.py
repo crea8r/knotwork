@@ -32,60 +32,63 @@ class StorageAdapter(ABC):
     """
     Abstract interface for knowledge file storage.
     Implementations: LocalFSAdapter, S3Adapter.
+
+    Text files (markdown, agent views): read/write/delete/history.
+    Binary files (PDF, DOCX, images): write_raw/read_raw.
+    Binary is stored separately from text; list() never returns raw paths.
     """
 
     @abstractmethod
     async def read(self, workspace_id: str, path: str) -> FileContent:
-        """
-        Read a file. Returns current version.
-        Raises FileNotFoundError if path does not exist.
-        """
+        """Read current version. Raises FileNotFoundError if missing/deleted."""
 
     @abstractmethod
-    async def read_version(
-        self, workspace_id: str, path: str, version_id: str
-    ) -> FileContent:
-        """Read a specific historical version of a file."""
+    async def read_version(self, workspace_id: str, path: str, version_id: str) -> FileContent:
+        """Read a specific historical version."""
 
     @abstractmethod
     async def write(
-        self,
-        workspace_id: str,
-        path: str,
-        content: str,
-        saved_by: str,
-        change_summary: str | None = None,
+        self, workspace_id: str, path: str, content: str,
+        saved_by: str, change_summary: str | None = None,
     ) -> str:
-        """
-        Write (create or update) a file. Returns the new version_id.
-        Every write creates a new version — old versions are never deleted.
-        """
+        """Write (create or update). Returns new version_id. Never deletes old versions."""
 
     @abstractmethod
     async def delete(self, workspace_id: str, path: str) -> None:
-        """Soft-delete a file. Versions are retained for audit purposes."""
+        """Soft-delete. Versions are retained for audit."""
 
     @abstractmethod
     async def list(self, workspace_id: str, folder: str = "") -> list[str]:
         """
-        List all file paths under a folder (recursive).
-        Returns relative paths from workspace root, e.g. ["legal/guide.md"].
+        List all file paths under folder (recursive).
+        Returns relative paths from workspace root e.g. ["legal/guide.md"].
+        Never returns internal paths (._raw/, ._sys/).
         """
 
     @abstractmethod
     async def history(self, workspace_id: str, path: str) -> list[FileVersion]:
-        """Return version history for a file, newest first."""
+        """Return version history newest first."""
 
     @abstractmethod
-    async def restore(
-        self, workspace_id: str, path: str, version_id: str, restored_by: str
-    ) -> str:
-        """
-        Restore a file to a previous version.
-        Creates a new version (does not overwrite history).
-        Returns the new version_id.
-        """
+    async def restore(self, workspace_id: str, path: str, version_id: str, restored_by: str) -> str:
+        """Restore to a previous version. Returns new version_id."""
 
     @abstractmethod
     async def exists(self, workspace_id: str, path: str) -> bool:
-        """Return True if the path exists and is not deleted."""
+        """True if path exists and is not deleted."""
+
+    @abstractmethod
+    async def move(self, workspace_id: str, old_path: str, new_path: str, moved_by: str) -> str:
+        """
+        Move/rename a file. Copies content + history to new_path, soft-deletes old_path.
+        Returns new version_id at new_path.
+        Also moves raw binary if it exists.
+        """
+
+    @abstractmethod
+    async def write_raw(self, workspace_id: str, path: str, content_bytes: bytes) -> None:
+        """Store binary bytes (PDF, DOCX, image) for a given logical path."""
+
+    @abstractmethod
+    async def read_raw(self, workspace_id: str, path: str) -> bytes:
+        """Read binary bytes for a given logical path. Raises FileNotFoundError."""

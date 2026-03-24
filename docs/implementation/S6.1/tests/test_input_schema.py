@@ -206,7 +206,7 @@ async def _create_graph_and_run(client, ws_id: str, status: str):
 
     from knotwork.runs.models import Run
     run = Run(
-        id=uuid.uuid4(),
+        id=str(uuid.uuid4()),
         workspace_id=uuid.UUID(ws_id),
         graph_id=uuid.UUID(graph_id),
         graph_version_id=uuid.UUID(version_id),

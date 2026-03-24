@@ -77,8 +77,10 @@ async def create_run(
     draft_definition = None
     draft_snapshot_at = None
 
-    if force_graph_version_id is not None:
-        version = await db.get(GraphVersion, force_graph_version_id)
+    selected_graph_version_id = force_graph_version_id or data.graph_version_id
+
+    if selected_graph_version_id is not None:
+        version = await db.get(GraphVersion, selected_graph_version_id)
         if version is None or version.graph_id != graph_id:
             raise ValueError("Invalid graph version")
         # If the forced record is a draft (no version_id), treat as draft run

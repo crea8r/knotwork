@@ -76,9 +76,27 @@ def _parse_client_ip(xff_header: str | None, fallback: str | None) -> str:
     return fallback or "unknown"
 
 
-def _validate_input_against_schema(input_schema: list[dict], payload: dict) -> None:
+def _has_meaningful_input_value(value: object) -> bool:
+    if value is None:
+        return False
+    if isinstance(value, str):
+        return bool(value.strip())
+    return True
+
+
+def _validate_input_against_schema(input_schema: list[dict], payload: dict, context_file_count: int = 0) -> None:
     if not input_schema:
         return
+    has_required_fields = any(bool(field.get("required", True)) for field in input_schema)
+    if not has_required_fields and context_file_count > 0:
+        meaningful_values = False
+        for field in input_schema:
+            name = str(field.get("name") or "").strip()
+            if name and _has_meaningful_input_value(payload.get(name)):
+                meaningful_values = True
+                break
+        if not meaningful_values:
+            return
     for field in input_schema:
         name = str(field.get("name") or "").strip()
         if not name:
@@ -90,7 +108,7 @@ def _validate_input_against_schema(input_schema: list[dict], payload: dict) -> N
         if required and (value is None or (isinstance(value, str) and not value.strip())):
             raise HTTPException(status_code=400, detail=f"Missing required field: {name}")
 
-        if value is None:
+        if value is None or (isinstance(value, str) and not value.strip()):
             continue
         if field_type in ("text", "textarea") and not isinstance(value, str):
             raise HTTPException(status_code=400, detail=f"Field '{name}' must be a string")
@@ -259,13 +277,18 @@ async def trigger_public_run(
     token: str,
     input_payload: dict,
     email: str | None,
+    context_files: list[dict],
     client_ip: str,
 ) -> PublicRunShare:
     await enforce_trigger_rate_limit(token, client_ip)
     link, version = await get_public_workflow_view(db, token)
     definition = version.definition if isinstance(version.definition, dict) else {}
     input_schema = definition.get("input_schema", []) if isinstance(definition, dict) else []
-    _validate_input_against_schema(input_schema if isinstance(input_schema, list) else [], input_payload)
+    _validate_input_against_schema(
+        input_schema if isinstance(input_schema, list) else [],
+        input_payload,
+        context_file_count=len(context_files or []),
+    )
 
     run = await create_run(
         db,
@@ -274,7 +297,7 @@ async def trigger_public_run(
         data=RunCreate(
             input=input_payload,
             trigger="public",
-            context_files=[],
+            context_files=context_files,
             name=None,
         ),
         created_by=None,

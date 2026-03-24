@@ -29,6 +29,21 @@ export default function DebugTimelinePanel({ debugTimeline }: Props) {
                         {entry.kind}
                       </span>
                       <span className="text-[11px] text-gray-700 truncate">{entry.nodeName} • {entry.label}</span>
+                      {entry.visitIndex && entry.maxVisits && (
+                        <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-violet-100 text-violet-700">
+                          Visit {entry.visitIndex} of {entry.maxVisits}
+                        </span>
+                      )}
+                      {entry.branchTarget && (
+                        <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-sky-100 text-sky-700">
+                          {entry.branchLabel ? `${entry.branchLabel} -> ${entry.branchTarget}` : `Branch -> ${entry.branchTarget}`}
+                        </span>
+                      )}
+                      {entry.loopBack && (
+                        <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700">
+                          Loop back
+                        </span>
+                      )}
                       {entry.heartbeatCount && entry.heartbeatCount > 1 && (
                         <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700">
                           merged x{entry.heartbeatCount}

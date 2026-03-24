@@ -42,6 +42,7 @@ export interface Graph {
   id: string
   workspace_id: string
   name: string
+  path: string
   description: string | null
   status: 'draft' | 'active' | 'archived'
   default_model: string | null

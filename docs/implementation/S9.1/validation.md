@@ -27,7 +27,7 @@ All 18 tests must pass before proceeding with manual validation.
 ## 3. "Save as version" creates a named version
 
 **Steps**: Promote the root draft by clicking the promote action.
-**Pass ✅**: A new entry appears in the version history panel. The version has a coolname (e.g. `swift-falcon-42`) and a 9-character version ID. The Draft badge disappears from the header.
+**Pass ✅**: A new entry appears in the version history panel. The version has a coolname (e.g. `swift-falcon-42`) and a 9-character version ID. The designer remains in draft-editing mode, now based on that version.
 **Fail ❌**: The version list is empty, the name is blank, or the version ID is not 9 characters.
 
 ---

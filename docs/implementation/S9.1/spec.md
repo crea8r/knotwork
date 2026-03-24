@@ -18,17 +18,17 @@ Version (immutable, explicit, ID-stable)
   └─ can be published (own permalink) and/or marked production
 ```
 
-Every workflow has exactly one active draft at a time. A draft can be based on any version or can be the very first edit of a new workflow. Drafts auto-save continuously and keep no history — only the latest draft state is stored.
+Every workflow can have a root draft plus per-version drafts. A draft can be based on a named version or can be the root draft for the workflow before any version exists. For any given parent version, there is at most one draft. Drafts auto-save continuously and keep no history — only the latest draft state for that draft slot is stored.
 
 ## Version Creation — Explicit Only
 
 Versions are created by three intentional actions, never automatically:
 
 1. **"Save as version" in the designer** — user decides they have reached a checkpoint worth keeping. This is the primary path for iterative development.
-2. **Publishing to a public page** — if the current draft is not already a version, publishing auto-snapshots it as a version at that moment.
+2. **Publishing to a public page** — if the selected draft is not already a version, publishing auto-snapshots it as a version at that moment.
 3. **Promoting a draft to production** — same auto-snapshot as publishing.
 
-**Test runs do not create versions.** Test runs always execute against the current draft. This means a designer can run the draft 50 times without polluting the version history. Draft runs are labeled clearly in run history and are not counted as production runs.
+**Test runs do not create versions.** Test runs always execute against the currently selected draft. This means a designer can run that draft 50 times without polluting the version history. Draft runs are labeled clearly in run history and are not counted as production runs.
 
 ## Version Identity and Naming
 
@@ -40,7 +40,7 @@ Versions are created by three intentional actions, never automatically:
 ## Draft vs Version Visual Treatment
 
 - **Draft badge**: visible in the designer header when viewing the draft — e.g. amber "Draft" pill. Communicates "this is not a version yet."
-- **Version history panel**: shows all versions as a visual timeline/branch view. Each version shows: ID, name, creation date, whether it is production, how many runs it has, and whether there is a draft based on it.
+- **Version history panel**: shows all versions as a visual timeline/branch view. Each version shows: ID, name, creation date, whether it is production, how many runs it has, and whether there is a draft based on it. The root draft may also appear as its own branch point before the first named version.
 - **Production highlight**: production version is color-highlighted (e.g. green) throughout the version list and in the run trigger modal.
 - **Draft based on a version**: shown as a branch extending from the parent version in the timeline.
 
@@ -63,9 +63,9 @@ A version can have its public page disabled without affecting other versions or 
 
 ## Editing and Branching
 
-- **Edit from a version**: clicking "Edit" on any version creates a new draft based on that version, replacing the current draft (with a confirmation if the current draft has unsaved work). This is how you patch an older version — e.g. patch v2 to create what becomes v3.
+- **Edit from a version**: clicking "Edit" on any version creates or opens that version's draft. This is how you patch an older version — e.g. patch v2 to create what becomes v3.
 - **Fork to new workflow**: any version can be forked into a brand new independent workflow, starting with that version's graph as the new workflow's first draft.
-- **No parallel drafts**: a workflow has exactly one draft at a time. You cannot have two drafts open simultaneously.
+- **Per-version draft slots**: a workflow may have multiple drafts at once, but only one per parent version (plus the optional root draft). Editing one version's draft does not overwrite another version's draft.
 
 ## Run History and Version Pinning
 
@@ -93,7 +93,7 @@ A version can have its public page disabled without affecting other versions or 
 4. The version timeline/branch view shows all versions with run counts, production highlight, and draft branch indicator.
 5. Production version is color-highlighted and used as default for run trigger and canonical public URL.
 6. Canonical URL and per-version permalink both work; disabling a version's public page does not affect other versions.
-7. Editing a version creates a new draft based on it; the workflow has exactly one draft at a time.
+7. Editing a version creates or opens that version's draft; each version has at most one draft, and the workflow may also have a root draft.
 8. Any version can be forked into a new independent workflow.
 9. Versions with runs or an active public page cannot be deleted; versions can be archived instead.
 10. Draft runs are filterable in run history (excluded by default, shown with toggle).

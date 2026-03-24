@@ -260,6 +260,7 @@ async def import_templates(
                 id=uuid4(),
                 workspace_id=workspace_id,
                 name=row["name"],
+                path=str(row.get("path") or ""),
                 description=row.get("description"),
                 status="draft",
             )

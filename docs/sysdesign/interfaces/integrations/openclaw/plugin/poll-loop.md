@@ -1,6 +1,6 @@
 # Activity 03 — Task Poll Loop
 
-The steady-state loop that keeps the plugin connected to Knotwork. Runs on the primary runtime process (the one that holds the lease). Fires every `taskPollIntervalMs` (default: 2 seconds). One task at a time — a `busy` flag prevents concurrent execution.
+The steady-state timer that keeps the plugin connected to Knotwork. Runs on the primary runtime process (the one that holds the lease). Fires every `taskPollIntervalMs` (default: 2 seconds). The timer claims at most one new task per tick, but execution is no longer single-threaded: each claimed task is handed off to a subprocess and multiple tasks may be in flight up to `maxConcurrent`.
 
 See [Activity 04](./task-execution.md) for what happens inside `executeTask`.
 See [Activity 06](../knotwork/stale-recovery.md) for how stale tasks are recovered during `pull-task`.
@@ -16,19 +16,19 @@ sequenceDiagram
     participant Timer as setInterval
     participant Plugin as Plugin (plugin.ts)
     participant KB as Knotwork Backend
+    participant Spawn as spawnExecuteTask
     participant Exec as executeTask (session.ts)
     participant FS as Filesystem
 
     loop every taskPollIntervalMs (default 2000ms)
         Timer->>Plugin: tick
 
-        alt not backgroundWorkerEnabled or busy
+        alt not backgroundWorkerEnabled or no integrationSecret
             Plugin->>Plugin: skip tick
         else ready to poll
-            Plugin->>Plugin: busy = true
-
             Plugin->>KB: POST /openclaw-plugin/pull-task
             Note right of Plugin: header: X-Knotwork-Integration-Secret
+            Note right of Plugin: body includes tasks_running + slots_available
 
             KB->>KB: resolve_plugin_integration (validate secret, update last_seen_at)
             KB->>KB: scan + auto-fail stale claimed tasks (see Activity 06)
@@ -41,43 +41,36 @@ sequenceDiagram
                 KB->>KB: build session_name (_agent_session_name)
                 KB-->>Plugin: full task payload (task_id, prompts, session_name, ...)
 
-                Plugin->>Plugin: runningTaskId = taskId, upsertRecentTask(claimed)
-                Plugin->>KB: POST /tasks/{id}/event (log: Plugin started task execution)
-
-                Plugin->>Plugin: start heartbeat setInterval every 15s
-                Note over Plugin,KB: heartbeat: POST log event every 15s while executing
-
-                Plugin->>+Exec: executeTask(api, task)
+                Plugin->>Plugin: track runningTasks + recentTasks
+                Plugin->>+Spawn: spawnExecuteTask(task)
+                Note over Spawn: launches `openclaw gateway call knotwork.execute_task --params ...`
+                Spawn->>+Exec: runClaimedTask(task) inside gateway request context
                 Note over Exec: see Activity 04 for gateway protocol detail
-                Exec-->>-Plugin: TaskResult (completed | escalation | failed)
-
-                Plugin->>Plugin: clearInterval heartbeat
+                Exec->>KB: POST /tasks/{id}/event (log: Plugin started task execution)
+                Exec->>Exec: start heartbeat setInterval every 15s
+                Note over Exec,KB: heartbeat: POST log event every 15s while executing
 
                 alt result.type == completed
-                    Plugin->>KB: POST /tasks/{id}/event
-                    Note right of Plugin: event_type: completed, output, next_branch
+                    Exec->>KB: POST /tasks/{id}/event
+                    Note right of Exec: event_type: completed, output, next_branch
                 else result.type == escalation
-                    Plugin->>KB: POST /tasks/{id}/event
-                    Note right of Plugin: event_type: escalation, question, options, message
+                    Exec->>KB: POST /tasks/{id}/event
+                    Note right of Exec: event_type: escalation, questions, options, message
                 else result.type == failed or executeTask threw
-                    Plugin->>KB: POST /tasks/{id}/event
-                    Note right of Plugin: event_type: failed, error
+                    Exec->>KB: POST /tasks/{id}/event
+                    Note right of Exec: event_type: failed, error
                 end
 
-                alt POST returns 401
-                    Note over Plugin,KB: credential recovery (see Activity 07), then retry once
+                alt POST returns 401 from subprocess-less path
+                    Note over Exec,KB: credential recovery (see Activity 07), then retry once
                 end
 
                 KB->>KB: update task row (status, output, timestamps)
                 KB->>KB: INSERT openclaw_execution_events row
-                KB-->>Plugin: ok
-
-                Plugin->>Plugin: upsertRecentTask(completed/escalation/failed)
-                Plugin->>Plugin: runningTaskId = null
-                Plugin->>FS: persistSnapshot (knotwork-bridge-state.json)
+                KB-->>Exec: ok
+                Exec-->>-Spawn: task complete
+                Spawn-->>-Plugin: subprocess exits, running slot released
             end
-
-            Plugin->>Plugin: busy = false
         end
     end
 ```
@@ -96,6 +89,7 @@ Source: [`plugin.ts`](../../../../../../plugins/openclaw/src/plugin.ts)
 state.pluginInstanceId   // required
 state.integrationSecret  // required
 state.backgroundWorkerEnabled  // must be true
+state.runningTasks.length // reported as tasks_running
 ```
 
 ### Task payload returned by backend
@@ -190,21 +184,23 @@ Source: [`lifecycle/worker.ts:upsertRecentTask`](../../../../../../plugins/openc
 
 ## Concurrency
 
-The `busy` flag in [`plugin.ts`](../../../../../../plugins/openclaw/src/plugin.ts) ensures only one task runs at a time, and the `integrationSecret` guard prevents any polling before handshake completes:
+The current runtime no longer uses a single in-process `busy` flag. The timer continues to fire while prior tasks are running, and each tick reports capacity to Knotwork:
 
 ```typescript
-let busy = false
 setInterval(() => {
-  // no-op until backgroundWorkerEnabled=true AND integrationSecret is set
-  if (!state.backgroundWorkerEnabled || !state.integrationSecret || busy) return
-  busy = true
-  pollAndRun()
-    .catch(...)
-    .finally(() => { busy = false })
+  if (!state.backgroundWorkerEnabled || !state.integrationSecret) return
+  if (activeSpawns.size >= maxConcurrent) return
+  const capacity = {
+    tasksRunning: activeSpawns.size,
+    slotsAvailable: Math.max(0, maxConcurrent - activeSpawns.size),
+  }
+  const task = await pullTask(baseUrl, instanceId, secret, capacity)
+  if (!task) return
+  void spawnExecuteTask(...)
 }, pollMs)
 ```
 
-This means: if a task takes 10 minutes, the next `pull-task` call doesn't happen until that task completes. Multiple tasks accumulate in the `pending` queue on the backend and are processed serially.
+Each claimed task is then handed to a subprocess (`openclaw gateway call knotwork.execute_task`). That subprocess executes the task inside a gateway request context, which is required for `subagent.run()`. Concurrency is therefore bounded by `maxConcurrent`, not by the poll interval or a single `busy` lock.
 
 ---
 

@@ -1,10 +1,20 @@
 from uuid import uuid4
-from sqlalchemy import String, Integer, Float, JSON, DateTime, ForeignKey
+from sqlalchemy import String, Integer, Float, JSON, DateTime, ForeignKey, Boolean
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.sql import func
 
 from knotwork.database import Base
+
+
+class KnowledgeFolder(Base):
+    """Explicit folder record — enables empty folders (Windows Explorer UX)."""
+    __tablename__ = "knowledge_folders"
+
+    id: Mapped[UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid4)
+    workspace_id: Mapped[UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("workspaces.id"), nullable=False)
+    path: Mapped[str] = mapped_column(String, nullable=False)  # e.g. "legal/compliance"
+    created_at: Mapped[DateTime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
 
 class KnowledgeFile(Base):
@@ -22,6 +32,9 @@ class KnowledgeFile(Base):
     health_score: Mapped[float | None] = mapped_column(Float, nullable=True)
     health_updated_at: Mapped[DateTime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     access_policy: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    # 'md' = editable markdown; 'pdf'/'docx'/'image'/'other' = binary view-only
+    file_type: Mapped[str] = mapped_column(String, nullable=False, default="md")
+    is_editable: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     created_at: Mapped[DateTime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at: Mapped[DateTime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False

@@ -83,7 +83,7 @@ async def execute_run(run_id: str) -> None:
             result = await graph.ainvoke(
                 {"run_id": run_id, "workspace_id": workspace_id, "graph_id": graph_id, "input": run_input,
                  "context_files": context_files, "messages": [], "current_output": None,
-                 "node_outputs": {}, "next_branch": None},
+                 "node_outputs": {}, "node_visit_counts": {}, "next_branch": None},
                 config=config,
             )
         final_status = "paused" if (

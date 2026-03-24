@@ -8,7 +8,7 @@ from pydantic import BaseModel, ConfigDict
 
 class KnowledgeFileCreate(BaseModel):
     path: str
-    title: str
+    title: str | None = None
     content: str = ""
     change_summary: str | None = None
 
@@ -29,6 +29,8 @@ class KnowledgeFileOut(BaseModel):
     current_version_id: str | None
     health_score: float | None
     health_updated_at: datetime | None
+    file_type: str
+    is_editable: bool
     created_at: datetime
     updated_at: datetime
 
@@ -55,3 +57,28 @@ class KnowledgeRestoreRequest(BaseModel):
 class SuggestionOut(BaseModel):
     suggestions: list[str]
     health_score: float | None
+
+
+# ── Folder schemas ────────────────────────────────────────────────────────────
+
+class KnowledgeFolderOut(BaseModel):
+    id: UUID
+    workspace_id: UUID
+    path: str
+    created_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class CreateFolderRequest(BaseModel):
+    path: str  # e.g. "legal/compliance"
+
+
+class RenameFolderRequest(BaseModel):
+    new_path: str  # full new path e.g. "legal/archive"
+
+
+# ── File operation schemas ────────────────────────────────────────────────────
+
+class RenameFileRequest(BaseModel):
+    new_path: str  # full new path e.g. "legal/renamed.md"

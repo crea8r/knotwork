@@ -45,6 +45,10 @@ export default function GraphCanvas({ definition, nodeStatuses = {}, selectedNod
       .filter(e => neighborIds.has(e.source) || neighborIds.has(e.target))
       .map(e => e.id),
   )
+  const outgoingCounts = definition.edges.reduce<Record<string, number>>((acc, edge) => {
+    acc[edge.source] = (acc[edge.source] ?? 0) + 1
+    return acc
+  }, {})
 
   function fitToView() {
     const svg = svgRef.current
@@ -117,6 +121,10 @@ export default function GraphCanvas({ definition, nodeStatuses = {}, selectedNod
         width="100%"
         height="100%"
         style={{ display: 'block', background: '#f9fafb', borderRadius: 8, cursor: wasDragging.current ? 'grabbing' : 'grab' }}
+        onClick={(e) => {
+          if (wasDragging.current) return
+          if (e.target === e.currentTarget) onSelectNode?.(null)
+        }}
         onMouseDown={onMouseDown}
         onMouseMove={onMouseMove}
         onMouseUp={onMouseUp}
@@ -163,7 +171,7 @@ export default function GraphCanvas({ definition, nodeStatuses = {}, selectedNod
             return (
               <NodeBox key={node.id} node={node} x={pos.x} y={pos.y}
                 selected={isSelected} neighbor={isNeighbor} dimmed={isDimmed} pulse={isPulse}
-                statusColor={statusColor} onClick={() => handleNodeClick(node.id)} />
+                statusColor={statusColor} branchCount={outgoingCounts[node.id] ?? 0} onClick={() => handleNodeClick(node.id)} />
             )
           })}
         </g>

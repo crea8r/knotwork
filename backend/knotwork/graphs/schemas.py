@@ -44,6 +44,7 @@ class GraphDefinitionSchema(BaseModel):
 
 class GraphUpdate(BaseModel):
     name: str | None = None
+    path: str | None = None
     description: str | None = None
     status: str | None = None
     default_model: str | None = None
@@ -68,6 +69,7 @@ class ImportMdRequest(BaseModel):
 
 class GraphCreate(BaseModel):
     name: str
+    path: str = ""
     description: str | None = None
     default_model: str | None = None
     definition: GraphDefinitionSchema = GraphDefinitionSchema()
@@ -120,6 +122,7 @@ class GraphOut(BaseModel):
     id: UUID
     workspace_id: UUID
     name: str
+    path: str = ""
     description: str | None
     status: str
     default_model: str | None

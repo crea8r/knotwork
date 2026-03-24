@@ -29,6 +29,7 @@ class RunCreate(BaseModel):
     input: dict = {}
     context_files: list[dict] = []
     trigger: str = "manual"
+    graph_version_id: UUID | None = None
 
 
 class RunUpdate(BaseModel):

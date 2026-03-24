@@ -2,6 +2,7 @@
   {
     "id": "landing-page-builder",
     "name": "Building landing page",
+    "path": "building",
     "source_graph_id": "4e97e3dc-b57b-44ed-903a-565b4259c2b7",
     "description": "Research business info, draft marketing copy, define brand guideline, then build a landing page.",
     "definition": {
@@ -87,6 +88,7 @@
   {
     "id": "simple-writing",
     "name": "Simple Writing",
+    "path": "writing",
     "source_graph_id": "49552a7c-a337-49b4-b18a-089ef3e3e6b1",
     "description": "Structured copywriting flow from request framing to CTA validation.",
     "definition": {

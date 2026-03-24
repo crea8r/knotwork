@@ -14,6 +14,8 @@ interface Props {
   graphId: string
   definition: GraphDefinition
   onClose: () => void
+  versionOptions?: Array<{ id: string; label: string; kind: 'draft' | 'version' }>
+  defaultGraphVersionId?: string | null
 }
 
 function FieldInput({
@@ -48,7 +50,13 @@ function FieldInput({
   )
 }
 
-export default function RunTriggerModal({ graphId, definition, onClose }: Props) {
+export default function RunTriggerModal({
+  graphId,
+  definition,
+  onClose,
+  versionOptions = [],
+  defaultGraphVersionId = null,
+}: Props) {
   const navigate = useNavigate()
   const workspaceId = useAuthStore((s) => s.workspaceId) ?? DEV_WORKSPACE
   const triggerRun = useTriggerRun(workspaceId, graphId)
@@ -64,6 +72,7 @@ export default function RunTriggerModal({ graphId, definition, onClose }: Props)
   )
   const [inputJson, setInputJson] = useState('{}')
   const [err, setErr] = useState('')
+  const [graphVersionId, setGraphVersionId] = useState<string>(defaultGraphVersionId ?? '')
   const [attachments, setAttachments] = useState<Array<{
     localId: string
     filename: string
@@ -148,6 +157,21 @@ export default function RunTriggerModal({ graphId, definition, onClose }: Props)
     setAttachments((prev) => prev.filter((a) => a.localId !== localId))
   }
 
+  function buildSchemaInput(): Record<string, unknown> {
+    const next: Record<string, unknown> = {}
+    for (const field of schema) {
+      const raw = formValues[field.name] ?? ''
+      if (!raw.trim()) {
+        if (field.required) {
+          next[field.name] = field.type === 'number' ? Number(raw) : raw
+        }
+        continue
+      }
+      next[field.name] = field.type === 'number' ? Number(raw) : raw
+    }
+    return next
+  }
+
   async function handleRun() {
     setErr('')
     let input: Record<string, unknown>
@@ -159,12 +183,7 @@ export default function RunTriggerModal({ graphId, definition, onClose }: Props)
           return
         }
       }
-      input = Object.fromEntries(
-        schema.map((f) => [
-          f.name,
-          f.type === 'number' ? Number(formValues[f.name]) : formValues[f.name],
-        ]),
-      )
+      input = buildSchemaInput()
     } else {
       try {
         input = JSON.parse(inputJson)
@@ -189,6 +208,7 @@ export default function RunTriggerModal({ graphId, definition, onClose }: Props)
       input,
       name: runName.trim() || undefined,
       context_files: contextFiles,
+      graph_version_id: graphVersionId || undefined,
     })
     navigate(`/runs/${run.id}`)
   }
@@ -218,6 +238,23 @@ export default function RunTriggerModal({ graphId, definition, onClose }: Props)
               className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
             />
           </div>
+
+          {versionOptions.length > 0 && (
+            <div>
+              <label className="block text-xs font-medium text-gray-500 mb-1">Version</label>
+              <select
+                value={graphVersionId}
+                onChange={(e) => setGraphVersionId(e.target.value)}
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
+              >
+                {versionOptions.map((option) => (
+                  <option key={option.id} value={option.id}>
+                    {option.label}{option.kind === 'draft' ? ' (draft run)' : ''}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
 
           <div>
             <label className="block text-xs font-medium text-gray-500 mb-1">

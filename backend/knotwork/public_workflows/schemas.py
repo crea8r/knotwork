@@ -5,6 +5,8 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field
 
+from knotwork.runs.schemas import RunAttachmentRef
+
 
 class PublicWorkflowLinkCreateRequest(BaseModel):
     graph_version_id: UUID | None = None
@@ -42,6 +44,7 @@ class PublicWorkflowViewOut(BaseModel):
 class PublicRunTriggerRequest(BaseModel):
     input: dict = {}
     email: str | None = Field(default=None, max_length=320)
+    context_files: list[RunAttachmentRef] = []
 
 
 class PublicRunTriggerOut(BaseModel):

@@ -1,6 +1,6 @@
 # Core Concepts — Workspace Representatives
 
-Added in S12. Representatives are how Knotwork models accountability for external interactions without managing external communication channels itself.
+Added in S12. Representatives are how Knotwork models accountability for external interactions while keeping a clean boundary between Knotwork-managed internal delivery and representative-managed external communication.
 
 ---
 
@@ -23,17 +23,17 @@ Representatives are a workspace-level designation — not tied to a specific cha
 
 ## What Knotwork Does with Representatives
 
-1. **Routes escalations and notifications** to representatives (in priority order: primary first, then others) via their configured notification preferences
+1. **Routes internal events and task assignments** to representatives (in priority order: primary first, then others) via their configured communication means
 2. **Surfaces task completions** to representatives rather than broadcasting to all workspace members
-3. **Does not manage** how representatives communicate externally — that is entirely their concern
+3. **Does not manage** how representatives communicate externally — that remains entirely their concern
 
-Knotwork's outbound notification system (email, Telegram, WhatsApp) delivers to the representative's configured notification preference. This is the only Knotwork-managed communication: outbound notifications from Knotwork to representatives.
+Knotwork's delivery system can send internal events or assignments through configured means such as app, email, or OpenClaw plugin. This is separate from the representative's own external tools.
 
 ---
 
 ## What Representatives Do
 
-Representatives handle external interactions using their own tools. Knotwork does not touch email, Slack, calendar, or any external channel.
+Representatives handle external interactions using their own tools. Knotwork does not run their customer/vendor communication workflow for them.
 
 **When structured work is needed**, a representative calls Knotwork via MCP or REST API:
 
@@ -66,10 +66,23 @@ These extend the existing MCP toolset (S7 graph/run tools remain available).
 
 Both humans and agents can be representatives. The designation is what matters — not what's behind it.
 
-- **Human representative**: a WorkspaceMember who checks their email, reads Knotwork notifications, and calls the MCP/API (via Claude Desktop or directly) when work needs running
-- **Agent representative**: a RegisteredAgent (e.g., connected via OpenClaw) that operates autonomously — reads external communications using its own tools, decides when to trigger Knotwork tasks, handles outputs and replies
+- **Human representative**: a WorkspaceMember who receives Knotwork events over app/email, checks their own external tools, and calls the MCP/API when work needs running
+- **Agent representative**: a RegisteredAgent (e.g., connected via OpenClaw) that can receive Knotwork task delivery over plugin, use its own external tools, decide when to trigger Knotwork tasks, and handle outputs or replies
 
 From the workspace's perspective, both are representatives. From external parties' perspective, they interact with whoever the representative is — a person, an agent, or a human supervised by an agent. The distinction is internal.
+
+---
+
+## S12 Separation of Concerns
+
+S9.3 introduces participant-specific event delivery and treats OpenClaw plugin as one Knotwork-managed communication mean for internal routing.
+
+S12 makes the boundary explicit:
+
+- **OpenClaw plugin**: Knotwork -> agent delivery path
+- **MCP**: agent -> Knotwork interaction surface
+
+This separation avoids overloading the plugin with long-term application semantics while preserving compatibility with the delivery model introduced earlier.
 
 ---
 

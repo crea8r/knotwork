@@ -52,20 +52,16 @@ async def test_resume_run_returns_early_when_run_not_found():
 
 
 async def test_checkpointer_context_yields_memory_saver_when_no_sync_url():
-    """When DATABASE_URL_SYNC is empty, _checkpointer yields a MemorySaver."""
-    import os
-    os.environ["DATABASE_URL_SYNC"] = ""
+    """When DATABASE_URL_SYNC is empty, _checkpointer yields a MemorySaver.
 
+    NOTE: We cannot reload knotwork.config here as it would break the settings
+    singleton used by other modules. Instead we verify MemorySaver is used when
+    database_url_sync is an empty string (the default in test env).
+    """
     from knotwork.runtime.engine import _checkpointer
     from langgraph.checkpoint.memory import MemorySaver
 
-    # Reset settings to pick up env change
-    import importlib
-    import knotwork.config
-    importlib.reload(knotwork.config)
-    import knotwork.runtime.engine
-    importlib.reload(knotwork.runtime.engine)
-
-    from knotwork.runtime.engine import _checkpointer as cp
-    async with cp() as saver:
+    # In test environment DATABASE_URL_SYNC is "" (set in conftest), so
+    # _checkpointer must already yield a MemorySaver.
+    async with _checkpointer() as saver:
         assert isinstance(saver, MemorySaver)

@@ -89,7 +89,6 @@ async def registered_agent(db, workspace):
         status="inactive",
         is_active=False,
         capability_freshness="needs_refresh",
-        preflight_status="never_run",
     )
     db.add(ra)
     await db.commit()

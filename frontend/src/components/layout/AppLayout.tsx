@@ -32,8 +32,7 @@ export default function AppLayout() {
     if (location.pathname.startsWith('/inbox')) return 'Inbox'
     if (location.pathname.startsWith('/channels')) return 'Channels'
     if (location.pathname.startsWith('/runs')) return 'Runs'
-    if (location.pathname.startsWith('/graphs')) return 'Workflows'
-    if (location.pathname.startsWith('/handbook')) return 'Handbook'
+    if (location.pathname.startsWith('/graphs') || location.pathname.startsWith('/handbook')) return 'Handbook'
     if (location.pathname.startsWith('/settings')) return 'Settings'
     return 'Knotwork'
   })()

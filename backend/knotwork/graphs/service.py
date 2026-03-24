@@ -71,6 +71,7 @@ async def create_graph(
     graph = Graph(
         workspace_id=workspace_id,
         name=data.name,
+        path=data.path,
         description=data.description,
         default_model=data.default_model,
         created_by=created_by,

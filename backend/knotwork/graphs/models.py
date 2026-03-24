@@ -13,6 +13,7 @@ class Graph(Base):
     id: Mapped[UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid4)
     workspace_id: Mapped[UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("workspaces.id"), nullable=False)
     name: Mapped[str] = mapped_column(String, nullable=False)
+    path: Mapped[str] = mapped_column(String, nullable=False, default="")
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     status: Mapped[str] = mapped_column(String, nullable=False, default="draft")
     default_model: Mapped[str | None] = mapped_column(String, nullable=True)

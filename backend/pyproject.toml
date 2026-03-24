@@ -36,6 +36,7 @@ dependencies = [
     # Storage
     "boto3>=1.34",
     "aiofiles>=23.2",
+    "mammoth>=1.6",
     # Token counting
     "tiktoken>=0.7",
     # HTTP client
