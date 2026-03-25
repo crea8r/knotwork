@@ -109,7 +109,7 @@ export default function GraphTabBar({
           </>
         ) : null}
         <div className="ml-auto flex items-center gap-1 flex-shrink-0">
-          <Btn size="sm" variant="primary" onClick={onRun}>
+          <Btn size="sm" variant="primary" disabled={hasValidationErrors} title={hasValidationErrors ? 'Fix topology errors before running' : undefined} onClick={onRun}>
             <Play size={12} /><span className="hidden md:inline"> Run</span>
           </Btn>
           {editorMode === 'edit' && <>
