@@ -1,11 +1,13 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
-import { X } from 'lucide-react'
+import { Globe, Pencil, X } from 'lucide-react'
 import HistoryDetailPanel from './HistoryDetailPanel'
 import VersionHistoryCanvas from './VersionHistoryCanvas'
 import type { HistorySelection } from './graphVersionUtils'
+import { formatVersionName } from './graphVersionUtils'
 import type { GraphVersion } from '@/types'
 
 export default function HistoryTab({
+  workspaceId, graphId,
   namedVersions, activeDraft, versionsLoading,
   showArchivedVersions, setShowArchivedVersions,
   graphDefaultVersionId, resolvedParentVersionId,
@@ -15,6 +17,8 @@ export default function HistoryTab({
   onManagePublic, onPublish,
   historySelection, onSelectHistoryItem,
 }: {
+  workspaceId: string
+  graphId: string
   namedVersions: GraphVersion[]
   activeDraft: GraphVersion | null
   versionsLoading: boolean
@@ -67,18 +71,31 @@ export default function HistoryTab({
     onManagePublic, onPublish,
   }
 
+  const headerItem = selectedHistoryVersion ?? selectedHistoryDraft
   const detailContent: ReactNode | null = detailOpen && historySelection ? (
     <>
-      <div className="flex items-center justify-between border-b border-gray-200 px-4 py-3 flex-shrink-0">
-        <p className="text-sm font-semibold text-gray-900">
-          {historySelection.kind === 'version' ? 'Version' : 'Draft'}
-        </p>
-        <button onClick={() => setDetailOpen(false)} className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-700" aria-label="Close">
+      <div className="flex items-center justify-between border-b border-gray-200 px-4 py-3 flex-shrink-0 gap-2">
+        <div className="flex items-center gap-1.5 min-w-0">
+          <p className="text-sm font-semibold text-gray-900 truncate">
+            {headerItem ? formatVersionName(headerItem) : (historySelection.kind === 'version' ? 'Version' : 'Draft')}
+          </p>
+          {headerItem && (
+            <button className="p-0.5 text-gray-400 hover:text-gray-700 flex-shrink-0" onClick={() => onRenameVersion(headerItem)} title="Rename">
+              <Pencil size={11} />
+            </button>
+          )}
+          {selectedHistoryVersion?.is_public && (
+            <button className="p-0.5 text-purple-500 hover:text-purple-700 flex-shrink-0" onClick={() => onManagePublic(selectedHistoryVersion)} title="Public link">
+              <Globe size={12} />
+            </button>
+          )}
+        </div>
+        <button onClick={() => setDetailOpen(false)} className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-700 flex-shrink-0" aria-label="Close">
           <X size={15} />
         </button>
       </div>
       <div className="overflow-y-auto p-4">
-        <HistoryDetailPanel {...detailProps} />
+        <HistoryDetailPanel workspaceId={workspaceId} graphId={graphId} {...detailProps} />
       </div>
     </>
   ) : null

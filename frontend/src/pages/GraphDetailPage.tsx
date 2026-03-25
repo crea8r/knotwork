@@ -122,6 +122,7 @@ export default function GraphDetailPage() {
                   <GraphCanvas definition={definition} selectedNodeId={selectedNodeId} onSelectNode={selectNode} />
                 ) : activeTab === 'history' ? (
                   <HistoryTab
+                    workspaceId={workspaceId} graphId={graphId!}
                     namedVersions={sync.namedVersions} activeDraft={sync.activeDraft}
                     versionsLoading={sync.versionsLoading}
                     showArchivedVersions={sync.showArchivedVersions} setShowArchivedVersions={sync.setShowArchivedVersions}

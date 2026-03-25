@@ -1,4 +1,4 @@
-import { FileEdit, Globe, Pencil } from 'lucide-react'
+import { FileEdit, Globe } from 'lucide-react'
 import Badge from '@/components/shared/Badge'
 import Btn from '@/components/shared/Btn'
 import HistoryDetailCard from './HistoryDetailCard'
@@ -7,6 +7,7 @@ import { formatVersionName, formatVersionStamp } from './graphVersionUtils'
 import type { GraphVersion } from '@/types'
 
 export default function HistoryDetailPanel({
+  workspaceId, graphId,
   historySelection,
   selectedHistoryDraft,
   selectedHistoryVersion,
@@ -15,8 +16,6 @@ export default function HistoryDetailPanel({
   versionActionPending,
   onOpenVersion,
   onEdit,
-  onRename,
-  onView,
   onSetDefault,
   onFork,
   onArchive,
@@ -25,6 +24,8 @@ export default function HistoryDetailPanel({
   onManagePublic,
   onPublish,
 }: {
+  workspaceId: string
+  graphId: string
   historySelection: HistorySelection | null
   selectedHistoryDraft: GraphVersion | null
   selectedHistoryVersion: GraphVersion | null
@@ -33,8 +34,6 @@ export default function HistoryDetailPanel({
   versionActionPending: boolean
   onOpenVersion: (version: GraphVersion) => void
   onEdit: (version: GraphVersion) => void
-  onRename: (version: GraphVersion) => void
-  onView: (version: GraphVersion) => void
   onSetDefault: (version: GraphVersion) => void
   onFork: (version: GraphVersion) => void
   onArchive: (version: GraphVersion) => void
@@ -59,9 +58,6 @@ export default function HistoryDetailPanel({
           <Btn size="sm" variant="secondary" onClick={onPublish}>
             <Globe size={12} /> Publish
           </Btn>
-          <Btn size="sm" variant="ghost" onClick={() => onRename(selectedHistoryDraft)}>
-            <Pencil size={12} /> Rename
-          </Btn>
         </div>
       </div>
     )
@@ -83,10 +79,7 @@ export default function HistoryDetailPanel({
         </div>
         <div className="flex flex-wrap gap-2">
           <Btn size="sm" variant="secondary" onClick={() => onOpenVersion(selectedHistoryVersion)}>
-            <Pencil size={12} /> Edit draft
-          </Btn>
-          <Btn size="sm" variant="ghost" onClick={() => onRename(selectedHistoryDraft)}>
-            <Pencil size={12} /> Rename
+            Edit draft
           </Btn>
         </div>
       </div>
@@ -96,19 +89,14 @@ export default function HistoryDetailPanel({
   if (selectedHistoryVersion) {
     return (
       <HistoryDetailCard
+        workspaceId={workspaceId} graphId={graphId}
         version={selectedHistoryVersion}
         graphDefaultVersionId={graphDefaultVersionId}
         isActiveDraftBase={resolvedParentVersionId === selectedHistoryVersion.id}
         isPending={versionActionPending}
-        onEdit={onEdit}
-        onView={onView}
-        onRename={onRename}
-        onSetDefault={onSetDefault}
-        onFork={onFork}
-        onArchive={onArchive}
-        onUnarchive={onUnarchive}
-        onDelete={onDelete}
-        onManagePublic={onManagePublic}
+        onEdit={onEdit} onSetDefault={onSetDefault}
+        onFork={onFork} onArchive={onArchive} onUnarchive={onUnarchive}
+        onDelete={onDelete} onManagePublic={onManagePublic}
       />
     )
   }
