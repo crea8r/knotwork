@@ -46,6 +46,7 @@ export default function GraphTabBar({
   const [addingNode, setAddingNode] = useState(false)
   const [newNodeName, setNewNodeName] = useState('')
   const [newNodeType, setNewNodeType] = useState<NodeType>('agent')
+  const [showErrorDialog, setShowErrorDialog] = useState(false)
 
   const addNode = useCanvasStore((s) => s.addNode)
   const addEdge = useCanvasStore((s) => s.addEdge)
@@ -110,9 +111,14 @@ export default function GraphTabBar({
         ) : null}
         <div className="ml-auto flex items-center gap-2 flex-shrink-0">
           {hasValidationErrors && (
-            <span className="hidden md:inline text-xs text-amber-600 truncate max-w-[180px]" title={validationErrors.join(', ')}>
-              {validationErrors[0].length > 32 ? validationErrors[0].slice(0, 30) + '…' : validationErrors[0]}
-            </span>
+            <>
+              <span className="hidden md:inline text-xs text-amber-600 truncate max-w-[180px]" title={validationErrors.join(', ')}>
+                {validationErrors[0].length > 32 ? validationErrors[0].slice(0, 30) + '…' : validationErrors[0]}
+              </span>
+              <button className="md:hidden flex items-center justify-center w-6 h-6 rounded text-amber-500 hover:bg-amber-50" onClick={() => setShowErrorDialog(true)} title="Graph topology issues">
+                <AlertTriangle size={14} />
+              </button>
+            </>
           )}
           <Btn size="sm" variant="primary" disabled={hasValidationErrors} onClick={onRun}>
             <Play size={12} /><span className="hidden md:inline"> Run</span>
@@ -154,6 +160,21 @@ export default function GraphTabBar({
           <button type="submit" className="rounded bg-brand-500 px-3 py-1 text-sm text-white">Add</button>
           <button type="button" onClick={() => setAddingNode(false)} className="px-3 py-1 text-sm text-gray-500">Cancel</button>
         </form>
+      )}
+
+      {showErrorDialog && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4" onClick={() => setShowErrorDialog(false)}>
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-sm p-5" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center gap-2 mb-3">
+              <AlertTriangle size={16} className="text-amber-500 flex-shrink-0" />
+              <p className="font-semibold text-gray-900 text-sm">Graph topology issues</p>
+            </div>
+            <ul className="space-y-1 text-sm text-amber-700">
+              {validationErrors.map((err, i) => <li key={i}>• {err}</li>)}
+            </ul>
+            <button className="mt-4 w-full rounded-lg border border-gray-200 py-2 text-sm text-gray-600 hover:bg-gray-50" onClick={() => setShowErrorDialog(false)}>Close</button>
+          </div>
+        </div>
       )}
     </>
   )
