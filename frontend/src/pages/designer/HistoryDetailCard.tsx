@@ -1,4 +1,4 @@
-import { Archive, FileEdit, GitBranch, Globe, Pencil, Star, Trash2 } from 'lucide-react'
+import { Archive, Copy, FileEdit, GitBranch, Globe, Pencil, Star, Trash2 } from 'lucide-react'
 import Badge from '@/components/shared/Badge'
 import Btn from '@/components/shared/Btn'
 import type { GraphVersion } from '@/types'
@@ -38,54 +38,71 @@ export default function HistoryDetailCard({
 
   return (
     <div className={`rounded-xl border p-4 ${isDefault ? 'border-green-300 bg-green-50/60' : 'border-gray-200 bg-white'}`}>
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <div className="flex flex-wrap items-center gap-1.5">
-            <GitBranch size={14} className="flex-shrink-0 text-gray-400" />
-            <p className="truncate text-sm font-semibold text-gray-900">{formatVersionName(version)}</p>
-            {isDefault && <Badge variant="green">Default</Badge>}
-            {isActiveDraftBase && version.draft && <Badge variant="orange">Draft active</Badge>}
-            {isArchived && <Badge variant="gray">Archived</Badge>}
+      {/* Name row — name is clickable "view", pencil = rename, globe = public link */}
+      <div className="flex items-start gap-2 mb-1">
+        <GitBranch size={14} className="flex-shrink-0 text-gray-400 mt-0.5" />
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-1 flex-wrap">
+            <button
+              className="text-sm font-semibold text-brand-700 hover:underline underline-offset-2 truncate text-left"
+              onClick={() => onView(version)}
+              title="View this version"
+            >
+              {formatVersionName(version)}
+            </button>
+            <button
+              className="p-0.5 text-gray-400 hover:text-gray-700 flex-shrink-0"
+              onClick={() => onRename(version)}
+              title="Rename"
+              disabled={isPending}
+            >
+              <Pencil size={11} />
+            </button>
             {version.is_public && (
               <button
+                className="p-0.5 text-purple-500 hover:text-purple-700 flex-shrink-0"
                 onClick={() => onManagePublic(version)}
-                className="inline-flex items-center gap-1 rounded-full border border-purple-200 bg-purple-50 px-2 py-0.5 text-xs font-medium text-purple-700 hover:bg-purple-100 transition-colors"
+                title="View public link"
               >
-                <Globe size={10} /> Public
+                <Globe size={12} />
               </button>
             )}
           </div>
-          <p className="mt-1 text-xs text-gray-500">
-            Created {formatVersionStamp(version.version_created_at)} · {version.run_count} run(s)
-          </p>
+          <div className="flex flex-wrap items-center gap-1.5 mt-1">
+            {isDefault && <Badge variant="green">Default</Badge>}
+            {isActiveDraftBase && version.draft && <Badge variant="orange">Draft active</Badge>}
+            {isArchived && <Badge variant="gray">Archived</Badge>}
+            <span className="text-xs text-gray-400">
+              {formatVersionStamp(version.version_created_at)} · {version.run_count} run(s)
+            </span>
+          </div>
         </div>
       </div>
 
+      {/* Primary actions: Edit + Clone */}
       <div className="mt-3 flex flex-wrap gap-2">
         {!version.draft && (
           <Btn size="sm" variant="primary" disabled={isPending} onClick={() => onEdit(version)}>
             <FileEdit size={12} /> Edit
           </Btn>
         )}
-        <Btn size="sm" variant="secondary" disabled={isPending} onClick={() => onView(version)}>View</Btn>
-        <Btn size="sm" variant="ghost" disabled={isPending} onClick={() => onRename(version)}>
-          <Pencil size={12} /> Rename
+        <Btn size="sm" variant="secondary" disabled={isPending} onClick={() => onFork(version)}>
+          <Copy size={12} /> Clone workflow
         </Btn>
+      </div>
+
+      {/* Secondary actions: Default + Public */}
+      <div className="mt-2 flex flex-wrap gap-2">
         <Btn size="sm" variant={isDefault ? 'ghost' : 'secondary'} disabled={isPending || isDefault} onClick={() => onSetDefault(version)}>
-          <Star size={12} /> {isDefault ? 'Default' : 'Set as default'}
+          <Star size={12} /> Default
         </Btn>
-        {!version.is_public ? (
-          <Btn size="sm" variant="ghost" disabled={isPending} onClick={() => onManagePublic(version)}>
-            <Globe size={12} /> Make public
-          </Btn>
-        ) : (
-          <Btn size="sm" variant="ghost" disabled={isPending} onClick={() => onManagePublic(version)}>
-            <Globe size={12} /> Manage public link
-          </Btn>
-        )}
-        <Btn size="sm" variant="ghost" disabled={isPending} onClick={() => onFork(version)}>
-          Copy as new workflow
+        <Btn size="sm" variant="ghost" disabled={isPending} onClick={() => onManagePublic(version)}>
+          <Globe size={12} /> {version.is_public ? 'Edit public link' : 'Make public'}
         </Btn>
+      </div>
+
+      {/* Destructive actions: Archive + Delete (same row, delete in red) */}
+      <div className="mt-2 flex flex-wrap gap-2">
         {isArchived ? (
           <Btn size="sm" variant="ghost" disabled={isPending} onClick={() => onUnarchive(version)}>Unarchive</Btn>
         ) : (
@@ -93,7 +110,8 @@ export default function HistoryDetailCard({
             <Archive size={12} /> Archive
           </Btn>
         )}
-        <Btn size="sm" variant="ghost" disabled={isPending} onClick={() => onDelete(version)}>
+        <Btn size="sm" variant="ghost" disabled={isPending} onClick={() => onDelete(version)}
+          className="text-red-600 hover:text-red-700 hover:bg-red-50">
           <Trash2 size={12} /> Delete
         </Btn>
       </div>
