@@ -63,7 +63,10 @@ export default function RunTriggerModal({
   const uploadAttachment = useUploadRunAttachment(workspaceId)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
 
-  const schema = definition.input_schema ?? []
+  // Snapshot the definition once at mount so autosaves / refetches can't
+  // change the schema (and thus collapse the form) while the user is filling it in.
+  const [snapshot] = useState(() => definition)
+  const schema = snapshot.input_schema ?? []
   const hasSchema = schema.length > 0
 
   const [runName, setRunName] = useState('')

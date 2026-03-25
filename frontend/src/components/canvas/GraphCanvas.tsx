@@ -24,6 +24,7 @@ export default function GraphCanvas({ definition, nodeStatuses = {}, selectedNod
   const svgRef = useRef<SVGSVGElement>(null)
   const [zoom, setZoom] = useState(1)
   const [pan, setPan] = useState({ x: 0, y: 0 })
+  const [ready, setReady] = useState(false)
   const [pulseNodeId, setPulseNodeId] = useState<string | null>(null)
   const dragRef = useRef<{ sx: number; sy: number; px: number; py: number } | null>(null)
   const wasDragging = useRef(false)
@@ -61,7 +62,7 @@ export default function GraphCanvas({ definition, nodeStatuses = {}, selectedNod
   }
 
   useEffect(() => {
-    const id = requestAnimationFrame(fitToView)
+    const id = requestAnimationFrame(() => { fitToView(); setReady(true) })
     return () => cancelAnimationFrame(id)
   }, [definition.nodes.length]) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -115,7 +116,7 @@ export default function GraphCanvas({ definition, nodeStatuses = {}, selectedNod
   const btnCls = 'w-8 h-8 flex items-center justify-center bg-white border border-gray-200 rounded-lg shadow-sm text-gray-600 hover:bg-gray-50 hover:border-gray-400'
 
   return (
-    <div style={{ position: 'relative', width: '100%', height: '100%' }}>
+    <div style={{ position: 'relative', width: '100%', height: '100%', opacity: ready ? 1 : 0 }}>
       <svg
         ref={svgRef}
         width="100%"

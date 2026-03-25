@@ -1,98 +1,191 @@
-# Session 10 — Projects, Tasks, and Project Documents
+# Session 9.2 — Participant-Specific Event Delivery
 
 ## Goal
 
-Add the missing work-management layer above Graphs and Runs so Knotwork can track objectives, organize work into tasks, and carry project-scoped context across executions.
+Give runs and chat contexts a stable participant model, then route events to specific participants through their registered communication means instead of treating notifications as workspace-wide broadcast. In S9.2, the key shift is not "more notification channels"; it is moving from workspace-level alerting to participant-specific delivery.
+
+See also: `docs/implementation/S9.2/gameplan.md` for the execution plan, milestones, component-by-component breakdown, and testing plan.
 
 ## Context
 
-Before S10, Knotwork's main hierarchy is:
+In S9, run execution is effectively a one-way flow: an agent escalates and any workspace member can respond. The current implementation has no explicit participant model behind run events and inbox items, and notification settings are effectively workspace-wide rather than participant-specific. OpenClaw plugin delivery already exists for agent task execution, but it is treated as a separate path rather than one communication mean among others. S9.2 should unify routing semantics without redesigning the plugin transport itself.
 
-```text
-Workspace -> Graphs -> Runs
-```
+---
 
-That is an execution model, not a work model. Graphs are reusable process templates, and Runs are single executions, but neither is the thing a human operator is actually trying to advance.
+## Part A — Participant Model
 
-S10 introduces:
+### Participant identity
 
-- **Project** — the objective-scoped work container
-- **Task** — the user-facing unit of work inside a Project
-- **ProjectDocument** — the project-scoped knowledge layer shared across tasks and runs
+- Workspace members and registered agents are both first-class participants.
+- Each participant has a stable `participant_id`.
+- Participant identity is the routing primitive; "human" vs "agent" is descriptive metadata, not a separate delivery model.
+- Participant list is visible in run detail.
 
-These concepts shift Knotwork from "workflow runner" toward "operating system for work" while preserving the existing Graph/Run execution model underneath.
+### Addressing semantics
 
-## In Scope
+- Agents and system events can target a specific participant explicitly (`to: participant_id`).
+- Un-addressed escalations fall through to any available workspace member (current behavior preserved as default).
+- Addressed escalations appear in the targeted participant's inbox/notification, not globally.
 
-1. Project model and CRUD.
-   - `Project` has objective, optional deadline, status, and workspace ownership
-   - project list and project detail views exist in the UI
-   - project dashboard surfaces task progress, run outcomes, and visible roadblocks
-2. Task model and CRUD.
-   - `Task` belongs to a project
-   - task has name, description, status, and optional linkage to runs
-   - tasks are the primary work items humans track day to day
-3. Project chat.
-   - every project has one shared project-scoped channel
-   - all workspace members can read/post in Phase 1
-   - project-level discussion is distinct from task/run execution detail
-4. Task-linked channel.
-   - every task has a channel for work discussion and execution history
-   - runs triggered from a task appear in the task channel
-   - escalations, outputs, and decisions remain visible in the task context
-5. Project Documents as the third knowledge layer.
-   - project-scoped documents persist across all tasks/runs in the project
-   - intended for brief, decisions, stakeholder notes, and project-specific research
-   - not a replacement for Handbook or run-scoped input
-6. Three-layer runtime knowledge loading.
-   - agent runs load `Handbook + Project Documents + Run Context`
-   - prompt structure keeps "how to work", "what this project is about", and "what this run is about" separate
-7. Human-only validity.
-   - the product remains fully useful without AI
-   - tasks can be managed manually without triggering a run
-   - agent-less execution paths continue routing to humans rather than failing
+### Chat events and inbox
+
+- Events belong to a chat context such as a run, workflow channel, or agent main channel.
+- Event delivery is participant-specific.
+- Targeted requests are visible in the run timeline with participant attribution.
+- Targeted participant sees a dedicated inbox entry, not a generic escalation.
+- Replies are attributed to the exact participant and fed back into execution context.
+
+### Execution context integration
+
+- Human or agent reply is injected into the agent's next prompt as attributed input.
+- Attribution is preserved in node input/output logs.
+
+---
+
+## Part B — Communication Means and Event Delivery
+
+### Channel registration and validation
+
+Communication means are registered per participant, per event type. S9.2 supports three means:
+
+- **App** — always available in the Knotwork UI; default fallback
+- **Email** — optional participant-bound delivery
+- **OpenClaw plugin** — optional participant-bound delivery for registered agents
+
+The OpenClaw plugin is treated as a communication mean for routing purposes in S9.2. Its existing transport and task protocol remain unchanged in this session.
+
+### Event types
+
+Every delivered item is a chat event. Typical event types include:
+
+- `escalation_created`
+- `task_assigned`
+- `mentioned_message`
+- `run_failed`
+- `run_completed`
+
+Not every communication mean must register for every event type. This avoids treating the plugin as a special-case architecture while still allowing it to opt into only the event types it can handle.
+
+**Email**
+- Already registered via magic-link auth; email address is known.
+- Requires deliverability verification: on first notification setup, send a test email and prompt user to confirm receipt in the app.
+- Re-verify if email address changes.
+
+**OpenClaw plugin**
+- Already paired to a registered agent through the current OpenClaw integration flow.
+- Receives only the event types the participant has registered the plugin for.
+- Is reclassified as one delivery mean in the participant routing model, but its handshake/task execution behavior is not redesigned in S9.2.
+
+### Permission testing
+
+Channel registration is not complete until the user confirms receipt of a test message. This is more than config validation — it verifies:
+- Credentials are correct
+- The message was actually delivered
+- The deep link or app routing path behaves correctly for that communication mean
+
+Each registered channel shows: last test result, last test date, and a "Send test" button available at any time. A channel with a failed or never-tested status shows a warning in Settings and in the notification preference selector.
+
+### Participant event preferences
+
+Participants register communication means per event type, not per run. Example:
+
+- a human participant enables `app` and `email` for `mentioned_message`
+- an agent participant enables `openclaw_plugin` for `task_assigned`
+- a participant disables all non-app delivery for `run_completed`
+
+### What triggers delivery
+
+Events are delivered when they require participant attention:
+- Escalation created and addressed to a specific participant
+- Escalation created un-addressed (sent to all workspace members with escalation permission)
+- Task assigned to an agent participant
+- Mentioned message in a chat context
+- Run completed (opt-in per workflow)
+- Run failed
+
+### Deep links — localhost vs deployed
+
+Every delivered event includes enough context for the participant to act immediately. For app and email, this includes a deep link to the specific run or chat context.
+
+**Deployed installs:** link base is the server's public URL. Always works from any device.
+
+**Localhost installs:** `http://localhost:PORT` links work from the same machine but may be unreachable from elsewhere.
+
+Behavior:
+- Backend reads `PUBLIC_BASE_URL` env var to construct all notification links.
+- If `PUBLIC_BASE_URL` is unset on a localhost install, the system warns in Settings → Notifications: "Links in notifications will only work from this machine. Set `PUBLIC_BASE_URL` to a reachable address to fix this."
+- The warning is also shown inline when registering email delivery on a localhost install.
+- Notification messages still send even without `PUBLIC_BASE_URL`; they include the full context (run name, escalation question) so the user knows what they are returning to — the link is just not clickable from mobile.
+
+### Event content
+
+Each delivered event must carry enough context that the participant understands the situation before opening the app:
+- Run name and workflow name
+- Which node escalated (if applicable)
+- The event-specific question, task, or summary
+- Who asked / who is addressed
+- The deep link with the relevant event highlighted where applicable
+
+---
 
 ## Out of Scope
 
-- S11 qualitative project intelligence and synthesized progress assessment.
-- Phase 2 permission scoping for channels.
-- Advanced roles beyond current Phase 1 model.
-- Scheduled/cron task execution.
-- Sub-graphs, auto-improvement loops, and other roadmap items outside S10.
-- Replacing Graphs/Runs as the execution model; S10 adds a work layer above them.
+- External clients and run-scoped guest access
+- Telegram delivery
+- WhatsApp delivery
+- Push notifications (browser or mobile app) — Phase 2.
+- Slack integration — representatives use Slack via their own tools; Knotwork does not manage Slack.
+- Notification scheduling or digest mode — Phase 2.
+- Channel permission scoping — Phase 2.
+- Plugin/MCP separation of concerns — deferred to S12.
 
-## Core Decisions
-
-1. **Project is the human-facing container; Graph is not.**
-   - Graphs stay reusable templates.
-   - Projects are the concrete pursuits humans are advancing.
-2. **Task is the user-facing work atom; Run is execution detail.**
-   - Humans track task status, not raw runs.
-   - A task may trigger zero or more runs over time.
-3. **Project Documents are their own knowledge layer.**
-   - Handbook = reusable guidance
-   - Project Documents = project memory/context
-   - Run Context = case-specific input for this execution
-4. **Project/task chat is first-class.**
-   - discussion should not be trapped only inside run detail
-   - project and task channels become the collaboration shell around execution
-5. **No-AI mode remains first-class.**
-   - S10 must improve the product even for teams running human-only work
+---
 
 ## Acceptance Criteria
 
-1. A workspace can create, list, view, update, and archive or otherwise close Projects.
-2. A project stores at least objective, deadline, and status, and appears in a project list UI.
-3. A project detail page shows its tasks, key run outcomes, and visible blocked/failed work.
-4. A workspace can create, list, view, update, and complete Tasks within a Project.
-5. A task stores at least name, description, and status, and is clearly represented as the primary work item in the UI.
-6. Every project has a shared project channel visible to workspace members.
-7. Every task has a task-linked channel where task discussion and execution history are visible together.
-8. A run can be triggered from a task and remains linked back to that task.
-9. A task can exist without any run and still be fully usable as a human-managed work item.
-10. Project Documents can be created, edited, listed, and read at project scope.
-11. Project Documents are clearly separated from Handbook files and from run-scoped context.
-12. Agent execution triggered from a task loads all three knowledge layers: Handbook, Project Documents, and Run Context.
-13. Prompt structure preserves the distinction between reusable guidance, project context, and case-specific input.
-14. Tasks without AI support remain operable through human workflow rather than producing configuration failure.
-15. S10 makes progress toward product usefulness as a work-management system, not only as a workflow executor.
+1. Agent can explicitly address a workspace human or workspace agent when escalating.
+2. Addressed escalation appears in the targeted participant's inbox, not as a global run escalation.
+3. Participant replies are attributed in the run timeline and fed back into the agent's execution context.
+4. Un-addressed escalations continue to work as before (any workspace member can respond).
+5. Participant list is visible in run detail.
+6. Event delivery is participant-specific rather than workspace-wide.
+7. Participants can register communication means per event type.
+8. Supported communication means in S9.2 are app, email, and OpenClaw plugin.
+9. Email delivery can be verified end-to-end via a test message with user confirmation.
+10. OpenClaw plugin can be selected as a participant communication mean for supported event types without redesigning the current plugin protocol.
+11. Delivery fires for addressed escalation, un-addressed escalation, task assignment to plugin-backed agents, run failed, and run completed when enabled.
+12. Delivered event content includes run name, workflow name, event-specific summary, participant attribution, and deep link where applicable.
+13. Deep links route to the correct run or chat context with the relevant event highlighted.
+14. On localhost installs without `PUBLIC_BASE_URL` set, Settings shows a clear warning that external links may only work from the current machine.
+15. Telegram, WhatsApp, external client access, and plugin/MCP separation are explicitly deferred beyond S9.2.
+
+---
+
+## Implementation Shape
+
+S9.2 should be built as a routing-and-identity phase, not a transport redesign. The implementation should preserve the current OpenClaw plugin behavior while reclassifying plugin delivery as one participant-bound communication mean.
+
+### Recommended architecture
+
+- **Participant identity layer** — stable `participant_id` for workspace members and registered agents
+- **Event layer** — deliverable chat/run events such as `escalation_created`, `task_assigned`, `run_failed`, `run_completed`
+- **Recipient resolution layer** — resolves explicit target participants or fallback broadcast rules
+- **Delivery layer** — app inbox, email, OpenClaw plugin
+- **Delivery attempt logging** — records delivery status separately from the business event itself
+
+### Build constraints
+
+- Do not redesign plugin handshake, task protocol, or transport in S9.2.
+- Do not introduce external clients or run-scoped guest auth.
+- Do not make Telegram or WhatsApp block the phase.
+- Do not infer delivery preferences solely from participant type; store them explicitly.
+- Keep un-addressed escalation fallback behavior intact for backward compatibility.
+
+### Recommended milestone order
+
+1. Lock schema and API shape for participants, preferences, recipients, and delivery attempts.
+2. Build participant resolution and participant-specific inbox filtering.
+3. Add explicit recipient support for addressed escalations.
+4. Add participant communication preferences and delivery routing for app/email/plugin.
+5. Extend routing beyond escalations to selected system events (`task_assigned`, `run_failed`, `run_completed`).
+6. Harden fallback rules, delivery observability, and `PUBLIC_BASE_URL` warning behavior.

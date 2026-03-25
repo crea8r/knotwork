@@ -54,6 +54,7 @@ async def upsert_draft(
             graph_id=graph_id,
             definition=definition,
             parent_version_id=parent_version_id,
+            version_name=generate_name(),
             created_by=created_by,
         )
         db.add(draft)
@@ -90,7 +91,8 @@ async def promote_draft_to_version(
 
     now = datetime.now(timezone.utc)
     draft.version_id = _make_version_id()
-    draft.version_name = generate_name()
+    if not draft.version_name:
+        draft.version_name = generate_name()
     draft.version_created_at = now
     # Freeze updated_at so run history can refer to last-edit time
     draft.updated_at = now

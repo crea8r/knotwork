@@ -18,6 +18,8 @@ from uuid import UUID, uuid4
 
 from sqlalchemy import and_, select
 
+from knotwork.utils.namegen import generate_name
+
 from knotwork.auth.models import User  # noqa: F401
 from knotwork.database import AsyncSessionLocal
 from knotwork.graphs.models import Graph, GraphVersion
@@ -272,6 +274,7 @@ async def import_templates(
                     id=uuid4(),
                     graph_id=graph.id,
                     definition=row["definition"],
+                    version_name=generate_name(),
                     note=f"Imported from default template {row['id']} (source {row['source_graph_id']})",
                 )
             )

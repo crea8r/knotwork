@@ -53,6 +53,7 @@ async def main() -> None:
     from knotwork.database import AsyncSessionLocal
     from knotwork.workspaces.models import Workspace
     from knotwork.graphs.models import Graph, GraphVersion
+    from knotwork.utils.namegen import generate_name
 
     async with AsyncSessionLocal() as db:
         # Workspace
@@ -76,7 +77,7 @@ async def main() -> None:
             graph = Graph(workspace_id=ws.id, name="Demo — Analyse & Review", path="building")
             db.add(graph)
             await db.flush()
-            version = GraphVersion(graph_id=graph.id, definition=DEMO_GRAPH)
+            version = GraphVersion(graph_id=graph.id, definition=DEMO_GRAPH, version_name=generate_name())
             db.add(version)
             await db.commit()
             await db.refresh(graph)
