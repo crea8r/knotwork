@@ -14,10 +14,11 @@ Read with:
 Build S10 from reused primitives outward:
 
 1. model the work container
-2. reuse document and channel primitives
-3. link runs into tasks
-4. add the smallest useful project dashboard
-5. only then extend runtime prompt loading
+2. lock the smallest workflow scoping rule
+3. reuse document and channel primitives
+4. link runs into tasks
+5. add the smallest useful project dashboard
+6. only then extend runtime prompt loading
 
 Do not begin with dashboard intelligence, automation, or planning features.
 
@@ -33,6 +34,7 @@ Deliverables:
 
 - `Project` model
 - `Task` model
+- minimal workflow scope model
 - project-scoped document namespace
 - linkage from `Task` to `Channel`
 - linkage from `Task` to `Run`
@@ -49,9 +51,49 @@ Rule:
 
 Prefer the simplest shape that reuses existing primitives, even if it is slightly less flexible.
 
+Minimal workflow scope rule to lock here:
+
+- global workflow is reusable and not tied to a project
+- project workflow belongs to exactly one project
+- project workflow can only spawn tasks into its own project
+- global workflow can spawn unassigned tasks
+- unassigned tasks may later be moved into a project for organization
+
+Avoid expanding this into a permissions or sharing framework.
+
 ---
 
-## Milestone 2 — Project Shell
+## Milestone 2 — Minimal Workflow Scoping
+
+Outcome:
+
+- workflow scope is explicit without creating a broad new access model
+
+Deliverables:
+
+- workflow scope represented as `global` or `project`
+- project workflow stores owning `project_id`
+- invariant enforcement:
+  - project workflow may only create tasks in its own project
+  - global workflow may create tasks with no project
+- task reassignment flow from unassigned to project-organized
+
+Rules:
+
+- scope controls where spawned tasks may live
+- scope does not create a new workflow permission matrix
+- scope does not imply inheritance, syncing, or cross-project sharing
+
+Failure modes to avoid:
+
+- letting a project workflow create tasks in another project
+- letting a global workflow target arbitrary projects automatically
+- introducing more than two workflow scopes in S10
+- building promotion/sync/version-lineage systems as a dependency
+
+---
+
+## Milestone 3 — Project Shell
 
 Outcome:
 
@@ -73,7 +115,7 @@ Do not create a bespoke navigation system for projects. Fit them into the curren
 
 ---
 
-## Milestone 3 — Project Documents via Handbook Reuse
+## Milestone 4 — Project Documents via Handbook Reuse
 
 Outcome:
 
@@ -98,7 +140,7 @@ Building "Handbook 2" with separate rules, separate editor behavior, or separate
 
 ---
 
-## Milestone 4 — Tasks as Channel-First Work Items
+## Milestone 5 — Tasks as Channel-First Work Items
 
 Outcome:
 
@@ -110,11 +152,13 @@ Deliverables:
 - task list in project detail
 - task detail view
 - auto-created task channel
+- support for unassigned tasks created from global workflows
 
 Behavior rules:
 
 - every task has a channel
 - a task may remain purely manual
+- a task may also begin unassigned if spawned from a global workflow
 - task detail should privilege conversation and work state, not execution internals
 
 Failure mode to avoid:
@@ -123,7 +167,7 @@ Turning tasks into mini-projects with their own complex metadata and planning st
 
 ---
 
-## Milestone 5 — Link Runs to Tasks
+## Milestone 6 — Link Runs to Tasks
 
 Outcome:
 
@@ -148,7 +192,7 @@ Duplicating run state into task-specific execution tables or bespoke execution U
 
 ---
 
-## Milestone 6 — Project Dashboard
+## Milestone 7 — Project Dashboard
 
 Outcome:
 
@@ -174,7 +218,7 @@ Building analytics infrastructure or configurable dashboard widgets.
 
 ---
 
-## Milestone 7 — Dashboard Update Flow
+## Milestone 8 — Dashboard Update Flow
 
 Outcome:
 
@@ -203,7 +247,7 @@ If the feature sounds like "the system records or summarizes recent visible stat
 
 ---
 
-## Milestone 8 — Runtime Knowledge Extension
+## Milestone 9 — Runtime Knowledge Extension
 
 Outcome:
 
@@ -231,6 +275,7 @@ Treating Project Documents as just more Handbook files and losing the semantic d
 Build first:
 
 - project/task schema
+- minimal workflow scope fields/invariants
 - task/run linkage
 - project document scope plumbing
 - project status update persistence
@@ -238,6 +283,7 @@ Build first:
 Then:
 
 - project/task API
+- workflow-scope-aware task-spawn API behavior
 - dashboard summary endpoints
 - runtime knowledge loading changes
 
@@ -247,6 +293,7 @@ Build first:
 
 - project list/detail shells
 - task list/detail views
+- unassigned-task organization flow
 - project document views reusing Handbook UI
 
 Then:

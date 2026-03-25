@@ -1,11 +1,19 @@
-# S9.2 Execution Plan — OpenClaw Workload Honesty
+# Historical S9.2 Execution Plan — OpenClaw Workload Honesty
+
+## Status
+
+This plan is retained as historical design context only.
+
+Do not implement it as written. It assumes the OpenClaw plugin remains a two-way execution/runtime actor that owns queue semantics, claim behavior, and backpressure logic. That assumption is now under reconsideration in S12/S12.1, where MCP becomes the agent -> Knotwork surface and the plugin may be reduced to inbound delivery.
+
+The problem statement still matters: operators need honest workload visibility and the system should not silently overload agents. But the architecture that should own those semantics must be redesigned in S12.2.
 
 ## Context
 
 Currently a task enters `"pending"` when created and sits there silently until the plugin claims it.
 Operators cannot tell whether the plugin is offline, busy, or ignoring the task.
 The plugin has no awareness of task weight — it claims indiscriminately up to `maxConcurrent`.
-This plan introduces honest queue semantics, intelligent claim decisions, and the UI labels that surface both to operators.
+This plan introduced honest queue semantics, intelligent claim decisions, and the UI labels that surface both to operators. It is now deferred because those responsibilities may no longer belong in the plugin.
 
 ---
 
@@ -34,7 +42,7 @@ This plan introduces honest queue semantics, intelligent claim decisions, and th
 2. `"claimed"` → `"failed"` flip at 15 min is silent — no warning state
 3. `"failed"` conflates timeout / plugin error / run cancelled
 4. Heartbeat `"log"` events can't be queried separately from real logs for stale detection
-5. No `"queued"` state (S9.2 AC #1)
+5. No `"queued"` state (historical S9.2 AC #1)
 
 ---
 
@@ -241,9 +249,8 @@ Tracks A and B are independent and can be implemented in parallel. Track C shoul
 ## Session Artifacts
 
 Per project policy (`CLAUDE.md`), after implementation create:
-- `docs/implementation/S9.2/spec.md` — what was built, key decisions, breaking changes
-- `docs/implementation/S9.2/validation.md` — manual checklist with ✅/❌ per item
-- `docs/implementation/S9.2/tests/test_s9_2.py` — pytest suite (SQLite in-memory)
+- `docs/implementation/S12.2/workload-honesty-spec.md` — preserved workload-honesty design input
+- `docs/implementation/S12.2/workload-honesty-plan.md` — preserved execution-plan draft
 
 ---
 

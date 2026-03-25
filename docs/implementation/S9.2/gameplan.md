@@ -1,17 +1,17 @@
-# Session 9.3 — Game Plan
+# Session 9.2 — Game Plan
 
-This document translates the S9.3 spec into an execution plan. It is intentionally implementation-oriented: milestones, component boundaries, schema direction, and testing scope.
+This document translates the S9.2 spec into an execution plan. It is intentionally implementation-oriented: milestones, component boundaries, schema direction, and testing scope.
 
 Read with:
 
-- `docs/implementation/S9.3/spec.md`
+- `docs/implementation/S9.2/spec.md`
 - `docs/implementation/roadmap.md`
 
 ---
 
 ## North Star
 
-By the end of S9.3:
+By the end of S9.2:
 
 - a run/chat event can target one or more specific participants
 - inbox visibility is participant-specific rather than workspace-global by default
@@ -43,7 +43,7 @@ By the end of S9.3:
 - direct reply from email
 - plugin protocol redesign
 - MCP involvement
-- generalized "unified work platform" beyond the routing model needed for S9.3
+- generalized "unified work platform" beyond the routing model needed for S9.2
 
 ---
 
@@ -63,7 +63,7 @@ These should stay fixed during implementation:
 
 ## Domain Model
 
-S9.3 should use four conceptual layers.
+S9.2 should use four conceptual layers.
 
 ### 1. Event
 
@@ -162,7 +162,7 @@ Outcome:
 Decisions to lock:
 
 - whether `participant_id` is a first-class table or a derived typed identifier
-- which event types are in S9.3
+- which event types are in S9.2
 - how explicit recipients are represented on escalations
 - what remains of the current workspace-wide notification tables
 - whether plugin delivery uses existing pairing state directly or needs a participant-bound preference row
@@ -385,7 +385,7 @@ These questions should be answered before implementation starts:
 - Is `participant_id` first-class persisted identity or a typed synthetic id?
 - Who is allowed to edit communication preferences for an agent participant?
 - Is app delivery always implicit, or can it be disabled for some event types?
-- Does plugin delivery need a "send test" in S9.3, or is pairing/health enough?
+- Does plugin delivery need a "send test" in S9.2, or is pairing/health enough?
 - Are run-completed events participant opt-in only, or workflow opt-in plus participant opt-in?
 - Is `mentioned_message` actually in scope, or should it be deferred explicitly now?
 
@@ -437,7 +437,7 @@ If business events and delivery attempts are not separated, retries and failure 
 
 ### 3. Over-generalization
 
-Trying to build the full future event/work-item platform in S9.3 will likely over-expand the phase.
+Trying to build the full future event/work-item platform in S9.2 will likely over-expand the phase.
 
 ### 4. Under-generalization
 
@@ -475,7 +475,7 @@ Those are the core of the phase.
 
 ## Definition of Done
 
-S9.3 is done when:
+S9.2 is done when:
 
 - addressed escalation is truly participant-specific
 - inbox is no longer workspace-global by default

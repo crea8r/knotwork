@@ -2,7 +2,7 @@
 
 ## Goal
 
-Make Knotwork reliably usable by a single human operator running real workflows in production — before collaborative and multi-participant features land in S9.1–S9.3.
+Make Knotwork reliably usable by a single human operator running real workflows in production — before collaborative and multi-participant features land in S9.1–S9.2.
 
 ## Sub-sessions
 
@@ -10,8 +10,7 @@ Make Knotwork reliably usable by a single human operator running real workflows 
 |---------|-------|
 | **S9** (this) | Workflow readiness hardening, loop safety, escalation polish, Handbook UI hardening, workflow org, session hardening, update mechanism, mobile UI |
 | **S9.1** | Workflow version management — draft model, explicit versioning, production designation, public URLs, visual branch timeline |
-| **S9.2** | OpenClaw workload honesty — honest queue model, intelligent claim decisions, operator visibility |
-| **S9.3** | Participant-specific event delivery — participant addressing, participant-bound communication means (`app`, `email`, `OpenClaw plugin`), event routing/preferences, deep links |
+| **S9.2** | Participant-specific event delivery — participant addressing, participant-bound communication means (`app`, `email`, `OpenClaw plugin`), event routing/preferences, deep links |
 
 ## In Scope
 
@@ -61,9 +60,10 @@ Make Knotwork reliably usable by a single human operator running real workflows 
 
 - **Workspace creation flow** — Phase 2 (multi-tenant Cloud only).
 - **Workflow version management** — S9.1. See `docs/implementation/S9.1/spec.md`.
-- **OpenClaw workload honesty** — S9.2. See `docs/implementation/S9.2/spec.md`.
-- **Participant-specific event delivery** — S9.3. Notifications become participant routing tied to chat events and communication means. See `docs/implementation/S9.3/spec.md`.
+- **OpenClaw workload honesty under the current plugin two-way execution model** — deferred to S12.2. See `docs/implementation/S12.2/workload-honesty-spec.md`.
+- **Participant-specific event delivery** — S9.2. Notifications become participant routing tied to chat events and communication means. See `docs/implementation/S9.2/spec.md`.
 - **OpenClaw WS transport upgrade** — deferred to S12.1 pending the S12 MCP/plugin split. See `docs/implementation/S12.1/spec.md`.
+- **Plugin-owned queue semantics / claim strategy that assume OpenClaw still does two-way execution/runtime coordination** — deferred to S12.2 pending the MCP/plugin rethink.
 - **Inviting/assigning agents into designer chat or workflow chat** — deferred to S12.2. This needs a rethink after the MCP/plugin split because OpenClaw's role may change from execution/runtime assumptions that the current design relied on.
 - **Designer chat Handbook-file mention syntax** (`/filename`, `[[filename]]`) — deferred to S12.2. This should be revisited together with the post-MCP rethink of designer/workflow chat behavior and how chat actions bind into workflow configuration.
 - Phase 2 features: cron, Slack, advanced roles, sub-graphs, auto-improvement loop, multi-tenancy, Handbook/workflow tags.

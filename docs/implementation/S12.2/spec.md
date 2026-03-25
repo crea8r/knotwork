@@ -1,8 +1,8 @@
-# Session 12.2 — Agent Invitation and Handbook Mentions in Designer / Workflow Chat
+# Session 12.2 — Post-MCP Interaction Rethink
 
 ## Goal
 
-Re-evaluate how agents can be invited or assigned into designer chat and workflow chat, and how handbook-file mention syntax should work there, after the S12 MCP/plugin split has clarified the role of MCP and the reduced role of the OpenClaw plugin.
+Re-evaluate how agents can be invited or assigned into designer chat and workflow chat, how handbook-file mention syntax should work there, and whether workload-honesty / queue semantics should still be modeled around the OpenClaw plugin at all, after the S12 MCP/plugin split has clarified the role of MCP and the reduced role of the OpenClaw plugin.
 
 ## Why This Is Deferred From S9
 
@@ -17,6 +17,13 @@ Because of that, this feature should not be finalized in S9. It needs a fresh de
 
 The same deferral now also applies to designer-chat Handbook-file mentions like `/filename` and `[[filename]]`, because that behavior depends on the same unresolved questions about how post-MCP designer/workflow chat should bind actions and context into workflow configuration.
 
+It also applies to the old S9.2 "OpenClaw workload honesty" design. That work assumed the plugin remained responsible for two-way execution/runtime coordination, including queue state, claim behavior, and backpressure heuristics. Since S12 may relocate those responsibilities, S9.2 needs to be redesigned here instead of implemented as originally written.
+
+The original S9.2 material is preserved here as design input:
+
+- `docs/implementation/S12.2/workload-honesty-spec.md`
+- `docs/implementation/S12.2/workload-honesty-plan.md`
+
 ## Required Rethink
 
 S12.2 must answer at least these questions:
@@ -28,12 +35,15 @@ S12.2 must answer at least these questions:
 5. Which transport carries chat delivery and replies after the OpenClaw/MCP split?
 6. How should transcript ownership, visibility, and decision/audit records work when multiple agents participate?
 7. If designer/workflow chat can act on handbook context, should `/filename` and `[[filename]]` mentions resolve directly to handbook paths, and how should those mentions safely mutate node or workflow configuration?
+8. After the MCP/plugin split, where should queue semantics, concurrency/backpressure policy, and workload visibility live?
+9. Is there still a plugin-owned claim loop, or does honest workload state need to be expressed elsewhere in the architecture?
 
 ## Out of Scope
 
 - Implementing agent invitation into designer chat in S9
 - Implementing agent invitation into workflow chat in S9
 - Implementing designer-chat Handbook-file mentions in S9
+- Implementing the old S9.2 plugin-centric workload-honesty design before the post-MCP rethink is complete
 - Assuming the current OpenClaw execution flow can be reused unchanged for chat participation
 
 ## Acceptance Criteria
@@ -42,4 +52,5 @@ S12.2 must answer at least these questions:
 2. The design explicitly states the role of MCP vs OpenClaw plugin in chat participation.
 3. The design covers participant identity, permissions, transcript visibility, and audit semantics.
 4. The design explicitly defines whether handbook-file mentions like `/filename` and `[[filename]]` are supported, how they resolve, and how they mutate workflow configuration safely if supported.
-5. The feature set is implementable without relying on pre-S12 OpenClaw runtime assumptions.
+5. The design explicitly states where workload-honesty semantics belong after the MCP/plugin split, including whether any part still belongs to the plugin.
+6. The feature set is implementable without relying on pre-S12 OpenClaw runtime assumptions.
