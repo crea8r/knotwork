@@ -81,17 +81,17 @@ export function useVersionDraft(workspaceId: string, graphId: string, versionRow
 }
 
 /** S9.1: Upsert the draft for a version (auto-save). */
-export function useUpsertVersionDraft(workspaceId: string, graphId: string, versionRowId: string) {
+export function useUpsertVersionDraft(workspaceId: string, graphId: string) {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (definition: GraphDefinition) =>
+    mutationFn: ({ versionRowId, definition }: { versionRowId: string; definition: GraphDefinition }) =>
       api
         .put<GraphVersion>(
           `/workspaces/${workspaceId}/graphs/${graphId}/versions/${versionRowId}/draft`,
           { definition },
         )
         .then((r) => r.data),
-    onSuccess: () => {
+    onSuccess: (_, { versionRowId }) => {
       qc.invalidateQueries({ queryKey: ['version-draft', graphId, versionRowId] })
       qc.invalidateQueries({ queryKey: ['graph-versions', graphId] })
     },
