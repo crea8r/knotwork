@@ -383,7 +383,6 @@ export default function GraphDetailPage() {
 
   const versionBaseKeyRef = useRef<string | null>(null)
   const savingDraftRef = useRef(false)
-  const seededInitialDraftRef = useRef(false)
 
   useEffect(() => {
     if (searchParams.get('chat') === '1') setShowChat(true)
@@ -416,7 +415,6 @@ export default function GraphDetailPage() {
   useEffect(() => {
     setActiveParentVersionId(undefined)
     versionBaseKeyRef.current = null
-    seededInitialDraftRef.current = false
     setAutosaveState('idle')
     setAutosaveError('')
   }, [graphId])
@@ -477,32 +475,6 @@ export default function GraphDetailPage() {
     }
   }, [activeDraft, activeTab, namedVersions])
 
-  useEffect(() => {
-    if (
-      !graphId
-      || versionsLoading
-      || seededInitialDraftRef.current
-      || allDrafts.length > 0
-      || !latestNamedVersion
-    ) {
-      return
-    }
-    seededInitialDraftRef.current = true
-    void upsertVersionDraft.mutateAsync({ versionRowId: latestNamedVersion.id, definition: latestNamedVersion.definition }).then(() => {
-      setActiveParentVersionId(latestNamedVersion.id)
-    }).catch((error: any) => {
-      const message = error?.response?.data?.detail ?? error?.message ?? 'Cannot initialize draft'
-      setAutosaveState('error')
-      setAutosaveError(String(message))
-      seededInitialDraftRef.current = false
-    })
-  }, [
-    allDrafts.length,
-    graphId,
-    latestNamedVersion,
-    upsertVersionDraft,
-    versionsLoading,
-  ])
 
   const serverDefinition = activeDraft?.definition
     ?? activeParentVersion?.definition

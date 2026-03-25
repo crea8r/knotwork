@@ -69,6 +69,21 @@ async def promote_draft_to_version(
     db: AsyncSession, graph_id: UUID, parent_version_id: UUID | None
 ) -> GraphVersion:
     """Mutate the draft in place: fill version_id, version_name, version_created_at."""
+    # Guard: at most one root version per graph
+    if parent_version_id is None:
+        result = await db.execute(
+            select(GraphVersion).where(
+                GraphVersion.graph_id == graph_id,
+                GraphVersion.version_id.isnot(None),
+                GraphVersion.parent_version_id.is_(None),
+            )
+        )
+        if result.scalar_one_or_none() is not None:
+            raise ValueError(
+                "A root version already exists for this graph. "
+                "Edit the existing version to create a child version instead."
+            )
+
     draft = await get_draft_for_version(db, graph_id, parent_version_id)
     if draft is None:
         raise ValueError("No draft found for this version")
