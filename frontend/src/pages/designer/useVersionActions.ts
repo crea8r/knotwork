@@ -13,7 +13,6 @@ import {
   useUpdateGraph,
   useUpsertVersionDraft,
 } from '@/api/graphs'
-import { useCreateGraphPublicLink } from '@/api/publicWorkflows'
 import type { Graph, GraphDefinition, GraphVersion } from '@/types'
 import { formatVersionName } from './graphVersionUtils'
 import type { RenameDialog, ForkDialog } from './GraphDialogs'
@@ -44,7 +43,6 @@ export function useVersionActions(
   const unarchiveVersion = useUnarchiveVersion(workspaceId, graphId!)
   const renameVersion = useRenameVersion(workspaceId, graphId!)
   const setDefault = useSetProduction(workspaceId, graphId!)
-  const createPublicLink = useCreateGraphPublicLink(workspaceId, graphId!)
   const forkVersion = useForkVersion(workspaceId, graphId!)
   const updateGraph = useUpdateGraph(workspaceId)
 
@@ -89,10 +87,10 @@ export function useVersionActions(
       const version = resolvedParentVersionId === null
         ? await promoteRootDraft.mutateAsync()
         : await promoteDraft.mutateAsync(resolvedParentVersionId!)
-      if (makePublic) await createPublicLink.mutateAsync({ description_md: '', graph_version_id: version.id })
       loadDefinition(version.id, version.definition, version.id)
-      setViewingVersionSnapshot(false); setActiveTab('history'); setEditorMode('view')
+      setViewingVersionSnapshot(true); setActiveTab('history'); setEditorMode('view')
       setPublishDialog(false)
+      // For "publish publicly": open the public links modal so user can add a description.
       if (makePublic) setPublicLinksVersionId(version.id)
     } catch (error: any) {
       window.alert(String(error?.response?.data?.detail ?? error?.message ?? 'Cannot publish'))
@@ -175,7 +173,7 @@ export function useVersionActions(
     versionActionPending: archiveVersion.isPending || unarchiveVersion.isPending || deleteVersion.isPending
       || renameVersion.isPending || setDefault.isPending || forkVersion.isPending
       || promoteDraft.isPending || promoteRootDraft.isPending,
-    publishPending: promoteDraft.isPending || promoteRootDraft.isPending || createPublicLink.isPending,
+    publishPending: promoteDraft.isPending || promoteRootDraft.isPending,
     renamePending: renameVersion.isPending,
     forkPending: forkVersion.isPending,
     handleViewVersion, handleOpenVersion, handlePromoteCurrentDraft,
