@@ -108,8 +108,13 @@ export default function GraphTabBar({
             )}
           </>
         ) : null}
-        <div className="ml-auto flex items-center gap-1 flex-shrink-0">
-          <Btn size="sm" variant="primary" disabled={hasValidationErrors} title={hasValidationErrors ? 'Fix topology errors before running' : undefined} onClick={onRun}>
+        <div className="ml-auto flex items-center gap-2 flex-shrink-0">
+          {hasValidationErrors && (
+            <span className="hidden md:inline text-xs text-amber-600 truncate max-w-[180px]" title={validationErrors.join(', ')}>
+              {validationErrors[0].length > 32 ? validationErrors[0].slice(0, 30) + '…' : validationErrors[0]}
+            </span>
+          )}
+          <Btn size="sm" variant="primary" disabled={hasValidationErrors} onClick={onRun}>
             <Play size={12} /><span className="hidden md:inline"> Run</span>
           </Btn>
           {editorMode === 'edit' && <>
