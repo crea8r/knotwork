@@ -7,9 +7,6 @@ export default function NodeConfigOverlay({
   node,
   definition,
   readOnly,
-  graphId,
-  serverDefinition,
-  isDirty,
   onClose,
   onInputSchemaChange,
   onConfigChange,
@@ -20,9 +17,6 @@ export default function NodeConfigOverlay({
   node: NodeDef
   definition: GraphDefinition
   readOnly: boolean
-  graphId: string
-  serverDefinition: GraphDefinition
-  isDirty: boolean
   onClose: () => void
   onInputSchemaChange: (fields: InputFieldDef[]) => void
   onConfigChange: (nodeId: string, patch: Record<string, unknown>) => void
@@ -31,7 +25,6 @@ export default function NodeConfigOverlay({
   onRemoveEdge: (edgeId: string) => void
 }) {
   const addEdge = useCanvasStore((s) => s.addEdge)
-  const setGraph = useCanvasStore((s) => s.setGraph)
 
   const panelProps = {
     node,
@@ -39,10 +32,7 @@ export default function NodeConfigOverlay({
     edges: definition.edges,
     inputFields: definition.input_schema ?? [],
     readOnly,
-    onInputSchemaChange: (fields: InputFieldDef[]) => {
-      if (!isDirty) setGraph(graphId, serverDefinition)
-      onInputSchemaChange(fields)
-    },
+    onInputSchemaChange,
     onConfigChange,
     onRemove,
     onAddEdge: (edge: EdgeDef) => addEdge(edge),

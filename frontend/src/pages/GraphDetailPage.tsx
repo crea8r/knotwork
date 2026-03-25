@@ -59,8 +59,10 @@ export default function GraphDetailPage() {
 
   useEffect(() => { if (searchParams.get('chat') === '1') setShowChat(true) }, [searchParams])
   useEffect(() => {
-    if (activeTab !== 'graph') { setEditorMode('view'); setShowChat(false); selectNode(null) }
-  }, [activeTab, selectNode])
+    if (activeTab !== 'graph') { setEditorMode('view'); setShowChat(false); selectNode(null); return }
+    // Drafts always open in edit mode; version snapshots are always read-only.
+    setEditorMode(sync.viewingVersionSnapshot ? 'view' : 'edit')
+  }, [activeTab, sync.viewingVersionSnapshot, selectNode])
 
   const { definition, serverDefinition, isDirty } = sync
   const validationErrors = validateGraph(definition)
@@ -143,7 +145,6 @@ export default function GraphDetailPage() {
               {activeTab === 'graph' && selectedNode && (
                 <NodeConfigOverlay
                   node={selectedNode} definition={definition} readOnly={editorMode !== 'edit'}
-                  graphId={graphId!} serverDefinition={serverDefinition} isDirty={isDirty}
                   onClose={() => selectNode(null)}
                   onInputSchemaChange={setInputSchema}
                   onConfigChange={updateNodeConfig}
