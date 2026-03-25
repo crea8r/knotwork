@@ -3,7 +3,6 @@ import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import {
   AlertTriangle,
   Archive,
-  Check,
   ChevronLeft,
   Copy,
   GitBranch,
@@ -15,7 +14,6 @@ import {
   Plus,
   ChevronDown,
   Search,
-  Save,
   Star,
   Trash2,
   X,
@@ -535,13 +533,13 @@ export default function GraphDetailPage() {
   ])
 
   useEffect(() => {
-    if (!isDirty) {
+    if (!isDirty && autosaveState !== 'saving') {
       window.onbeforeunload = null
       return
     }
-    window.onbeforeunload = () => 'You have unsaved changes. Leave anyway?'
+    window.onbeforeunload = () => 'Changes are still saving. Leave anyway?'
     return () => { window.onbeforeunload = null }
-  }, [isDirty])
+  }, [isDirty, autosaveState])
 
   const validationErrors = validateGraph(definition)
   const hasValidationErrors = validationErrors.length > 0
@@ -1098,16 +1096,27 @@ export default function GraphDetailPage() {
                       ? `Editing draft based on ${currentVersionLabel}`
                       : `Viewing workflow based on ${currentVersionLabel}`}
                   </p>
-                  {autosaveState === 'error' ? (
-                    <p className="mt-1 text-xs text-red-600">{autosaveError}</p>
-                  ) : (
-                    <p className="mt-1 text-xs text-gray-400">
-                      {autosaveState === 'saving'
-                        ? 'Saving draft…'
-                        : autosaveState === 'saved'
-                          ? 'Draft saved'
-                          : 'Draft auto-saves as you edit'}
-                    </p>
+                  {activeTab === 'editor' && editorMode === 'edit' && (
+                    autosaveState === 'error' ? (
+                      <p className="mt-1 flex items-center gap-1.5 text-xs text-red-600">
+                        <span>Draft failed to save — don't close this tab.</span>
+                        <button
+                          onClick={() => void syncDraftNow()}
+                          className="underline hover:no-underline"
+                        >
+                          Retry
+                        </button>
+                      </p>
+                    ) : (
+                      <p className="mt-1 flex items-center gap-1.5 text-xs text-gray-400">
+                        {autosaveState === 'saving' && <Loader2 size={11} className="animate-spin" />}
+                        {autosaveState === 'saving'
+                          ? 'Saving draft…'
+                          : autosaveState === 'saved'
+                            ? 'Draft saved'
+                            : 'Auto-saves as you edit'}
+                      </p>
+                    )
                   )}
                 </div>
               </div>
@@ -1130,11 +1139,6 @@ export default function GraphDetailPage() {
                 </div>
 
                 <div className="flex items-center gap-1 md:gap-2 flex-shrink-0 ml-auto flex-nowrap">
-                  {autosaveState === 'saved' && !isDirty && activeTab === 'editor' && (
-                    <span className="flex items-center gap-1.5 px-2 md:px-3 py-2 text-sm font-medium text-green-600">
-                      <Check size={14} /><span className="hidden md:inline"> Saved</span>
-                    </span>
-                  )}
                   {editorMode === 'view' && (
                     <Btn
                       size="sm"
@@ -1149,15 +1153,6 @@ export default function GraphDetailPage() {
                   )}
                   {activeTab === 'editor' && editorMode === 'edit' && (
                     <>
-                      <Btn
-                        size="sm"
-                        variant="secondary"
-                        title="Save draft"
-                        loading={autosaveState === 'saving'}
-                        onClick={() => void syncDraftNow()}
-                      >
-                        <Save size={14} /><span className="hidden md:inline"> Save draft</span>
-                      </Btn>
                       <Btn
                         size="sm"
                         title="Save as version"

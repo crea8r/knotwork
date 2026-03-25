@@ -29,6 +29,7 @@ function resolveWorkspaceId(workspaceId?: string) {
 }
 
 export function useDesignChat(workspaceId: string | undefined, graphId: string) {
+  const qc = useQueryClient()
   const resolvedWorkspaceId = resolveWorkspaceId(workspaceId)
   return useMutation<DesignChatResponse, Error, { session_id: string; message: string }>({
     mutationFn: (body) =>
@@ -38,6 +39,9 @@ export function useDesignChat(workspaceId: string | undefined, graphId: string) 
           graph_id: graphId,
         })
         .then((r) => r.data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['designer-messages', resolvedWorkspaceId, graphId] })
+    },
   })
 }
 
