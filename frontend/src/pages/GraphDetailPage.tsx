@@ -341,7 +341,7 @@ export default function GraphDetailPage() {
   const forkVersion = useForkVersion(workspaceId, graphId!)
   const updateGraph = useUpdateGraph(workspaceId)
   const upsertRootDraft = useUpsertRootDraft(workspaceId, graphId!)
-  const upsertVersionDraft = useUpsertVersionDraft(workspaceId, graphId!, '')
+  const upsertVersionDraft = useUpsertVersionDraft(workspaceId, graphId!)
   const promoteRootDraft = usePromoteRootDraft(workspaceId, graphId!)
   const promoteDraft = usePromoteDraft(workspaceId, graphId!)
   const { data: runs = [] } = useRuns(workspaceId)
@@ -488,7 +488,7 @@ export default function GraphDetailPage() {
       return
     }
     seededInitialDraftRef.current = true
-    void upsertVersionDraft.mutateAsync(latestNamedVersion.definition).then(() => {
+    void upsertVersionDraft.mutateAsync({ versionRowId: latestNamedVersion.id, definition: latestNamedVersion.definition }).then(() => {
       setActiveParentVersionId(latestNamedVersion.id)
     }).catch((error: any) => {
       const message = error?.response?.data?.detail ?? error?.message ?? 'Cannot initialize draft'
@@ -558,7 +558,7 @@ export default function GraphDetailPage() {
     try {
       const saved = resolvedParentVersionId === null
         ? await upsertRootDraft.mutateAsync(nextDefinition)
-        : await upsertVersionDraft.mutateAsync(nextDefinition)
+        : await upsertVersionDraft.mutateAsync({ versionRowId: resolvedParentVersionId!, definition: nextDefinition })
       markSaved()
       setAutosaveState('saved')
       return saved
@@ -603,7 +603,7 @@ export default function GraphDetailPage() {
       return
     }
     try {
-      const draft = await upsertVersionDraft.mutateAsync(version.definition)
+      const draft = await upsertVersionDraft.mutateAsync({ versionRowId: version.id, definition: version.definition })
       loadDefinition(version.id, draft.definition, draft.id)
       setActiveTab('editor')
       setEditorMode('edit')
