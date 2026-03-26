@@ -102,14 +102,23 @@ export default function NodeConfigPanel({
     <div className="flex flex-col h-full">
       {showHeader && (
         <div className="px-4 py-3 border-b">
-          <div className="flex items-start justify-between">
-            <div>
-              <h2 className="font-medium text-gray-900 text-sm">{node.name}</h2>
-              <p className="text-xs text-gray-400 mt-0.5">{TYPE_LABEL[node.type] ?? node.type}</p>
-              <p className="text-xs font-mono text-gray-300 mt-0.5">{node.id}</p>
+          <div className="flex items-start justify-between gap-2">
+            <div className="min-w-0 flex-1">
+              {!readOnly ? (
+                <input
+                  className="w-full rounded border border-transparent px-1 py-0.5 text-sm font-medium text-gray-900 outline-none hover:border-gray-200 focus:border-brand-400 focus:ring-1 focus:ring-brand-200 bg-transparent"
+                  value={node.name}
+                  onChange={e => onConfigChange(node.id, { name: e.target.value })}
+                  onKeyDown={e => { if (e.key === 'Enter') e.currentTarget.blur() }}
+                />
+              ) : (
+                <h2 className="font-medium text-gray-900 text-sm px-1">{node.name}</h2>
+              )}
+              <p className="text-xs text-gray-400 mt-0.5 px-1">{TYPE_LABEL[node.type] ?? node.type}</p>
+              <p className="text-xs font-mono text-gray-300 mt-0.5 px-1">{node.id}</p>
             </div>
             {!isStartOrEnd && !readOnly && (
-              <button onClick={() => onRemove(node.id)} className="text-xs text-red-400 hover:text-red-600 mt-0.5">
+              <button onClick={() => onRemove(node.id)} className="text-xs text-red-400 hover:text-red-600 mt-1 flex-shrink-0">
                 Remove
               </button>
             )}

@@ -1,7 +1,7 @@
 import { Copy, Globe } from 'lucide-react'
 import Btn from '@/components/shared/Btn'
 import PublicLinksModal from '@/components/operator/PublicLinksModal'
-import type { GraphVersion } from '@/types'
+import type { Graph, GraphVersion } from '@/types'
 
 export interface RenameDialog { version: GraphVersion; value: string }
 export interface ForkDialog { versionRowId: string; value: string }
@@ -24,7 +24,8 @@ export default function GraphDialogs({
   onForkSubmit,
   onForkClose,
   forkPending,
-  publicLinksVersionId,
+  publicLinksVersion,
+  graph,
   onClosePublicLinks,
 }: {
   workspaceId: string
@@ -44,16 +45,18 @@ export default function GraphDialogs({
   onForkSubmit: () => void
   onForkClose: () => void
   forkPending: boolean
-  publicLinksVersionId: string | null
+  publicLinksVersion: GraphVersion | null
+  graph: Graph
   onClosePublicLinks: () => void
 }) {
   return (
     <>
-      {publicLinksVersionId && (
+      {publicLinksVersion && (
         <PublicLinksModal
           workspaceId={workspaceId}
           graphId={graphId}
-          currentVersionId={publicLinksVersionId}
+          graph={graph}
+          version={publicLinksVersion}
           onClose={onClosePublicLinks}
         />
       )}

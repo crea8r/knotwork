@@ -17,9 +17,9 @@ Because of that, this feature should not be finalized in S9. It needs a fresh de
 
 The same deferral now also applies to designer-chat Handbook-file mentions like `/filename` and `[[filename]]`, because that behavior depends on the same unresolved questions about how post-MCP designer/workflow chat should bind actions and context into workflow configuration.
 
-It also applies to the old S9.2 "OpenClaw workload honesty" design. That work assumed the plugin remained responsible for two-way execution/runtime coordination, including queue state, claim behavior, and backpressure heuristics. Since S12 may relocate those responsibilities, S9.2 needs to be redesigned here instead of implemented as originally written.
+It also applies to the old S10 "OpenClaw workload honesty" design. That work assumed the plugin remained responsible for two-way execution/runtime coordination, including queue state, claim behavior, and backpressure heuristics. Since S12 may relocate those responsibilities, S10 needs to be redesigned here instead of implemented as originally written.
 
-The original S9.2 material is preserved here as design input:
+The original S10 material is preserved here as design input:
 
 - `docs/implementation/S12.2/workload-honesty-spec.md`
 - `docs/implementation/S12.2/workload-honesty-plan.md`
@@ -43,7 +43,7 @@ S12.2 must answer at least these questions:
 - Implementing agent invitation into designer chat in S9
 - Implementing agent invitation into workflow chat in S9
 - Implementing designer-chat Handbook-file mentions in S9
-- Implementing the old S9.2 plugin-centric workload-honesty design before the post-MCP rethink is complete
+- Implementing the old S10 plugin-centric workload-honesty design before the post-MCP rethink is complete
 - Assuming the current OpenClaw execution flow can be reused unchanged for chat participation
 
 ## Acceptance Criteria

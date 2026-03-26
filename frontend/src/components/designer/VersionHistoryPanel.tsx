@@ -151,7 +151,7 @@ function VersionRow({
             >
               <Archive size={14} />
             </button>
-            {version.run_count === 0 && !version.is_public && (
+            {version.run_count === 0 && !version.version_slug && (
               <button
                 title="Delete version"
                 className="rounded p-1 text-gray-400 hover:text-red-600 hover:bg-red-50"

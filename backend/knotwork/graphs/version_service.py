@@ -166,11 +166,11 @@ async def unarchive_version(db: AsyncSession, graph_id: UUID, version_row_id: UU
 
 
 async def delete_version(db: AsyncSession, graph_id: UUID, version_row_id: UUID) -> None:
-    """Delete a version. Blocked if it has runs or is_public."""
+    """Delete a version. Blocked if it has runs or a public page (version_slug set)."""
     version = await db.get(GraphVersion, version_row_id)
     if version is None or version.graph_id != graph_id:
         raise ValueError("Version not found")
-    if version.is_public:
+    if version.version_slug:
         raise ValueError("Cannot delete a version with an active public page")
     run_count = await get_version_run_count(db, version_row_id)
     if run_count > 0:

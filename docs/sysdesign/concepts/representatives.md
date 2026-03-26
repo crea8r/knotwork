@@ -75,7 +75,7 @@ From the workspace's perspective, both are representatives. From external partie
 
 ## S12 Separation of Concerns
 
-S9.2 introduces participant-specific event delivery and treats OpenClaw plugin as one Knotwork-managed communication mean for internal routing.
+S10 introduces participant-specific event delivery and treats OpenClaw plugin as one Knotwork-managed communication mean for internal routing.
 
 S12 makes the boundary explicit:
 

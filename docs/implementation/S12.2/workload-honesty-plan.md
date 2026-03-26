@@ -1,4 +1,4 @@
-# Historical S9.2 Execution Plan — OpenClaw Workload Honesty
+# Historical S10 Execution Plan — OpenClaw Workload Honesty
 
 ## Status
 
@@ -42,7 +42,7 @@ This plan introduced honest queue semantics, intelligent claim decisions, and th
 2. `"claimed"` → `"failed"` flip at 15 min is silent — no warning state
 3. `"failed"` conflates timeout / plugin error / run cancelled
 4. Heartbeat `"log"` events can't be queried separately from real logs for stale detection
-5. No `"queued"` state (historical S9.2 AC #1)
+5. No `"queued"` state (historical S10 AC #1)
 
 ---
 

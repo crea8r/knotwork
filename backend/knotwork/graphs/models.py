@@ -1,5 +1,5 @@
 from uuid import uuid4
-from sqlalchemy import String, Text, JSON, DateTime, ForeignKey, Boolean, UniqueConstraint
+from sqlalchemy import String, Text, JSON, DateTime, ForeignKey, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.sql import func
@@ -54,8 +54,9 @@ class GraphVersion(Base):
     )
     # Archival
     archived_at: Mapped[DateTime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    # Whether the version's public page is enabled
-    is_public: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    # Public slug — null = private; set = public at /public/workflows/{graph.slug}/{version_slug}
+    version_slug: Mapped[str | None] = mapped_column(String(200), nullable=True, unique=True)
+    public_description_md: Mapped[str | None] = mapped_column(Text, nullable=True)
     # Tracks last edit time; frozen at promotion
     updated_at: Mapped[DateTime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False

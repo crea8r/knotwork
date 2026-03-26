@@ -273,8 +273,8 @@ async def test_cannot_delete_version_with_public_page(db, graph):
     from knotwork.graphs.models import GraphVersion
 
     version = await promote_draft_to_version(db, graph.id, None)
-    # Manually enable public page
-    version.is_public = True
+    # Manually set a public slug (simulates a published version; supersedes is_public from S9.1)
+    version.version_slug = "test-slug-42"
     await db.commit()
 
     with pytest.raises(ValueError, match="public"):

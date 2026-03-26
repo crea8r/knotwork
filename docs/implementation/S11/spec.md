@@ -1,4 +1,4 @@
-# Session 10 — Projects, Tasks, and Project Documents
+# Session 11 — Projects, Tasks, and Project Documents
 
 ## Goal
 
@@ -6,7 +6,7 @@ Add the missing work-management layer above Graphs and Runs so Knotwork can trac
 
 ## Context
 
-Before S10, Knotwork's main hierarchy is:
+Before S11, Knotwork's main hierarchy is:
 
 ```text
 Workspace -> Graphs -> Runs
@@ -14,7 +14,7 @@ Workspace -> Graphs -> Runs
 
 That is an execution model, not a work model. Graphs are reusable process templates, and Runs are single executions, but neither is the thing a human operator is actually trying to advance.
 
-S10 introduces:
+S11 introduces:
 
 - **Project** — the objective-scoped work container
 - **Task** — the user-facing unit of work inside a Project
@@ -59,7 +59,7 @@ These concepts shift Knotwork from "workflow runner" toward "operating system fo
 - Advanced roles beyond current Phase 1 model.
 - Scheduled/cron task execution.
 - Sub-graphs, auto-improvement loops, and other roadmap items outside S10.
-- Replacing Graphs/Runs as the execution model; S10 adds a work layer above them.
+- Replacing Graphs/Runs as the execution model; S11 adds a work layer above them.
 
 ## Core Decisions
 
@@ -77,7 +77,7 @@ These concepts shift Knotwork from "workflow runner" toward "operating system fo
    - discussion should not be trapped only inside run detail
    - project and task channels become the collaboration shell around execution
 5. **No-AI mode remains first-class.**
-   - S10 must improve the product even for teams running human-only work
+   - S11 must improve the product even for teams running human-only work
 
 ## Acceptance Criteria
 
@@ -95,4 +95,4 @@ These concepts shift Knotwork from "workflow runner" toward "operating system fo
 12. Agent execution triggered from a task loads all three knowledge layers: Handbook, Project Documents, and Run Context.
 13. Prompt structure preserves the distinction between reusable guidance, project context, and case-specific input.
 14. Tasks without AI support remain operable through human workflow rather than producing configuration failure.
-15. S10 makes progress toward product usefulness as a work-management system, not only as a workflow executor.
+15. S11 makes progress toward product usefulness as a work-management system, not only as a workflow executor.

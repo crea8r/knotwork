@@ -69,7 +69,7 @@ from knotwork.workspaces.invitations.router import router as invitations_router
 from knotwork.workspaces.invitations.router import public_router as invitations_public_router
 from knotwork.openclaw_integrations.install_router import router as openclaw_install_router
 from knotwork.public_workflows.router import router as public_workflows_router
-from knotwork.public_workflows.router import public_router as public_workflows_public_router
+from knotwork.public_workflows.public_router import public_router as public_workflows_public_router
 from knotwork.database import AsyncSessionLocal
 
 _STARTED_AT = datetime.now(timezone.utc)

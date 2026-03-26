@@ -1,20 +1,20 @@
-# Session 10 — Implementation Playbook
+# Session 11 — Implementation Playbook
 
-This document turns the S10 scope into a practical build sequence with hard boundaries so implementation stays small, coherent, and compatible with the rest of Knotwork.
+This document turns the S11 scope into a practical build sequence with hard boundaries so implementation stays small, coherent, and compatible with the rest of Knotwork.
 
 Read with:
 
-- `docs/implementation/S10/spec.md`
-- `docs/implementation/S10/scope.md`
+- `docs/implementation/S11/spec.md`
+- `docs/implementation/S11/scope.md`
 
 ---
 
 ## Delivery Principle
 
-Build S10 from reused primitives outward:
+Build S11 from reused primitives outward:
 
 1. model the work container
-2. lock the smallest workflow scoping rule
+2. lock the smallest workflow `project_id` rule
 3. reuse document and channel primitives
 4. link runs into tasks
 5. add the smallest useful project dashboard
@@ -34,7 +34,7 @@ Deliverables:
 
 - `Project` model
 - `Task` model
-- minimal workflow scope model
+- minimal workflow `project_id` model
 - project-scoped document namespace
 - linkage from `Task` to `Channel`
 - linkage from `Task` to `Run`
@@ -51,11 +51,11 @@ Rule:
 
 Prefer the simplest shape that reuses existing primitives, even if it is slightly less flexible.
 
-Minimal workflow scope rule to lock here:
+Minimal workflow rule to lock here:
 
-- global workflow is reusable and not tied to a project
-- project workflow belongs to exactly one project
-- project workflow can only spawn tasks into its own project
+- `workflow.project_id IS NULL` means the workflow is global and reusable
+- `workflow.project_id IS NOT NULL` means the workflow belongs to exactly one project
+- project workflow can only spawn tasks into its own `project_id`
 - global workflow can spawn unassigned tasks
 - unassigned tasks may later be moved into a project for organization
 
@@ -63,32 +63,31 @@ Avoid expanding this into a permissions or sharing framework.
 
 ---
 
-## Milestone 2 — Minimal Workflow Scoping
+## Milestone 2 — Minimal Workflow `project_id` Rule
 
 Outcome:
 
-- workflow scope is explicit without creating a broad new access model
+- workflow ownership is explicit without creating a broad new access model
 
 Deliverables:
 
-- workflow scope represented as `global` or `project`
-- project workflow stores owning `project_id`
+- nullable `workflow.project_id`
 - invariant enforcement:
-  - project workflow may only create tasks in its own project
+  - `workflow.project_id IS NOT NULL` may only create tasks in that project
   - global workflow may create tasks with no project
 - task reassignment flow from unassigned to project-organized
 
 Rules:
 
-- scope controls where spawned tasks may live
-- scope does not create a new workflow permission matrix
-- scope does not imply inheritance, syncing, or cross-project sharing
+- `workflow.project_id` controls where spawned tasks may live
+- `workflow.project_id` does not create a new workflow permission matrix
+- `workflow.project_id` does not imply inheritance, syncing, or cross-project sharing
 
 Failure modes to avoid:
 
 - letting a project workflow create tasks in another project
 - letting a global workflow target arbitrary projects automatically
-- introducing more than two workflow scopes in S10
+- introducing a separate workflow `scope` field in S11
 - building promotion/sync/version-lineage systems as a dependency
 
 ---
@@ -243,7 +242,7 @@ Deferred explicitly:
 Use this rule:
 
 If the feature sounds like "the system understands how the project is going," it is probably S11.
-If the feature sounds like "the system records or summarizes recent visible state," it can fit S10.
+If the feature sounds like "the system records or summarizes recent visible state," it can fit S11.
 
 ---
 
@@ -275,7 +274,7 @@ Treating Project Documents as just more Handbook files and losing the semantic d
 Build first:
 
 - project/task schema
-- minimal workflow scope fields/invariants
+- minimal workflow `project_id` field/invariants
 - task/run linkage
 - project document scope plumbing
 - project status update persistence
@@ -283,7 +282,7 @@ Build first:
 Then:
 
 - project/task API
-- workflow-scope-aware task-spawn API behavior
+- workflow-`project_id`-aware task-spawn API behavior
 - dashboard summary endpoints
 - runtime knowledge loading changes
 

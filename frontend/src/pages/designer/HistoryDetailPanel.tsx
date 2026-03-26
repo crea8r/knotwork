@@ -1,4 +1,4 @@
-import { FileEdit, Globe } from 'lucide-react'
+import { FileEdit, Globe, Pencil } from 'lucide-react'
 import Badge from '@/components/shared/Badge'
 import Btn from '@/components/shared/Btn'
 import HistoryDetailCard from './HistoryDetailCard'
@@ -7,7 +7,7 @@ import { formatVersionName, formatVersionStamp } from './graphVersionUtils'
 import type { GraphVersion } from '@/types'
 
 export default function HistoryDetailPanel({
-  workspaceId, graphId,
+  graphSlug,
   historySelection,
   selectedHistoryDraft,
   selectedHistoryVersion,
@@ -23,9 +23,9 @@ export default function HistoryDetailPanel({
   onDelete,
   onManagePublic,
   onPublish,
+  onEditRootDraft,
 }: {
-  workspaceId: string
-  graphId: string
+  graphSlug: string | null
   historySelection: HistorySelection | null
   selectedHistoryDraft: GraphVersion | null
   selectedHistoryVersion: GraphVersion | null
@@ -41,6 +41,7 @@ export default function HistoryDetailPanel({
   onDelete: (version: GraphVersion) => void
   onManagePublic: (version: GraphVersion) => void
   onPublish: () => void
+  onEditRootDraft: () => void
 }) {
   if (historySelection?.kind === 'root-draft' && selectedHistoryDraft) {
     return (
@@ -55,6 +56,9 @@ export default function HistoryDetailPanel({
           <p className="mt-1 text-xs text-amber-700">{formatVersionStamp(selectedHistoryDraft.updated_at)}</p>
         </div>
         <div className="flex flex-wrap gap-2">
+          <Btn size="sm" variant="secondary" onClick={onEditRootDraft}>
+            <Pencil size={12} /> Edit draft
+          </Btn>
           <Btn size="sm" variant="secondary" onClick={onPublish}>
             <Globe size={12} /> Publish
           </Btn>
@@ -89,7 +93,7 @@ export default function HistoryDetailPanel({
   if (selectedHistoryVersion) {
     return (
       <HistoryDetailCard
-        workspaceId={workspaceId} graphId={graphId}
+        graphSlug={graphSlug}
         version={selectedHistoryVersion}
         graphDefaultVersionId={graphDefaultVersionId}
         isActiveDraftBase={resolvedParentVersionId === selectedHistoryVersion.id}

@@ -33,11 +33,15 @@ function FieldInput({
 }
 
 export default function PublicWorkflowPage() {
-  const { token = '' } = useParams<{ token: string }>()
+  const { token, graphSlug, versionSlug } = useParams<{ token?: string; graphSlug?: string; versionSlug?: string }>()
+  const resolvedToken = token ?? (graphSlug ? (versionSlug ? `${graphSlug}/${versionSlug}` : graphSlug) : '')
   const navigate = useNavigate()
-  const { data, isLoading, isError, error } = usePublicWorkflow(token)
-  const trigger = useTriggerPublicRun(token)
-  const uploadAttachment = useUploadPublicWorkflowAttachment(token)
+  const { data, isLoading, isError, error } = usePublicWorkflow(resolvedToken)
+  const trigger = useTriggerPublicRun(resolvedToken)
+  // For attachments we need graph_slug + version_slug; use data.resolved_version_slug for graph-level URLs
+  const attachGraphSlug = graphSlug ?? ''
+  const attachVersionSlug = versionSlug ?? data?.resolved_version_slug ?? ''
+  const uploadAttachment = useUploadPublicWorkflowAttachment(attachGraphSlug, attachVersionSlug)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
 
   const schema = data?.input_schema ?? []

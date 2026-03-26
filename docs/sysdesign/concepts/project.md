@@ -1,12 +1,12 @@
 # Core Concepts — Projects, Tasks, and Project Documents
 
-Added in S10. These concepts sit above the Graph/Run layer and give Knotwork its work management surface.
+Added in S11. These concepts sit above the Graph/Run layer and give Knotwork its work management surface.
 
 ---
 
 ## Why Projects Exist
 
-Before S10, the Knotwork hierarchy was:
+Before S11, the Knotwork hierarchy was:
 
 ```
 Workspace → Graphs (reusable templates) → Runs (executions)
@@ -39,7 +39,7 @@ A Project is not a Graph. Graphs are reusable; Projects are specific. A single G
 The project dashboard shows:
 - **Quantitative**: task completion %, run success rate, days to deadline
 - **Roadblock surface**: failed runs and stalled tasks shown prominently — not buried in a list
-- **Qualitative** (S11+): agent-synthesized progress assessment ("~60% toward objective...")
+- **Qualitative** (S11.1+): agent-synthesized progress assessment ("~60% toward objective...")
 
 ---
 

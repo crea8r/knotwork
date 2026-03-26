@@ -30,7 +30,8 @@ export interface GraphVersion {
   version_created_at: string | null
   parent_version_id: string | null // lineage pointer
   archived_at: string | null
-  is_public: boolean
+  version_slug: string | null
+  public_description_md: string | null
   updated_at: string
   created_at: string
   // Enriched by list endpoint
@@ -122,23 +123,12 @@ export function isDraftRun(run: Run): boolean {
   return run.draft_snapshot_at != null
 }
 
-export interface PublicWorkflowLink {
-  id: string
-  workspace_id: string
-  graph_id: string
-  graph_version_id: string | null
-  token: string
-  description_md: string
-  status: 'active' | 'disabled'
-  created_at: string
-  updated_at: string
-}
-
 export interface PublicWorkflowView {
   description_md: string
   input_schema: InputFieldDef[]
   rate_limit_max_requests: number
   rate_limit_window_seconds: number
+  resolved_version_slug: string
   notice_test_only: boolean
   notice_future_paid: boolean
 }

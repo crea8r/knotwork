@@ -1,35 +1,12 @@
 from __future__ import annotations
 
-from datetime import datetime
-from uuid import UUID
-
 from pydantic import BaseModel, Field
 
 from knotwork.runs.schemas import RunAttachmentRef
 
 
-class PublicWorkflowLinkCreateRequest(BaseModel):
-    graph_version_id: UUID | None = None
+class VersionPublishRequest(BaseModel):
     description_md: str = Field(..., min_length=1, max_length=1000)
-
-
-class PublicWorkflowLinkUpdateRequest(BaseModel):
-    graph_version_id: UUID | None = None
-    description_md: str = Field(..., min_length=1, max_length=1000)
-
-
-class PublicWorkflowLinkOut(BaseModel):
-    id: UUID
-    workspace_id: UUID
-    graph_id: UUID
-    graph_version_id: UUID | None
-    token: str
-    description_md: str
-    status: str
-    created_at: datetime
-    updated_at: datetime
-
-    model_config = {"from_attributes": True}
 
 
 class PublicWorkflowViewOut(BaseModel):
@@ -37,6 +14,8 @@ class PublicWorkflowViewOut(BaseModel):
     input_schema: list[dict]
     rate_limit_max_requests: int
     rate_limit_window_seconds: int
+    # Resolved version slug — useful when accessing via the graph-level URL
+    resolved_version_slug: str
     notice_test_only: bool = True
     notice_future_paid: bool = True
 

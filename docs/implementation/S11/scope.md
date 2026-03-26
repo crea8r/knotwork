@@ -1,4 +1,4 @@
-# Session 10 — Concrete Scope
+# Session 11 — Concrete Scope
 
 This document narrows S10 into the smallest coherent product slice that makes work visible in the same interface as workflows and the Handbook without bloating the session into planning software, analytics, or S11 intelligence.
 
@@ -13,13 +13,13 @@ Read with:
 
 ## North Star
 
-By the end of S10:
+By the end of S11:
 
 - work is visible as **Projects** and **Tasks** in the product, not only as workflows and runs
 - project context is durable and easy to update through **Project Documents**
 - task work happens in a **task channel** that can be free chat or include linked runs
 - every project has a concise **dashboard/status surface**
-- S10 reuses existing Knotwork concepts wherever possible instead of inventing new subsystems
+- S11 reuses existing Knotwork concepts wherever possible instead of inventing new subsystems
 
 ---
 
@@ -220,7 +220,7 @@ Phase 1 remains workspace-visible.
 - task is the work atom
 - run remains execution detail
 
-S10 adds a top layer; it does not rewrite the lower layer.
+S11 adds a top layer; it does not rewrite the lower layer.
 
 ---
 
