@@ -1,17 +1,15 @@
 import { useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { ChevronDown, MessageSquare, Plus } from 'lucide-react'
+import { ChevronDown, Copy, Globe, MessageSquare, Plus } from 'lucide-react'
 import Breadcrumb from '@/components/handbook/Breadcrumb'
 import type { Graph } from '@/types'
 
 export default function WorkflowHeader({
-  graph,
-  showChat,
-  onToggleChat,
-  renamePending,
-  onRename,
+  workspaceId: _workspaceId, graph, defaultVersionIsPublic, showChat, onToggleChat, renamePending, onRename,
 }: {
+  workspaceId: string
   graph: Graph
+  defaultVersionIsPublic: boolean
   showChat: boolean
   onToggleChat: () => void
   renamePending: boolean
@@ -20,6 +18,17 @@ export default function WorkflowHeader({
   const navigate = useNavigate()
   const menuRef = useRef<HTMLDivElement>(null)
   const [menuOpen, setMenuOpen] = useState(false)
+  const [copied, setCopied] = useState(false)
+
+  const graphLinkUrl = (graph.slug && defaultVersionIsPublic)
+    ? `${window.location.origin}/public/workflows/${graph.slug}`
+    : null
+
+  function copyGraphLink() {
+    if (!graphLinkUrl) return
+    void navigator.clipboard.writeText(graphLinkUrl)
+    setCopied(true); setTimeout(() => setCopied(false), 1600)
+  }
 
   function openNew(kind: 'file' | 'folder' | 'workflow' | 'upload') {
     const params = new URLSearchParams()
@@ -64,6 +73,19 @@ export default function WorkflowHeader({
           </button>
         </div>
       </div>
+
+      {graphLinkUrl && (
+        <div className="mt-1.5 flex items-center gap-1.5 min-w-0">
+          <Globe size={11} className="flex-shrink-0 text-purple-500" />
+          <a href={graphLinkUrl} target="_blank" rel="noopener noreferrer"
+            className="min-w-0 flex-1 truncate text-xs font-mono text-purple-600 hover:underline">
+            {graphLinkUrl}
+          </a>
+          <button onClick={copyGraphLink} className="flex-shrink-0 text-xs text-purple-500 hover:text-purple-800">
+            {copied ? 'Copied' : <Copy size={11} />}
+          </button>
+        </div>
+      )}
     </div>
   )
 }

@@ -1,7 +1,7 @@
 """Add objective fields onto tasks.
 
-Revision ID: 0012_objective_fields
-Revises: 0011_projects_tasks
+Revision ID: 0018_objective_fields
+Revises: 0017_projects_tasks
 Create Date: 2026-03-25
 """
 
@@ -10,8 +10,8 @@ import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
 
 
-revision = "0012_objective_fields"
-down_revision = "0011_projects_tasks"
+revision = "0018_objective_fields"
+down_revision = "0017_projects_tasks"
 branch_labels = None
 depends_on = None
 

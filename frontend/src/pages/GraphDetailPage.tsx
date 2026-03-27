@@ -87,7 +87,8 @@ export default function GraphDetailPage() {
         <div style={{ flex: 1, display: 'flex', flexDirection: 'row', minHeight: 0 }}>
           <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, overflow: 'hidden' }}>
             <WorkflowHeader
-              graph={graph} showChat={showChat}
+              workspaceId={workspaceId} graph={graph} showChat={showChat}
+              defaultVersionIsPublic={!!sync.namedVersions.find((v) => v.id === graph.production_version_id)?.version_slug}
               onToggleChat={() => setShowChat((v) => !v)}
               renamePending={actions.updateGraph.isPending}
               onRename={(name) => actions.updateGraph.mutate({ graphId: graph.id, name })}
@@ -122,7 +123,7 @@ export default function GraphDetailPage() {
                   <GraphCanvas definition={definition} selectedNodeId={selectedNodeId} onSelectNode={selectNode} />
                 ) : activeTab === 'history' ? (
                   <HistoryTab
-                    workspaceId={workspaceId} graphId={graphId!}
+                    graphSlug={graph.slug ?? null}
                     namedVersions={sync.namedVersions} activeDraft={sync.activeDraft}
                     versionsLoading={sync.versionsLoading}
                     showArchivedVersions={sync.showArchivedVersions} setShowArchivedVersions={sync.setShowArchivedVersions}
@@ -134,6 +135,7 @@ export default function GraphDetailPage() {
                     onForkVersion={actions.handleForkVersion} onArchiveVersion={(v) => void actions.handleArchiveVersion(v)}
                     onUnarchiveVersion={(v) => void actions.handleUnarchiveVersion(v)} onDeleteVersion={(v) => void actions.handleDeleteVersion(v)}
                     onManagePublic={actions.handleManagePublic} onPublish={() => actions.setPublishDialog(true)}
+                    onEditRootDraft={() => setActiveTab('graph')}
                     historySelection={sync.historySelection} onSelectHistoryItem={sync.selectHistoryItem}
                   />
                 ) : (
@@ -186,7 +188,7 @@ export default function GraphDetailPage() {
           onForkChange={(v) => actions.setForkDialog(actions.forkDialog ? { ...actions.forkDialog, value: v } : null)}
           onForkSubmit={() => void actions.submitForkVersion()} onForkClose={() => actions.setForkDialog(null)}
           forkPending={actions.forkPending}
-          publicLinksVersionId={actions.publicLinksVersionId} onClosePublicLinks={() => actions.setPublicLinksVersionId(null)}
+          publicLinksVersion={actions.publicLinksVersion} graph={graph} onClosePublicLinks={() => actions.setPublicLinksVersion(null)}
         />
       </div>
     </div>

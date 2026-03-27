@@ -19,7 +19,7 @@ By the end of S11:
   - `Objectives`
   - `Handbook`
   - `Channel`
-- the default view is an **objective tree canvas**
+- the default view is an objective tree canvas
 - objectives are the main visible unit of project progress
 - project knowledge reuses Handbook mechanics
 - project and objective discussion reuse channel mechanics
@@ -86,7 +86,7 @@ It must:
 - reuse the graph-style canvas interaction model
 - show objective nodes in a parent/child tree
 - allow select-to-center behavior
-- open a large detail panel on selection
+- open a detail panel on selection
 
 Each objective node must show:
 
@@ -101,8 +101,7 @@ The detail panel is the main operational surface for one objective.
 
 It must show:
 
-- code
-- title
+- code and title
 - optional description
 - optional deadline
 - optional in-charge
@@ -128,7 +127,7 @@ It should reuse:
 
 - markdown editor
 - file tree
-- version history/storage patterns where available
+- version history and storage patterns where available
 
 Only the scope changes:
 
@@ -158,7 +157,7 @@ Reuse channel primitives. Do not build a second thread model.
 - existing `Project` container model
 - existing task/channel plumbing as the backing store for objective chat if it reduces duplication
 - existing graph canvas interaction model
-- existing channel message/decision UI primitives
+- existing channel message and decision UI primitives
 - existing Handbook editor and file-tree patterns
 - existing `Graph` and `Run` execution model
 
@@ -171,7 +170,7 @@ Reuse channel primitives. Do not build a second thread model.
 ### Do not duplicate
 
 - do not build a separate thread system beside channels
-- do not build a separate document/versioning system beside Handbook storage patterns
+- do not build a separate document or versioning system beside Handbook storage patterns
 - do not build a second execution model beside Graph/Run
 - do not build a second canvas engine beside the existing graph canvas
 
@@ -202,7 +201,7 @@ Reuse channel primitives. Do not build a second thread model.
 9. Minimal workflow scoping:
    - `workflow.project_id IS NULL` => global
    - `workflow.project_id IS NOT NULL` => project-scoped
-10. Human-authored project status updates in the project header/dashboard.
+10. Human-authored project status updates in the project header or dashboard.
 
 ---
 
@@ -212,7 +211,7 @@ Reuse channel primitives. Do not build a second thread model.
 
 - no dependency graph management
 - no sprint board
-- no timeline/Gantt features
+- no timeline or Gantt features
 - no check-in or recurrence engine
 
 ### Do not build broad project intelligence

@@ -35,6 +35,7 @@ export default function App() {
       {/* Public auth routes */}
       <Route path="/login" element={<LoginPage />} />
       <Route path="/accept-invite" element={<AcceptInvitePage />} />
+      <Route path="/public/workflows/:graphSlug/:versionSlug" element={<PublicWorkflowPage />} />
       <Route path="/public/workflows/:token" element={<PublicWorkflowPage />} />
       <Route path="/public/runs/:token" element={<PublicRunPage />} />
 

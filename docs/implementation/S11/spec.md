@@ -9,13 +9,13 @@ S11 makes the **Objective** the center of project experience:
 - a **Project** is the container
 - **Objectives** are the visible map of what the project is trying to achieve
 - **Project Knowledge** keeps project-scoped files and workflows together
-- **Project Channel** holds project discussion, with objective-attached channels inside it
+- **Project Channel** holds project discussion, with objective-attached chat inside it
 
 The existing Graph/Run system remains the execution substrate underneath.
 
 ## Context
 
-Before S11, Knotwork is strongest at:
+Before S11, Knotwork's main hierarchy is:
 
 ```text
 Workspace -> Handbook + Graphs -> Runs
@@ -23,7 +23,7 @@ Workspace -> Handbook + Graphs -> Runs
 
 That is useful for execution, but it does not yet give a human operator a strong project surface.
 
-S11 adds:
+S11 introduces:
 
 - **Project** — the top-level work container
 - **Objective** — the primary visible unit of progress inside a project
@@ -50,7 +50,7 @@ This keeps execution power intact while making work itself visible and understan
 4. Objective tree canvas.
    - reuse the graph-style canvas interaction model
    - each node shows short code, short title, progress indicator, and short status summary
-   - selecting a node recenters it and opens a large detail panel
+   - selecting a node recenters it and opens a detail panel
 5. Objective detail panel.
    - code
    - title
@@ -84,7 +84,7 @@ This keeps execution power intact while making work itself visible and understan
 - advanced permissions redesign
 - full planning suite features such as dependencies, timelines, or sprint boards
 - replacing Graphs or Runs as the execution layer
-- broad workflow sharing/inheritance systems
+- broad workflow sharing or inheritance systems
 
 ## Core Decisions
 

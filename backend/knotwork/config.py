@@ -78,7 +78,7 @@ class Settings(BaseSettings):
 
     @property
     def invitations_enabled(self) -> bool:
-        return (not self.is_local_app) and self.email_delivery_enabled
+        return self.email_delivery_enabled
 
     @property
     def normalized_frontend_url(self) -> str:

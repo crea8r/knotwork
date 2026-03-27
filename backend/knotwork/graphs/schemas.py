@@ -106,7 +106,8 @@ class GraphVersionOut(BaseModel):
     version_created_at: datetime | None = None
     parent_version_id: UUID | None = None
     archived_at: datetime | None = None
-    is_public: bool = False
+    version_slug: str | None = None
+    public_description_md: str | None = None
     updated_at: datetime
     created_at: datetime
     # Enriched: attached draft (if any), run count — populated by list endpoints

@@ -24,7 +24,7 @@ class ChannelOut(BaseModel):
 
 class ChannelCreate(BaseModel):
     name: str
-    channel_type: Literal["normal", "workflow", "handbook", "project", "task"] = "normal"
+    channel_type: Literal["normal", "workflow", "handbook", "run", "agent_main", "project", "task"] = "normal"
     graph_id: UUID | None = None
     project_id: UUID | None = None
     task_id: UUID | None = None
@@ -82,15 +82,85 @@ class DecisionEventCreate(BaseModel):
 
 class InboxItem(BaseModel):
     id: str
-    item_type: Literal["escalation", "handbook_proposal"]
+    item_type: Literal["escalation", "handbook_proposal", "mentioned_message", "task_assigned", "run_event"]
+    delivery_id: str | None = None
     title: str
     subtitle: str | None = None
     status: str
     run_id: str | None = None
+    channel_id: str | None = None
     escalation_id: UUID | None = None
     proposal_id: UUID | None = None
     due_at: datetime | None = None
     created_at: datetime
+    unread: bool = False
+    archived_at: datetime | None = None
+
+
+class InboxSummary(BaseModel):
+    unread_count: int
+    active_count: int
+    archived_count: int
+
+
+class InboxStateUpdate(BaseModel):
+    archived: bool | None = None
+    read: bool | None = None
+
+
+class ParticipantDeliveryPreferenceOut(BaseModel):
+    participant_id: str
+    event_type: str
+    app_enabled: bool
+    email_enabled: bool
+    plugin_enabled: bool
+    email_address: str | None = None
+
+    model_config = {"from_attributes": True}
+
+
+class ParticipantDeliveryPreferenceUpdate(BaseModel):
+    app_enabled: bool | None = None
+    email_enabled: bool | None = None
+    plugin_enabled: bool | None = None
+    email_address: str | None = None
+
+
+class ParticipantDeliveryPreferenceBundle(BaseModel):
+    participant_id: str
+    kind: Literal["human", "agent"]
+    display_name: str
+    event_types: list[ParticipantDeliveryPreferenceOut]
+
+    model_config = {"from_attributes": True}
+
+
+class ChannelSubscriptionOut(BaseModel):
+    channel_id: UUID
+    participant_id: str
+    subscribed: bool
+    subscribed_at: datetime | None = None
+    unsubscribed_at: datetime | None = None
+
+
+class ChannelSubscriptionUpdate(BaseModel):
+    subscribed: bool
+
+
+class ChannelAssetBindingOut(BaseModel):
+    id: str
+    channel_id: UUID
+    asset_type: Literal["workflow", "run", "file"]
+    asset_id: str
+    display_name: str
+    path: str | None = None
+    status: str | None = None
+    created_at: datetime
+
+
+class ChannelAssetBindingCreate(BaseModel):
+    asset_type: Literal["workflow", "run", "file"]
+    asset_id: str
 
 
 class HandbookChatAskRequest(BaseModel):
@@ -105,3 +175,11 @@ class HandbookChatAskResponse(BaseModel):
 class HandbookProposalResolveRequest(BaseModel):
     resolution: Literal["accept_output", "override_output", "abort_run"]
     final_content: str | None = None
+
+
+class ParticipantMentionOption(BaseModel):
+    participant_id: str
+    display_name: str
+    mention_handle: str | None = None
+    kind: Literal["human", "agent"]
+    email: str | None = None

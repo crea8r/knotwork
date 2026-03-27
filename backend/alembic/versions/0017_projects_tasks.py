@@ -1,7 +1,7 @@
 """Add projects, tasks, and project-scoped knowledge.
 
-Revision ID: 0011_projects_tasks
-Revises: 0010_graph_paths
+Revision ID: 0017_projects_tasks
+Revises: 0016_channel_asset_bind
 Create Date: 2026-03-25
 """
 
@@ -10,8 +10,8 @@ import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
 
 
-revision = "0011_projects_tasks"
-down_revision = "0010_graph_paths"
+revision = "0017_projects_tasks"
+down_revision = "0016_channel_asset_bind"
 branch_labels = None
 depends_on = None
 

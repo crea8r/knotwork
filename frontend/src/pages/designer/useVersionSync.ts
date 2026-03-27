@@ -10,14 +10,19 @@ import type { AutosaveState, HistorySelection } from './graphVersionUtils'
 import { compareUpdatedDesc, formatVersionName } from './graphVersionUtils'
 
 function storageKey(graphId: string) { return `kw:ver-sel:${graphId}` }
-function readStored(graphId: string): string | null | undefined {
+// Stored format:  '__null__'        → root-draft (edit)
+//                 'snap:{uuid}'     → named version, snapshot/read-only
+//                 '{uuid}'          → named version, edit mode (draft open or creating)
+function readStored(graphId: string): { id: string | null; snapshot: boolean } | undefined {
   const raw = localStorage.getItem(storageKey(graphId))
-  if (raw === null) return undefined          // never written
-  if (raw === '__null__') return null          // explicit root-draft
-  return raw                                   // version row ID
+  if (raw === null) return undefined
+  if (raw === '__null__') return { id: null, snapshot: false }
+  if (raw.startsWith('snap:')) return { id: raw.slice(5), snapshot: true }
+  return { id: raw, snapshot: false }
 }
-function writeStored(graphId: string, id: string | null) {
-  localStorage.setItem(storageKey(graphId), id === null ? '__null__' : id)
+function writeStored(graphId: string, id: string | null, snapshot: boolean) {
+  const val = id === null ? '__null__' : snapshot ? `snap:${id}` : id
+  localStorage.setItem(storageKey(graphId), val)
 }
 
 export function useVersionSync(
@@ -64,11 +69,24 @@ export function useVersionSync(
   useEffect(() => {
     if (activeParentVersionId !== undefined) return
     if (versionsLoading) return
+    if (!graph) return   // wait for graph so production_version_id is available
     const stored = graphId ? readStored(graphId) : undefined
     if (stored !== undefined) {
-      const valid = stored === null || versionById.has(stored)
-      if (valid) { setActiveParentVersionId(stored); return }
+      // Stored named version — valid if still exists
+      if (stored.id !== null && versionById.has(stored.id)) {
+        setActiveParentVersionId(stored.id)
+        setViewingVersionSnapshot(stored.snapshot)
+        return
+      }
+      // Stored root-draft — only valid if the draft actually has nodes
+      if (stored.id === null) {
+        const rootDraft = allDrafts.find((d) => d.parent_version_id === null) ?? null
+        const hasNodes = (rootDraft?.definition?.nodes?.length ?? 0) > 0
+        if (hasNodes) { setActiveParentVersionId(null); return }
+        // Empty root draft — fall through to default/latest below
+      }
     }
+    // Default: production version → newest draft's parent → latest named version → root draft
     const defaultVersionId = graph?.production_version_id ?? null
     if (defaultVersionId) { setActiveParentVersionId(defaultVersionId); return }
     if (newestDraft) { setActiveParentVersionId(newestDraft.parent_version_id ?? null); return }
@@ -79,8 +97,8 @@ export function useVersionSync(
   // Persist selection so it survives navigation away and back
   useEffect(() => {
     if (!graphId || activeParentVersionId === undefined) return
-    writeStored(graphId, activeParentVersionId)
-  }, [graphId, activeParentVersionId])
+    writeStored(graphId, activeParentVersionId, viewingVersionSnapshot)
+  }, [graphId, activeParentVersionId, viewingVersionSnapshot])
 
   const resolvedParentVersionId = activeParentVersionId === undefined
     ? (newestDraft?.parent_version_id ?? latestNamedVersion?.id ?? null)
@@ -101,13 +119,13 @@ export function useVersionSync(
 
   useEffect(() => {
     if (!graphId || !graph) return
-    if (editorMode === 'edit') return
+    if (isDirty) return  // preserve unsaved edits
     const nextBaseKey = activeDraft?.id ?? activeParentVersion?.id ?? graph.latest_version?.id ?? 'root'
     if (storeGraphId !== graphId || versionBaseKeyRef.current !== nextBaseKey) {
       setGraph(graphId, serverDefinition)
       versionBaseKeyRef.current = nextBaseKey
     }
-  }, [activeDraft?.id, activeParentVersion?.id, editorMode, graph, graphId, serverDefinition, serverDefinitionKey, setGraph, storeGraphId])
+  }, [activeDraft?.id, activeParentVersion?.id, isDirty, graph, graphId, serverDefinition, serverDefinitionKey, setGraph, storeGraphId])
 
   useEffect(() => {
     if (!isDirty && autosaveState !== 'saving') { window.onbeforeunload = null; return }
@@ -119,7 +137,9 @@ export function useVersionSync(
     ? `${formatVersionName(activeParentVersion)} (${activeParentVersion.version_id})`
     : activeDraft
       ? `${formatVersionName(activeDraft)} (draft)`
-      : 'root draft'
+      : activeParentVersion
+        ? `${formatVersionName(activeParentVersion)} (no draft)`
+        : 'loading…'
 
   async function syncDraftNow(nextDefinition = definition) {
     if (!graphId || savingDraftRef.current) return activeDraft

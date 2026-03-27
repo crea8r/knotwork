@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { BookOpen, ChevronDown, ChevronRight, Hash, GitBranch, Plus, PlayCircle, Search, X } from 'lucide-react'
-import { useChannels } from '@/api/channels'
+import { useChannels, useCreateChannel, useMyChannelSubscriptions } from '@/api/channels'
 import { useCreateGraph, useGraphs } from '@/api/graphs'
 import { useRuns } from '@/api/runs'
 import { useAuthStore } from '@/store/auth'
@@ -61,16 +61,19 @@ export default function ChannelsPage() {
   const navigate = useNavigate()
 
   const { data: channels = [], isLoading: channelsLoading } = useChannels(workspaceId)
+  const { data: subscriptions = [] } = useMyChannelSubscriptions(workspaceId)
   const { data: runs = [], isLoading: runsLoading } = useRuns(workspaceId)
   const { data: graphs = [] } = useGraphs(workspaceId)
 
   const createGraph = useCreateGraph(workspaceId)
+  const createChannel = useCreateChannel(workspaceId)
 
   const [showCreate, setShowCreate] = useState(false)
   const [mode, setMode] = useState<CreateMode>('menu')
   const [search, setSearch] = useState('')
 
   const [workflowName, setWorkflowName] = useState('')
+  const [chatName, setChatName] = useState('')
   const [selectedGraphId, setSelectedGraphId] = useState('')
   const [runTrigger, setRunTrigger] = useState<{ graphId: string; definition: GraphDefinition } | null>(null)
 
@@ -131,6 +134,7 @@ export default function ChannelsPage() {
   }, [runs, q])
 
   const isLoading = channelsLoading || runsLoading
+  const subscribedChannelIds = new Set(subscriptions.filter((row) => row.subscribed).map((row) => row.channel_id))
 
   async function handleCreateWorkflow(e: React.FormEvent) {
     e.preventDefault()
@@ -141,6 +145,17 @@ export default function ChannelsPage() {
     setMode('menu')
     setWorkflowName('')
     navigate(`/graphs/${g.id}?chat=1`)
+  }
+
+  async function handleCreateChat(e: React.FormEvent) {
+    e.preventDefault()
+    const name = chatName.trim()
+    if (!name) return
+    const channel = await createChannel.mutateAsync({ name, channel_type: 'normal' })
+    setShowCreate(false)
+    setMode('menu')
+    setChatName('')
+    navigate(`/channels/${channel.id}`)
   }
 
   function handleCreateRun(e: React.FormEvent) {
@@ -209,7 +224,9 @@ export default function ChannelsPage() {
                         <Hash size={15} className="text-gray-500 shrink-0" />
                         <p className="text-sm text-gray-800 truncate">{ch.name}</p>
                       </div>
-                      <span className="text-[11px] px-2 py-0.5 rounded-full bg-gray-100 text-gray-600">freechat</span>
+                      <span className="text-[11px] px-2 py-0.5 rounded-full bg-gray-100 text-gray-600">
+                        {subscribedChannelIds.has(ch.id) ? 'following' : 'muted'}
+                      </span>
                     </Link>
                   ))}
                   {freeChats.length === 0 && <p className="text-sm text-gray-500">No free chats.</p>}
@@ -277,7 +294,9 @@ export default function ChannelsPage() {
                         <GitBranch size={15} className="text-brand-600 shrink-0" />
                         <p className="text-sm text-gray-800 truncate">{ch.name}</p>
                       </div>
-                      <span className="text-[11px] px-2 py-0.5 rounded-full bg-gray-100 text-gray-600">workflow</span>
+                      <span className="text-[11px] px-2 py-0.5 rounded-full bg-gray-100 text-gray-600">
+                        {subscribedChannelIds.has(ch.id) ? 'following' : 'muted'}
+                      </span>
                     </Link>
                   ))}
                   {workflowChannels.length === 0 && <p className="text-sm text-gray-500">No workflow channels.</p>}
@@ -343,13 +362,9 @@ export default function ChannelsPage() {
                   <p className="text-sm font-medium text-gray-900">Create a run</p>
                   <p className="text-xs text-gray-500 mt-1">Pick a runnable workflow and continue in Trigger Run dialog.</p>
                 </button>
-                <button
-                  disabled
-                  className="text-left border border-gray-200 rounded-lg p-3 bg-gray-50 text-gray-400 cursor-not-allowed"
-                  title="Coming soon"
-                >
-                  <p className="text-sm font-medium">Create a free chat</p>
-                  <p className="text-xs mt-1">Coming soon.</p>
+                <button onClick={() => setMode('chat')} className="text-left border border-gray-200 rounded-lg p-3 hover:border-brand-300">
+                  <p className="text-sm font-medium text-gray-900">Create a free chat</p>
+                  <p className="text-xs text-gray-500 mt-1">Start a channel and attach workflows, runs, or files later.</p>
                 </button>
               </div>
             )}
@@ -393,16 +408,19 @@ export default function ChannelsPage() {
             )}
 
             {mode === 'chat' && (
-              <form className="space-y-3">
+              <form onSubmit={handleCreateChat} className="space-y-3">
                 <label className="block text-xs text-gray-500">Channel name</label>
                 <input
-                  disabled
+                  autoFocus
+                  value={chatName}
+                  onChange={(e) => setChatName(e.target.value)}
                   className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
-                  placeholder="Coming soon"
+                  placeholder="Design ops"
                 />
+                <p className="text-xs text-gray-500">Free chat channels can publish updates from attached workflows, runs, and files.</p>
                 <div className="flex justify-between pt-2">
                   <button type="button" onClick={() => setMode('menu')} className="text-sm text-gray-600">Back</button>
-                  <button type="button" disabled className="px-3 py-2 rounded-lg bg-gray-300 text-white text-sm">Coming soon</button>
+                  <button type="submit" disabled={!chatName.trim() || createChannel.isPending} className="px-3 py-2 rounded-lg bg-brand-600 text-white text-sm disabled:opacity-40">Create chat</button>
                 </div>
               </form>
             )}

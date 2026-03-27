@@ -195,6 +195,34 @@ class OpenClawAdapter(AgentAdapter):
                 )
                 db.add(task)
                 await db.commit()
+                from knotwork.channels import service as channel_service
+                from knotwork.registered_agents.models import RegisteredAgent
+
+                registered_agent = (
+                    await db.execute(
+                        select(RegisteredAgent).where(
+                            RegisteredAgent.workspace_id == UUID(str(run_state["workspace_id"])),
+                            RegisteredAgent.openclaw_integration_id == integration_id,
+                            RegisteredAgent.openclaw_remote_agent_id == remote_agent_id,
+                        ).limit(1)
+                    )
+                ).scalar_one_or_none()
+                if registered_agent is not None:
+                    agent_channel = await channel_service.get_or_create_agent_main_channel(
+                        db,
+                        workspace_id=registered_agent.workspace_id,
+                        agent_id=registered_agent.id,
+                        display_name=registered_agent.display_name,
+                    )
+                    await channel_service.emit_task_assigned_event(
+                        db,
+                        workspace_id=registered_agent.workspace_id,
+                        agent_id=registered_agent.id,
+                        channel_id=agent_channel.id,
+                        title=f"Task assigned for run {run_id}",
+                        subtitle=f"Node {node_id} needs agent work",
+                        source_id=str(task.id),
+                    )
                 task_id = task.id
                 resumed_existing_task = False
 

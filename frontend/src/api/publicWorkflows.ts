@@ -1,62 +1,39 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import type { RunAttachmentRef } from '@/api/runs'
-import type {
-  PublicRunTriggerOut,
-  PublicRunView,
-  PublicWorkflowLink,
-  PublicWorkflowView,
-} from '@/types'
+import type { GraphVersion, PublicRunTriggerOut, PublicRunView, PublicWorkflowView } from '@/types'
 import { api } from './client'
 
-export function useGraphPublicLinks(workspaceId: string, graphId: string) {
-  return useQuery({
-    queryKey: ['graph-public-links', workspaceId, graphId],
-    queryFn: () =>
+// ── Authenticated: publish / unpublish ───────────────────────────────────────
+
+export function usePublishVersion(workspaceId: string, graphId: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ versionId, description_md }: { versionId: string; description_md: string }) =>
       api
-        .get<PublicWorkflowLink[]>(`/workspaces/${workspaceId}/graphs/${graphId}/public-links`)
+        .post<GraphVersion>(`/workspaces/${workspaceId}/graphs/${graphId}/versions/${versionId}/publish`, { description_md })
         .then((r) => r.data),
-    enabled: !!workspaceId && !!graphId,
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['graph-versions', workspaceId, graphId] })
+      void qc.invalidateQueries({ queryKey: ['graphs', workspaceId] })
+    },
   })
 }
 
-export function useCreateGraphPublicLink(workspaceId: string, graphId: string) {
+export function useUnpublishVersion(workspaceId: string, graphId: string) {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (payload: { description_md: string; graph_version_id: string | null }) =>
+    mutationFn: (versionId: string) =>
       api
-        .post<PublicWorkflowLink>(`/workspaces/${workspaceId}/graphs/${graphId}/public-links`, payload)
+        .delete<GraphVersion>(`/workspaces/${workspaceId}/graphs/${graphId}/versions/${versionId}/publish`)
         .then((r) => r.data),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['graph-public-links', workspaceId, graphId] }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['graph-versions', workspaceId, graphId] })
+      void qc.invalidateQueries({ queryKey: ['graphs', workspaceId] })
+    },
   })
 }
 
-export function useUpdateGraphPublicLink(workspaceId: string, graphId: string) {
-  const qc = useQueryClient()
-  return useMutation({
-    mutationFn: (payload: { linkId: string; description_md: string; graph_version_id: string | null }) =>
-      api
-        .patch<PublicWorkflowLink>(
-          `/workspaces/${workspaceId}/graphs/${graphId}/public-links/${payload.linkId}`,
-          {
-            description_md: payload.description_md,
-            graph_version_id: payload.graph_version_id,
-          },
-        )
-        .then((r) => r.data),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['graph-public-links', workspaceId, graphId] }),
-  })
-}
-
-export function useDisableGraphPublicLink(workspaceId: string, graphId: string) {
-  const qc = useQueryClient()
-  return useMutation({
-    mutationFn: (linkId: string) =>
-      api
-        .post<PublicWorkflowLink>(`/workspaces/${workspaceId}/graphs/${graphId}/public-links/${linkId}/disable`)
-        .then((r) => r.data),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['graph-public-links', workspaceId, graphId] }),
-  })
-}
+// ── Public-facing ────────────────────────────────────────────────────────────
 
 export function usePublicWorkflow(token: string) {
   return useQuery({
@@ -74,13 +51,13 @@ export function useTriggerPublicRun(token: string) {
   })
 }
 
-export function useUploadPublicWorkflowAttachment(token: string) {
+export function useUploadPublicWorkflowAttachment(graphSlug: string, versionSlug: string) {
   return useMutation({
     mutationFn: async (file: File) => {
       const form = new FormData()
       form.append('file', file)
       const { data } = await api.post<RunAttachmentRef>(
-        `/public/workflows/${token}/attachments`,
+        `/public/workflows/${graphSlug}/${versionSlug}/attachments`,
         form,
         { headers: { 'Content-Type': 'multipart/form-data' } },
       )

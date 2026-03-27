@@ -98,6 +98,16 @@ async def create_file(
 
     await db.commit()
     await db.refresh(kf)
+    from knotwork.channels import service as channel_service
+
+    await channel_service.emit_asset_activity_message(
+        db,
+        workspace_id=workspace_id,
+        asset_type="file",
+        asset_id=str(kf.id),
+        content=f"File created: {kf.path}",
+        metadata={"file_event": "created", "file_id": str(kf.id), "path": kf.path},
+    )
     return kf
 
 
@@ -117,6 +127,16 @@ async def update_file(
     kf.current_version_id = version_id
     await db.commit()
     await db.refresh(kf)
+    from knotwork.channels import service as channel_service
+
+    await channel_service.emit_asset_activity_message(
+        db,
+        workspace_id=workspace_id,
+        asset_type="file",
+        asset_id=str(kf.id),
+        content=f"File modified: {kf.path}",
+        metadata={"file_event": "modified", "file_id": str(kf.id), "path": kf.path},
+    )
     return kf
 
 
@@ -147,6 +167,16 @@ async def rename_file(
     kf.current_version_id = new_version_id
     await db.commit()
     await db.refresh(kf)
+    from knotwork.channels import service as channel_service
+
+    await channel_service.emit_asset_activity_message(
+        db,
+        workspace_id=workspace_id,
+        asset_type="file",
+        asset_id=str(kf.id),
+        content=f"File renamed: {old_path} -> {new_path}",
+        metadata={"file_event": "renamed", "file_id": str(kf.id), "path": new_path},
+    )
     return kf
 
 
@@ -183,12 +213,22 @@ async def store_raw_file(
         kf.title = title
         kf.raw_token_count = token_count
         kf.resolved_token_count = token_count
-        kf.current_version_id = version_id
-        kf.file_type = file_type
-        kf.is_editable = False
+    kf.current_version_id = version_id
+    kf.file_type = file_type
+    kf.is_editable = False
 
     await db.commit()
     await db.refresh(kf)
+    from knotwork.channels import service as channel_service
+
+    await channel_service.emit_asset_activity_message(
+        db,
+        workspace_id=workspace_id,
+        asset_type="file",
+        asset_id=str(kf.id),
+        content=f"File modified: {kf.path}",
+        metadata={"file_event": "modified", "file_id": str(kf.id), "path": kf.path},
+    )
     return kf
 
 
@@ -212,4 +252,14 @@ async def restore_version(
     kf.current_version_id = new_version_id
     await db.commit()
     await db.refresh(kf)
+    from knotwork.channels import service as channel_service
+
+    await channel_service.emit_asset_activity_message(
+        db,
+        workspace_id=workspace_id,
+        asset_type="file",
+        asset_id=str(kf.id),
+        content=f"File restored: {kf.path}",
+        metadata={"file_event": "restored", "file_id": str(kf.id), "path": kf.path},
+    )
     return kf

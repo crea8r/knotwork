@@ -196,4 +196,15 @@ async def save_version(
     db.add(version)
     await db.commit()
     await db.refresh(version)
+    from knotwork.channels import service as channel_service
+    graph = await db.get(Graph, graph_id)
+
+    await channel_service.emit_asset_activity_message(
+        db,
+        workspace_id=graph.workspace_id,
+        asset_type="workflow",
+        asset_id=str(graph_id),
+        content=f"Workflow version saved: {version.version_name or version.version_id}",
+        metadata={"workflow_event": "version_saved", "graph_id": str(graph_id), "version_row_id": str(version.id)},
+    )
     return version

@@ -4,7 +4,13 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuthStore } from '@/store/auth'
-import { useMe, useUpdateMe } from '@/api/auth'
+import {
+  useMe,
+  useRequestLocalhostSwitchUser,
+  useUpdateMe,
+  useWorkspaceEmailConfig,
+  useWorkspaceMembers,
+} from '@/api/auth'
 import Card from '@/components/shared/Card'
 import Btn from '@/components/shared/Btn'
 import Spinner from '@/components/shared/Spinner'
@@ -14,6 +20,9 @@ export default function AccountTab() {
   const { clearAuth, login, token, workspaceId, role } = useAuthStore()
   const { data: me, isLoading } = useMe()
   const update = useUpdateMe()
+  const { data: membersData, isLoading: membersLoading } = useWorkspaceMembers(workspaceId, 1)
+  const { data: emailConfig } = useWorkspaceEmailConfig(workspaceId)
+  const switchUser = useRequestLocalhostSwitchUser(workspaceId)
   const isLocalhostApp =
     typeof window !== 'undefined' &&
     ['localhost', '127.0.0.1', '::1'].includes(window.location.hostname)
@@ -22,6 +31,8 @@ export default function AccountTab() {
   const [bio, setBio] = useState('')
   const [avatarUrl, setAvatarUrl] = useState('')
   const [saved, setSaved] = useState(false)
+  const [selectedUserId, setSelectedUserId] = useState('')
+  const [switchSentTo, setSwitchSentTo] = useState<string | null>(null)
 
   useEffect(() => {
     if (me) {
@@ -56,6 +67,31 @@ export default function AccountTab() {
   const handleLogout = () => {
     clearAuth()
     navigate('/login', { replace: true })
+  }
+
+  const switchableMembers = (membersData?.items ?? []).filter(
+    (member) => member.user_id !== me?.id && !!member.email,
+  )
+  const localhostSwitchEnabled =
+    isLocalhostApp &&
+    !!emailConfig?.enabled &&
+    (membersData?.total ?? 0) > 1
+
+  const handleRequestSwitch = (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!selectedUserId) return
+    setSwitchSentTo(null)
+    switchUser.mutate(
+      { user_id: selectedUserId },
+      {
+        onSuccess: (result) => setSwitchSentTo(result.email),
+      },
+    )
+  }
+
+  const handleReturnToDefault = () => {
+    clearAuth()
+    window.location.href = '/'
   }
 
   if (isLoading) return <div className="py-12 flex justify-center"><Spinner /></div>
@@ -142,16 +178,71 @@ export default function AccountTab() {
         </form>
       </Card>
 
-      {/* Sign out */}
+      {isLocalhostApp && (
+        <Card className="p-6">
+          <p className="text-sm font-medium text-gray-700 mb-1">Localhost Account Switching</p>
+          <p className="text-xs text-gray-400 mb-4">
+            Localhost keeps a safe default account. Use this to send a magic link to another workspace member without leaving the resilient localhost mode.
+          </p>
+
+          {!emailConfig?.enabled ? (
+            <p className="text-xs text-amber-700">
+              Configure workspace email in System settings to enable localhost user switching.
+            </p>
+          ) : membersLoading ? (
+            <div className="py-4"><Spinner size="sm" /></div>
+          ) : !localhostSwitchEnabled || switchableMembers.length === 0 ? (
+            <p className="text-xs text-gray-500">
+              Add at least one more workspace member with an email address to test account switching.
+            </p>
+          ) : (
+            <form onSubmit={handleRequestSwitch} className="space-y-3">
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">Switch to</label>
+                <select
+                  value={selectedUserId}
+                  onChange={(e) => setSelectedUserId(e.target.value)}
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white"
+                >
+                  <option value="">Select a workspace member</option>
+                  {switchableMembers.map((member) => (
+                    <option key={member.user_id} value={member.user_id}>
+                      {member.name} ({member.email})
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="flex items-center gap-3">
+                <Btn type="submit" variant="primary" loading={switchUser.isPending} disabled={!selectedUserId}>
+                  Send magic link
+                </Btn>
+                <Btn type="button" variant="secondary" onClick={handleReturnToDefault}>
+                  Return to default account
+                </Btn>
+              </div>
+              {switchSentTo && (
+                <p className="text-sm text-green-600">Magic link sent to {switchSentTo}.</p>
+              )}
+              {switchUser.isError && (
+                <p className="text-sm text-red-600">
+                  {(switchUser.error as { response?: { data?: { detail?: string } } } | undefined)?.response?.data?.detail ?? 'Failed to send magic link'}
+                </p>
+              )}
+            </form>
+          )}
+        </Card>
+      )}
+
+      {/* Sign out / recovery */}
       <Card className="p-6">
-        <p className="text-sm font-medium text-gray-700 mb-1">Sign out</p>
+        <p className="text-sm font-medium text-gray-700 mb-1">{isLocalhostApp ? 'Localhost Recovery' : 'Sign out'}</p>
         {isLocalhostApp ? (
           <>
             <p className="text-xs text-amber-700 mb-2">
-              Sign out is disabled on localhost installs that rely on local auth bypass.
+              Sign out stays disabled on localhost so the default account remains the recovery path.
             </p>
             <p className="text-xs text-gray-400">
-              Promote this install to a public domain with email delivery before using normal login/logout flows.
+              Use the localhost account switcher above to test other users, or return to the default account at any time.
             </p>
           </>
         ) : (

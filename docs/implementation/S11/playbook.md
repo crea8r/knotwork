@@ -48,7 +48,7 @@ Decisions to lock:
 
 Rule:
 
-Prefer reuse of the current task/channel substrate if it keeps the product model clean.
+Prefer reuse of the current task and channel substrate if it keeps the product model clean.
 
 ---
 
@@ -94,7 +94,7 @@ Deliverables:
   - `Objectives`
   - `Handbook`
   - `Channel`
-- default route/state opens `Objectives`
+- default route or state opens `Objectives`
 
 UI rule:
 
@@ -110,7 +110,7 @@ Outcome:
 
 Deliverables:
 
-- canvas adapter from objective data to graph-style nodes/edges
+- canvas adapter from objective data to graph-style nodes and edges
 - node rendering for code, title, progress, and short status summary
 - select-to-center interaction
 - objective detail panel over the canvas
@@ -136,7 +136,7 @@ Outcome:
 Deliverables:
 
 - project file tree and markdown editing
-- project workflow list/create flow
+- project workflow list and create flow
 - clear distinction from the global Handbook
 
 Rules:
@@ -181,7 +181,7 @@ Collapsing project chat and objective chat into one undifferentiated stream.
 
 Outcome:
 
-- the project header and dashboard answer “where are we now?”
+- the project header and dashboard answer "where are we now?"
 
 Deliverables:
 
@@ -207,13 +207,13 @@ Building a standing project intelligence subsystem.
 Build first:
 
 - objective schema extensions on the current project/task substrate
-- objective tree/query support
+- objective tree and query support
 - project dashboard payload aligned to objective view
 - workflow `project_id` invariants
 
 Then:
 
-- project knowledge endpoints refinements
+- project knowledge endpoint refinements
 - objective-focused channel helpers
 - optional AI status helper hooks
 
@@ -229,7 +229,7 @@ Then:
 
 - handbook view reuse
 - channel view with objective tree sidebar
-- objective create/edit flows
+- objective create and edit flows
 
 ### Runtime
 
@@ -248,7 +248,7 @@ S11 is mainly a product-surface and data-model session, not a runtime redesign.
 - project loads into the `Objectives` view by default
 - objective tree renders and selection recenters correctly
 - objective detail panel reflects the selected node
-- project handbook view shows only project-scoped files/workflows
+- project handbook view shows only project-scoped files and workflows
 - channel view switches cleanly between project chat and objective chat
 - project workflow with `project_id` set cannot spawn work into another project
 
@@ -264,6 +264,6 @@ S11 is mainly a product-surface and data-model session, not a runtime redesign.
 
 When deciding whether to include a feature, ask:
 
-“Does this make the objective-centered project surface clearer by reusing what Knotwork already has?”
+"Does this make the objective-centered project surface clearer by reusing what Knotwork already has?"
 
 If not, cut it from S11.

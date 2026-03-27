@@ -46,7 +46,7 @@ export function useVersionActions(
   const forkVersion = useForkVersion(workspaceId, graphId!)
   const updateGraph = useUpdateGraph(workspaceId)
 
-  const [publicLinksVersionId, setPublicLinksVersionId] = useState<string | null>(null)
+  const [publicLinksVersion, setPublicLinksVersion] = useState<GraphVersion | null>(null)
   const [publishDialog, setPublishDialog] = useState(false)
   const [renameDialog, setRenameDialog] = useState<RenameDialog | null>(null)
   const [forkDialog, setForkDialog] = useState<ForkDialog | null>(null)
@@ -91,7 +91,7 @@ export function useVersionActions(
       setViewingVersionSnapshot(true); setActiveTab('history'); setEditorMode('view')
       setPublishDialog(false)
       // For "publish publicly": open the public links modal so user can add a description.
-      if (makePublic) setPublicLinksVersionId(version.id)
+      if (makePublic) setPublicLinksVersion(version)
     } catch (error: any) {
       window.alert(String(error?.response?.data?.detail ?? error?.message ?? 'Cannot publish'))
     }
@@ -118,7 +118,7 @@ export function useVersionActions(
     catch (error: any) { window.alert(String(error?.response?.data?.detail ?? error?.message ?? 'Cannot set default')) }
   }
 
-  function handleManagePublic(version: GraphVersion) { setPublicLinksVersionId(version.id) }
+  function handleManagePublic(version: GraphVersion) { setPublicLinksVersion(version) }
 
   async function handleArchiveVersion(version: GraphVersion) {
     if (!window.confirm(`Archive ${formatVersionName(version)}?`)) return
@@ -166,7 +166,7 @@ export function useVersionActions(
 
   return {
     updateGraph, deleteGraph,
-    publicLinksVersionId, setPublicLinksVersionId,
+    publicLinksVersion, setPublicLinksVersion,
     publishDialog, setPublishDialog,
     renameDialog, setRenameDialog,
     forkDialog, setForkDialog,

@@ -6,8 +6,10 @@ from uuid import UUID
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from knotwork.channels import service as channel_service
 from knotwork.escalations.models import Escalation
 from knotwork.escalations.schemas import EscalationResolve
+from knotwork.participants import list_workspace_human_participants
 
 
 async def create_escalation(
@@ -18,26 +20,69 @@ async def create_escalation(
     workspace_id: UUID,
     type: str,
     context: dict,
+    assigned_to: list[str] | None = None,
     timeout_hours: int = 24,
 ) -> Escalation:
     """Insert a new open escalation and return it."""
     timeout_at = datetime.now(timezone.utc) + timedelta(hours=timeout_hours)
+    recipients = list(assigned_to or context.get("participant_ids") or context.get("assigned_to") or [])
+    single_recipient = context.get("participant_id")
+    if single_recipient and single_recipient not in recipients:
+        recipients.append(str(single_recipient))
     esc = Escalation(
         run_id=run_id,
         run_node_state_id=run_node_state_id,
         workspace_id=workspace_id,
         type=type,
         context=context,
+        assigned_to=recipients,
         timeout_at=timeout_at,
     )
     db.add(esc)
     await db.commit()
     await db.refresh(esc)
 
-    # Fire-and-forget notifications (errors logged, never propagated)
     try:
-        from knotwork.notifications.dispatcher import dispatch
-        await dispatch(str(esc.id), str(workspace_id), db)
+        channel_id = await channel_service.resolve_run_channel_id(db, workspace_id, run_id, context)
+        if not recipients:
+            humans = await list_workspace_human_participants(db, workspace_id)
+            human_ids = {participant["participant_id"] for participant in humans}
+            if channel_id is not None:
+                subscriptions = await channel_service.list_channel_subscriptions_for_channel(
+                    db,
+                    workspace_id,
+                    channel_id,
+                )
+                recipients = [
+                    subscription.participant_id
+                    for subscription in subscriptions
+                    if subscription.unsubscribed_at is None and subscription.participant_id in human_ids
+                ]
+            if not recipients:
+                recipients = list(human_ids)
+
+        if channel_id is not None and recipients:
+            node_id = str((context or {}).get("node_id") or "node")
+            await channel_service.publish_channel_event(
+                db,
+                workspace_id=workspace_id,
+                channel_id=channel_id,
+                event_type="escalation_created",
+                event_kind="actionable",
+                source_type="escalation",
+                source_id=str(esc.id),
+                actor_type="system",
+                actor_name="Knotwork",
+                payload={
+                    "escalation_id": str(esc.id),
+                    "run_id": run_id,
+                    "node_id": node_id,
+                    "reason": str((context or {}).get("reason") or type),
+                    "title": f"Escalation: {node_id}",
+                    "subtitle": str((context or {}).get("reason") or type),
+                },
+                recipient_participant_ids=recipients,
+            )
     except Exception:
         pass
 

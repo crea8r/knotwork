@@ -1,4 +1,4 @@
-# Historical S9.2 Spec — OpenClaw Workload Honesty Rethink
+# Historical S10 Spec — OpenClaw Workload Honesty Rethink
 
 ## Goal
 
@@ -6,13 +6,13 @@ Preserve the product requirement that agent workload must be honest and visible,
 
 ## Context
 
-The original S9.2 concept assumed the current OpenClaw plugin remained a two-way execution/runtime participant: Knotwork would create tasks, the plugin would claim them, and plugin-side claim strategy would become the core place to enforce honest queue semantics.
+The original S10 concept assumed the current OpenClaw plugin remained a two-way execution/runtime participant: Knotwork would create tasks, the plugin would claim them, and plugin-side claim strategy would become the core place to enforce honest queue semantics.
 
 That assumption is no longer stable. S12 and S12.1 explicitly reconsider the boundary between OpenClaw and MCP:
 
 - MCP becomes the agent -> Knotwork interaction surface
 - the OpenClaw plugin is expected to shrink toward inbound Knotwork delivery
-- execution/runtime coordination may no longer live where the original S9.2 design put it
+- execution/runtime coordination may no longer live where the original S10 design put it
 
 So the underlying problem remains real, but the current solution shape should not be implemented yet.
 
@@ -33,7 +33,7 @@ So the underlying problem remains real, but the current solution shape should no
 
 ## Out of Scope
 
-- Implementing the old plugin-centric S9.2 design before S12.
+- Implementing the old plugin-centric S10 design before S12.
 - Defining final queue-state names, state machines, or ownership boundaries before the MCP/plugin rethink.
 - WebSocket transport upgrade — deferred to S12.1.
 - Per-task priority queue or weighted fair scheduling (Phase 2).

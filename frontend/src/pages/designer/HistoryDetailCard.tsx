@@ -1,18 +1,17 @@
 import { Archive, Copy, FileEdit, Globe, MoreHorizontal, Star, Trash2 } from 'lucide-react'
-import { useState } from 'react'
+import { useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import Badge from '@/components/shared/Badge'
 import Btn from '@/components/shared/Btn'
-import { useGraphPublicLinks } from '@/api/publicWorkflows'
 import type { GraphVersion } from '@/types'
 import { formatVersionStamp } from './graphVersionUtils'
 
 export default function HistoryDetailCard({
-  workspaceId, graphId, version, graphDefaultVersionId,
+  graphSlug, version, graphDefaultVersionId,
   isActiveDraftBase, isPending,
   onSetDefault, onFork, onArchive, onUnarchive, onDelete, onManagePublic, onEdit,
 }: {
-  workspaceId: string
-  graphId: string
+  graphSlug: string | null
   version: GraphVersion
   graphDefaultVersionId: string | null
   isActiveDraftBase: boolean
@@ -28,12 +27,17 @@ export default function HistoryDetailCard({
   const isDefault = graphDefaultVersionId === version.id
   const isArchived = !!version.archived_at
   const [menuOpen, setMenuOpen] = useState(false)
+  const [menuPos, setMenuPos] = useState<{ top: number; right: number } | null>(null)
+  const menuBtnRef = useRef<HTMLButtonElement>(null)
+  function openMenu() {
+    const r = menuBtnRef.current?.getBoundingClientRect()
+    if (r) setMenuPos({ top: r.bottom + 4, right: window.innerWidth - r.right })
+    setMenuOpen(true)
+  }
 
-  const { data: links = [] } = useGraphPublicLinks(workspaceId, graphId)
-  const activeLink = version.is_public
-    ? links.find((l) => l.status === 'active' && (l.graph_version_id === version.id || l.graph_version_id === null))
-    : undefined
-  const publicUrl = activeLink ? `${window.location.origin}/public/workflows/${activeLink.token}` : null
+  const publicUrl = (graphSlug && version.version_slug)
+    ? `${window.location.origin}/public/workflows/${graphSlug}/${version.version_slug}`
+    : null
 
   const [copied, setCopied] = useState(false)
   function copyLink() {
@@ -79,32 +83,32 @@ export default function HistoryDetailCard({
           <Star size={12} /> Default
         </Btn>
         <Btn size="sm" variant="ghost" disabled={isPending} onClick={() => onManagePublic(version)}>
-          <Globe size={12} /> {version.is_public ? 'Edit public link' : 'Make public'}
+          <Globe size={12} /> {version.version_slug ? 'Edit public link' : 'Make public'}
         </Btn>
-        <div className="relative ml-auto">
-          <Btn size="sm" variant="ghost" disabled={isPending} onClick={() => setMenuOpen((v) => !v)}>
-            <MoreHorizontal size={14} />
-          </Btn>
-          {menuOpen && (
-            <>
-              <div className="fixed inset-0 z-10" onClick={() => setMenuOpen(false)} />
-              <div className="absolute right-0 top-full z-20 mt-1 w-44 rounded-xl border border-gray-200 bg-white py-1 shadow-lg">
-                <button className="flex w-full items-center gap-2 px-3 py-2 text-xs text-gray-700 hover:bg-gray-50" onClick={() => { onFork(version); setMenuOpen(false) }}>
-                  <Copy size={13} /> Clone workflow
-                </button>
-                {isArchived
-                  ? <button className="flex w-full items-center gap-2 px-3 py-2 text-xs text-gray-700 hover:bg-gray-50" onClick={() => { onUnarchive(version); setMenuOpen(false) }}>Unarchive</button>
-                  : <button className="flex w-full items-center gap-2 px-3 py-2 text-xs text-gray-700 hover:bg-gray-50" onClick={() => { onArchive(version); setMenuOpen(false) }}>
-                      <Archive size={13} /> Archive
-                    </button>
-                }
-                <button className="flex w-full items-center gap-2 px-3 py-2 text-xs text-red-600 hover:bg-red-50" onClick={() => { onDelete(version); setMenuOpen(false) }}>
-                  <Trash2 size={13} /> Delete
-                </button>
-              </div>
-            </>
-          )}
-        </div>
+        <button ref={menuBtnRef} disabled={isPending} className="ml-auto inline-flex items-center rounded-lg px-3 py-1.5 text-xs text-gray-600 hover:bg-gray-100 disabled:opacity-50" onClick={openMenu}>
+          <MoreHorizontal size={14} />
+        </button>
+        {menuOpen && menuPos && createPortal(
+          <>
+            <div className="fixed inset-0 z-[40]" onClick={() => setMenuOpen(false)} />
+            <div className="fixed z-[41] w-44 rounded-xl border border-gray-200 bg-white py-1 shadow-lg"
+              style={{ top: menuPos.top, right: menuPos.right }}>
+              <button className="flex w-full items-center gap-2 px-3 py-2 text-xs text-gray-700 hover:bg-gray-50" onClick={() => { onFork(version); setMenuOpen(false) }}>
+                <Copy size={13} /> Clone workflow
+              </button>
+              {isArchived
+                ? <button className="flex w-full items-center gap-2 px-3 py-2 text-xs text-gray-700 hover:bg-gray-50" onClick={() => { onUnarchive(version); setMenuOpen(false) }}>Unarchive</button>
+                : <button className="flex w-full items-center gap-2 px-3 py-2 text-xs text-gray-700 hover:bg-gray-50" onClick={() => { onArchive(version); setMenuOpen(false) }}>
+                    <Archive size={13} /> Archive
+                  </button>
+              }
+              <button className="flex w-full items-center gap-2 px-3 py-2 text-xs text-red-600 hover:bg-red-50" onClick={() => { onDelete(version); setMenuOpen(false) }}>
+                <Trash2 size={13} /> Delete
+              </button>
+            </div>
+          </>,
+          document.body
+        )}
       </div>
     </div>
   )

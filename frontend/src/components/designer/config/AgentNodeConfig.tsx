@@ -4,7 +4,7 @@
  * Confidence threshold, confidence rules, and checkpoints have been removed.
  */
 import { useState } from 'react'
-import { Search, X } from 'lucide-react'
+import { Search, X, Maximize2 } from 'lucide-react'
 import { useKnowledgeFile, useKnowledgeFiles, useSearchKnowledgeFiles } from '@/api/knowledge'
 import { useRegisteredAgents } from '@/api/agents'
 import Btn from '@/components/shared/Btn'
@@ -49,6 +49,8 @@ export default function AgentNodeConfig({ node, onChange, readOnly = false }: Pr
   const [pickerOpen, setPickerOpen] = useState(false)
   const [pickerQuery, setPickerQuery] = useState('')
   const [previewPath, setPreviewPath] = useState<string | null>(null)
+  const [promptDialogOpen, setPromptDialogOpen] = useState(false)
+  const [promptDraft, setPromptDraft] = useState('')
   const { data: searchedFiles = [] } = useSearchKnowledgeFiles(pickerQuery)
   const { data: previewFile } = useKnowledgeFile(previewPath)
 
@@ -141,23 +143,89 @@ export default function AgentNodeConfig({ node, onChange, readOnly = false }: Pr
       )}
 
       {/* System prompt / question */}
-      {!isHuman
-        ? <div>
-            <label className="block text-xs text-gray-500 mb-1">System prompt</label>
-            <textarea className="border rounded px-2 py-1 text-sm w-full h-24 resize-y"
-              value={(config.system_prompt as string) ?? ''}
-              disabled={readOnly}
-              onChange={e => setConfig({ system_prompt: e.target.value })} />
+      {(() => {
+        const fieldKey = isHuman ? 'question' : 'system_prompt'
+        const label = isHuman ? 'Question for operator' : 'System prompt'
+        const placeholder = isHuman ? 'Awaiting human review.' : 'Instructions for the agent…'
+        const value = (config[fieldKey] as string) ?? ''
+        const PREVIEW_LEN = 240
+        const preview = value.length > PREVIEW_LEN ? value.slice(0, PREVIEW_LEN) + '…' : value
+
+        function openDialog() {
+          setPromptDraft(value)
+          setPromptDialogOpen(true)
+        }
+        function saveDialog() {
+          setConfig({ [fieldKey]: promptDraft })
+          setPromptDialogOpen(false)
+        }
+
+        return (
+          <div>
+            <div className="flex items-center justify-between mb-1">
+              <label className="text-xs text-gray-500">{label}</label>
+              <button
+                type="button"
+                onClick={openDialog}
+                className="inline-flex items-center gap-1 text-xs text-brand-500 hover:text-brand-700"
+              >
+                <Maximize2 size={11} />
+                {readOnly ? 'Detail' : 'Edit'}
+              </button>
+            </div>
+            {value ? (
+              <p className="rounded border border-gray-200 bg-gray-50 px-2 py-1.5 text-xs text-gray-600 whitespace-pre-wrap break-words leading-relaxed cursor-default min-h-[2.5rem]">
+                {preview}
+              </p>
+            ) : (
+              <p className="rounded border border-dashed border-gray-200 px-2 py-1.5 text-xs text-gray-400 italic min-h-[2.5rem]">
+                {placeholder}
+              </p>
+            )}
+
+            {promptDialogOpen && (
+              <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/45 p-4">
+                <div className="flex flex-col w-full max-w-xl max-h-[85vh] rounded-xl border border-gray-200 bg-white shadow-2xl overflow-hidden">
+                  <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200 flex-shrink-0">
+                    <p className="text-sm font-semibold text-gray-900">{label}</p>
+                    <button onClick={() => setPromptDialogOpen(false)} className="text-gray-400 hover:text-gray-600">
+                      <X size={16} />
+                    </button>
+                  </div>
+                  <div className="flex-1 overflow-y-auto p-5">
+                    {readOnly ? (
+                      <p className="text-sm text-gray-700 whitespace-pre-wrap break-words leading-relaxed">
+                        {value || <span className="italic text-gray-400">(empty)</span>}
+                      </p>
+                    ) : (
+                      <textarea
+                        autoFocus
+                        className="w-full rounded border border-gray-200 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-brand-400 resize-none"
+                        style={{ minHeight: '240px', height: '100%' }}
+                        placeholder={placeholder}
+                        value={promptDraft}
+                        onChange={e => setPromptDraft(e.target.value)}
+                      />
+                    )}
+                  </div>
+                  {!readOnly && (
+                    <div className="flex justify-end gap-2 px-5 py-4 border-t border-gray-100 flex-shrink-0">
+                      <button onClick={() => setPromptDialogOpen(false)}
+                        className="rounded-lg border border-gray-200 px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-50">
+                        Cancel
+                      </button>
+                      <button onClick={saveDialog}
+                        className="rounded-lg bg-brand-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-brand-700">
+                        Save
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
           </div>
-        : <div>
-            <label className="block text-xs text-gray-500 mb-1">Question for operator</label>
-            <textarea className="border rounded px-2 py-1 text-sm w-full h-16 resize-y"
-              placeholder="Awaiting human review."
-              value={(config.question as string) ?? ''}
-              disabled={readOnly}
-              onChange={e => setConfig({ question: e.target.value })} />
-          </div>
-      }
+        )
+      })()}
 
       {/* Knowledge paths */}
       {!isHuman && (

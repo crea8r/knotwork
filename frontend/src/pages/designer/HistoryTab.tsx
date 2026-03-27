@@ -7,7 +7,7 @@ import { formatVersionName } from './graphVersionUtils'
 import type { GraphVersion } from '@/types'
 
 export default function HistoryTab({
-  workspaceId, graphId,
+  graphSlug,
   namedVersions, activeDraft, versionsLoading,
   showArchivedVersions, setShowArchivedVersions,
   graphDefaultVersionId, resolvedParentVersionId,
@@ -15,10 +15,10 @@ export default function HistoryTab({
   onOpenVersion, onRenameVersion, onViewVersion,
   onSetDefault, onForkVersion, onArchiveVersion, onUnarchiveVersion, onDeleteVersion,
   onManagePublic, onPublish,
+  onEditRootDraft,
   historySelection, onSelectHistoryItem,
 }: {
-  workspaceId: string
-  graphId: string
+  graphSlug: string | null
   namedVersions: GraphVersion[]
   activeDraft: GraphVersion | null
   versionsLoading: boolean
@@ -37,6 +37,7 @@ export default function HistoryTab({
   onDeleteVersion: (version: GraphVersion) => void
   onManagePublic: (version: GraphVersion) => void
   onPublish: () => void
+  onEditRootDraft: () => void
   historySelection: HistorySelection | null
   onSelectHistoryItem: (sel: HistorySelection) => void
 }) {
@@ -68,7 +69,7 @@ export default function HistoryTab({
     onOpenVersion, onEdit: onOpenVersion, onRename: onRenameVersion, onView: onViewVersion,
     onSetDefault, onFork: onForkVersion, onArchive: onArchiveVersion,
     onUnarchive: onUnarchiveVersion, onDelete: onDeleteVersion,
-    onManagePublic, onPublish,
+    onManagePublic, onPublish, onEditRootDraft, graphSlug,
   }
 
   const headerItem = selectedHistoryVersion ?? selectedHistoryDraft
@@ -76,15 +77,35 @@ export default function HistoryTab({
     <>
       <div className="flex items-center justify-between border-b border-gray-200 px-4 py-3 flex-shrink-0 gap-2">
         <div className="flex items-center gap-1.5 min-w-0">
-          <p className="text-sm font-semibold text-gray-900 truncate">
-            {headerItem ? formatVersionName(headerItem) : (historySelection.kind === 'version' ? 'Version' : 'Draft')}
-          </p>
-          {headerItem && (
+          {headerItem ? (() => {
+            const sel = historySelection!
+            const canLink =
+              (sel.kind === 'version' && selectedHistoryVersion) ||
+              (sel.kind === 'draft' && selectedHistoryVersion) ||
+              sel.kind === 'root-draft'
+            function handleNameClick() {
+              if (sel.kind === 'root-draft') onEditRootDraft()
+              else if (sel.kind === 'version' && selectedHistoryVersion) onViewVersion(selectedHistoryVersion)
+              else if (sel.kind === 'draft' && selectedHistoryVersion) onOpenVersion(selectedHistoryVersion)
+            }
+            return canLink ? (
+              <button className="truncate text-sm font-semibold text-brand-600 hover:underline text-left" title="View in canvas" onClick={handleNameClick}>
+                {formatVersionName(headerItem)}
+              </button>
+            ) : (
+              <p className="truncate text-sm font-semibold text-gray-900">{formatVersionName(headerItem)}</p>
+            )
+          })() : (
+            <p className="text-sm font-semibold text-gray-900 truncate">
+              {historySelection.kind === 'version' ? 'Version' : 'Draft'}
+            </p>
+          )}
+          {headerItem && historySelection?.kind !== 'root-draft' && (
             <button className="p-0.5 text-gray-400 hover:text-gray-700 flex-shrink-0" onClick={() => onRenameVersion(headerItem)} title="Rename">
               <Pencil size={11} />
             </button>
           )}
-          {selectedHistoryVersion?.is_public && (
+          {!!selectedHistoryVersion?.version_slug && (
             <button className="p-0.5 text-purple-500 hover:text-purple-700 flex-shrink-0" onClick={() => onManagePublic(selectedHistoryVersion)} title="Public link">
               <Globe size={12} />
             </button>
@@ -95,7 +116,7 @@ export default function HistoryTab({
         </button>
       </div>
       <div className="overflow-y-auto p-4">
-        <HistoryDetailPanel workspaceId={workspaceId} graphId={graphId} {...detailProps} />
+        <HistoryDetailPanel {...detailProps} />
       </div>
     </>
   ) : null

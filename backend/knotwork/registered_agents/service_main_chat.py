@@ -275,6 +275,15 @@ async def ask_main_chat(
     task_id = task.id  # capture before commit
     db.add(task)
     await db.commit()
+    await channels_service.emit_task_assigned_event(
+        db,
+        workspace_id=workspace_id,
+        agent_id=agent_id,
+        channel_id=main_channel_id,
+        title=f"Main chat task assigned to {ra_display_name}",
+        subtitle=(user_text or "New main chat request")[:160],
+        source_id=str(task_id),
+    )
 
     task_status, reply, question = await _wait_openclaw_task(db, task_id, timeout_seconds=300)
     await _append_openclaw_task_logs_to_main_channel(
