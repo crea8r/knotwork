@@ -26,6 +26,7 @@ from knotwork.openclaw_integrations.models import (
 )
 from knotwork.registered_agents.models import RegisteredAgent
 from knotwork.runtime.adapters.base import AgentAdapter, NodeEvent
+from knotwork.projects.service import render_project_context
 
 if TYPE_CHECKING:
     from knotwork.runtime.knowledge_loader import KnowledgeTree
@@ -115,10 +116,17 @@ class OpenClawAdapter(AgentAdapter):
             run_fields = run_state.get("input", {}) if is_first_node else {}
             context_files_for_prompt = run_state.get("context_files", []) if is_first_node else []
 
+            project_id = run_state.get("project_id")
+            project_context = await render_project_context(
+                db,
+                UUID(str(run_state["workspace_id"])),
+                UUID(str(project_id)) if project_id else None,
+            )
             system_prompt, user_prompt = build_agent_prompt(
                 tree=knowledge_tree,
                 state_fields=run_fields,
                 context_files=context_files_for_prompt,
+                project_context=project_context,
                 prior_outputs=None,
             )
             if is_first_node:

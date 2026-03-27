@@ -41,6 +41,7 @@ import knotwork.registered_agents.models  # noqa: F401
 import knotwork.channels.models  # noqa: F401
 import knotwork.openclaw_integrations.models  # noqa: F401
 import knotwork.public_workflows.models  # noqa: F401
+import knotwork.projects.models  # noqa: F401
 
 # Import new S6.5 models so they are registered with Base.metadata
 from knotwork.runs.models import RunHandbookProposal, RunWorklogEntry  # noqa: F401
@@ -70,6 +71,7 @@ from knotwork.workspaces.invitations.router import public_router as invitations_
 from knotwork.openclaw_integrations.install_router import router as openclaw_install_router
 from knotwork.public_workflows.router import router as public_workflows_router
 from knotwork.public_workflows.router import public_router as public_workflows_public_router
+from knotwork.projects.router import router as projects_router
 from knotwork.database import AsyncSessionLocal
 
 _STARTED_AT = datetime.now(timezone.utc)
@@ -150,6 +152,7 @@ def create_app() -> FastAPI:
     app.include_router(ws_router, prefix=prefix)
     app.include_router(registered_agents_router, prefix=prefix)
     app.include_router(channels_router, prefix=prefix)
+    app.include_router(projects_router, prefix=prefix)
     app.include_router(openclaw_router, prefix=prefix)
     app.include_router(invitations_router, prefix=prefix)
     app.include_router(invitations_public_router, prefix=prefix)

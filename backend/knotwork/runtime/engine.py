@@ -36,6 +36,7 @@ logger = logging.getLogger(__name__)
 class RunState(TypedDict):
     run_id: str
     workspace_id: str
+    project_id: str | None
     graph_id: str
     input: dict
     context_files: list

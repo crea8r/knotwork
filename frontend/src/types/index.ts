@@ -41,6 +41,7 @@ export interface GraphVersion {
 export interface Graph {
   id: string
   workspace_id: string
+  project_id: string | null
   name: string
   path: string
   description: string | null
@@ -96,6 +97,8 @@ export interface EdgeDef {
 export interface Run {
   id: string
   workspace_id: string
+  project_id: string | null
+  task_id: string | null
   graph_id: string
   graph_version_id: string | null   // S9.1: nullable; null for legacy runs
   // S9.1 draft run metadata
@@ -256,11 +259,93 @@ export interface Channel {
   id: string
   workspace_id: string
   name: string
-  channel_type: 'normal' | 'workflow' | 'handbook' | 'agent_main'
+  channel_type: 'normal' | 'workflow' | 'handbook' | 'agent_main' | 'project' | 'task'
   graph_id: string | null
+  project_id: string | null
+  task_id: string | null
   archived_at: string | null
   created_at: string
   updated_at: string
+}
+
+export interface ProjectStatusUpdate {
+  id: string
+  workspace_id: string
+  project_id: string
+  author_type: string
+  author_name: string | null
+  summary: string
+  created_at: string
+}
+
+export interface Project {
+  id: string
+  workspace_id: string
+  title: string
+  objective: string
+  status: 'open' | 'in_progress' | 'blocked' | 'done'
+  deadline: string | null
+  project_channel_id: string | null
+  task_count: number
+  open_task_count: number
+  run_count: number
+  latest_status_update: ProjectStatusUpdate | null
+  created_at: string
+  updated_at: string
+}
+
+export interface Task {
+  id: string
+  workspace_id: string
+  project_id: string | null
+  parent_task_id: string | null
+  code: string | null
+  title: string
+  description: string | null
+  status: 'open' | 'in_progress' | 'blocked' | 'done'
+  progress_percent: number
+  status_summary: string | null
+  key_results: string[]
+  owner_type: string | null
+  owner_name: string | null
+  deadline: string | null
+  origin_type: string
+  origin_graph_id: string | null
+  channel_id: string | null
+  run_count: number
+  latest_run_id: string | null
+  created_at: string
+  updated_at: string
+}
+
+export type Objective = Task
+
+export interface ProjectDocument {
+  id: string
+  workspace_id: string
+  project_id: string | null
+  path: string
+  title: string
+  owner_id: string | null
+  raw_token_count: number
+  resolved_token_count: number
+  linked_paths: string[]
+  current_version_id: string | null
+  health_score: number | null
+  updated_at: string
+}
+
+export interface ProjectDocumentWithContent extends ProjectDocument {
+  content: string
+  version_id: string
+}
+
+export interface ProjectDashboard {
+  project: Project
+  tasks: Task[]
+  recent_runs: Run[]
+  blocked_tasks: Task[]
+  latest_status_update: ProjectStatusUpdate | null
 }
 
 export interface ChannelMessage {

@@ -47,6 +47,7 @@ import knotwork.ratings.models       # noqa: F401
 import knotwork.audit.models         # noqa: F401
 import knotwork.notifications.models  # noqa: F401
 import knotwork.openclaw_integrations.models  # noqa: F401
+import knotwork.projects.models  # noqa: F401
 
 from arq import cron
 from arq.connections import RedisSettings

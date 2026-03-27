@@ -33,8 +33,12 @@ async def _graph_out(db: AsyncSession, graph, run_count: int | None = None) -> G
 
 
 @router.get("/{workspace_id}/graphs", response_model=list[GraphOut])
-async def list_graphs(workspace_id: UUID, db: AsyncSession = Depends(get_db)):
-    graphs = await service.list_graphs(db, workspace_id)
+async def list_graphs(
+    workspace_id: UUID,
+    project_id: UUID | None = Query(default=None),
+    db: AsyncSession = Depends(get_db),
+):
+    graphs = await service.list_graphs(db, workspace_id, project_id=project_id)
     run_counts = await service.list_graph_run_counts(db, workspace_id)
     return [await _graph_out(db, g, run_count=run_counts.get(g.id, 0)) for g in graphs]
 

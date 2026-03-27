@@ -1,26 +1,26 @@
-# Session 10 — Implementation Playbook
+# Session 11 — Implementation Playbook
 
-This document turns the S10 scope into a practical build sequence with hard boundaries so implementation stays small, coherent, and compatible with the rest of Knotwork.
+This document turns the S11 scope into a practical build sequence for an objective-centered project dashboard.
 
 Read with:
 
-- `docs/implementation/S10/spec.md`
-- `docs/implementation/S10/scope.md`
+- `docs/implementation/S11/spec.md`
+- `docs/implementation/S11/scope.md`
 
 ---
 
 ## Delivery Principle
 
-Build S10 from reused primitives outward:
+Build S11 by reusing existing Knotwork primitives and changing the project surface before changing deeper runtime behavior:
 
-1. model the work container
-2. lock the smallest workflow scoping rule
-3. reuse document and channel primitives
-4. link runs into tasks
-5. add the smallest useful project dashboard
-6. only then extend runtime prompt loading
+1. lock the objective-centered model
+2. add only the minimum objective metadata needed in storage
+3. reuse the graph canvas for objective navigation
+4. reuse Handbook mechanics for project knowledge
+5. reuse channel mechanics for project and objective conversation
+6. keep workflow scoping minimal through nullable `project_id`
 
-Do not begin with dashboard intelligence, automation, or planning features.
+Do not begin with intelligence features, broad planning features, or a new permissions model.
 
 ---
 
@@ -28,68 +28,56 @@ Do not begin with dashboard intelligence, automation, or planning features.
 
 Outcome:
 
-- schema and terminology are stable before UI sprawl starts
+- the product speaks consistently about `Project`, `Objective`, `Project Knowledge`, and `Project Channel`
 
 Deliverables:
 
-- `Project` model
-- `Task` model
-- minimal workflow scope model
-- project-scoped document namespace
-- linkage from `Task` to `Channel`
-- linkage from `Task` to `Run`
-- project-level status update representation
+- stable `Project` model
+- objective model and tree relationship
+- project status summary representation
+- project-scoped file namespace
+- project-scoped workflow rule via `workflow.project_id`
+- objective-attached channel rule
 
 Decisions to lock:
 
-- whether project status updates are stored as structured records or typed channel events
-- whether project documents share the exact storage backend/pathing pattern used by Handbook
-- whether task creation always auto-creates its channel
-- whether project creation always auto-creates its project channel
+- whether objective storage reuses the current task table/model underneath
+- whether objective key results are stored as structured text or a small JSON list
+- whether objective channel is implemented as the existing task channel
+- whether project status remains a structured update record
 
 Rule:
 
-Prefer the simplest shape that reuses existing primitives, even if it is slightly less flexible.
-
-Minimal workflow scope rule to lock here:
-
-- global workflow is reusable and not tied to a project
-- project workflow belongs to exactly one project
-- project workflow can only spawn tasks into its own project
-- global workflow can spawn unassigned tasks
-- unassigned tasks may later be moved into a project for organization
-
-Avoid expanding this into a permissions or sharing framework.
+Prefer reuse of the current task/channel substrate if it keeps the product model clean.
 
 ---
 
-## Milestone 2 — Minimal Workflow Scoping
+## Milestone 2 — Minimal Schema Extension
 
 Outcome:
 
-- workflow scope is explicit without creating a broad new access model
+- current storage can represent objective hierarchy and summary data without a parallel model
 
 Deliverables:
 
-- workflow scope represented as `global` or `project`
-- project workflow stores owning `project_id`
-- invariant enforcement:
-  - project workflow may only create tasks in its own project
-  - global workflow may create tasks with no project
-- task reassignment flow from unassigned to project-organized
+- parent linkage for objectives
+- short code field
+- progress value
+- short status summary
+- key results payload
+- optional in-charge fields
 
 Rules:
 
-- scope controls where spawned tasks may live
-- scope does not create a new workflow permission matrix
-- scope does not imply inheritance, syncing, or cross-project sharing
+- store only what the objective dashboard requires
+- avoid schema for advanced planning, staffing, or analytics
+- keep workflow scoping as nullable `project_id`, not a separate scope enum
 
 Failure modes to avoid:
 
-- letting a project workflow create tasks in another project
-- letting a global workflow target arbitrary projects automatically
-- introducing more than two workflow scopes in S10
-- building promotion/sync/version-lineage systems as a dependency
+- inventing a second objective table when the current task substrate can be extended cleanly
+- creating both `scope` and `project_id` for workflows
+- storing objective data in ad hoc channel metadata instead of a stable model
 
 ---
 
@@ -97,174 +85,118 @@ Failure modes to avoid:
 
 Outcome:
 
-- users can see projects as first-class objects in navigation and detail views
+- users land on a stable three-view project dashboard
 
 Deliverables:
 
-- project list page
-- project create/edit flow
-- project detail page shell with sections for:
-  - dashboard
-  - tasks
-  - documents
-  - project channel
+- project header
+- three-tab project shell:
+  - `Objectives`
+  - `Handbook`
+  - `Channel`
+- default route/state opens `Objectives`
 
 UI rule:
 
-Do not create a bespoke navigation system for projects. Fit them into the current app structure cleanly.
+The project page should feel like a hub of focused surfaces, not one long mixed dashboard.
 
 ---
 
-## Milestone 4 — Project Documents via Handbook Reuse
+## Milestone 4 — Objective Canvas
 
 Outcome:
 
-- project-scoped context is durable without inventing a new document system
+- project progress is visible as a navigable objective tree
 
 Deliverables:
 
-- project document CRUD
-- markdown editing
-- version history
-- file tree/folder browsing
+- canvas adapter from objective data to graph-style nodes/edges
+- node rendering for code, title, progress, and short status summary
+- select-to-center interaction
+- objective detail panel over the canvas
 
 Implementation guidance:
 
-- copy mechanics from Handbook only when necessary
-- prefer shared abstractions/components over parallel implementations
-- keep scope-based differences explicit in service/API layer rather than forking the editor experience
+- reuse the existing canvas engine and navigation mechanics
+- objective tree is not a workflow graph; only the interaction model should be shared
+- keep node content compact and scannable
 
 Failure mode to avoid:
 
-Building "Handbook 2" with separate rules, separate editor behavior, or separate versioning semantics.
+Turning the objective canvas into a second workflow editor.
 
 ---
 
-## Milestone 5 — Tasks as Channel-First Work Items
+## Milestone 5 — Project Knowledge via Handbook Reuse
 
 Outcome:
 
-- tasks become the user-facing work atom
+- project-scoped files and workflows live in a familiar surface
 
 Deliverables:
 
-- task CRUD inside project
-- task list in project detail
-- task detail view
-- auto-created task channel
-- support for unassigned tasks created from global workflows
-
-Behavior rules:
-
-- every task has a channel
-- a task may remain purely manual
-- a task may also begin unassigned if spawned from a global workflow
-- task detail should privilege conversation and work state, not execution internals
-
-Failure mode to avoid:
-
-Turning tasks into mini-projects with their own complex metadata and planning structure.
-
----
-
-## Milestone 6 — Link Runs to Tasks
-
-Outcome:
-
-- workflow execution is visible inside task context instead of floating separately
-
-Deliverables:
-
-- trigger run from task
-- link existing run records to task
-- surface run events/output/history in task channel or task detail
-- task page shows linked runs clearly
+- project file tree and markdown editing
+- project workflow list/create flow
+- clear distinction from the global Handbook
 
 Rules:
 
-- `Run` remains the execution object
-- `Task` remains the human-facing work object
-- do not invent a new "task execution" entity
+- global workflow = `project_id IS NULL`
+- project workflow = `project_id IS NOT NULL`
+- project workflow may only spawn work into its own project
 
-Failure mode to avoid:
+Failure modes to avoid:
 
-Duplicating run state into task-specific execution tables or bespoke execution UI.
+- building a second editor experience
+- letting project workflows feel reusable outside their project by accident
 
 ---
 
-## Milestone 7 — Project Dashboard
+## Milestone 6 — Channel View
 
 Outcome:
 
-- the project answers "where do things stand?" without opening many pages
+- the project has one communication surface with focused objective chat inside it
 
 Deliverables:
 
-- objective/status summary
-- latest project status update
-- task counts by status
-- blocked tasks
-- recent failed/successful runs
+- project channel main panel
+- collapsible objective tree sidebar
+- objective chat switching
+- objective detail entry point to open its chat
 
-Implementation guidance:
+Rules:
 
-- keep dashboard fixed and opinionated
-- derive most data from existing models
-- prefer a concise summary over completeness
+- objective chat should reuse existing channels
+- avoid creating a separate threads implementation
+- keep the distinction between project-wide chat and objective-specific chat visible in the UI
 
 Failure mode to avoid:
 
-Building analytics infrastructure or configurable dashboard widgets.
+Collapsing project chat and objective chat into one undifferentiated stream.
 
 ---
 
-## Milestone 8 — Dashboard Update Flow
+## Milestone 7 — Project Status
 
 Outcome:
 
-- project state can be refreshed intentionally without building S11 early
-
-Required deliverables:
-
-- human can create/update a project status summary
-- project dashboard shows latest update timestamp and author
-
-Optional deliverable if cheap:
-
-- agent can draft or post an ad hoc project summary using current agent patterns
-
-Deferred explicitly:
-
-- periodic autonomous updates
-- persistent project intelligence agent
-- objective refinement proposals
-- project health scoring
-
-Use this rule:
-
-If the feature sounds like "the system understands how the project is going," it is probably S11.
-If the feature sounds like "the system records or summarizes recent visible state," it can fit S10.
-
----
-
-## Milestone 9 — Runtime Knowledge Extension
-
-Outcome:
-
-- task-linked runs can consume project-scoped context naturally
+- the project header and dashboard answer “where are we now?”
 
 Deliverables:
 
-- runtime prompt loading for:
-  - Handbook
-  - Project Documents
-  - Run Context
-- explicit prompt structure preserving separation of layers
-- regression coverage ensuring project documents do not leak into workspace-wide guidance semantics
+- latest project status summary in header
+- human-authored update flow
+- optional AI-authored or AI-drafted update flow if cheap
+
+Rules:
+
+- status summaries should be concise
+- AI may assist, but project truth should not depend on autonomous intelligence in S11
 
 Failure mode to avoid:
 
-Treating Project Documents as just more Handbook files and losing the semantic distinction.
+Building a standing project intelligence subsystem.
 
 ---
 
@@ -274,43 +206,38 @@ Treating Project Documents as just more Handbook files and losing the semantic d
 
 Build first:
 
-- project/task schema
-- minimal workflow scope fields/invariants
-- task/run linkage
-- project document scope plumbing
-- project status update persistence
+- objective schema extensions on the current project/task substrate
+- objective tree/query support
+- project dashboard payload aligned to objective view
+- workflow `project_id` invariants
 
 Then:
 
-- project/task API
-- workflow-scope-aware task-spawn API behavior
-- dashboard summary endpoints
-- runtime knowledge loading changes
+- project knowledge endpoints refinements
+- objective-focused channel helpers
+- optional AI status helper hooks
 
 ### Frontend
 
 Build first:
 
-- project list/detail shells
-- task list/detail views
-- unassigned-task organization flow
-- project document views reusing Handbook UI
+- project shell
+- objective canvas and detail panel
+- project header
 
 Then:
 
-- dashboard summary presentation
-- run linkage in task context
-- status update UI
+- handbook view reuse
+- channel view with objective tree sidebar
+- objective create/edit flows
 
 ### Runtime
 
-Build last:
-
-- prompt extension for project documents
+Keep unchanged unless needed for existing project document loading or run linkage.
 
 Reason:
 
-The runtime change is important but should not block the work-management shell from landing first.
+S11 is mainly a product-surface and data-model session, not a runtime redesign.
 
 ---
 
@@ -318,62 +245,25 @@ The runtime change is important but should not block the work-management shell f
 
 ### Must test
 
-- project CRUD
-- task CRUD
-- task channel creation
-- project document CRUD/history
-- task without run
-- task with linked run
-- dashboard summary correctness for basic counts/states
-- latest status update display
-- runtime prompt includes all three knowledge layers for task-linked runs
+- project loads into the `Objectives` view by default
+- objective tree renders and selection recenters correctly
+- objective detail panel reflects the selected node
+- project handbook view shows only project-scoped files/workflows
+- channel view switches cleanly between project chat and objective chat
+- project workflow with `project_id` set cannot spawn work into another project
 
-### Nice to have
+### Nice to test
 
-- ad hoc agent-authored dashboard update if implemented
-
-### Do not let tests drag scope outward
-
-If a test requires:
-
-- scheduling
-- planning dependencies
-- complex permissions
-- predictive dashboard logic
-
-that is a signal the feature likely does not belong in S10.
+- AI-authored status summary flow
+- canvas behavior with larger objective trees
+- moving between objective panel and objective chat smoothly
 
 ---
 
-## Cut List If S10 Starts To Bloat
+## Cut Rule
 
-If the session grows too large, cut in this order:
+When deciding whether to include a feature, ask:
 
-1. agent-authored dashboard updates
-2. rich dashboard visualizations
-3. document tree polish beyond reused Handbook behavior
-4. run-linking conveniences beyond the core link/trigger path
+“Does this make the objective-centered project surface clearer by reusing what Knotwork already has?”
 
-Do not cut:
-
-1. Project
-2. Task
-3. Project Documents
-4. task channel
-5. project dashboard/status surface
-
-Those are the session.
-
----
-
-## Ready-for-Review Checklist
-
-S10 is review-ready when:
-
-- a project can be created and used as a real work container
-- project documents hold project-specific context without abusing the Handbook
-- a task can be manual or run-backed without changing mental model
-- the task channel is the place where work happens
-- the dashboard shows current state without becoming a reporting product
-- runtime can load project documents for task-linked execution
-- no feature in the session requires S11 intelligence to justify its existence
+If not, cut it from S11.

@@ -50,6 +50,7 @@ def _render_guidelines(tree: KnowledgeTree) -> str:
 def _render_case(
     state_fields: dict,
     context_files: list[dict],
+    project_context: str = "",
     prior_outputs: dict[str, str] | None = None,
 ) -> str:
     """Render run state, prior outputs, and attachment metadata (never file content)."""
@@ -57,6 +58,9 @@ def _render_case(
 
     if state_fields:
         parts.append("### Run input\n```json\n" + json.dumps(state_fields, indent=2) + "\n```")
+
+    if project_context.strip():
+        parts.append(f"### Project context\n{project_context.strip()}")
 
     if prior_outputs:
         for node_id, text in prior_outputs.items():
@@ -83,6 +87,7 @@ def build_agent_prompt(
     tree: KnowledgeTree,
     state_fields: dict,
     context_files: list[dict] | None = None,
+    project_context: str = "",
     prior_outputs: dict[str, str] | None = None,
 ) -> tuple[str, str]:
     """
@@ -97,7 +102,7 @@ def build_agent_prompt(
         (system_prompt, user_prompt) — pass directly to the LLM.
     """
     guidelines = _render_guidelines(tree)
-    case = _render_case(state_fields, context_files or [], prior_outputs)
+    case = _render_case(state_fields, context_files or [], project_context, prior_outputs)
 
     system_prompt = f"=== GUIDELINES (how to work) ===\n\n{guidelines}"
     user_prompt = f"=== THIS CASE (what you are working on) ===\n\n{case}"

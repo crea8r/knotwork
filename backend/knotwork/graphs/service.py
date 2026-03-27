@@ -13,12 +13,13 @@ from sqlalchemy import delete as sql_delete
 from knotwork.graphs.schemas import GraphCreate, GraphUpdate, GraphVersionCreate
 
 
-async def list_graphs(db: AsyncSession, workspace_id: UUID) -> list[Graph]:
-    result = await db.execute(
-        select(Graph)
-        .where(Graph.workspace_id == workspace_id)
-        .order_by(Graph.created_at.desc())
-    )
+async def list_graphs(db: AsyncSession, workspace_id: UUID, project_id: UUID | None = None) -> list[Graph]:
+    stmt = select(Graph).where(Graph.workspace_id == workspace_id)
+    if project_id is None:
+        stmt = stmt.where(Graph.project_id.is_(None))
+    else:
+        stmt = stmt.where(Graph.project_id == project_id)
+    result = await db.execute(stmt.order_by(Graph.created_at.desc()))
     return list(result.scalars())
 
 
@@ -70,6 +71,7 @@ async def create_graph(
 ) -> Graph:
     graph = Graph(
         workspace_id=workspace_id,
+        project_id=data.project_id,
         name=data.name,
         path=data.path,
         description=data.description,

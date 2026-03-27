@@ -9,7 +9,10 @@ from __future__ import annotations
 
 import json
 from typing import TYPE_CHECKING, AsyncGenerator
+from uuid import UUID
 
+from knotwork.database import AsyncSessionLocal
+from knotwork.projects.service import render_project_context
 from knotwork.runtime.adapters.base import AgentAdapter, NodeEvent
 from knotwork.runtime.adapters.tools import KNOTWORK_TOOLS
 
@@ -78,11 +81,19 @@ class OpenAIAdapter(AgentAdapter):
             is_first_node = not all_outputs
             run_fields = run_state.get("input", {}) if is_first_node else {}
             context_files = run_state.get("context_files", []) if is_first_node else []
+            project_id = run_state.get("project_id")
+            async with AsyncSessionLocal() as db:
+                project_context = await render_project_context(
+                    db,
+                    UUID(str(run_state["workspace_id"])),
+                    UUID(str(project_id)) if project_id else None,
+                )
 
             system_prompt, user_prompt = build_agent_prompt(
                 tree=knowledge_tree,
                 state_fields=run_fields,
                 context_files=context_files,
+                project_context=project_context,
                 prior_outputs=None,
             )
             extra = config.get("system_prompt") or config.get("instructions", "")

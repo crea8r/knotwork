@@ -1,98 +1,125 @@
-# Session 10 — Projects, Tasks, and Project Documents
+# Session 11 — Projects, Objectives, and Project Knowledge
 
 ## Goal
 
-Add the missing work-management layer above Graphs and Runs so Knotwork can track objectives, organize work into tasks, and carry project-scoped context across executions.
+Make Knotwork useful as a project operating surface by putting work visibility on the same level as workflows and Handbook.
+
+S11 makes the **Objective** the center of project experience:
+
+- a **Project** is the container
+- **Objectives** are the visible map of what the project is trying to achieve
+- **Project Knowledge** keeps project-scoped files and workflows together
+- **Project Channel** holds project discussion, with objective-attached channels inside it
+
+The existing Graph/Run system remains the execution substrate underneath.
 
 ## Context
 
-Before S10, Knotwork's main hierarchy is:
+Before S11, Knotwork is strongest at:
 
 ```text
-Workspace -> Graphs -> Runs
+Workspace -> Handbook + Graphs -> Runs
 ```
 
-That is an execution model, not a work model. Graphs are reusable process templates, and Runs are single executions, but neither is the thing a human operator is actually trying to advance.
+That is useful for execution, but it does not yet give a human operator a strong project surface.
 
-S10 introduces:
+S11 adds:
 
-- **Project** — the objective-scoped work container
-- **Task** — the user-facing unit of work inside a Project
-- **ProjectDocument** — the project-scoped knowledge layer shared across tasks and runs
+- **Project** — the top-level work container
+- **Objective** — the primary visible unit of progress inside a project
+- **Project Knowledge** — project-scoped files and workflows
+- **Project Channel** — project conversation with objective-attached chat
 
-These concepts shift Knotwork from "workflow runner" toward "operating system for work" while preserving the existing Graph/Run execution model underneath.
+This keeps execution power intact while making work itself visible and understandable.
 
 ## In Scope
 
-1. Project model and CRUD.
-   - `Project` has objective, optional deadline, status, and workspace ownership
-   - project list and project detail views exist in the UI
-   - project dashboard surfaces task progress, run outcomes, and visible roadblocks
-2. Task model and CRUD.
-   - `Task` belongs to a project
-   - task has name, description, status, and optional linkage to runs
-   - tasks are the primary work items humans track day to day
-3. Project chat.
-   - every project has one shared project-scoped channel
-   - all workspace members can read/post in Phase 1
-   - project-level discussion is distinct from task/run execution detail
-4. Task-linked channel.
-   - every task has a channel for work discussion and execution history
-   - runs triggered from a task appear in the task channel
-   - escalations, outputs, and decisions remain visible in the task context
-5. Project Documents as the third knowledge layer.
-   - project-scoped documents persist across all tasks/runs in the project
-   - intended for brief, decisions, stakeholder notes, and project-specific research
-   - not a replacement for Handbook or run-scoped input
-6. Three-layer runtime knowledge loading.
-   - agent runs load `Handbook + Project Documents + Run Context`
-   - prompt structure keeps "how to work", "what this project is about", and "what this run is about" separate
-7. Human-only validity.
-   - the product remains fully useful without AI
-   - tasks can be managed manually without triggering a run
-   - agent-less execution paths continue routing to humans rather than failing
+1. Project dashboard shell with three first-class views.
+   - `Objectives` is the default view
+   - `Handbook` shows project files and workflows
+   - `Channel` shows project chat and objective-attached chat
+2. Project header summary.
+   - project name
+   - short description
+   - optional deadline
+   - short current status summary authored by human or AI
+3. Objective model and CRUD.
+   - objective belongs to a project
+   - objective supports parent/child hierarchy
+   - objective supports short code, title, progress indicator, status summary, optional description, optional deadline, and optional in-charge
+4. Objective tree canvas.
+   - reuse the graph-style canvas interaction model
+   - each node shows short code, short title, progress indicator, and short status summary
+   - selecting a node recenters it and opens a large detail panel
+5. Objective detail panel.
+   - code
+   - title
+   - optional description
+   - optional deadline
+   - optional in-charge
+   - key results
+   - current status summary
+   - button to open the objective channel
+6. Project Knowledge view.
+   - reuse the global Handbook mechanics as much as possible
+   - include project-scoped files
+   - include project-scoped workflows
+7. Channel view.
+   - one project-level chat channel
+   - collapsible left-side objective tree
+   - clicking an objective opens the chat attached to that objective
+8. Minimal workflow scoping by `project_id`.
+   - `workflow.project_id IS NULL` means reusable/global
+   - `workflow.project_id IS NOT NULL` means project-scoped
+   - project workflows can only spawn work into their own project
+9. Human and AI status updates.
+   - project-level current status may be written by a human
+   - AI may draft or post ad hoc updates if cheap
 
 ## Out of Scope
 
-- S11 qualitative project intelligence and synthesized progress assessment.
-- Phase 2 permission scoping for channels.
-- Advanced roles beyond current Phase 1 model.
-- Scheduled/cron task execution.
-- Sub-graphs, auto-improvement loops, and other roadmap items outside S10.
-- Replacing Graphs/Runs as the execution model; S10 adds a work layer above them.
+- autonomous project intelligence agent
+- predictive project health scoring
+- schedule/check-in systems
+- advanced permissions redesign
+- full planning suite features such as dependencies, timelines, or sprint boards
+- replacing Graphs or Runs as the execution layer
+- broad workflow sharing/inheritance systems
 
 ## Core Decisions
 
-1. **Project is the human-facing container; Graph is not.**
-   - Graphs stay reusable templates.
-   - Projects are the concrete pursuits humans are advancing.
-2. **Task is the user-facing work atom; Run is execution detail.**
-   - Humans track task status, not raw runs.
-   - A task may trigger zero or more runs over time.
-3. **Project Documents are their own knowledge layer.**
-   - Handbook = reusable guidance
-   - Project Documents = project memory/context
-   - Run Context = case-specific input for this execution
-4. **Project/task chat is first-class.**
-   - discussion should not be trapped only inside run detail
-   - project and task channels become the collaboration shell around execution
-5. **No-AI mode remains first-class.**
-   - S10 must improve the product even for teams running human-only work
+1. **Objective is the center of the project UI.**
+   - users should orient around objectives, not raw tasks or runs
+   - project progress is understood through the objective map
+2. **Project remains the top-level container.**
+   - project header, knowledge, and channel frame the work
+   - the objective map is the default lens into the project
+3. **Graph/Run stays underneath.**
+   - workflows remain executable graphs
+   - runs remain execution records
+   - objective surfaces should reuse, not replace, this layer
+4. **Project Knowledge reuses Handbook patterns.**
+   - same file/editor/versioning style where possible
+   - different scope: project-specific rather than reusable-global
+5. **Objective chat reuses channel primitives.**
+   - do not build a separate thread system
+   - objective-attached discussion should be implemented with existing channel mechanics
+6. **Workflow scoping stays minimal.**
+   - `project_id` alone determines whether a workflow is global or project-scoped
+   - no separate scope enum is needed in S11
 
 ## Acceptance Criteria
 
-1. A workspace can create, list, view, update, and archive or otherwise close Projects.
-2. A project stores at least objective, deadline, and status, and appears in a project list UI.
-3. A project detail page shows its tasks, key run outcomes, and visible blocked/failed work.
-4. A workspace can create, list, view, update, and complete Tasks within a Project.
-5. A task stores at least name, description, and status, and is clearly represented as the primary work item in the UI.
-6. Every project has a shared project channel visible to workspace members.
-7. Every task has a task-linked channel where task discussion and execution history are visible together.
-8. A run can be triggered from a task and remains linked back to that task.
-9. A task can exist without any run and still be fully usable as a human-managed work item.
-10. Project Documents can be created, edited, listed, and read at project scope.
-11. Project Documents are clearly separated from Handbook files and from run-scoped context.
-12. Agent execution triggered from a task loads all three knowledge layers: Handbook, Project Documents, and Run Context.
-13. Prompt structure preserves the distinction between reusable guidance, project context, and case-specific input.
-14. Tasks without AI support remain operable through human workflow rather than producing configuration failure.
-15. S10 makes progress toward product usefulness as a work-management system, not only as a workflow executor.
+1. A workspace can create, list, view, and update projects.
+2. A project page has exactly three primary views: `Objectives`, `Handbook`, and `Channel`.
+3. The default project view is an objective tree canvas.
+4. Objectives can be created, updated, organized into a parent/child tree, and viewed on the canvas.
+5. Each objective node displays a short code, short title, progress indicator, and short status summary.
+6. Selecting an objective recenters the canvas and opens an objective detail panel.
+7. The detail panel shows objective metadata, key results, current status summary, and a path to objective chat.
+8. The project knowledge view supports project-scoped files and project-scoped workflows.
+9. The project channel view supports one project chat plus objective-attached chats via the left-side objective tree.
+10. Project workflows remain project-scoped via `workflow.project_id`.
+11. Project workflows can only spawn work into their own project.
+12. The project header always shows name, description, deadline if present, and latest project status summary.
+13. The implementation reuses existing document, channel, and run primitives instead of introducing parallel systems.

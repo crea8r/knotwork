@@ -1,25 +1,29 @@
-# Session 10 — Concrete Scope
+# Session 11 — Concrete Scope
 
-This document narrows S10 into the smallest coherent product slice that makes work visible in the same interface as workflows and the Handbook without bloating the session into planning software, analytics, or S11 intelligence.
+This document narrows S11 into the smallest coherent slice of an objective-centered project dashboard.
+
+S11 should make projects feel visible and operable in the same product surface as workflows and Handbook, without turning into a full planning suite or a separate chat product.
 
 Read with:
 
-- `docs/implementation/S10/spec.md`
+- `docs/implementation/S11/spec.md`
 - `docs/implementation/roadmap.md`
-- `docs/sysdesign/concepts/project.md`
-- `docs/sysdesign/concepts/workflow.md`
 
 ---
 
 ## North Star
 
-By the end of S10:
+By the end of S11:
 
-- work is visible as **Projects** and **Tasks** in the product, not only as workflows and runs
-- project context is durable and easy to update through **Project Documents**
-- task work happens in a **task channel** that can be free chat or include linked runs
-- every project has a concise **dashboard/status surface**
-- S10 reuses existing Knotwork concepts wherever possible instead of inventing new subsystems
+- a project has a clear dashboard shell with three views:
+  - `Objectives`
+  - `Handbook`
+  - `Channel`
+- the default view is an **objective tree canvas**
+- objectives are the main visible unit of project progress
+- project knowledge reuses Handbook mechanics
+- project and objective discussion reuse channel mechanics
+- workflow scoping remains minimal through `workflow.project_id`
 
 ---
 
@@ -27,231 +31,231 @@ By the end of S10:
 
 ### Project
 
-The project is the human-facing work container.
+The project is the top-level work container and dashboard shell.
 
 Required fields:
 
 - `title`
-- `objective`
-- `status` (`open`, `in_progress`, `blocked`, `done`)
+- short description / project brief
+- `status`
 - optional `deadline`
 - timestamps
 
 Required relationships:
 
-- `documents[]`
-- `tasks[]`
+- `objectives[]`
+- project-scoped files
+- project-scoped workflows
 - one `project_channel`
-- one current dashboard/status summary
+- one current project status summary
 
-### Project Document
+### Objective
 
-A Project Document is project-scoped durable context.
-
-It should reuse the Handbook model wherever possible:
-
-- markdown file
-- folder/tree organization
-- version history
-- same editor shell
-- same storage adapter pattern
-
-Only the scope changes:
-
-- Handbook = workspace-scoped reusable guidance
-- Project Documents = project-scoped context for this pursuit
-
-### Task
-
-A task is the work atom.
+An objective is the visible center of the project dashboard.
 
 Required fields:
 
+- `code` (max 5 chars in UI)
 - `title`
 - optional `description`
-- `status` (`open`, `in_progress`, `blocked`, `done`)
-- `project_id`
+- `status`
+- progress indicator
+- short status summary
+- optional `deadline`
+- optional in-charge
+- optional parent objective
 - timestamps
 
 Required relationships:
 
-- one `task_channel`
-- zero or more linked `runs`
+- belongs to one project
+- may have child objectives
+- one objective-attached channel
+- zero or more linked runs beneath it through reused execution plumbing
 
-Task modes are intentionally minimal:
+Key rule:
 
-- **manual/free-chat task** — task channel exists without any run
-- **run-backed task** — task channel exists and one or more runs are linked into it
+Do not turn Objective into a second workflow system. It is a progress and coordination object.
 
-Do not create separate task types beyond this in S10.
+### Objective Tree Canvas
 
-### Project Dashboard
+The objective canvas is the default project view.
 
-The dashboard is a fixed opinionated summary, not a reporting framework.
+It must:
+
+- reuse the graph-style canvas interaction model
+- show objective nodes in a parent/child tree
+- allow select-to-center behavior
+- open a large detail panel on selection
+
+Each objective node must show:
+
+- short code
+- title truncated to roughly 30 chars
+- progress indicator
+- short status summary
+
+### Objective Detail Panel
+
+The detail panel is the main operational surface for one objective.
 
 It must show:
 
-- project objective and status
-- latest dashboard/status update
-- task counts by status
-- recent runs linked to tasks
-- blocked tasks and failed runs surfaced clearly
+- code
+- title
+- optional description
+- optional deadline
+- optional in-charge
+- key results
+- current status summary
+- entry point to objective chat
 
 It may also show:
 
-- deadline proximity
-- last activity time
+- linked runs
+- recent activity
 
-It must not become a configurable widget system in S10.
+### Project Knowledge
 
-### Dashboard Update
+This view should mimic the Handbook mechanics as closely as possible.
 
-S10 should support a lightweight project update mechanism.
+It should contain:
 
-Required:
+- project-scoped files
+- project-scoped workflows
 
-- a human can post/update a structured project status update
-- the latest update is visible on the project dashboard
+It should reuse:
 
-Allowed if cheap:
+- markdown editor
+- file tree
+- version history/storage patterns where available
 
-- an agent can draft or post an ad hoc project update using existing agent patterns
+Only the scope changes:
 
-Deferred:
+- global Handbook = reusable cross-project guidance and workflows
+- project knowledge = project-specific context and workflows
 
-- periodic autonomous project assessment
-- predictive progress scoring
-- project meta-agent intelligence
+### Channel View
 
-Those belong to S11, not S10.
+The channel view is the communication surface for the project.
+
+It must contain:
+
+- the project chat as the main panel
+- a collapsible left-side objective tree
+- click-through from objective tree to objective-attached chat
+
+Implementation rule:
+
+Reuse channel primitives. Do not build a second thread model.
 
 ---
 
 ## Reuse Rules
 
-S10 should be built as a composition layer over existing concepts.
-
 ### Reuse directly
 
-- **StorageAdapter and versioning** for Project Documents
-- **markdown editor and file-tree UI** from Handbook
-- **channel model** for project chat and task chat
-- **run model** for any execution linked to a task
-- **existing agent/escalation patterns** for optional dashboard update drafting
+- existing `Project` container model
+- existing task/channel plumbing as the backing store for objective chat if it reduces duplication
+- existing graph canvas interaction model
+- existing channel message/decision UI primitives
+- existing Handbook editor and file-tree patterns
+- existing `Graph` and `Run` execution model
 
 ### Reuse conceptually
 
-- project dashboard should feel like an opinionated summary page, not a new tool category
-- task channel should use the same chat/event primitives already used elsewhere
-- linked runs should appear as task events rather than creating a new run presentation model
+- objective status should feel like project progress reporting, not task ticketing
+- objective-attached channel should behave like a focused thread inside project chat
+- project knowledge should feel like a project-scoped Handbook, not a new file product
 
 ### Do not duplicate
 
-- do not build a second document system beside Handbook
-- do not build a second chat stack for tasks
-- do not build a second execution abstraction beside Run
+- do not build a separate thread system beside channels
+- do not build a separate document/versioning system beside Handbook storage patterns
+- do not build a second execution model beside Graph/Run
+- do not build a second canvas engine beside the existing graph canvas
 
 ---
 
 ## Must Build
 
-These are the smallest required deliverables for S10 to satisfy the intended product shift.
-
-1. Project CRUD and navigation.
-2. Project detail page with:
-   - dashboard/status summary
-   - documents entry point
-   - tasks list
-   - project channel
-3. Project Documents CRUD using Handbook-like mechanics.
-4. Task CRUD inside a project.
-5. Task detail/channel view.
-6. Ability for a task to exist without any run.
-7. Ability to trigger or link a run from a task.
-8. Run visibility from the task channel.
-9. Human-authored project status update visible on dashboard.
-10. Runtime prompt extension to load `Handbook + Project Documents + Run Context` for task-linked runs.
+1. Project shell with exactly three views:
+   - `Objectives`
+   - `Handbook`
+   - `Channel`
+2. Project header:
+   - title
+   - short description
+   - deadline if present
+   - latest project status summary
+3. Objective CRUD inside a project.
+4. Objective tree support with parent/child linkage.
+5. Objective canvas view using reused graph-style interactions.
+6. Objective detail panel with metadata, key results, status summary, and objective-chat entry point.
+7. Project knowledge view with:
+   - project-scoped files
+   - project-scoped workflows
+8. Channel view with:
+   - project chat
+   - collapsible objective tree
+   - objective-specific chat switching
+9. Minimal workflow scoping:
+   - `workflow.project_id IS NULL` => global
+   - `workflow.project_id IS NOT NULL` => project-scoped
+10. Human-authored project status updates in the project header/dashboard.
 
 ---
 
 ## Explicit Anti-Scope
 
-These are tempting, but they should be cut from S10.
-
 ### Do not build a planning suite
 
-- no dependencies
-- no milestones/epics hierarchy
-- no sprint planner
-- no Gantt/timeline planning
-- no recurrence engine
+- no dependency graph management
+- no sprint board
+- no timeline/Gantt features
+- no check-in or recurrence engine
+
+### Do not build broad project intelligence
+
+- no always-on autonomous project agent
+- no predictive health scoring
+- no objective refinement engine
+- no automated project governance layer
 
 ### Do not build a new permissions system
 
-- no per-project ACL
-- no per-task visibility rules
-- no channel-scoped permission matrix
+- no per-objective ACL
+- no per-project sharing matrix
+- no workflow scope model beyond nullable `project_id`
 
-Phase 1 remains workspace-visible.
+### Do not turn objectives into tasks-plus-plus
 
-### Do not build a dashboard platform
-
-- no configurable widgets
-- no custom metrics builder
-- no scorecard designer
-- no analytics schema beyond what the page needs
-
-### Do not build S11 early
-
-- no autonomous periodic project intelligence engine
-- no synthesized project health scoring as a core dependency
-- no forward-looking project assessment model
-- no objective refinement workflow
-
-### Do not explode the task model
-
-- no bug/task/request/note subtypes
-- no multi-assignee system unless already trivial in current model
-- no separate "AI task" vs "manual task" entities
+- no subtype explosion
+- no complex assignment system
+- no planning metadata that outgrows the dashboard use case
 
 ### Do not replace Graph/Run
 
-- project is the work container
-- task is the work atom
-- run remains execution detail
-
-S10 adds a top layer; it does not rewrite the lower layer.
+- objectives are for progress and coordination
+- workflows remain executable graphs
+- runs remain execution detail
 
 ---
 
 ## UX Boundary
 
-The user should be able to understand S10 with one mental model:
+The user should be able to understand S11 with one mental model:
 
 ```text
 Project
-  -> Documents (what this project is about)
-  -> Tasks (what work exists)
-  -> Channel (project discussion)
-  -> Dashboard (where things stand)
+  -> Objectives (what this project is trying to achieve)
+  -> Handbook (files + workflows for this project)
+  -> Channel (project chat + objective-attached chat)
 
-Task
-  -> Channel (discussion + execution history)
-  -> Optional Runs (structured execution when needed)
+Objective
+  -> status and key results
+  -> attached chat
+  -> optional linked execution underneath
 ```
 
-If a proposed feature cannot be explained inside that model, it probably does not belong in S10.
-
----
-
-## Release Test
-
-S10 is correctly scoped if all of the following are true:
-
-- a human can manage meaningful work in Knotwork without leaving the app
-- project context is durable without abusing the Handbook for project-specific notes
-- a task can be purely human/manual or can invoke workflow execution
-- the project dashboard answers "where does this project stand?" in under a minute
-- no new subsystem was introduced where an existing Knotwork concept would have worked
-
-If S10 requires new planning abstractions, a new analytics framework, or a new intelligence engine to feel complete, the scope is too large.
+If a feature cannot be explained inside that model, it probably does not belong in S11.

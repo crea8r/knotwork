@@ -81,6 +81,7 @@ def make_llm_agent_node(node_def: dict):
         from knotwork.runtime.events import publish_event
         from knotwork.runtime.knowledge_loader import KnowledgeTree, load_knowledge_tree
         from knotwork.runtime.prompt_builder import build_agent_prompt
+        from knotwork.projects.service import render_project_context
         from knotwork.runs.models import RunNodeState
 
         run_id = str(state["run_id"])
@@ -107,10 +108,19 @@ def make_llm_agent_node(node_def: dict):
             selected = {nid: all_node_outputs[nid] for nid in node_ids if nid in all_node_outputs}
             prior_outputs = selected if selected else None
 
+        project_id = state.get("project_id")
+        async with AsyncSessionLocal() as db:
+            project_context = await render_project_context(
+                db,
+                UUID(workspace_id),
+                UUID(str(project_id)) if project_id else None,
+            )
+
         system_prompt, user_prompt = build_agent_prompt(
             tree=tree,
             state_fields=run_fields,
             context_files=state["context_files"],
+            project_context=project_context,
             prior_outputs=prior_outputs,
         )
         if extra_instructions:

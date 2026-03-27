@@ -24,13 +24,27 @@ async def _load_run_definition(run_id: str) -> tuple | None:
             return None
         # Draft runs carry a frozen snapshot — no DB lookup needed
         if run.draft_definition is not None:
-            return (str(run.workspace_id), str(run.graph_id), run.input, run.context_files, run.draft_definition)
+            return (
+                str(run.workspace_id),
+                str(run.project_id) if run.project_id else None,
+                str(run.graph_id),
+                run.input,
+                run.context_files,
+                run.draft_definition,
+            )
         if run.graph_version_id is None:
             return None
         version = await db.get(GraphVersion, run.graph_version_id)
         if not version:
             return None
-        return (str(run.workspace_id), str(run.graph_id), run.input, run.context_files, version.definition)
+        return (
+            str(run.workspace_id),
+            str(run.project_id) if run.project_id else None,
+            str(run.graph_id),
+            run.input,
+            run.context_files,
+            version.definition,
+        )
 
 
 async def _update_run_status(
@@ -65,7 +79,7 @@ async def execute_run(run_id: str) -> None:
     loaded = await _load_run_definition(run_id)
     if not loaded:
         return
-    workspace_id, graph_id, run_input, context_files, definition = loaded
+    workspace_id, project_id, graph_id, run_input, context_files, definition = loaded
 
     async with AsyncSessionLocal() as db:
         run = await db.get(Run, run_id)
@@ -81,7 +95,7 @@ async def execute_run(run_id: str) -> None:
             graph = compile_graph(definition, checkpointer=saver)
             config = {"configurable": {"thread_id": run_id}}
             result = await graph.ainvoke(
-                {"run_id": run_id, "workspace_id": workspace_id, "graph_id": graph_id, "input": run_input,
+                {"run_id": run_id, "workspace_id": workspace_id, "project_id": project_id, "graph_id": graph_id, "input": run_input,
                  "context_files": context_files, "messages": [], "current_output": None,
                  "node_outputs": {}, "node_visit_counts": {}, "next_branch": None},
                 config=config,

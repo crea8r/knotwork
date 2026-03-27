@@ -5,6 +5,7 @@ from uuid import UUID
 from sqlalchemy import delete, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from knotwork.channels.models import Channel
 from knotwork.runs.id import generate_run_id  # noqa: F401 — re-export for callers
 
 from knotwork.graphs.service import get_graph, get_latest_version
@@ -68,10 +69,20 @@ async def create_run(
     from datetime import datetime, timezone
     from knotwork.runtime.validation import validate_graph
     from knotwork.graphs.models import GraphVersion
+    from knotwork.projects.models import Task
 
     graph = await get_graph(db, graph_id)
     if not graph:
         raise ValueError("Graph not found")
+    project_id = graph.project_id
+    task = None
+    if data.task_id is not None:
+        task = await db.get(Task, data.task_id)
+        if task is None or task.workspace_id != workspace_id:
+            raise ValueError("Task not found")
+        if graph.project_id is not None and task.project_id != graph.project_id:
+            raise ValueError("Project workflow can only run inside its own project")
+        project_id = task.project_id
 
     is_draft_run = False
     draft_definition = None
@@ -112,6 +123,8 @@ async def create_run(
 
     run = Run(
         workspace_id=workspace_id,
+        project_id=project_id,
+        task_id=data.task_id,
         graph_id=graph_id,
         graph_version_id=version.id,
         draft_definition=draft_definition if is_draft_run else None,
@@ -150,6 +163,29 @@ async def create_run(
             metadata={"kind": "run_start"},
         ),
     )
+    if task is not None:
+        task_channel = await db.execute(
+            select(Channel).where(
+                Channel.workspace_id == workspace_id,
+                Channel.task_id == task.id,
+                Channel.channel_type == "task",
+            )
+        )
+        task_channel_row = task_channel.scalar_one_or_none()
+        if task_channel_row is not None:
+            await channel_service.create_message(
+                db,
+                workspace_id=workspace_id,
+                channel_id=task_channel_row.id,
+                data=ChannelMessageCreate(
+                    role="system",
+                    author_type="system",
+                    author_name="Knotwork",
+                    content=f"Triggered run {run.id} from task.",
+                    run_id=run.id,
+                    metadata={"kind": "task_run_started", "graph_id": str(graph_id)},
+                ),
+            )
 
     from arq import create_pool
     from arq.connections import RedisSettings

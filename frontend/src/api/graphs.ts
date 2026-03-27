@@ -2,11 +2,13 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import type { Graph, GraphDefinition, GraphVersion } from '@/types'
 import { api } from './client'
 
-export function useGraphs(workspaceId: string) {
+export function useGraphs(workspaceId: string, projectId?: string | null) {
   return useQuery({
-    queryKey: ['graphs', workspaceId],
+    queryKey: ['graphs', workspaceId, projectId ?? 'global'],
     queryFn: () =>
-      api.get<Graph[]>(`/workspaces/${workspaceId}/graphs`).then((r) => r.data),
+      api.get<Graph[]>(`/workspaces/${workspaceId}/graphs`, {
+        params: projectId ? { project_id: projectId } : {},
+      }).then((r) => r.data),
     enabled: !!workspaceId,
   })
 }
@@ -23,16 +25,19 @@ export function useGraph(workspaceId: string, graphId: string) {
 export function useCreateGraph(workspaceId: string) {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (data: { name: string; path?: string; description?: string }) =>
+    mutationFn: (data: { name: string; path?: string; description?: string; project_id?: string | null }) =>
       api.post<Graph>(`/workspaces/${workspaceId}/graphs`, data).then((r) => r.data),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['graphs', workspaceId] }),
+    onSuccess: (_, data) => {
+      qc.invalidateQueries({ queryKey: ['graphs', workspaceId] })
+      qc.invalidateQueries({ queryKey: ['graphs', workspaceId, data.project_id ?? 'global'] })
+    },
   })
 }
 
 export function useUpdateGraph(workspaceId: string) {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: ({ graphId, ...data }: { graphId: string; name?: string; path?: string; description?: string; status?: string; default_model?: string | null }) =>
+    mutationFn: ({ graphId, ...data }: { graphId: string; name?: string; path?: string; description?: string; status?: string; default_model?: string | null; project_id?: string | null }) =>
       api.patch<Graph>(`/workspaces/${workspaceId}/graphs/${graphId}`, data).then((r) => r.data),
     onSuccess: (_, { graphId }) => {
       qc.invalidateQueries({ queryKey: ['graphs', workspaceId] })

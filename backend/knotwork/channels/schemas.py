@@ -13,6 +13,8 @@ class ChannelOut(BaseModel):
     name: str
     channel_type: str
     graph_id: UUID | None = None
+    project_id: UUID | None = None
+    task_id: UUID | None = None
     archived_at: datetime | None = None
     created_at: datetime
     updated_at: datetime
@@ -22,8 +24,10 @@ class ChannelOut(BaseModel):
 
 class ChannelCreate(BaseModel):
     name: str
-    channel_type: Literal["normal", "workflow", "handbook"] = "normal"
+    channel_type: Literal["normal", "workflow", "handbook", "project", "task"] = "normal"
     graph_id: UUID | None = None
+    project_id: UUID | None = None
+    task_id: UUID | None = None
 
 
 class ChannelMessageOut(BaseModel):

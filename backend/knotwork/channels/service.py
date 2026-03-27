@@ -83,7 +83,7 @@ async def list_channels(db: AsyncSession, workspace_id: UUID) -> list[Channel]:
     result = await db.execute(
         select(Channel)
         .where(Channel.workspace_id == workspace_id, Channel.archived_at.is_(None))
-        .where(Channel.channel_type.in_(("normal", "workflow", "handbook", "agent_main")))
+        .where(Channel.channel_type.in_(("normal", "workflow", "handbook", "agent_main", "project", "task")))
         .order_by(Channel.channel_type.asc(), Channel.created_at.asc())
     )
     return list(result.scalars())
@@ -94,11 +94,17 @@ async def create_channel(db: AsyncSession, workspace_id: UUID, data: ChannelCrea
         raise ValueError("workflow channels require graph_id")
     if data.channel_type != "workflow" and data.graph_id is not None:
         raise ValueError("graph_id is only valid for workflow channels")
+    if data.channel_type == "project" and data.project_id is None:
+        raise ValueError("project channels require project_id")
+    if data.channel_type == "task" and data.task_id is None:
+        raise ValueError("task channels require task_id")
     ch = Channel(
         workspace_id=workspace_id,
         name=data.name.strip(),
         channel_type=data.channel_type,
         graph_id=data.graph_id,
+        project_id=data.project_id,
+        task_id=data.task_id,
     )
     db.add(ch)
     await db.commit()
@@ -288,6 +294,8 @@ async def get_or_create_run_channel(
         name=f"run:{run_id}",
         channel_type="run",
         graph_id=graph_id,
+        project_id=None,
+        task_id=None,
     )
     db.add(row)
     await db.commit()

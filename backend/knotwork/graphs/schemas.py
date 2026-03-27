@@ -48,6 +48,7 @@ class GraphUpdate(BaseModel):
     description: str | None = None
     status: str | None = None
     default_model: str | None = None
+    project_id: UUID | None = None
 
 
 class DesignChatRequest(BaseModel):
@@ -72,6 +73,7 @@ class GraphCreate(BaseModel):
     path: str = ""
     description: str | None = None
     default_model: str | None = None
+    project_id: UUID | None = None
     definition: GraphDefinitionSchema = GraphDefinitionSchema()
 
 
@@ -121,6 +123,7 @@ GraphVersionOut.model_rebuild()
 class GraphOut(BaseModel):
     id: UUID
     workspace_id: UUID
+    project_id: UUID | None = None
     name: str
     path: str = ""
     description: str | None

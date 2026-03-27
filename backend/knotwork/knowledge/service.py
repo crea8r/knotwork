@@ -31,18 +31,21 @@ def _derive_title(path: str) -> str:
     return stem or filename
 
 
-async def list_files(db: AsyncSession, workspace_id: UUID) -> list[KnowledgeFile]:
+async def list_files(db: AsyncSession, workspace_id: UUID, project_id: UUID | None = None) -> list[KnowledgeFile]:
     result = await db.execute(
-        select(KnowledgeFile).where(KnowledgeFile.workspace_id == workspace_id)
+        select(KnowledgeFile).where(
+            KnowledgeFile.workspace_id == workspace_id,
+            KnowledgeFile.project_id == project_id if project_id is not None else KnowledgeFile.project_id.is_(None),
+        )
     )
     return list(result.scalars().all())
 
 
-async def search_files(db: AsyncSession, workspace_id: UUID, query: str) -> list[KnowledgeFile]:
+async def search_files(db: AsyncSession, workspace_id: UUID, query: str, project_id: UUID | None = None) -> list[KnowledgeFile]:
     q = query.strip().lower()
     if not q:
-        return await list_files(db, workspace_id)
-    files = await list_files(db, workspace_id)
+        return await list_files(db, workspace_id, project_id=project_id)
+    files = await list_files(db, workspace_id, project_id=project_id)
     adapter = get_storage_adapter()
     out: list[KnowledgeFile] = []
     for f in files:
@@ -60,10 +63,11 @@ async def search_files(db: AsyncSession, workspace_id: UUID, query: str) -> list
     return out
 
 
-async def get_file_by_path(db: AsyncSession, workspace_id: UUID, path: str) -> KnowledgeFile | None:
+async def get_file_by_path(db: AsyncSession, workspace_id: UUID, path: str, project_id: UUID | None = None) -> KnowledgeFile | None:
     result = await db.execute(
         select(KnowledgeFile).where(
             KnowledgeFile.workspace_id == workspace_id,
+            KnowledgeFile.project_id == project_id if project_id is not None else KnowledgeFile.project_id.is_(None),
             KnowledgeFile.path == path,
         )
     )
@@ -72,9 +76,9 @@ async def get_file_by_path(db: AsyncSession, workspace_id: UUID, path: str) -> K
 
 async def create_file(
     db: AsyncSession, workspace_id: UUID, path: str, title: str | None, content: str,
-    created_by: str, change_summary: str | None = None,
+    created_by: str, change_summary: str | None = None, project_id: UUID | None = None,
 ) -> KnowledgeFile:
-    kf = await get_file_by_path(db, workspace_id, path)
+    kf = await get_file_by_path(db, workspace_id, path, project_id=project_id)
     if kf is not None:
         raise ValueError(f'File "{path}" already exists')
 
@@ -86,7 +90,7 @@ async def create_file(
     resolved_title = title.strip() if title and title.strip() else _derive_title(path)
 
     kf = KnowledgeFile(
-        workspace_id=workspace_id, path=path, title=resolved_title,
+        workspace_id=workspace_id, project_id=project_id, path=path, title=resolved_title,
         raw_token_count=token_count, resolved_token_count=token_count,
         linked_paths=links, current_version_id=version_id,
     )
@@ -99,9 +103,9 @@ async def create_file(
 
 async def update_file(
     db: AsyncSession, workspace_id: UUID, path: str, content: str,
-    updated_by: str, change_summary: str | None = None,
+    updated_by: str, change_summary: str | None = None, project_id: UUID | None = None,
 ) -> KnowledgeFile:
-    kf = await get_file_by_path(db, workspace_id, path)
+    kf = await get_file_by_path(db, workspace_id, path, project_id=project_id)
     if kf is None:
         raise FileNotFoundError(path)
     adapter = get_storage_adapter()
@@ -116,8 +120,8 @@ async def update_file(
     return kf
 
 
-async def delete_file(db: AsyncSession, workspace_id: UUID, path: str, deleted_by: str) -> None:
-    kf = await get_file_by_path(db, workspace_id, path)
+async def delete_file(db: AsyncSession, workspace_id: UUID, path: str, deleted_by: str, project_id: UUID | None = None) -> None:
+    kf = await get_file_by_path(db, workspace_id, path, project_id=project_id)
     if kf is None:
         raise FileNotFoundError(path)
     adapter = get_storage_adapter()
@@ -128,12 +132,13 @@ async def delete_file(db: AsyncSession, workspace_id: UUID, path: str, deleted_b
 
 async def rename_file(
     db: AsyncSession, workspace_id: UUID, old_path: str, new_path: str,
+    project_id: UUID | None = None,
 ) -> KnowledgeFile:
     """Move/rename a file to new_path. Updates storage and DB record."""
-    kf = await get_file_by_path(db, workspace_id, old_path)
+    kf = await get_file_by_path(db, workspace_id, old_path, project_id=project_id)
     if kf is None:
         raise FileNotFoundError(old_path)
-    existing = await get_file_by_path(db, workspace_id, new_path)
+    existing = await get_file_by_path(db, workspace_id, new_path, project_id=project_id)
     if existing is not None and existing.id != kf.id:
         raise ValueError(f'File "{new_path}" already exists')
     adapter = get_storage_adapter()

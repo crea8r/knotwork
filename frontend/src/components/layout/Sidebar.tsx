@@ -2,6 +2,7 @@ import { NavLink, useLocation, useNavigate } from 'react-router-dom'
 import {
   ChevronLeft,
   ChevronRight,
+  FolderKanban,
   Globe,
   Hash,
   Inbox,
@@ -112,6 +113,7 @@ export default function Sidebar({
       {/* Nav */}
       <nav className={`flex-1 overflow-y-auto py-3 space-y-0.5 ${collapsed ? 'px-1 flex flex-col items-center' : 'px-2'}`}>
         <Item to="/inbox"    icon={<Inbox      size={iconSize} />} label="Inbox"     onClick={onCloseMobile} />
+        <Item to="/projects" icon={<FolderKanban size={iconSize} />} label="Projects" onClick={onCloseMobile} />
         <Item to="/channels" icon={<Hash       size={iconSize} />} label="Channels"  onClick={onCloseMobile} />
         <Divider collapsed={collapsed} />
         <Item to="/runs"     icon={<PlayCircle size={iconSize} />} label="Runs"      onClick={onCloseMobile} />
