@@ -22,8 +22,7 @@ By the end of S10:
 - assets publish typed events into their channels
 - participants subscribe to channels and receive participant-specific notifications
 - inbox visibility is participant-specific rather than workspace-global by default
-- supported communication means are `app`, `email`, and `OpenClaw plugin`
-- plugin keeps its current runtime behavior; only routing semantics change
+- supported communication means are `app` and `email`
 - un-addressed escalations still preserve current fallback behavior
 
 ---
@@ -33,14 +32,14 @@ By the end of S10:
 ### In scope
 
 - participant identity for workspace members and registered agents
+- free chat channel creation
 - participant subscriptions to in-scope channel-backed contexts
+- manual asset attachment for `workflow`, `run`, and `file`
 - participant-specific event delivery preferences
 - participant-specific inbox filtering
-- explicit recipient routing for addressed escalations
 - mentioned-message delivery
 - owner-managed workspace email configuration and participant email delivery
-- OpenClaw plugin as a participant-bound communication mean for supported event types
-- `PUBLIC_BASE_URL` deep-link behavior and warnings
+- `frontend_url` deep-link behavior and localhost warnings
 - selected non-escalation event delivery (`task_assigned`, `run_failed`, `run_completed`)
 
 ### Out of scope
@@ -51,6 +50,9 @@ By the end of S10:
 - WhatsApp
 - direct reply from email
 - plugin protocol redesign
+- agent-targeted plugin delivery as a participant communication mean
+- agent subscription management beyond current human self-service
+- exact participant-targeted escalation workflow/UX
 - MCP involvement
 - a generalized "everything is a reactive subscriber" platform
 - mandatory adoption of an external notification platform
@@ -62,10 +64,10 @@ By the end of S10:
 These should stay fixed during implementation:
 
 - channel is the primary collaboration object
+- free chat channels are allowed user-managed collaboration containers
 - assets and participants can publish events into channels
 - `participant_id` is the routing key
 - app inbox is the default communication mean for humans
-- plugin is the default communication mean for agents and remains specialized internally
 - delivery preferences are explicit, not inferred from participant type
 - subscriptions are distinct from delivery preferences
 - assets are not generalized subscribers in S10
@@ -91,6 +93,7 @@ Minimal S10 rule:
 
 - assets publish events into their attached/canonical channels
 - assets do not become generalized subscribers/reactive actors yet
+- supported manual asset bindings are `workflow`, `run`, and `file`
 
 ### 3. Participant
 
@@ -104,6 +107,16 @@ Minimal S10 rule:
 
 - participants subscribe/unsubscribe to channels
 - communication means are not the same thing as subscriptions
+
+### 4.5. Asset binding
+
+Determines which assets publish into which user-managed channels.
+
+Minimal S10 rule:
+
+- free chat channels can manually bind `workflow`, `run`, and `file`
+- terminal runs are not attachable
+- a run created from an attached workflow is automatically attached to the same channel
 
 ### 5. Event
 
@@ -124,9 +137,8 @@ Determines how subscribers receive the event:
 
 - `app`
 - `email`
-- `openclaw_plugin`
 
-Delivery attempts track status per recipient and communication mean without mutating the business event itself.
+Delivery attempts track status per participant and communication mean without mutating the business event itself.
 
 ---
 
@@ -174,6 +186,10 @@ This section splits the model into what already exists and what is new for a min
   - typed events published into channels
   - minimal event records for inbox and notification derivation
 
+- `channel_asset_bindings`
+  - workflow, run, or file attached to a channel
+  - this is the minimal bridge between assets and free chat channels
+
 - `participant_delivery_preferences`
   - per participant per event type delivery means
   - replaces workspace-wide notification preference semantics
@@ -196,6 +212,7 @@ This section splits the model into what already exists and what is new for a min
 - keep existing asset tables as event sources
 - keep existing channel tables as the collaboration spine
 - add participant mapping, channel subscriptions, channel events, delivery preferences, and event deliveries
+- add channel asset bindings for `workflow`, `run`, and `file`
 - migrate away from workspace-wide notification preference semantics rather than expanding them
 
 ### Important rule
@@ -217,18 +234,19 @@ If those are collapsed into one table or one service, the system will become har
 
 Outcome:
 
-- schema direction agreed for participants, subscriptions, event records, preferences, recipients, and deliveries
+- schema direction agreed for participants, subscriptions, asset bindings, event records, preferences, and deliveries
 - API shape agreed before feature code starts
 
 Implementation tasks:
 
 - choose the minimal participant identity representation, consistent with the locked decision that typed ids are acceptable if they keep implementation smaller
 - add a first-class `channel_events` model for inbox and delivery derivation
+- add `channel_asset_bindings` for workflow/run/file attachment
 - encode the S10 event set: `escalation_created`, `task_assigned`, `run_failed`, `run_completed`, `mentioned_message`, `message_posted`
 - define explicit subscription representation for run, workflow, handbook, and agent-main channels
-- define explicit recipient representation for escalations and mentions
+- define explicit asset-binding representation for free chat channels
 - migrate workspace-wide notification tables toward participant-scoped delivery configuration/logging
-- wire plugin delivery through existing pairing state plus participant delivery preferences
+- keep agent/plugin delivery behavior outside the new S10 participant fanout path
 
 Recommended output:
 
@@ -250,17 +268,31 @@ Deliverables:
 - current-user -> current-participant mapping
 - participant metadata exposed where inbox and run detail need it
 
+### Milestone 2.5 — Free Chat and Asset Binding Read Path
+
+Outcome:
+
+- free chat channels are user-creatable
+- attached assets can be listed and managed per channel
+
+Deliverables:
+
+- free chat channel creation path
+- asset binding query support
+- workflow/run/file listing for attachment UI
+- validation rules for attachable runs
+
 ### Milestone 3 — Participant-Specific Inbox
 
 Outcome:
 
-- addressed items stop behaving like workspace-global items
+- participant-specific items stop behaving like workspace-global items
 - subscribers start receiving notifications based on channel membership rather than workspace-wide assumptions
 
 Deliverables:
 
 - channel subscription model/query support
-- explicit recipient support for addressed escalation
+- channel asset binding model/query support
 - mentioned-message event support
 - inbox query filtered by current participant
 - un-addressed escalation fallback preserved
@@ -280,7 +312,6 @@ Deliverables:
 - delivery resolution logic
 - app delivery path
 - email delivery path using existing workspace mail configuration
-- plugin as selectable communication mean for supported event types
 
 ### Milestone 5 — Non-Escalation Events
 
@@ -294,6 +325,9 @@ Deliverables:
 - `run_failed` delivery
 - `run_completed` delivery
 - `mentioned_message` delivery
+- workflow draft/version change delivery into attached channels
+- workflow-created run attachment + delivery
+- file modified delivery into attached channels
 
 ### Milestone 6 — Hardening
 
@@ -305,7 +339,7 @@ Deliverables:
 
 - missing-preference fallback rules
 - delivery status visibility
-- `PUBLIC_BASE_URL` warnings
+- localhost deep-link warnings derived from `frontend_url`
 - migration/backward-compatibility checks
 - regression coverage for existing escalation behavior
 
@@ -319,15 +353,16 @@ Owns:
 
 - participant identity representation
 - channel subscription representation
+- channel asset binding representation
 - participant delivery preferences
 - channel event records or publishing mechanism
 - event delivery attempt logging
-- recipient fields/linkage on addressed escalations
 
 Expected work:
 
 - add participant persistence or typed identifier support
 - add channel subscription persistence
+- add channel asset binding persistence
 - migrate workspace-wide notification preference model toward participant-specific storage
 - add channel event persistence or explicit publishing mechanism
 - add delivery-attempt logging that is not tied only to workspace-level notification records
@@ -339,7 +374,7 @@ Owns:
 
 - participant resolution
 - channel subscription resolution
-- recipient resolution
+- asset binding resolution
 - preference lookup
 - channel event publishing
 - delivery fanout
@@ -350,9 +385,9 @@ Expected work:
 - participant resolver for workspace members and registered agents
 - current principal -> participant mapping
 - channel -> subscriber resolution
-- addressed recipient resolution for escalations
+- asset -> attached channel resolution
 - mention -> targeted participant resolution
-- fanout service that emits `app`, `email`, and `plugin` deliveries
+- fanout service that emits `app` and `email` deliveries
 - policy rules for event type -> supported communication means
 
 ### Backend — existing event producers
@@ -367,6 +402,9 @@ Expected work:
 - OpenClaw task assignment path
 - channel message / mention path
 - run failed/completed event emission
+- workflow draft/version change path
+- run creation path for auto-attachment
+- file create/update/rename/restore path
 
 Rule:
 
@@ -376,14 +414,13 @@ Rule:
 
 Owns:
 
-- actual delivery mechanics for email and plugin routing
+- actual delivery mechanics for app and email routing
 - translation from channel events into participant-specific deliveries
 
 Expected work:
 
 - refactor current notification dispatcher from workspace-wide behavior to participant-specific fanout
 - keep email delivery simple and tied to existing workspace mail configuration
-- keep plugin behavior intact while allowing plugin to be selected for supported event types
 - define delivery result logging semantics
 
 ### Backend — API
@@ -396,9 +433,9 @@ Expected changes:
 
 - participant listing endpoint or participant-aware extensions to existing endpoints
 - channel subscription read/update endpoints or equivalent service surface
+- asset binding read/update endpoints
 - preference read/update endpoint
 - inbox endpoint returning participant-specific items
-- escalation APIs accepting explicit participant targets where applicable
 - mention-aware message APIs if needed for S10 scope
 
 ### Frontend — settings
@@ -407,15 +444,16 @@ Owns:
 
 - participant communication preference UI
 - channel subscription UX
+- free chat channel creation
+- asset attachment UX
 - owner-managed email configuration messaging
-- `PUBLIC_BASE_URL` warnings
+- localhost deep-link warnings tied to `frontend_url`
 
 Expected work:
 
 - replace workspace-wide notification settings mental model
 - show channel subscription state
 - show event-type preferences per communication mean
-- ensure plugin options only appear where valid
 - make `app` visible as default/fallback without making it noisy
 
 ### Frontend — inbox
@@ -423,7 +461,7 @@ Expected work:
 Owns:
 
 - participant-specific visibility
-- clear explanation of addressed vs un-addressed items
+- clear explanation of targeted notifications vs un-addressed escalation fallback
 
 Expected work:
 
@@ -438,27 +476,14 @@ Owns:
 
 - participant list
 - event attribution
-- clarity around who asked and who was addressed
+- clarity around who asked and who responded
 
 Expected work:
 
 - participant list in run detail
-- targeted escalation attribution in timeline
+- human response attribution in timeline
 - mention attribution in channel surfaces
 - event highlighting via deep links
-
-### Frontend — agent/admin surfaces
-
-Owns:
-
-- any configuration needed for agent participants to use plugin delivery
-
-Expected work:
-
-- determine whether plugin delivery preferences live in agent settings, general notifications settings, or both
-- keep pairing/health state understandable without redesigning plugin internals
-
----
 
 ## Locked Decisions
 
@@ -466,12 +491,11 @@ These implementation decisions are resolved for S10:
 
 - `participant_id` may be implemented as either a first-class table or a typed synthetic id; S10 does not require a dedicated participants table if typed ids keep the implementation smaller.
 - `channel_events` should be a first-class table in S10 so inbox and delivery logic do not rely on ad hoc derivation from multiple source records.
-- Agent participant communication preferences are edited through Knotwork settings/admin surfaces, not inferred automatically from participant type alone.
 - Subscriptions are explicit per channel for in-scope channel-backed contexts.
 - App delivery is implicit/default for human participants.
-- Plugin delivery uses existing pairing/health state; S10 does not add a separate plugin send-test flow.
 - Run-completed delivery is workflow opt-in plus participant preference.
 - `mentioned_message` is fully in scope for S10.
+- Agent-targeted plugin delivery, agent subscription management, and exact participant-targeted escalation workflow all move out of S10.
 
 ---
 
@@ -481,18 +505,15 @@ These implementation decisions are resolved for S10:
 
 - participant resolution for workspace members and registered agents
 - channel subscription resolution
-- explicit recipient resolution
 - un-addressed escalation fallback
 - preference lookup by participant and event type
 - delivery fanout rules by communication mean
 
 ### Backend integration tests
 
-- addressed escalation reaches only target participant inbox
 - mentioned message reaches only subscribed/targeted participants according to preference rules
 - un-addressed escalation preserves current fallback behavior
 - email delivery logs correct participant and event type
-- plugin-backed agent receives supported assigned events
 - run failed/completed delivery respects preferences
 
 ### Frontend tests
@@ -502,12 +523,11 @@ These implementation decisions are resolved for S10:
 - un-addressed escalation still appears for eligible responders
 - run detail shows participant list and attribution
 - settings show per-event-type preferences
-- localhost warning appears when `PUBLIC_BASE_URL` is missing
+- localhost warning behavior is described in terms of `frontend_url`
 
 ### Regression tests
 
 - legacy escalation flow still works when no participant is explicitly targeted
-- existing plugin task flow is not broken by routing changes
 - current run completion/failure surfaces still behave when no new preferences are configured
 - channels without explicit subscription data still behave safely during migration
 
@@ -553,12 +573,10 @@ Cut in this order:
 2. defer `run_completed`
 3. keep `run_failed` only if already cheap
 4. keep explicit subscriptions on only the most important channel-backed contexts
-5. keep plugin as opt-in for `task_assigned` only
 
 Do not cut:
 
 - channel subscription model
-- addressed escalation
 - participant-specific inbox
 - participant-specific preference model
 
@@ -571,10 +589,8 @@ Those are the core of the phase.
 S10 is done when:
 
 - channels are the backbone of notification routing in the implementation, not just a UI shell
-- addressed escalation is truly participant-specific
 - inbox is no longer workspace-global by default
-- participants can configure `app` / `email` / `plugin` by event type
-- plugin fits the routing model without transport redesign
+- participants can configure `app` / `email` by event type
 - email delivery works from existing workspace mail configuration
 - un-addressed escalation still works
 - docs, UI, and backend all reflect the same model
