@@ -2,19 +2,22 @@
 from __future__ import annotations
 
 import logging
+from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, EmailStr
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = logging.getLogger(__name__)
 
 from knotwork.auth import service
-from knotwork.auth.deps import get_current_user
+from knotwork.auth.deps import get_current_user, get_workspace_member
 from knotwork.auth.models import User
 from knotwork.config import settings
 from knotwork.database import get_db
 from knotwork.notifications.channels.email import send as send_email
+from knotwork.workspaces.models import Workspace, WorkspaceMember
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -44,6 +47,19 @@ class UpdateMeRequest(BaseModel):
     name: str | None = None
     bio: str | None = None
     avatar_url: str | None = None
+
+
+class LocalhostSwitchUserRequest(BaseModel):
+    user_id: str
+
+
+class LocalhostSwitchUserResponse(BaseModel):
+    detail: str
+    email: str
+
+
+def _workspace_email_from(workspace: Workspace) -> str:
+    return (workspace.email_from or settings.email_from).strip() or settings.email_from
 
 
 @router.post("/magic-link-request", status_code=202)
@@ -134,6 +150,90 @@ async def update_me(
     await db.commit()
     await db.refresh(user)
     return _user_out(user)
+
+
+@router.post(
+    "/localhost/workspaces/{workspace_id}/switch-user-request",
+    response_model=LocalhostSwitchUserResponse,
+    status_code=202,
+)
+async def request_localhost_switch_user(
+    workspace_id: str,
+    req: LocalhostSwitchUserRequest,
+    _member: WorkspaceMember = Depends(get_workspace_member),
+    _user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> LocalhostSwitchUserResponse:
+    if not settings.is_local_app:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found")
+
+    try:
+        workspace_uuid = UUID(workspace_id)
+        target_user_id = UUID(req.user_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid id") from exc
+
+    workspace = await db.get(Workspace, workspace_uuid)
+    if workspace is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Workspace not found")
+    if not (workspace.resend_api_key or "").strip():
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Workspace email is not configured.",
+        )
+
+    member_count = await db.scalar(
+        select(func.count()).where(WorkspaceMember.workspace_id == workspace_uuid)
+    )
+    if (member_count or 0) < 2:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Localhost switching requires at least two workspace members.",
+        )
+
+    target_row = await db.execute(
+        select(User)
+        .join(WorkspaceMember, WorkspaceMember.user_id == User.id)
+        .where(
+            WorkspaceMember.workspace_id == workspace_uuid,
+            User.id == target_user_id,
+        )
+        .limit(1)
+    )
+    target_user = target_row.scalar_one_or_none()
+    if target_user is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found in workspace")
+    if not (target_user.email or "").strip():
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Target user has no email")
+
+    token_str = await service.create_magic_link_token(db, target_user)
+    await db.commit()
+
+    login_url = f"{settings.normalized_frontend_url}/accept-invite?magic={token_str}"
+    body = (
+        f"Click the link below to switch into the Knotwork localhost session for {workspace.name}.\n\n"
+        f"{login_url}\n\n"
+        f"The link expires in 15 minutes."
+    )
+    try:
+        await send_email(
+            to_address=target_user.email,
+            subject=f"Switch user for {workspace.name}",
+            body=body,
+            from_address=_workspace_email_from(workspace),
+            api_key=workspace.resend_api_key,
+        )
+    except Exception as exc:
+        logger.error("Localhost switch email failed for %s: %s", target_user.email, exc)
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Switch email could not be delivered.",
+        ) from exc
+
+    return LocalhostSwitchUserResponse(
+        detail="Magic link sent.",
+        email=target_user.email,
+    )
 
 
 @router.post("/logout", status_code=204)

@@ -15,6 +15,7 @@ async def send(
     subject: str,
     body: str,
     from_address: str = "noreply@knotwork.io",
+    api_key: str | None = None,
 ) -> None:
     """Send a plain-text email via the Resend API.
 
@@ -23,7 +24,7 @@ async def send(
     """
     from knotwork.config import settings
 
-    api_key = settings.resend_api
+    api_key = (api_key or settings.resend_api).strip()
     if not api_key:
         logger.warning(
             "EMAIL SKIPPED — RESEND_API env var is not set. "

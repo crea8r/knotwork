@@ -54,7 +54,6 @@ async def upsert_draft(
             graph_id=graph_id,
             definition=definition,
             parent_version_id=parent_version_id,
-            version_name=generate_name(),
             created_by=created_by,
         )
         db.add(draft)
@@ -63,6 +62,17 @@ async def upsert_draft(
         draft.updated_at = datetime.now(timezone.utc)
     await db.commit()
     await db.refresh(draft)
+    graph = await db.get(Graph, graph_id)
+    from knotwork.channels import service as channel_service
+
+    await channel_service.emit_asset_activity_message(
+        db,
+        workspace_id=graph.workspace_id,
+        asset_type="workflow",
+        asset_id=str(graph_id),
+        content="Workflow draft updated",
+        metadata={"workflow_event": "draft_updated", "graph_id": str(graph_id), "draft_row_id": str(draft.id)},
+    )
     return draft
 
 
@@ -91,13 +101,23 @@ async def promote_draft_to_version(
 
     now = datetime.now(timezone.utc)
     draft.version_id = _make_version_id()
-    if not draft.version_name:
-        draft.version_name = generate_name()
+    draft.version_name = generate_name()
     draft.version_created_at = now
     # Freeze updated_at so run history can refer to last-edit time
     draft.updated_at = now
     await db.commit()
     await db.refresh(draft)
+    graph = await db.get(Graph, graph_id)
+    from knotwork.channels import service as channel_service
+
+    await channel_service.emit_asset_activity_message(
+        db,
+        workspace_id=graph.workspace_id,
+        asset_type="workflow",
+        asset_id=str(graph_id),
+        content=f"Workflow version published: {draft.version_name or draft.version_id}",
+        metadata={"workflow_event": "version_published", "graph_id": str(graph_id), "version_row_id": str(draft.id)},
+    )
     return draft
 
 
@@ -138,6 +158,16 @@ async def set_production(
     graph.production_version_id = graph_version_row_id
     await db.commit()
     await db.refresh(graph)
+    from knotwork.channels import service as channel_service
+
+    await channel_service.emit_asset_activity_message(
+        db,
+        workspace_id=graph.workspace_id,
+        asset_type="workflow",
+        asset_id=str(graph_id),
+        content=f"Workflow production version changed to {version.version_name or version.version_id}",
+        metadata={"workflow_event": "production_changed", "graph_id": str(graph_id), "version_row_id": str(version.id)},
+    )
     return graph
 
 
@@ -152,6 +182,16 @@ async def archive_version(db: AsyncSession, graph_id: UUID, version_row_id: UUID
     version.archived_at = datetime.now(timezone.utc)
     await db.commit()
     await db.refresh(version)
+    from knotwork.channels import service as channel_service
+
+    await channel_service.emit_asset_activity_message(
+        db,
+        workspace_id=graph.workspace_id,
+        asset_type="workflow",
+        asset_id=str(graph_id),
+        content=f"Workflow version archived: {version.version_name or version.version_id}",
+        metadata={"workflow_event": "version_archived", "graph_id": str(graph_id), "version_row_id": str(version.id)},
+    )
     return version
 
 
@@ -162,15 +202,26 @@ async def unarchive_version(db: AsyncSession, graph_id: UUID, version_row_id: UU
     version.archived_at = None
     await db.commit()
     await db.refresh(version)
+    graph = await db.get(Graph, graph_id)
+    from knotwork.channels import service as channel_service
+
+    await channel_service.emit_asset_activity_message(
+        db,
+        workspace_id=graph.workspace_id,
+        asset_type="workflow",
+        asset_id=str(graph_id),
+        content=f"Workflow version unarchived: {version.version_name or version.version_id}",
+        metadata={"workflow_event": "version_unarchived", "graph_id": str(graph_id), "version_row_id": str(version.id)},
+    )
     return version
 
 
 async def delete_version(db: AsyncSession, graph_id: UUID, version_row_id: UUID) -> None:
-    """Delete a version. Blocked if it has runs or a public page (version_slug set)."""
+    """Delete a version. Blocked if it has runs or is_public."""
     version = await db.get(GraphVersion, version_row_id)
     if version is None or version.graph_id != graph_id:
         raise ValueError("Version not found")
-    if version.version_slug:
+    if version.is_public:
         raise ValueError("Cannot delete a version with an active public page")
     run_count = await get_version_run_count(db, version_row_id)
     if run_count > 0:
@@ -193,6 +244,17 @@ async def rename_version(
     version.version_name = new_name
     await db.commit()
     await db.refresh(version)
+    graph = await db.get(Graph, graph_id)
+    from knotwork.channels import service as channel_service
+
+    await channel_service.emit_asset_activity_message(
+        db,
+        workspace_id=graph.workspace_id,
+        asset_type="workflow",
+        asset_id=str(graph_id),
+        content=f"Workflow version renamed to {new_name}",
+        metadata={"workflow_event": "version_renamed", "graph_id": str(graph_id), "version_row_id": str(version.id)},
+    )
     return version
 
 

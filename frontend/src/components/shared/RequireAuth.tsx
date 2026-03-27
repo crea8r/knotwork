@@ -88,11 +88,15 @@ export default function RequireAuth({ children }: Props) {
     async function bootstrapLocalAuth() {
       const controller = new AbortController()
       const timer = setTimeout(() => controller.abort(), 5000)
+      const headers: HeadersInit = {}
+      if (token && token !== 'localhost-bypass') {
+        headers.Authorization = `Bearer ${token}`
+      }
       try {
         // Backend auto-authenticates as the first user when is_local_app and no token.
         const [meRes, wsRes] = await Promise.all([
-          fetch(`${API_BASE_URL}/auth/me`, { signal: controller.signal }),
-          fetch(`${API_BASE_URL}/workspaces`, { signal: controller.signal }),
+          fetch(`${API_BASE_URL}/auth/me`, { signal: controller.signal, headers }),
+          fetch(`${API_BASE_URL}/workspaces`, { signal: controller.signal, headers }),
         ])
         clearTimeout(timer)
 
@@ -107,7 +111,7 @@ export default function RequireAuth({ children }: Props) {
         const primary = workspaces.find((ws) => ws.id === workspaceId) ?? workspaces[0]
         if (!primary) throw new Error('No workspace available for localhost auth bootstrap')
 
-        if (!cancelled) login('localhost-bypass', me, primary.id, primary.member_role)
+        if (!cancelled) login(token && token !== 'localhost-bypass' ? token : 'localhost-bypass', me, primary.id, primary.member_role)
       } catch {
         clearTimeout(timer)
         if (!cancelled) {

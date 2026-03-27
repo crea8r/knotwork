@@ -30,8 +30,7 @@ export interface GraphVersion {
   version_created_at: string | null
   parent_version_id: string | null // lineage pointer
   archived_at: string | null
-  version_slug: string | null
-  public_description_md: string | null
+  is_public: boolean
   updated_at: string
   created_at: string
   // Enriched by list endpoint
@@ -123,12 +122,23 @@ export function isDraftRun(run: Run): boolean {
   return run.draft_snapshot_at != null
 }
 
+export interface PublicWorkflowLink {
+  id: string
+  workspace_id: string
+  graph_id: string
+  graph_version_id: string | null
+  token: string
+  description_md: string
+  status: 'active' | 'disabled'
+  created_at: string
+  updated_at: string
+}
+
 export interface PublicWorkflowView {
   description_md: string
   input_schema: InputFieldDef[]
   rate_limit_max_requests: number
   rate_limit_window_seconds: number
-  resolved_version_slug: string
   notice_test_only: boolean
   notice_future_paid: boolean
 }
@@ -282,15 +292,68 @@ export interface DecisionEvent {
 
 export interface InboxItem {
   id: string
-  item_type: 'escalation' | 'handbook_proposal'
+  item_type: 'escalation' | 'handbook_proposal' | 'mentioned_message' | 'task_assigned' | 'run_event'
+  delivery_id: string | null
   title: string
   subtitle: string | null
   status: string
   run_id: string | null
+  channel_id: string | null
   escalation_id: string | null
   proposal_id: string | null
   due_at: string | null
   created_at: string
+  unread: boolean
+  archived_at: string | null
+}
+
+export interface InboxSummary {
+  unread_count: number
+  active_count: number
+  archived_count: number
+}
+
+export interface ParticipantMentionOption {
+  participant_id: string
+  display_name: string
+  mention_handle: string | null
+  kind: 'human' | 'agent'
+  email: string | null
+}
+
+export interface ChannelSubscription {
+  channel_id: string
+  participant_id: string
+  subscribed: boolean
+  subscribed_at: string | null
+  unsubscribed_at: string | null
+}
+
+export interface ChannelAssetBinding {
+  id: string
+  channel_id: string
+  asset_type: 'workflow' | 'run' | 'file'
+  asset_id: string
+  display_name: string
+  path: string | null
+  status: string | null
+  created_at: string
+}
+
+export interface ParticipantDeliveryPreference {
+  participant_id: string
+  event_type: string
+  app_enabled: boolean
+  email_enabled: boolean
+  plugin_enabled: boolean
+  email_address: string | null
+}
+
+export interface ParticipantDeliveryPreferenceBundle {
+  participant_id: string
+  kind: 'human' | 'agent'
+  display_name: string
+  event_types: ParticipantDeliveryPreference[]
 }
 
 export interface Tool {

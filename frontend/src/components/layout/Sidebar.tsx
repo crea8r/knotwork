@@ -10,6 +10,8 @@ import {
   X,
 } from 'lucide-react'
 import knotworkLogo from '@/assets/knotwork-logo.svg'
+import { useInboxSummary } from '@/api/channels'
+import { useAuthStore } from '@/store/auth'
 
 // ── Full nav item ─────────────────────────────────────────────────────────────
 
@@ -74,8 +76,11 @@ export default function Sidebar({
 }) {
   const navigate = useNavigate()
   const location = useLocation()
+  const workspaceId = useAuthStore((s) => s.workspaceId) ?? import.meta.env.VITE_DEV_WORKSPACE_ID ?? 'dev-workspace'
+  const { data: inboxSummary } = useInboxSummary(workspaceId)
   const Item = collapsed ? IconNavItem : NavItem
   const iconSize = collapsed ? 18 : 16
+  const unreadCount = inboxSummary?.unread_count ?? 0
   const handleHandbookClick: React.MouseEventHandler<HTMLAnchorElement> = (e) => {
     onCloseMobile?.()
     if (!location.pathname.startsWith('/handbook')) return
@@ -111,7 +116,21 @@ export default function Sidebar({
 
       {/* Nav */}
       <nav className={`flex-1 overflow-y-auto py-3 space-y-0.5 ${collapsed ? 'px-1 flex flex-col items-center' : 'px-2'}`}>
-        <Item to="/inbox"    icon={<Inbox      size={iconSize} />} label="Inbox"     onClick={onCloseMobile} />
+        <Item
+          to="/inbox"
+          icon={
+            <span className="relative inline-flex">
+              <Inbox size={iconSize} />
+              {unreadCount > 0 && (
+                <span className="absolute -top-1.5 -right-1.5 min-w-[1rem] h-4 px-1 rounded-full bg-brand-600 text-white text-[10px] leading-4 text-center">
+                  {unreadCount > 99 ? '99+' : unreadCount}
+                </span>
+              )}
+            </span>
+          }
+          label="Inbox"
+          onClick={onCloseMobile}
+        />
         <Item to="/channels" icon={<Hash       size={iconSize} />} label="Channels"  onClick={onCloseMobile} />
         <Divider collapsed={collapsed} />
         <Item to="/runs"     icon={<PlayCircle size={iconSize} />} label="Runs"      onClick={onCloseMobile} />

@@ -1,7 +1,7 @@
 /**
  * Auth API: magic link login, invitation flow, current user.
  */
-import { useMutation, useQuery } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import axios from 'axios'
 import { API_BASE_URL } from './client'
 
@@ -69,6 +69,17 @@ export interface InvitationOut {
   accepted_at: string | null
   created_at: string
   token_hint: string
+}
+
+export interface WorkspaceEmailConfig {
+  enabled: boolean
+  has_resend_api_key: boolean
+  email_from: string | null
+}
+
+export interface LocalhostSwitchUserResult {
+  detail: string
+  email: string
 }
 
 // ── Magic link ────────────────────────────────────────────────────────────────
@@ -153,5 +164,33 @@ export function useCreateInvitation(workspaceId: string | null) {
   return useMutation({
     mutationFn: (data: { email: string; role: string }) =>
       api.post<InvitationOut>(`/workspaces/${workspaceId}/invitations`, data).then((r) => r.data),
+  })
+}
+
+export function useWorkspaceEmailConfig(workspaceId: string | null) {
+  return useQuery<WorkspaceEmailConfig>({
+    queryKey: ['workspaces', workspaceId, 'email-config'],
+    queryFn: () => api.get(`/workspaces/${workspaceId}/email-config`).then((r) => r.data),
+    enabled: !!workspaceId,
+  })
+}
+
+export function useUpdateWorkspaceEmailConfig(workspaceId: string | null) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (data: { resend_api_key?: string | null; clear_resend_api_key?: boolean; email_from?: string | null }) =>
+      api.patch<WorkspaceEmailConfig>(`/workspaces/${workspaceId}/email-config`, data).then((r) => r.data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['workspaces', workspaceId, 'email-config'] })
+    },
+  })
+}
+
+export function useRequestLocalhostSwitchUser(workspaceId: string | null) {
+  return useMutation({
+    mutationFn: (data: { user_id: string }) =>
+      api
+        .post<LocalhostSwitchUserResult>(`/auth/localhost/workspaces/${workspaceId}/switch-user-request`, data)
+        .then((r) => r.data),
   })
 }

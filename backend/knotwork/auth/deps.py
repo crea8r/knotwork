@@ -24,6 +24,20 @@ _UNAUTH = HTTPException(
 _FORBIDDEN = HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
 
 
+async def _default_local_user(db: AsyncSession) -> User | None:
+    bypass_id: str = getattr(settings, "auth_dev_bypass_user_id", "")
+    if bypass_id:
+        try:
+            user = await get_user_by_id(db, UUID(bypass_id))
+            if user is not None:
+                return user
+        except ValueError:
+            pass
+
+    result = await db.execute(select(User).order_by(User.created_at).limit(1))
+    return result.scalar_one_or_none()
+
+
 async def get_current_user(
     creds: HTTPAuthorizationCredentials | None = Depends(_bearer),
     db: AsyncSession = Depends(get_db),
@@ -37,10 +51,22 @@ async def get_current_user(
     Dev bypass: if AUTH_DEV_BYPASS_USER_ID is set in config, skip JWT verification
     and return that user directly. This keeps integration tests working without tokens.
     """
-    if settings.is_local_app and creds is None:
-        from sqlalchemy import select as _sel
-        result = await db.execute(_sel(User).order_by(User.created_at).limit(1))
-        user = result.scalar_one_or_none()
+    if creds is not None:
+        payload = decode_access_token(creds.credentials)
+        if payload is not None:
+            user_id_str: str | None = payload.get("sub")
+            if user_id_str:
+                try:
+                    user = await get_user_by_id(db, UUID(user_id_str))
+                except ValueError:
+                    user = None
+                if user is not None:
+                    return user
+        if not settings.is_local_app:
+            raise _UNAUTH
+
+    if settings.is_local_app:
+        user = await _default_local_user(db)
         if user is not None:
             return user
 
@@ -53,21 +79,7 @@ async def get_current_user(
         except ValueError:
             pass
 
-    if creds is None:
-        raise _UNAUTH
-    payload = decode_access_token(creds.credentials)
-    if payload is None:
-        raise _UNAUTH
-    user_id_str: str | None = payload.get("sub")
-    if not user_id_str:
-        raise _UNAUTH
-    try:
-        user = await get_user_by_id(db, UUID(user_id_str))
-    except ValueError:
-        raise _UNAUTH
-    if user is None:
-        raise _UNAUTH
-    return user
+    raise _UNAUTH
 
 
 async def get_workspace_member(

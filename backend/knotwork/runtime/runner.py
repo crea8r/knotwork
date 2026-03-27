@@ -50,6 +50,17 @@ async def _update_run_status(
             if error:
                 run.error = error[:2000]
             await db.commit()
+            if final_status in ("completed", "failed"):
+                from knotwork.channels import service as channel_service
+
+                await channel_service.emit_run_status_event(
+                    db,
+                    workspace_id=run.workspace_id,
+                    run_id=run.id,
+                    graph_id=run.graph_id,
+                    event_type="run_completed" if final_status == "completed" else "run_failed",
+                    subtitle=run.error if final_status == "failed" else None,
+                )
             if final_status == "completed":
                 await notify_public_run_completion(db, run.id)
 

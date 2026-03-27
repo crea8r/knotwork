@@ -151,6 +151,34 @@ async def create_run(
         ),
     )
 
+    bound_channel_ids = await channel_service.list_bound_channel_ids_for_asset(
+        db,
+        workspace_id,
+        asset_type="workflow",
+        asset_id=str(graph_id),
+    )
+    for bound_channel_id in bound_channel_ids:
+        await channel_service.attach_asset_to_channel(
+            db,
+            workspace_id,
+            bound_channel_id,
+            asset_type="run",
+            asset_id=str(run.id),
+        )
+        await channel_service.create_message(
+            db,
+            workspace_id,
+            bound_channel_id,
+            ChannelMessageCreate(
+                role="system",
+                author_type="system",
+                author_name="Knotwork",
+                content=f"New run created from attached workflow: {run.name or run.id}",
+                run_id=run.id,
+                metadata={"kind": "workflow_run_created", "graph_id": str(graph_id), "run_id": str(run.id)},
+            ),
+        )
+
     from arq import create_pool
     from arq.connections import RedisSettings
     from knotwork.config import settings

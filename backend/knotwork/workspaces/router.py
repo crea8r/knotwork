@@ -1,11 +1,11 @@
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Query
-from pydantic import BaseModel
+from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel, Field
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from knotwork.auth.deps import get_current_user, get_workspace_member
+from knotwork.auth.deps import get_current_user, get_workspace_member, require_owner
 from knotwork.auth.models import User
 from knotwork.database import get_db
 from knotwork.workspaces.models import Workspace, WorkspaceMember
@@ -36,6 +36,18 @@ class MembersPage(BaseModel):
     total: int
     page: int
     page_size: int
+
+
+class WorkspaceEmailConfigOut(BaseModel):
+    enabled: bool
+    has_resend_api_key: bool
+    email_from: str | None
+
+
+class WorkspaceEmailConfigUpdate(BaseModel):
+    resend_api_key: str | None = Field(default=None, max_length=500)
+    clear_resend_api_key: bool = False
+    email_from: str | None = Field(default=None, max_length=320)
 
 
 @router.get("", response_model=list[WorkspaceOut])
@@ -107,6 +119,52 @@ async def get_workspace(workspace_id: str):
 @router.patch("/{workspace_id}")
 async def update_workspace(workspace_id: str):
     return {"message": "not implemented"}
+
+
+@router.get("/{workspace_id}/email-config", response_model=WorkspaceEmailConfigOut)
+async def get_workspace_email_config(
+    workspace_id: UUID,
+    _member: WorkspaceMember = Depends(get_workspace_member),
+    db: AsyncSession = Depends(get_db),
+) -> WorkspaceEmailConfigOut:
+    workspace = await db.get(Workspace, workspace_id)
+    if workspace is None:
+        raise HTTPException(status_code=404, detail="Workspace not found")
+    return WorkspaceEmailConfigOut(
+        enabled=bool((workspace.resend_api_key or "").strip()),
+        has_resend_api_key=bool((workspace.resend_api_key or "").strip()),
+        email_from=(workspace.email_from or "").strip() or None,
+    )
+
+
+@router.patch("/{workspace_id}/email-config", response_model=WorkspaceEmailConfigOut)
+async def update_workspace_email_config(
+    workspace_id: UUID,
+    data: WorkspaceEmailConfigUpdate,
+    _member: WorkspaceMember = Depends(require_owner),
+    db: AsyncSession = Depends(get_db),
+) -> WorkspaceEmailConfigOut:
+    workspace = await db.get(Workspace, workspace_id)
+    if workspace is None:
+        raise HTTPException(status_code=404, detail="Workspace not found")
+
+    if data.clear_resend_api_key:
+        workspace.resend_api_key = None
+    elif data.resend_api_key is not None:
+        value = data.resend_api_key.strip()
+        workspace.resend_api_key = value or None
+
+    if data.email_from is not None:
+        workspace.email_from = data.email_from.strip() or None
+
+    await db.commit()
+    await db.refresh(workspace)
+
+    return WorkspaceEmailConfigOut(
+        enabled=bool((workspace.resend_api_key or "").strip()),
+        has_resend_api_key=bool((workspace.resend_api_key or "").strip()),
+        email_from=(workspace.email_from or "").strip() or None,
+    )
 
 
 @router.post("/{workspace_id}/members")

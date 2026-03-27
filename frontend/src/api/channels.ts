@@ -1,13 +1,51 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import type { Channel, ChannelMessage, DecisionEvent, InboxItem } from '@/types'
+import type {
+  Channel,
+  ChannelAssetBinding,
+  ChannelMessage,
+  ChannelSubscription,
+  DecisionEvent,
+  InboxItem,
+  InboxSummary,
+  ParticipantDeliveryPreference,
+  ParticipantDeliveryPreferenceBundle,
+  ParticipantMentionOption,
+} from '@/types'
 import { api } from './client'
 
-export function useInbox(workspaceId: string) {
+export function useInbox(workspaceId: string, archived = false) {
   return useQuery({
-    queryKey: ['inbox', workspaceId],
-    queryFn: () => api.get<InboxItem[]>(`/workspaces/${workspaceId}/inbox`).then((r) => r.data),
+    queryKey: ['inbox', workspaceId, archived],
+    queryFn: () =>
+      api.get<InboxItem[]>(`/workspaces/${workspaceId}/inbox`, { params: { archived } }).then((r) => r.data),
     enabled: !!workspaceId,
     refetchInterval: 10_000,
+  })
+}
+
+export function useInboxSummary(workspaceId: string) {
+  return useQuery({
+    queryKey: ['inbox-summary', workspaceId],
+    queryFn: () => api.get<InboxSummary>(`/workspaces/${workspaceId}/inbox/summary`).then((r) => r.data),
+    enabled: !!workspaceId,
+    refetchInterval: 10_000,
+  })
+}
+
+export function useUpdateInboxDelivery(workspaceId: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (payload: { deliveryId: string; archived?: boolean; read?: boolean }) =>
+      api
+        .patch<InboxItem>(`/workspaces/${workspaceId}/inbox/deliveries/${payload.deliveryId}`, {
+          archived: payload.archived,
+          read: payload.read,
+        })
+        .then((r) => r.data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['inbox', workspaceId] })
+      qc.invalidateQueries({ queryKey: ['inbox-summary', workspaceId] })
+    },
   })
 }
 
@@ -19,6 +57,77 @@ export function useChannels(workspaceId: string) {
   })
 }
 
+export function useChannelParticipants(workspaceId: string) {
+  return useQuery({
+    queryKey: ['channel-participants', workspaceId],
+    queryFn: () =>
+      api
+        .get<ParticipantMentionOption[]>(`/workspaces/${workspaceId}/participants`)
+        .then((r) => r.data),
+    enabled: !!workspaceId,
+    staleTime: 60_000,
+  })
+}
+
+export function useMyChannelSubscriptions(workspaceId: string) {
+  return useQuery({
+    queryKey: ['channel-subscriptions', workspaceId],
+    queryFn: () =>
+      api.get<ChannelSubscription[]>(`/workspaces/${workspaceId}/channels/subscriptions/me`).then((r) => r.data),
+    enabled: !!workspaceId,
+  })
+}
+
+export function useUpdateMyChannelSubscription(workspaceId: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (payload: { channelId: string; subscribed: boolean }) =>
+      api
+        .patch<ChannelSubscription>(`/workspaces/${workspaceId}/channels/${payload.channelId}/subscription`, {
+          subscribed: payload.subscribed,
+        })
+        .then((r) => r.data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['channel-subscriptions', workspaceId] })
+    },
+  })
+}
+
+export function useParticipantDeliveryPreferences(workspaceId: string, participantId: string) {
+  return useQuery({
+    queryKey: ['participant-delivery-preferences', workspaceId, participantId],
+    queryFn: () =>
+      api
+        .get<ParticipantDeliveryPreferenceBundle>(
+          `/workspaces/${workspaceId}/participants/${encodeURIComponent(participantId)}/delivery-preferences`,
+        )
+        .then((r) => r.data),
+    enabled: !!workspaceId && !!participantId,
+  })
+}
+
+export function useUpdateParticipantDeliveryPreference(workspaceId: string, participantId: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (payload: {
+      eventType: string
+      app_enabled?: boolean
+      email_enabled?: boolean
+      plugin_enabled?: boolean
+      email_address?: string | null
+    }) =>
+      api
+        .patch<ParticipantDeliveryPreference>(
+          `/workspaces/${workspaceId}/participants/${encodeURIComponent(participantId)}/delivery-preferences/${payload.eventType}`,
+          payload,
+        )
+        .then((r) => r.data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['participant-delivery-preferences', workspaceId, participantId] })
+    },
+  })
+}
+
 export function useCreateChannel(workspaceId: string) {
   const qc = useQueryClient()
   return useMutation({
@@ -26,6 +135,42 @@ export function useCreateChannel(workspaceId: string) {
       api.post<Channel>(`/workspaces/${workspaceId}/channels`, payload).then((r) => r.data),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['channels', workspaceId] })
+    },
+  })
+}
+
+export function useChannelAssets(workspaceId: string, channelId: string) {
+  return useQuery({
+    queryKey: ['channel-assets', workspaceId, channelId],
+    queryFn: () =>
+      api
+        .get<ChannelAssetBinding[]>(`/workspaces/${workspaceId}/channels/${channelId}/assets`)
+        .then((r) => r.data),
+    enabled: !!workspaceId && !!channelId,
+  })
+}
+
+export function useAttachChannelAsset(workspaceId: string, channelId: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (payload: { asset_type: 'workflow' | 'run' | 'file'; asset_id: string }) =>
+      api
+        .post<ChannelAssetBinding>(`/workspaces/${workspaceId}/channels/${channelId}/assets`, payload)
+        .then((r) => r.data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['channel-assets', workspaceId, channelId] })
+      qc.invalidateQueries({ queryKey: ['channel-messages', workspaceId, channelId] })
+    },
+  })
+}
+
+export function useDetachChannelAsset(workspaceId: string, channelId: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (bindingId: string) =>
+      api.delete(`/workspaces/${workspaceId}/channels/${channelId}/assets/${bindingId}`),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['channel-assets', workspaceId, channelId] })
     },
   })
 }

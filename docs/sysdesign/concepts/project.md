@@ -39,7 +39,7 @@ A Project is not a Graph. Graphs are reusable; Projects are specific. A single G
 The project dashboard shows:
 - **Quantitative**: task completion %, run success rate, days to deadline
 - **Roadblock surface**: failed runs and stalled tasks shown prominently — not buried in a list
-- **Qualitative** (S11.1+): agent-synthesized progress assessment ("~60% toward objective...")
+- **Qualitative** (S12.3+): agent-synthesized progress assessment ("~60% toward objective...")
 
 ---
 

@@ -1,13 +1,13 @@
 """Move public link state onto GraphVersion; drop PublicWorkflowLink table.
 
-Revision ID: 0013_version_public_slugs
+Revision ID: 0012_version_public_slugs
 Revises: 0011_public_link_slugs
 Create Date: 2026-03-26
 """
 from alembic import op
 import sqlalchemy as sa
 
-revision = '0013_version_public_slugs'
+revision = '0012_version_public_slugs'
 down_revision = '0011_public_link_slugs'
 branch_labels = None
 depends_on = None

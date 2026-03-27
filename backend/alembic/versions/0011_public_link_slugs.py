@@ -1,14 +1,14 @@
 """Add version_slug to public_workflow_links.
 
 Revision ID: 0011_public_link_slugs
-Revises: 0012_workspace_email
+Revises: 0010_graph_paths
 Create Date: 2026-03-25
 """
 from alembic import op
 import sqlalchemy as sa
 
 revision = '0011_public_link_slugs'
-down_revision = '0012_workspace_email'
+down_revision = '0010_graph_paths'
 branch_labels = None
 depends_on = None
 

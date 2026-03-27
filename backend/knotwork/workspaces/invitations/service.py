@@ -35,6 +35,14 @@ def _new_token() -> str:
     return secrets.token_urlsafe(32)
 
 
+def _workspace_invites_enabled(workspace: Workspace) -> bool:
+    return bool((workspace.resend_api_key or "").strip())
+
+
+def _workspace_email_from(workspace: Workspace) -> str:
+    return (workspace.email_from or settings.email_from).strip() or settings.email_from
+
+
 def _to_out(inv: WorkspaceInvitation) -> InvitationOut:
     return InvitationOut(
         id=inv.id,
@@ -54,15 +62,14 @@ async def create_invitation(
     invited_by_user_id: UUID | None,
     req: CreateInvitationRequest,
 ) -> InvitationOut:
-    if not settings.invitations_enabled:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="Invitations are disabled on localhost installs until public email delivery is configured.",
-        )
-
     workspace = await db.get(Workspace, workspace_id)
     if workspace is None:
         raise HTTPException(status_code=404, detail="Workspace not found")
+    if not _workspace_invites_enabled(workspace):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Invitations require workspace email configuration.",
+        )
 
     email = req.email.lower().strip()
     token_str = _new_token()
@@ -90,7 +97,8 @@ async def create_invitation(
             to_address=email,
             subject=f"You're invited to '{workspace.name}' on Knotwork",
             body=body,
-            from_address=settings.email_from,
+            from_address=_workspace_email_from(workspace),
+            api_key=workspace.resend_api_key,
         )
     except Exception as exc:
         logger.error("Invitation email failed for %s: %s", email, exc)

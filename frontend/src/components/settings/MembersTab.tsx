@@ -5,7 +5,12 @@
  */
 import { useState } from 'react'
 import { useAuthStore } from '@/store/auth'
-import { useWorkspaceInvitations, useCreateInvitation, useWorkspaceMembers } from '@/api/auth'
+import {
+  useWorkspaceInvitations,
+  useCreateInvitation,
+  useWorkspaceEmailConfig,
+  useWorkspaceMembers,
+} from '@/api/auth'
 import Badge from '@/components/shared/Badge'
 import Card from '@/components/shared/Card'
 import Spinner from '@/components/shared/Spinner'
@@ -14,10 +19,7 @@ export default function MembersTab() {
   const workspaceId = useAuthStore((s) => s.workspaceId)
   const role = useAuthStore((s) => s.role)
   const isOwner = role === 'owner'
-  const isLocalhostApp =
-    typeof window !== 'undefined' &&
-    ['localhost', '127.0.0.1', '::1'].includes(window.location.hostname)
-  const invitesEnabled = isOwner && !isLocalhostApp
+  const invitesEnabled = isOwner
 
   // Members list
   const [membersPage, setMembersPage] = useState(1)
@@ -26,6 +28,7 @@ export default function MembersTab() {
   // Invitations
   const { data: invitations, isLoading: loadingInv, refetch } = useWorkspaceInvitations(workspaceId)
   const create = useCreateInvitation(workspaceId)
+  const { data: emailConfig } = useWorkspaceEmailConfig(workspaceId)
 
   const [email, setEmail] = useState('')
   const [invRole, setInvRole] = useState<'operator' | 'owner'>('operator')
@@ -146,18 +149,13 @@ export default function MembersTab() {
           {invitesEnabled && !showForm && (
             <button
               onClick={() => { setShowForm(true); setSent(null) }}
+              disabled={isOwner && !emailConfig?.enabled}
               className="text-xs bg-brand-500 text-white px-3 py-1.5 rounded-lg hover:bg-brand-600 transition-colors"
             >
               + Invite member
             </button>
           )}
         </div>
-
-        {isOwner && isLocalhostApp && (
-          <div className="px-4 py-2 bg-amber-50 text-amber-800 text-xs border-b">
-            Invitations are disabled on localhost installs. Promote this install to a public domain with email delivery before inviting members.
-          </div>
-        )}
 
         {/* Invite form */}
         {showForm && invitesEnabled && (
@@ -188,7 +186,7 @@ export default function MembersTab() {
               </div>
               <button
                 type="submit"
-                disabled={create.isPending}
+                disabled={create.isPending || (isOwner && !emailConfig?.enabled)}
                 className="bg-brand-500 text-white px-3 py-2 rounded-lg text-sm hover:bg-brand-600 disabled:opacity-60 transition-colors"
               >
                 {create.isPending ? 'Sending…' : 'Send invite'}
@@ -216,7 +214,11 @@ export default function MembersTab() {
           <div className="p-6 text-center"><Spinner /></div>
         ) : !invitations || invitations.length === 0 ? (
           <p className="px-4 py-6 text-sm text-gray-400 text-center">
-            {invitesEnabled ? 'No invitations yet. Invite a member above.' : 'No pending invitations.'}
+            {invitesEnabled
+              ? emailConfig?.enabled
+                ? 'No invitations yet. Invite a member above.'
+                : 'Configure workspace email first, then invite a member.'
+              : 'No pending invitations.'}
           </p>
         ) : (
           <table className="w-full text-sm">

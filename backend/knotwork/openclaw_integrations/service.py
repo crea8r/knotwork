@@ -731,6 +731,16 @@ async def plugin_submit_task_event(
                 run.status = "failed"
                 run.error = run.error or f"Node failed: {task.error_message}"
                 run.completed_at = run.completed_at or now
+                from knotwork.channels import service as channel_service
+
+                await channel_service.emit_run_status_event(
+                    db,
+                    workspace_id=run.workspace_id,
+                    run_id=run.id,
+                    graph_id=run.graph_id,
+                    event_type="run_failed",
+                    subtitle=run.error,
+                )
 
     task.updated_at = now
     await db.commit()
