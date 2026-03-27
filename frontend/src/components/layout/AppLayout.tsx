@@ -31,7 +31,7 @@ export default function AppLayout() {
   const mobileTitle = (() => {
     if (location.pathname.startsWith('/inbox')) return 'Inbox'
     if (location.pathname.startsWith('/projects')) return 'Projects'
-    if (location.pathname.startsWith('/tasks')) return 'Task'
+    if (location.pathname.startsWith('/objectives')) return 'Objective'
     if (location.pathname.startsWith('/channels')) return 'Channels'
     if (location.pathname.startsWith('/runs')) return 'Runs'
     if (location.pathname.startsWith('/graphs') || location.pathname.startsWith('/handbook')) return 'Handbook'

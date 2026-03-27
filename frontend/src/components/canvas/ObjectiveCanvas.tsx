@@ -43,8 +43,8 @@ function computeObjectiveLayout(objectives: Objective[]) {
     g.setNode(objective.id, { width: NODE_W, height: NODE_H })
   }
   for (const objective of objectives) {
-    if (objective.parent_task_id) {
-      g.setEdge(objective.parent_task_id, objective.id)
+    if (objective.parent_objective_id) {
+      g.setEdge(objective.parent_objective_id, objective.id)
     }
   }
   dagre.layout(g)
@@ -164,14 +164,14 @@ export default function ObjectiveCanvas({ objectives, selectedObjectiveId, onSel
         </defs>
         <g transform={`translate(${pan.x},${pan.y}) scale(${zoom})`}>
           {objectives.map((objective) => {
-            if (!objective.parent_task_id) return null
-            const source = graph.node(objective.parent_task_id) as LayoutNode | undefined
+            if (!objective.parent_objective_id) return null
+            const source = graph.node(objective.parent_objective_id) as LayoutNode | undefined
             const target = graph.node(objective.id) as LayoutNode | undefined
             if (!source || !target) return null
             const d = `M ${source.x},${source.y + NODE_H / 2 - 4} C ${source.x},${source.y + 64} ${target.x},${target.y - 64} ${target.x},${target.y - NODE_H / 2 + 4}`
             return (
               <path
-                key={`${objective.parent_task_id}-${objective.id}`}
+                key={`${objective.parent_objective_id}-${objective.id}`}
                 d={d}
                 fill="none"
                 stroke="#cbd5e1"

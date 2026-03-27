@@ -47,7 +47,7 @@ Required relationships:
 - project-scoped files
 - project-scoped workflows
 - one `project_channel`
-- one current project status summary
+- one current human-authored project status summary
 
 ### Objective
 
@@ -141,7 +141,7 @@ The channel view is the communication surface for the project.
 It must contain:
 
 - the project chat as the main panel
-- a collapsible left-side objective tree
+- a left-side objective tree with per-objective expand/collapse controls for nested objectives
 - click-through from objective tree to objective-attached chat
 
 Implementation rule:
@@ -155,7 +155,7 @@ Reuse channel primitives. Do not build a second thread model.
 ### Reuse directly
 
 - existing `Project` container model
-- existing task/channel plumbing as the backing store for objective chat if it reduces duplication
+- existing objective/channel plumbing as the backing store for objective chat
 - existing graph canvas interaction model
 - existing channel message and decision UI primitives
 - existing Handbook editor and file-tree patterns
@@ -163,7 +163,7 @@ Reuse channel primitives. Do not build a second thread model.
 
 ### Reuse conceptually
 
-- objective status should feel like project progress reporting, not task ticketing
+- objective status should feel like project progress reporting, not ticket-like task tracking
 - objective-attached channel should behave like a focused thread inside project chat
 - project knowledge should feel like a project-scoped Handbook, not a new file product
 
@@ -196,12 +196,14 @@ Reuse channel primitives. Do not build a second thread model.
    - project-scoped workflows
 8. Channel view with:
    - project chat
-   - collapsible objective tree
+   - objective tree with branch-level expand/collapse controls
    - objective-specific chat switching
 9. Minimal workflow scoping:
    - `workflow.project_id IS NULL` => global
    - `workflow.project_id IS NOT NULL` => project-scoped
 10. Human-authored project status updates in the project header or dashboard.
+
+AI-authored or AI-drafted project status behavior is deferred to S12.2.
 
 ---
 
@@ -216,6 +218,7 @@ Reuse channel primitives. Do not build a second thread model.
 
 ### Do not build broad project intelligence
 
+- no AI-authored or AI-drafted status updates
 - no always-on autonomous project agent
 - no predictive health scoring
 - no objective refinement engine

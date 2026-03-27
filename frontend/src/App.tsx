@@ -27,7 +27,7 @@ import PublicWorkflowPage from './pages/PublicWorkflowPage'
 import PublicRunPage from './pages/PublicRunPage'
 import ProjectsPage from './pages/ProjectsPage'
 import ProjectDetailPage from './pages/ProjectDetailPage'
-import TaskDetailPage from './pages/TaskDetailPage'
+import ObjectiveDetailPage from './pages/ObjectiveDetailPage'
 
 export default function App() {
   return (
@@ -62,8 +62,7 @@ export default function App() {
         <Route path="/inbox" element={<InboxPage />} />
         <Route path="/projects" element={<ProjectsPage />} />
         <Route path="/projects/:projectId" element={<ProjectDetailPage />} />
-        <Route path="/objectives/:taskId" element={<TaskDetailPage />} />
-        <Route path="/tasks/:taskId" element={<TaskDetailPage />} />
+        <Route path="/objectives/:objectiveId" element={<ObjectiveDetailPage />} />
         <Route path="/channels" element={<ChannelsPage />} />
         <Route path="/channels/:channelId" element={<ChannelDetailPage />} />
         <Route path="/graphs" element={<GraphsPage />} />

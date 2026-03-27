@@ -14,7 +14,7 @@ class Run(Base):
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=generate_run_id)
     workspace_id: Mapped[UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("workspaces.id"), nullable=False)
     project_id: Mapped[UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("projects.id"), nullable=True)
-    task_id: Mapped[UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("tasks.id"), nullable=True)
+    objective_id: Mapped[UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("objectives.id"), nullable=True)
     graph_id: Mapped[UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("graphs.id"), nullable=False)
     graph_version_id: Mapped[UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("graph_versions.id"), nullable=True)
     # Draft run fields: populated when run is executed against a draft (not a named version)

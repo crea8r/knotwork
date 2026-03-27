@@ -30,7 +30,7 @@ class RunCreate(BaseModel):
     context_files: list[dict] = []
     trigger: str = "manual"
     graph_version_id: UUID | None = None
-    task_id: UUID | None = None
+    objective_id: UUID | None = None
 
 
 class RunUpdate(BaseModel):
@@ -115,7 +115,7 @@ class RunOut(BaseModel):
     id: str
     workspace_id: UUID
     project_id: UUID | None = None
-    task_id: UUID | None = None
+    objective_id: UUID | None = None
     graph_id: UUID
     graph_version_id: UUID | None = None
     # Draft run metadata — non-null when run was executed against a draft

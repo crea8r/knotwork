@@ -47,6 +47,13 @@ interface Props {
   renderNewFolderPanel: (parentPath: string, onDone: () => void, onCancel: () => void) => React.ReactNode
   renderUploadPanel: (preview: UploadPreview, onSaved: (path: string) => void, onCancel: () => void) => React.ReactNode
   sidePanel?: React.ReactNode
+  allowNewFile?: boolean
+  allowNewWorkflow?: boolean
+  allowNewFolder?: boolean
+  allowUpload?: boolean
+  allowFolderRename?: boolean
+  allowFolderMove?: boolean
+  allowFolderDelete?: boolean
 }
 
 function goFolder(set: (p: RightPanel) => void) { set({ kind: 'folder' }) }
@@ -57,6 +64,8 @@ export default function FileBrowserShell({
   onUploadClick, onDrop, isBusy = false, busyLabel, renamePending = false,
   onNavigateFolder, onNavigateFile, onNavigateWorkflow, onFileCreated, onWorkflowCreated, onUploadSaved,
   renderFileView, renderWorkflowView, renderNewFilePanel, renderNewWorkflowPanel, renderNewFolderPanel, renderUploadPanel, sidePanel,
+  allowNewFile = true, allowNewWorkflow = true, allowNewFolder = true, allowUpload = true,
+  allowFolderRename = true, allowFolderMove = true, allowFolderDelete = true,
 }: Props) {
   const [showChat, setShowChat] = useState(false)
   const [newMenuOpen, setNewMenuOpen] = useState(false)
@@ -86,6 +95,8 @@ export default function FileBrowserShell({
     return () => document.removeEventListener('mousedown', handleClick)
   }, [newMenuOpen])
 
+  const hasNewActions = allowNewFile || allowNewWorkflow || allowNewFolder || allowUpload
+
   return (
     <div className="flex flex-col h-full overflow-hidden">
       <div className="flex-shrink-0 border-b border-gray-200 bg-white px-2 py-1 md:px-3 md:py-1.5 flex items-center gap-2">
@@ -104,12 +115,12 @@ export default function FileBrowserShell({
       </div>
 
       <div ref={pageRef} className="relative flex flex-1 overflow-hidden"
-        onDragOver={e => e.preventDefault()}
-        onDragEnter={e => { e.preventDefault(); setPageDragOver(true) }}
-        onDragLeave={e => { if (!pageRef.current?.contains(e.relatedTarget as Node)) setPageDragOver(false) }}
-        onDrop={e => { setPageDragOver(false); onDrop(e) }}>
+        onDragOver={e => { if (allowUpload) e.preventDefault() }}
+        onDragEnter={e => { if (allowUpload) { e.preventDefault(); setPageDragOver(true) } }}
+        onDragLeave={e => { if (allowUpload && !pageRef.current?.contains(e.relatedTarget as Node)) setPageDragOver(false) }}
+        onDrop={e => { if (allowUpload) { setPageDragOver(false); onDrop(e) } }}>
 
-        {pageDragOver && (
+        {allowUpload && pageDragOver && (
           <div className="absolute inset-0 z-50 bg-brand-50/90 flex flex-col items-center justify-center pointer-events-none border-2 border-dashed border-brand-400 m-2 rounded-xl gap-3">
             <Upload size={36} className="text-brand-500" />
             <p className="font-semibold text-brand-700 text-lg">Drop to upload</p>
@@ -150,43 +161,53 @@ export default function FileBrowserShell({
                     {busyLabel}
                   </div>
                 )}
-                <div className="relative" ref={newMenuRef}>
-                  <button
-                    disabled={isBusy}
-                    onClick={() => setNewMenuOpen(v => !v)}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-brand-600 text-white text-sm font-medium hover:bg-brand-700 transition-colors disabled:cursor-not-allowed disabled:opacity-60"
-                  >
-                    <Plus size={14} /><span className="hidden md:inline">New</span><ChevronDown size={13} className="hidden md:inline" />
-                  </button>
-                  {newMenuOpen && (
-                    <div className="absolute right-0 mt-2 w-44 rounded-xl border border-gray-200 bg-white shadow-lg p-1.5 z-20">
-                      <button
-                        onClick={() => { setNewMenuOpen(false); setRightPanel({ kind: 'new', folder: targetFolder }) }}
-                        className="w-full text-left px-3 py-2 rounded-lg text-sm text-gray-700 hover:bg-gray-50"
-                      >
-                        New File
-                      </button>
-                      <button
-                        onClick={() => { setNewMenuOpen(false); setRightPanel({ kind: 'new-workflow', folder: targetFolder }) }}
-                        className="w-full text-left px-3 py-2 rounded-lg text-sm text-gray-700 hover:bg-gray-50"
-                      >
-                        New Workflow
-                      </button>
-                      <button
-                        onClick={() => { setNewMenuOpen(false); setRightPanel({ kind: 'new-folder', parentPath: targetFolder }) }}
-                        className="w-full text-left px-3 py-2 rounded-lg text-sm text-gray-700 hover:bg-gray-50"
-                      >
-                        New Folder
-                      </button>
-                      <button
-                        onClick={() => { setNewMenuOpen(false); onUploadClick(targetFolder) }}
-                        className="w-full text-left px-3 py-2 rounded-lg text-sm text-gray-700 hover:bg-gray-50"
-                      >
-                        Upload
-                      </button>
-                    </div>
-                  )}
-                </div>
+                {hasNewActions && (
+                  <div className="relative" ref={newMenuRef}>
+                    <button
+                      disabled={isBusy}
+                      onClick={() => setNewMenuOpen(v => !v)}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-brand-600 text-white text-sm font-medium hover:bg-brand-700 transition-colors disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      <Plus size={14} /><span className="hidden md:inline">New</span><ChevronDown size={13} className="hidden md:inline" />
+                    </button>
+                    {newMenuOpen && (
+                      <div className="absolute right-0 mt-2 w-44 rounded-xl border border-gray-200 bg-white shadow-lg p-1.5 z-20">
+                        {allowNewFile && (
+                          <button
+                            onClick={() => { setNewMenuOpen(false); setRightPanel({ kind: 'new', folder: targetFolder }) }}
+                            className="w-full text-left px-3 py-2 rounded-lg text-sm text-gray-700 hover:bg-gray-50"
+                          >
+                            New File
+                          </button>
+                        )}
+                        {allowNewWorkflow && (
+                          <button
+                            onClick={() => { setNewMenuOpen(false); setRightPanel({ kind: 'new-workflow', folder: targetFolder }) }}
+                            className="w-full text-left px-3 py-2 rounded-lg text-sm text-gray-700 hover:bg-gray-50"
+                          >
+                            New Workflow
+                          </button>
+                        )}
+                        {allowNewFolder && (
+                          <button
+                            onClick={() => { setNewMenuOpen(false); setRightPanel({ kind: 'new-folder', parentPath: targetFolder }) }}
+                            className="w-full text-left px-3 py-2 rounded-lg text-sm text-gray-700 hover:bg-gray-50"
+                          >
+                            New Folder
+                          </button>
+                        )}
+                        {allowUpload && (
+                          <button
+                            onClick={() => { setNewMenuOpen(false); onUploadClick(targetFolder) }}
+                            className="w-full text-left px-3 py-2 rounded-lg text-sm text-gray-700 hover:bg-gray-50"
+                          >
+                            Upload
+                          </button>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
                 {sidePanel && (
                   <button
                     disabled={isBusy}
@@ -229,6 +250,12 @@ export default function FileBrowserShell({
                   onNewFile={folder => setRightPanel({ kind: 'new', folder })}
                   onNewWorkflow={folder => setRightPanel({ kind: 'new-workflow', folder })}
                   onNewFolder={parentPath => setRightPanel({ kind: 'new-folder', parentPath })}
+                  allowNewFile={allowNewFile}
+                  allowNewWorkflow={allowNewWorkflow}
+                  allowNewFolder={allowNewFolder}
+                  allowFolderRename={allowFolderRename}
+                  allowFolderMove={allowFolderMove}
+                  allowFolderDelete={allowFolderDelete}
                   onRenameFile={onRenameFile} onRenameWorkflow={onRenameWorkflow} onRenameFolder={onRenameFolder}
                   onMoveTo={onMoveTo} onDeleteFile={onDeleteFile} onDeleteWorkflow={onDeleteWorkflow} onDeleteFolder={onDeleteFolder} />
               ) : rightPanel.kind === 'file' ? renderFileView(rightPanel.path)

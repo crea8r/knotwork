@@ -4,7 +4,7 @@ import { PlayCircle, Send } from 'lucide-react'
 import { useChannelDecisions, useChannelMessages, usePostChannelMessage } from '@/api/channels'
 import { useGraphs } from '@/api/graphs'
 import { useRuns, useTriggerRunAny } from '@/api/runs'
-import { useTask, useUpdateTask } from '@/api/projects'
+import { useObjective, useUpdateObjective } from '@/api/projects'
 import { useAuthStore } from '@/store/auth'
 import Btn from '@/components/shared/Btn'
 import Badge from '@/components/shared/Badge'
@@ -19,47 +19,47 @@ function statusVariant(status: string): 'gray' | 'green' | 'orange' | 'red' {
   return 'gray'
 }
 
-export default function TaskDetailPage() {
-  const { taskId = '' } = useParams<{ taskId: string }>()
+export default function ObjectiveDetailPage() {
+  const { objectiveId = '' } = useParams<{ objectiveId: string }>()
   const navigate = useNavigate()
   const workspaceId = useAuthStore((s) => s.workspaceId) ?? DEV_WORKSPACE
-  const { data: task, isLoading } = useTask(workspaceId, taskId)
+  const { data: objective, isLoading } = useObjective(workspaceId, objectiveId)
   const { data: runs = [] } = useRuns(workspaceId)
-  const { data: workflows = [] } = useGraphs(workspaceId, task?.project_id)
-  const { data: messages = [] } = useChannelMessages(workspaceId, task?.channel_id ?? '')
-  const { data: decisions = [] } = useChannelDecisions(workspaceId, task?.channel_id ?? '')
-  const postMessage = usePostChannelMessage(workspaceId, task?.channel_id ?? '')
-  const updateTask = useUpdateTask(workspaceId, taskId)
+  const { data: workflows = [] } = useGraphs(workspaceId, objective?.project_id)
+  const { data: messages = [] } = useChannelMessages(workspaceId, objective?.channel_id ?? '')
+  const { data: decisions = [] } = useChannelDecisions(workspaceId, objective?.channel_id ?? '')
+  const postMessage = usePostChannelMessage(workspaceId, objective?.channel_id ?? '')
+  const updateObjective = useUpdateObjective(workspaceId, objectiveId)
   const triggerRun = useTriggerRunAny(workspaceId)
 
   const [draft, setDraft] = useState('')
   const [runGraphId, setRunGraphId] = useState('')
   const [runInput, setRunInput] = useState('{"text": ""}')
 
-  const taskRuns = useMemo(() => runs.filter((run) => run.task_id === taskId), [runs, taskId])
+  const objectiveRuns = useMemo(() => runs.filter((run) => run.objective_id === objectiveId), [runs, objectiveId])
   const timeline = useMemo(() => {
     const msgItems = messages.map((m) => ({ id: `m-${m.id}`, kind: 'message' as const, ts: new Date(m.created_at).getTime(), data: m }))
     const decisionItems = decisions.map((d) => ({ id: `d-${d.id}`, kind: 'decision' as const, ts: new Date(d.created_at).getTime(), data: d }))
     return [...msgItems, ...decisionItems].sort((a, b) => a.ts - b.ts)
   }, [messages, decisions])
 
-  if (isLoading || !task) return <div className="flex justify-center py-16"><Spinner size="lg" /></div>
+  if (isLoading || !objective) return <div className="flex justify-center py-16"><Spinner size="lg" /></div>
 
   return (
     <div className="p-4 md:p-8 max-w-5xl mx-auto space-y-6">
       <div className="flex items-start justify-between gap-4">
         <div>
-          <Link to={task.project_id ? `/projects/${task.project_id}` : '/projects'} className="text-xs text-gray-500 hover:text-gray-700">
-            {task.project_id ? 'Back to project' : 'Projects'}
+          <Link to={objective.project_id ? `/projects/${objective.project_id}` : '/projects'} className="text-xs text-gray-500 hover:text-gray-700">
+            {objective.project_id ? 'Back to project' : 'Projects'}
           </Link>
-          <h1 className="mt-1 text-2xl font-semibold text-gray-900">{task.code ? `${task.code} · ${task.title}` : task.title}</h1>
-          {task.description && <p className="mt-2 text-sm text-gray-600">{task.description}</p>}
+          <h1 className="mt-1 text-2xl font-semibold text-gray-900">{objective.code ? `${objective.code} · ${objective.title}` : objective.title}</h1>
+          {objective.description && <p className="mt-2 text-sm text-gray-600">{objective.description}</p>}
         </div>
         <div className="flex items-center gap-2">
-          <Badge variant={statusVariant(task.status)}>{task.status.replace('_', ' ')}</Badge>
+          <Badge variant={statusVariant(objective.status)}>{objective.status.replace('_', ' ')}</Badge>
           <select
-            value={task.status}
-            onChange={(e) => updateTask.mutate({ status: e.target.value })}
+            value={objective.status}
+            onChange={(e) => updateObjective.mutate({ status: e.target.value })}
             className="rounded-lg border border-gray-300 px-2 py-1 text-sm"
           >
             <option value="open">open</option>
@@ -124,7 +124,7 @@ export default function TaskDetailPage() {
           <div className="rounded-xl border border-gray-200 bg-white p-5">
             <h2 className="font-semibold text-gray-900">Runs</h2>
             <div className="mt-3 space-y-2">
-              {taskRuns.length === 0 ? <p className="text-sm text-gray-500">No runs yet.</p> : taskRuns.map((run) => (
+              {objectiveRuns.length === 0 ? <p className="text-sm text-gray-500">No runs yet.</p> : objectiveRuns.map((run) => (
                 <button
                   key={run.id}
                   onClick={() => navigate(`/runs/${run.id}`)}
@@ -163,7 +163,7 @@ export default function TaskDetailPage() {
                 onClick={async () => {
                   try {
                     const parsed = JSON.parse(runInput)
-                    const run = await triggerRun.mutateAsync({ graphId: runGraphId, input: parsed, task_id: taskId })
+                    const run = await triggerRun.mutateAsync({ graphId: runGraphId, input: parsed, objective_id: objectiveId })
                     navigate(`/runs/${run.id}`)
                   } catch {
                     window.alert('Run input must be valid JSON.')

@@ -100,7 +100,7 @@ export interface Run {
   id: string
   workspace_id: string
   project_id: string | null
-  task_id: string | null
+  objective_id: string | null
   graph_id: string
   graph_version_id: string | null   // S9.1: nullable; null for legacy runs
   // S9.1 draft run metadata
@@ -262,10 +262,10 @@ export interface Channel {
   id: string
   workspace_id: string
   name: string
-  channel_type: 'normal' | 'workflow' | 'handbook' | 'agent_main' | 'project' | 'task'
+  channel_type: 'normal' | 'workflow' | 'handbook' | 'agent_main' | 'project' | 'objective'
   graph_id: string | null
   project_id: string | null
-  task_id: string | null
+  objective_id: string | null
   archived_at: string | null
   created_at: string
   updated_at: string
@@ -285,23 +285,23 @@ export interface Project {
   id: string
   workspace_id: string
   title: string
-  objective: string
+  description: string
   status: 'open' | 'in_progress' | 'blocked' | 'done'
   deadline: string | null
   project_channel_id: string | null
-  task_count: number
-  open_task_count: number
+  objective_count: number
+  open_objective_count: number
   run_count: number
   latest_status_update: ProjectStatusUpdate | null
   created_at: string
   updated_at: string
 }
 
-export interface Task {
+export interface Objective {
   id: string
   workspace_id: string
   project_id: string | null
-  parent_task_id: string | null
+  parent_objective_id: string | null
   code: string | null
   title: string
   description: string | null
@@ -320,8 +320,6 @@ export interface Task {
   created_at: string
   updated_at: string
 }
-
-export type Objective = Task
 
 export interface ProjectDocument {
   id: string
@@ -345,9 +343,9 @@ export interface ProjectDocumentWithContent extends ProjectDocument {
 
 export interface ProjectDashboard {
   project: Project
-  tasks: Task[]
+  objectives: Objective[]
   recent_runs: Run[]
-  blocked_tasks: Task[]
+  blocked_objectives: Objective[]
   latest_status_update: ProjectStatusUpdate | null
 }
 

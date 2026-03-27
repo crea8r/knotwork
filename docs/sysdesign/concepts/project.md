@@ -25,7 +25,7 @@ A **Project** is an objective-scoped work container. It is the thing humans trac
 ```
 Workspace
   └─ Project
-       ├─ objective (text)        -- "Onboard 5 enterprise clients before June 30"
+       ├─ description (text)      -- "Onboard 5 enterprise clients before June 30"
        ├─ deadline (date)
        ├─ status                  -- open | in_progress | blocked | done
        ├─ Tasks
@@ -39,7 +39,7 @@ A Project is not a Graph. Graphs are reusable; Projects are specific. A single G
 The project dashboard shows:
 - **Quantitative**: task completion %, run success rate, days to deadline
 - **Roadblock surface**: failed runs and stalled tasks shown prominently — not buried in a list
-- **Qualitative** (S12.3+): agent-synthesized progress assessment ("~60% toward objective...")
+- **Qualitative** (post-S12): agent-synthesized progress assessment ("~60% toward objective...")
 
 ---
 

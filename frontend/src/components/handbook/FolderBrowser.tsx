@@ -21,6 +21,12 @@ interface Props {
   onNewFile: (folder: string) => void
   onNewWorkflow: (folder: string) => void
   onNewFolder: (parentPath: string) => void
+  allowNewFile?: boolean
+  allowNewWorkflow?: boolean
+  allowNewFolder?: boolean
+  allowFolderRename?: boolean
+  allowFolderMove?: boolean
+  allowFolderDelete?: boolean
   onRenameFile: (path: string, newPath: string) => void
   onRenameWorkflow: (graphId: string, name: string) => void
   onRenameFolder: (folderPath: string, newName: string) => void
@@ -73,6 +79,8 @@ export default function FolderBrowser({
   files, folderPaths, currentFolder, selectedPath, multiSelected,
   onSelectFile, onCtrlSelectFile, onSelectFolder,
   onNewFile, onNewWorkflow, onNewFolder,
+  allowNewFile = true, allowNewWorkflow = true, allowNewFolder = true,
+  allowFolderRename = true, allowFolderMove = true, allowFolderDelete = true,
   onRenameFile, onRenameWorkflow, onRenameFolder, onMoveTo, onDeleteFile, onDeleteWorkflow, onDeleteFolder,
 }: Props) {
   const [contextMenu, setContextMenu] = useState<{
@@ -90,11 +98,6 @@ export default function FolderBrowser({
 
   const { files: dirFiles, folders: dirFolders } = getDirectChildren(files, folderPaths, currentFolder)
   const isHomeFolder = currentFolder === ''
-  function folderHasContents(path: string) {
-    const prefix = path ? `${path}/` : ''
-    return files.some(file => path === '' || file.path.startsWith(prefix))
-      || folderPaths.some(folderPath => folderPath !== path && (path === '' || folderPath.startsWith(prefix)))
-  }
 
   function showContext(
     e: React.MouseEvent,
@@ -136,13 +139,9 @@ export default function FolderBrowser({
       <div
         className="flex-1 overflow-y-auto"
         onContextMenu={e => showContext(e, { kind: 'folder', path: currentFolder }, {
-          hideRename: true,
-          hideMoveTo: isHomeFolder,
-          hideDelete: isHomeFolder,
-          disableDelete: !isHomeFolder && folderHasContents(currentFolder),
-          disableDeleteReason: !isHomeFolder && folderHasContents(currentFolder)
-            ? 'Only empty folders can be deleted.'
-            : undefined,
+          hideRename: !allowFolderRename,
+          hideMoveTo: isHomeFolder || !allowFolderMove,
+          hideDelete: isHomeFolder || !allowFolderDelete,
         })}
       >
         {dirFolders.length === 0 && dirFiles.length === 0 ? (
@@ -158,8 +157,9 @@ export default function FolderBrowser({
                 isRenaming={renamingFolder === fp}
                 onClick={() => onSelectFolder(fp)}
                 onContextMenu={e => showContext(e, { kind: 'folder', path: fp }, {
-                  disableDelete: folderHasContents(fp),
-                  disableDeleteReason: folderHasContents(fp) ? 'Only empty folders can be deleted.' : undefined,
+                  hideRename: !allowFolderRename,
+                  hideMoveTo: !allowFolderMove,
+                  hideDelete: !allowFolderDelete,
                 })}
                 onRenameCommit={name => commitFolderRename(fp, name)} />
             ))}
@@ -185,7 +185,7 @@ export default function FolderBrowser({
       {contextMenu && (
         <FileContextMenu target={contextMenu.target} x={contextMenu.x} y={contextMenu.y}
           onClose={() => setContextMenu(null)}
-          onNewFile={onNewFile} onNewWorkflow={onNewWorkflow} onNewFolder={onNewFolder}
+          onNewFile={allowNewFile ? onNewFile : undefined} onNewWorkflow={allowNewWorkflow ? onNewWorkflow : undefined} onNewFolder={allowNewFolder ? onNewFolder : undefined}
           onRename={handleRename}
           onMoveTo={t => { setContextMenu(null); onMoveTo(t) }}
           onDelete={t => {

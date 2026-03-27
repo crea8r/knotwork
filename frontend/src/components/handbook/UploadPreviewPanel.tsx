@@ -4,23 +4,32 @@
  */
 import { useState } from 'react'
 import type { UploadPreview } from '@/api/knowledge'
-import { useCreateKnowledgeFile } from '@/api/knowledge'
 import Btn from '@/components/shared/Btn'
 
 interface Props {
   preview: UploadPreview
   onSaved: (path: string) => void
   onCancel: () => void
+  onSave?: (payload: { path: string; title: string; content: string }) => Promise<void>
+  isSaving?: boolean
+  saveLabel?: string
 }
 
-export default function UploadPreviewPanel({ preview, onSaved, onCancel }: Props) {
+export default function UploadPreviewPanel({
+  preview,
+  onSaved,
+  onCancel,
+  onSave,
+  isSaving = false,
+  saveLabel = 'Save to Handbook',
+}: Props) {
   const [path, setPath] = useState(preview.suggested_path)
   const [title, setTitle] = useState(preview.suggested_title)
   const [content, setContent] = useState(preview.converted_content)
-  const create = useCreateKnowledgeFile()
 
   async function save() {
-    await create.mutateAsync({ path, title, content })
+    if (!onSave) return
+    await onSave({ path, title, content })
     onSaved(path)
   }
 
@@ -73,8 +82,8 @@ export default function UploadPreviewPanel({ preview, onSaved, onCancel }: Props
 
         <div className="flex justify-end gap-2">
           <Btn variant="ghost" size="sm" onClick={onCancel}>Cancel</Btn>
-          <Btn size="sm" loading={create.isPending} onClick={save} disabled={!path || !title}>
-            Save to Handbook
+          <Btn size="sm" loading={isSaving} onClick={save} disabled={!path || !title || !onSave}>
+            {saveLabel}
           </Btn>
         </div>
       </div>

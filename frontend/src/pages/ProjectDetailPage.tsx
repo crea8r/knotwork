@@ -1,19 +1,34 @@
-import { useEffect, useMemo, useState } from 'react'
-import { Link, useNavigate, useParams } from 'react-router-dom'
-import { FolderPlus, MessageSquare, Pencil, Plus, Save, Send, Sparkles, Workflow, X } from 'lucide-react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { useNavigate, useParams } from 'react-router-dom'
+import { ChevronDown, ChevronRight, FolderPlus, MessageSquare, Pencil, Plus, Save, Send, Sparkles, X } from 'lucide-react'
 import { useChannelDecisions, useChannelMessages, usePostChannelMessage } from '@/api/channels'
-import { useCreateGraph, useGraphs } from '@/api/graphs'
+import { useDeleteGraph, useGraphs, useUpdateGraph } from '@/api/graphs'
 import {
   useCreateObjective,
   useCreateProjectDocument,
+  useCreateProjectFolder,
   useCreateProjectStatusUpdate,
+  useDeleteProjectFolder,
+  useDeleteProjectDocument,
   useProjectDashboard,
-  useProjectDocument,
   useProjectDocuments,
+  useProjectFolders,
+  useRenameProjectFolder,
+  useRenameProjectDocument,
+  useUploadProjectFile,
   useUpdateObjective,
 } from '@/api/projects'
 import { useAuthStore } from '@/store/auth'
 import ObjectiveCanvas from '@/components/canvas/ObjectiveCanvas'
+import FileBrowserShell from '@/components/file-browser/FileBrowserShell'
+import { useFileBrowserState } from '@/components/file-browser/useFileBrowserState'
+import type { BrowserFile } from '@/components/file-browser/types'
+import type { ContextTarget } from '@/components/handbook/FileContextMenu'
+import FileEditor from '@/components/handbook/FileEditor'
+import MoveToDialog from '@/components/handbook/MoveToDialog'
+import ConfirmDialog from '@/components/shared/ConfirmDialog'
+import NewWorkflowPanel from '@/components/handbook/NewWorkflowPanel'
+import UploadPreviewPanel from '@/components/handbook/UploadPreviewPanel'
 import Btn from '@/components/shared/Btn'
 import Card from '@/components/shared/Card'
 import Badge from '@/components/shared/Badge'
@@ -24,6 +39,10 @@ const DEV_WORKSPACE = import.meta.env.VITE_DEV_WORKSPACE_ID ?? 'dev-workspace'
 
 type ProjectView = 'objectives' | 'handbook' | 'channel'
 type ObjectivePanelTab = 'info' | 'progress'
+type ProjectDeleteTarget =
+  | { kind: 'file'; path: string }
+  | { kind: 'folder'; path: string }
+  | { kind: 'workflow'; graphId: string; name: string }
 
 function statusVariant(status: string): 'gray' | 'green' | 'orange' | 'red' {
   if (status === 'done' || status === 'completed') return 'green'
@@ -36,10 +55,54 @@ function objectiveLabel(objective: Objective): string {
   return [objective.code, objective.title].filter(Boolean).join(' ')
 }
 
+function clampObjectiveTitle(title: string, max = 30): string {
+  return title.length > max ? `${title.slice(0, Math.max(0, max - 3))}...` : title
+}
+
+function objectiveTreeLabel(objective: Objective): string {
+  const shortTitle = clampObjectiveTitle(objective.title, 30)
+  return [objective.code, shortTitle].filter(Boolean).join(' ')
+}
+
+function collectFolderPaths(paths: string[]): string[] {
+  const folders = new Set<string>()
+  for (const path of paths) {
+    const parts = path.split('/').filter(Boolean)
+    for (let index = 1; index < parts.length; index += 1) {
+      folders.add(parts.slice(0, index).join('/'))
+    }
+  }
+  return Array.from(folders).sort((a, b) => a.localeCompare(b))
+}
+
+function toBrowserEntry(
+  file: {
+    id: string
+    workspace_id: string
+    path: string
+    title: string
+    raw_token_count: number
+    resolved_token_count: number
+    linked_paths: string[]
+    current_version_id: string | null
+    health_score: number | null
+    updated_at: string
+  },
+): BrowserFile {
+  return {
+    ...file,
+    file_type: 'md',
+    is_editable: true,
+    created_at: file.updated_at,
+    health_updated_at: null,
+    entryKind: 'knowledge',
+  }
+}
+
 function buildObjectiveTree(objectives: Objective[]) {
   const byParent = new Map<string | null, Objective[]>()
   for (const objective of objectives) {
-    const key = objective.parent_task_id ?? null
+    const key = objective.parent_objective_id ?? null
     const bucket = byParent.get(key) ?? []
     bucket.push(objective)
     byParent.set(key, bucket)
@@ -47,15 +110,15 @@ function buildObjectiveTree(objectives: Objective[]) {
   for (const bucket of byParent.values()) {
     bucket.sort((a, b) => (a.code || a.title).localeCompare(b.code || b.title))
   }
-  const lines: Array<{ objective: Objective; depth: number }> = []
-  function walk(parentId: string | null, depth: number) {
-    for (const objective of byParent.get(parentId) ?? []) {
-      lines.push({ objective, depth })
-      walk(objective.id, depth + 1)
-    }
+  return byParent
+}
+
+function collectExpandableObjectiveIds(tree: Map<string | null, Objective[]>) {
+  const ids = new Set<string>()
+  for (const [parentId, children] of tree.entries()) {
+    if (parentId && children.length > 0) ids.add(parentId)
   }
-  walk(null, 0)
-  return lines
+  return ids
 }
 
 function useChannelTimeline(workspaceId: string, channelId: string | null) {
@@ -88,29 +151,81 @@ function ObjectiveTreeList({
   onSelect: (objectiveId: string) => void
 }) {
   const tree = useMemo(() => buildObjectiveTree(objectives), [objectives])
-  if (tree.length === 0) return <p className="text-sm text-gray-500">No objectives yet.</p>
+  const [collapsedIds, setCollapsedIds] = useState<Set<string>>(new Set())
 
-  return (
-    <div className="space-y-1">
-      {tree.map(({ objective, depth }) => (
-        <button
-          key={objective.id}
-          onClick={() => onSelect(objective.id)}
-          className={`flex w-full items-start rounded-xl px-3 py-2 text-left text-sm ${
-            selectedObjectiveId === objective.id ? 'bg-stone-900 text-white' : 'bg-white text-stone-700 hover:bg-stone-100'
-          }`}
-          style={{ paddingLeft: `${12 + depth * 18}px` }}
-        >
-          <div>
-            <p className="font-semibold">{objectiveLabel(objective)}</p>
-            <p className={`mt-0.5 text-xs ${selectedObjectiveId === objective.id ? 'text-stone-300' : 'text-stone-500'}`}>
-              {objective.progress_percent}% complete
-            </p>
+  useEffect(() => {
+    setCollapsedIds((current) => {
+      const next = new Set<string>()
+      const validIds = collectExpandableObjectiveIds(tree)
+      for (const id of current) {
+        if (validIds.has(id)) next.add(id)
+      }
+      return next
+    })
+  }, [tree])
+
+  if ((tree.get(null) ?? []).length === 0) return <p className="text-sm text-gray-500">No objectives yet.</p>
+
+  function toggleNode(objectiveId: string) {
+    setCollapsedIds((current) => {
+      const next = new Set(current)
+      if (next.has(objectiveId)) next.delete(objectiveId)
+      else next.add(objectiveId)
+      return next
+    })
+  }
+
+  function renderBranch(parentId: string | null, depth: number) {
+    const branch = tree.get(parentId) ?? []
+    return branch.map((objective) => {
+      const children = tree.get(objective.id) ?? []
+      const hasChildren = children.length > 0
+      const isCollapsed = collapsedIds.has(objective.id)
+      return (
+        <div key={objective.id} className="space-y-1">
+          <div
+            className="flex items-start gap-1"
+            style={{ paddingLeft: `${8 + depth * 18}px` }}
+          >
+            <button
+              type="button"
+              onClick={() => {
+                if (hasChildren) toggleNode(objective.id)
+              }}
+              className={`mt-2 inline-flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-md ${
+                hasChildren
+                  ? 'text-stone-500 hover:bg-stone-200'
+                  : 'text-transparent pointer-events-none'
+              }`}
+              aria-label={hasChildren ? (isCollapsed ? 'Expand objective' : 'Collapse objective') : undefined}
+            >
+              {hasChildren ? (isCollapsed ? <ChevronRight size={14} /> : <ChevronDown size={14} />) : <ChevronRight size={14} />}
+            </button>
+            <button
+              type="button"
+              onClick={() => onSelect(objective.id)}
+              className={`flex-1 rounded-xl px-2 py-2 text-left text-sm hover:bg-stone-100 ${
+                selectedObjectiveId === objective.id ? 'bg-stone-100' : ''
+              }`}
+            >
+              <p className={`font-semibold underline decoration-stone-300 underline-offset-4 ${
+                selectedObjectiveId === objective.id ? 'text-stone-950' : 'text-stone-700'
+              }`}
+              >
+                {objectiveTreeLabel(objective)}
+              </p>
+              <p className="mt-0.5 text-xs text-stone-500">
+                {objective.progress_percent}% complete
+              </p>
+            </button>
           </div>
-        </button>
-      ))}
-    </div>
-  )
+          {hasChildren && !isCollapsed ? renderBranch(objective.id, depth + 1) : null}
+        </div>
+      )
+    })
+  }
+
+  return <div className="space-y-1">{renderBranch(null, 0)}</div>
 }
 
 function ChatTimeline({
@@ -172,26 +287,172 @@ function ChatTimeline({
   )
 }
 
+function ProjectNewFilePanel({
+  folder,
+  onCreate,
+  onCancel,
+  onSubmit,
+  isPending,
+}: {
+  folder: string
+  onCreate: (path: string) => void
+  onCancel: () => void
+  onSubmit: (path: string) => Promise<void>
+  isPending: boolean
+}) {
+  const [filename, setFilename] = useState('')
+  const [error, setError] = useState<string | null>(null)
+  const fullPath = folder
+    ? `${folder}/${filename.endsWith('.md') ? filename : `${filename}.md`}`
+    : (filename.endsWith('.md') ? filename : `${filename}.md`)
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault()
+    if (!filename.trim()) return
+    setError(null)
+    try {
+      await onSubmit(fullPath)
+      onCreate(fullPath)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to create file.')
+    }
+  }
+
+  return (
+    <div className="flex h-full flex-col">
+      <div className="border-b px-5 pb-3 pt-5">
+        <div>
+          <h2 className="font-semibold text-gray-900">New File</h2>
+          {folder ? (
+            <p className="mt-0.5 text-xs text-gray-400">
+              in <span className="font-mono">{folder}/</span>
+            </p>
+          ) : null}
+        </div>
+      </div>
+      <form onSubmit={submit} className="flex-1 space-y-4 p-5">
+        <div>
+          <label className="mb-1 block text-xs text-gray-500">Filename</label>
+          <input
+            autoFocus
+            className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-brand-500"
+            value={filename}
+            onChange={(e) => setFilename(e.target.value)}
+            required
+            placeholder="brief.md"
+          />
+          {filename ? (
+            <p className="mt-1 text-xs text-gray-400">
+              Path: <span className="font-mono">{fullPath}</span>
+            </p>
+          ) : null}
+        </div>
+        {error ? <p className="text-sm text-red-500">{error}</p> : null}
+        <div className="flex gap-2 pt-2">
+          <Btn type="submit" size="sm" loading={isPending}>Create</Btn>
+          <Btn type="button" size="sm" variant="ghost" onClick={onCancel}>Cancel</Btn>
+        </div>
+      </form>
+    </div>
+  )
+}
+
+function ProjectNewFolderPanel({
+  parentPath,
+  onCreate,
+  onCancel,
+  onSubmit,
+  isPending,
+}: {
+  parentPath: string
+  onCreate: (path: string) => void
+  onCancel: () => void
+  onSubmit: (path: string) => Promise<void>
+  isPending: boolean
+}) {
+  const [name, setName] = useState('')
+  const [error, setError] = useState<string | null>(null)
+  const trimmed = name.trim().replace(/\//g, '-')
+  const fullPath = parentPath ? `${parentPath}/${trimmed}` : trimmed
+
+  async function handleCreate() {
+    if (!trimmed) return
+    setError(null)
+    try {
+      await onSubmit(fullPath)
+      onCreate(fullPath)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to create folder.')
+    }
+  }
+
+  return (
+    <div className="flex h-full flex-col">
+      <div className="flex items-center gap-3 border-b border-gray-100 px-6 py-4">
+        <FolderPlus size={18} className="flex-shrink-0 text-amber-500" />
+        <div>
+          <h2 className="text-sm font-semibold text-gray-900">New Folder</h2>
+          {parentPath ? <p className="mt-0.5 text-xs text-gray-400">in {parentPath}</p> : null}
+        </div>
+      </div>
+
+      <div className="flex-1 space-y-4 p-6">
+        <div>
+          <label className="mb-1 block text-xs font-medium text-gray-600">Folder name</label>
+          <input
+            autoFocus
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') void handleCreate()
+              if (e.key === 'Escape') onCancel()
+            }}
+            placeholder="e.g. legal, marketing"
+            className="w-full rounded-xl border border-gray-200 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-brand-500"
+          />
+        </div>
+
+        {trimmed ? (
+          <p className="text-xs text-gray-400">
+            Will create: <span className="font-mono text-gray-600">{fullPath}</span>
+          </p>
+        ) : null}
+
+        {error ? <p className="text-sm text-red-500">{error}</p> : null}
+
+        <div className="flex items-center gap-2 pt-2">
+          <Btn onClick={() => { void handleCreate() }} loading={isPending} disabled={!trimmed}>
+            Create Folder
+          </Btn>
+          <Btn variant="ghost" onClick={onCancel}>Cancel</Btn>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export default function ProjectDetailPage() {
   const { projectId = '' } = useParams<{ projectId: string }>()
   const navigate = useNavigate()
   const workspaceId = useAuthStore((s) => s.workspaceId) ?? DEV_WORKSPACE
   const { data: dashboard, isLoading } = useProjectDashboard(workspaceId, projectId)
   const { data: docs = [] } = useProjectDocuments(workspaceId, projectId)
+  const { data: projectFolders = [] } = useProjectFolders(workspaceId, projectId)
   const { data: workflows = [] } = useGraphs(workspaceId, projectId)
+  const handbookState = useFileBrowserState()
+  const uploadInputRef = useRef<HTMLInputElement>(null)
 
   const [view, setView] = useState<ProjectView>('objectives')
   const [selectedObjectiveId, setSelectedObjectiveId] = useState<string | null>(null)
   const [hasAutoSelectedObjective, setHasAutoSelectedObjective] = useState(false)
   const [objectivePanelTab, setObjectivePanelTab] = useState<ObjectivePanelTab>('info')
   const [editingObjectiveHeading, setEditingObjectiveHeading] = useState(false)
-  const [selectedPath, setSelectedPath] = useState('')
   const [showObjectiveComposer, setShowObjectiveComposer] = useState(false)
+  const [showStatusDialog, setShowStatusDialog] = useState(false)
   const [composerParentId, setComposerParentId] = useState<string | null>(null)
   const [projectStatusDraft, setProjectStatusDraft] = useState('')
-  const [workflowName, setWorkflowName] = useState('')
-  const [docPath, setDocPath] = useState('')
-  const [docContent, setDocContent] = useState('')
+  const [fileQuery, setFileQuery] = useState('')
+  const [deleteTarget, setDeleteTarget] = useState<ProjectDeleteTarget | null>(null)
   const [projectChatDraft, setProjectChatDraft] = useState('')
   const [objectiveChatDraft, setObjectiveChatDraft] = useState('')
   const [objectiveForm, setObjectiveForm] = useState({
@@ -213,14 +474,20 @@ export default function ProjectDetailPage() {
 
   const createObjective = useCreateObjective(workspaceId)
   const updateObjective = useUpdateObjective(workspaceId, selectedObjectiveId ?? '')
-  const createDoc = useCreateProjectDocument(workspaceId, projectId)
+  const createProjectDocument = useCreateProjectDocument(workspaceId, projectId)
+  const createProjectFolder = useCreateProjectFolder(workspaceId, projectId)
+  const renameProjectFolder = useRenameProjectFolder(workspaceId, projectId)
+  const deleteProjectFolder = useDeleteProjectFolder(workspaceId, projectId)
+  const renameProjectDocument = useRenameProjectDocument(workspaceId, projectId)
+  const deleteProjectDocument = useDeleteProjectDocument(workspaceId, projectId)
+  const uploadProjectFile = useUploadProjectFile(workspaceId, projectId)
   const createStatus = useCreateProjectStatusUpdate(workspaceId, projectId)
-  const createGraph = useCreateGraph(workspaceId)
+  const updateGraph = useUpdateGraph(workspaceId)
+  const deleteGraph = useDeleteGraph(workspaceId)
 
   const project = dashboard?.project
-  const objectives = dashboard?.tasks ?? []
+  const objectives = dashboard?.objectives ?? []
   const selectedObjective = objectives.find((item) => item.id === selectedObjectiveId) ?? null
-  const { data: selectedDoc } = useProjectDocument(workspaceId, projectId, selectedPath)
 
   useEffect(() => {
     if (!hasAutoSelectedObjective && !selectedObjectiveId && objectives.length > 0) {
@@ -251,6 +518,160 @@ export default function ProjectDetailPage() {
   const objectiveTimeline = useChannelTimeline(workspaceId, selectedObjective?.channel_id ?? null)
   const postProjectMessage = usePostChannelMessage(workspaceId, projectChannelId ?? '')
   const postObjectiveMessage = usePostChannelMessage(workspaceId, selectedObjective?.channel_id ?? '')
+  const workflowEntries = useMemo<BrowserFile[]>(
+    () => workflows.map((graph) => ({
+      id: `workflow-${graph.id}`,
+      workspace_id: graph.workspace_id,
+      path: graph.path ? `${graph.path}/${graph.name}` : graph.name,
+      title: graph.name,
+      raw_token_count: 0,
+      resolved_token_count: 0,
+      linked_paths: [],
+      current_version_id: graph.latest_version?.id ?? null,
+      health_score: null,
+      health_updated_at: null,
+      file_type: 'workflow',
+      is_editable: false,
+      created_at: graph.created_at,
+      updated_at: graph.updated_at,
+      entryKind: 'workflow',
+      description: graph.description,
+      graphId: graph.id,
+    })),
+    [workflows],
+  )
+  const allHandbookEntries = useMemo<BrowserFile[]>(
+    () => [
+      ...docs.map((doc) => toBrowserEntry(doc)),
+      ...workflowEntries,
+    ],
+    [docs, workflowEntries],
+  )
+  const handbookFolderPaths = useMemo(
+    () => Array.from(new Set([
+      ...collectFolderPaths(allHandbookEntries.map((entry) => entry.path)),
+      ...projectFolders.map((folder) => folder.path),
+    ])).sort((a, b) => a.localeCompare(b)),
+    [allHandbookEntries, projectFolders],
+  )
+  const handbookSearchResults = useMemo(() => {
+    const q = fileQuery.trim().toLowerCase()
+    if (!q) return []
+    return allHandbookEntries.filter((entry) =>
+      [entry.title, entry.description, entry.path]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase()
+        .includes(q),
+    )
+  }, [allHandbookEntries, fileQuery])
+
+  function openProjectFilePath(path: string) {
+    handbookState.setCurrentFolder(path.split('/').slice(0, -1).join('/'))
+    handbookState.setRightPanel({ kind: 'file', path })
+  }
+
+  function openProjectFolderPath(path: string) {
+    handbookState.setCurrentFolder(path)
+    handbookState.setRightPanel({ kind: 'folder' })
+  }
+
+  function handleProjectFolderRename(path: string, newName: string) {
+    const segments = path.split('/').filter(Boolean)
+    const parent = segments.slice(0, -1).join('/')
+    const nextPath = parent ? `${parent}/${newName}` : newName
+    renameProjectFolder.mutate(
+      { path, new_path: nextPath },
+      {
+        onSuccess: () => {
+          if (handbookState.currentFolder === path || handbookState.currentFolder.startsWith(`${path}/`)) {
+            const suffix = handbookState.currentFolder.slice(path.length)
+            handbookState.setCurrentFolder(`${nextPath}${suffix}`)
+          }
+          if (handbookState.rightPanel.kind === 'folder') {
+            handbookState.setRightPanel({ kind: 'folder' })
+          } else if (handbookState.rightPanel.kind === 'file' && handbookState.rightPanel.path.startsWith(`${path}/`)) {
+            const suffix = handbookState.rightPanel.path.slice(path.length)
+            openProjectFilePath(`${nextPath}${suffix}`)
+          }
+        },
+      },
+    )
+  }
+
+  function handleProjectFileRename(path: string, newPath: string) {
+    renameProjectDocument.mutate(
+      { path, new_path: newPath },
+      {
+        onSuccess: (file) => {
+          if (handbookState.rightPanel.kind === 'file' && handbookState.rightPanel.path === path) {
+            openProjectFilePath(file.path)
+          }
+        },
+      },
+    )
+  }
+
+  function handleProjectWorkflowRename(graphId: string, newName: string) {
+    updateGraph.mutate({ graphId, name: newName })
+  }
+
+  function handleProjectMoveTo(target: ContextTarget) {
+    handbookState.setMovingTarget(target)
+  }
+
+  function confirmProjectDelete() {
+    if (!deleteTarget) return
+    if (deleteTarget.kind === 'file') {
+      deleteProjectDocument.mutate(deleteTarget.path, {
+        onSuccess: () => {
+          if (handbookState.rightPanel.kind === 'file' && handbookState.rightPanel.path === deleteTarget.path) {
+            handbookState.goBack()
+          }
+          setDeleteTarget(null)
+        },
+      })
+      return
+    }
+    if (deleteTarget.kind === 'folder') {
+      deleteProjectFolder.mutate(deleteTarget.path, {
+        onSuccess: () => {
+          if (handbookState.currentFolder === deleteTarget.path || handbookState.currentFolder.startsWith(`${deleteTarget.path}/`)) {
+            handbookState.setCurrentFolder(deleteTarget.path.split('/').slice(0, -1).join('/'))
+          }
+          if (handbookState.rightPanel.kind === 'folder') {
+            handbookState.setRightPanel({ kind: 'folder' })
+          } else if (handbookState.rightPanel.kind === 'file' && handbookState.rightPanel.path.startsWith(`${deleteTarget.path}/`)) {
+            handbookState.goBack()
+          }
+          setDeleteTarget(null)
+        },
+      })
+      return
+    }
+    deleteGraph.mutate(deleteTarget.graphId, {
+      onSuccess: () => setDeleteTarget(null),
+    })
+  }
+
+  function handleProjectMoveConfirm(destination: string) {
+    if (!handbookState.movingTarget) return
+    if (handbookState.movingTarget.kind === 'file') {
+      const filename = handbookState.movingTarget.path.split('/').pop() ?? ''
+      handleProjectFileRename(
+        handbookState.movingTarget.path,
+        destination ? `${destination}/${filename}` : filename,
+      )
+    } else if (handbookState.movingTarget.kind === 'workflow') {
+      updateGraph.mutate({ graphId: handbookState.movingTarget.graphId, path: destination })
+    }
+    handbookState.setMovingTarget(null)
+  }
+
+  async function handleProjectFileUpload(file: File, folder = '') {
+    const preview = await uploadProjectFile.mutateAsync({ file, folder })
+    handbookState.setRightPanel({ kind: 'upload', preview, folder })
+  }
 
   if (isLoading || !project) {
     return <div className="flex justify-center py-16"><Spinner size="lg" /></div>
@@ -279,7 +700,7 @@ export default function ProjectDetailPage() {
       title: composerForm.title.trim(),
       description: composerForm.description.trim() || undefined,
       project_id: projectId,
-      parent_task_id: composerParentId ?? undefined,
+      parent_objective_id: composerParentId ?? undefined,
       status_summary: 'New objective. Needs a first update.',
     })
     setShowObjectiveComposer(false)
@@ -288,52 +709,43 @@ export default function ProjectDetailPage() {
     setSelectedObjectiveId(objective.id)
   }
 
-  const sortedDocs = docs.slice().sort((a, b) => a.path.localeCompare(b.path))
-
   return (
     <div className="mx-auto max-w-[1400px] space-y-6 p-4 md:p-8">
-      <div className="rounded-[32px] border border-stone-200 bg-[#f6f2e8] p-6 shadow-sm">
-        <div className="flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between">
+      <input
+        ref={uploadInputRef}
+        type="file"
+        className="hidden"
+        onChange={(e) => {
+          const file = e.target.files?.[0]
+          if (file) {
+            void handleProjectFileUpload(file, handbookState.currentFolder)
+          }
+          e.target.value = ''
+        }}
+      />
+      <div>
+        <div className="flex flex-wrap items-start gap-3">
+          <h1 className="text-3xl font-semibold tracking-tight text-stone-950">{project.title}</h1>
+          <Badge variant={statusVariant(project.status)}>{project.status.replace('_', ' ')}</Badge>
+        </div>
+        <div className="mt-3 flex flex-wrap gap-4 text-xs uppercase tracking-wide text-stone-500">
+          <span>Deadline: {project.deadline ? new Date(project.deadline).toLocaleDateString() : 'None'}</span>
+          <span>{objectives.length} objectives</span>
+          <span>{project.run_count} runs</span>
+        </div>
+        <p className="mt-4 max-w-4xl text-sm leading-6 text-stone-700">{project.description}</p>
+        <div className="mt-4 flex flex-wrap items-start justify-between gap-3 border-t border-stone-200 pt-4">
           <div className="max-w-4xl">
-            <Link to="/projects" className="text-xs text-stone-500 hover:text-stone-700">Projects</Link>
-            <div className="mt-2 flex items-center gap-3">
-              <h1 className="text-3xl font-semibold tracking-tight text-stone-950">{project.title}</h1>
-              <Badge variant={statusVariant(project.status)}>{project.status.replace('_', ' ')}</Badge>
-            </div>
-            <p className="mt-3 max-w-3xl text-sm leading-6 text-stone-700">{project.objective}</p>
-            <div className="mt-4 flex flex-wrap gap-5 text-xs uppercase tracking-wide text-stone-500">
-              <span>Deadline: {project.deadline ? new Date(project.deadline).toLocaleDateString() : 'None'}</span>
-              <span>{objectives.length} objectives</span>
-              <span>{project.run_count} runs</span>
-            </div>
-          </div>
-          <div className="max-w-lg rounded-3xl border border-stone-200 bg-white p-5">
-            <p className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.22em] text-stone-500">
-              <Sparkles size={14} /> Current Status
+            <p className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.22em] text-stone-500">
+              <Sparkles size={13} /> Current Status
             </p>
-            <p className="mt-3 text-sm leading-6 text-stone-700">
+            <p className="mt-2 text-sm leading-6 text-stone-700">
               {dashboard?.latest_status_update?.summary ?? 'No project summary yet.'}
             </p>
-            <form
-              className="mt-4 space-y-3"
-              onSubmit={(e) => {
-                e.preventDefault()
-                if (!projectStatusDraft.trim()) return
-                createStatus.mutate({ summary: projectStatusDraft.trim(), author_name: 'You' }, { onSuccess: () => setProjectStatusDraft('') })
-              }}
-            >
-              <textarea
-                rows={3}
-                value={projectStatusDraft}
-                onChange={(e) => setProjectStatusDraft(e.target.value)}
-                placeholder="Write a concise project status update."
-                className="w-full rounded-2xl border border-stone-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-stone-900"
-              />
-              <Btn type="submit" size="sm" loading={createStatus.isPending}>
-                <Send size={14} /> Update Status
-              </Btn>
-            </form>
           </div>
+          <Btn size="sm" onClick={() => setShowStatusDialog(true)}>
+            <Send size={14} /> Update Status
+          </Btn>
         </div>
       </div>
 
@@ -586,118 +998,173 @@ export default function ProjectDetailPage() {
       )}
 
       {view === 'handbook' && (
-        <div className="grid gap-6 lg:grid-cols-[0.95fr_1.05fr]">
-          <Card className="rounded-[32px] border-stone-200 bg-white p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-xs uppercase tracking-[0.22em] text-stone-500">Project Files</p>
-                <p className="mt-1 text-sm text-stone-700">Project-specific notes, briefs, and decisions.</p>
-              </div>
-            </div>
-            <form
-              className="mt-5 space-y-3"
-              onSubmit={(e) => {
-                e.preventDefault()
-                if (!docPath.trim() || !docContent.trim()) return
-                createDoc.mutate(
-                  { path: docPath.trim(), content: docContent, title: docPath.trim().split('/').pop() },
-                  {
-                    onSuccess: (doc) => {
-                      setSelectedPath(doc.path)
-                      setDocPath('')
-                      setDocContent('')
-                    },
-                  },
-                )
+        <>
+          <div className="h-[760px] overflow-hidden bg-white">
+            <FileBrowserShell
+              files={allHandbookEntries}
+              folderPaths={handbookFolderPaths}
+              searchResults={handbookSearchResults}
+              searching={false}
+              fileQuery={fileQuery}
+              onFileQueryChange={setFileQuery}
+              state={handbookState}
+              onRenameFile={handleProjectFileRename}
+              onRenameWorkflow={handleProjectWorkflowRename}
+              onRenameFolder={handleProjectFolderRename}
+              onMoveTo={handleProjectMoveTo}
+              onDeleteFile={(path) => setDeleteTarget({ kind: 'file', path })}
+              onDeleteWorkflow={(graphId) => {
+                const graph = workflows.find((item) => item.id === graphId)
+                if (!graph) return
+                setDeleteTarget({ kind: 'workflow', graphId, name: graph.name })
               }}
-            >
-              <input
-                value={docPath}
-                onChange={(e) => setDocPath(e.target.value)}
-                placeholder="brief.md"
-                className="w-full rounded-xl border border-stone-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-stone-900"
-              />
-              <textarea
-                rows={8}
-                value={docContent}
-                onChange={(e) => setDocContent(e.target.value)}
-                placeholder="Write project-specific context."
-                className="w-full rounded-2xl border border-stone-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-stone-900"
-              />
-              <Btn type="submit" size="sm" loading={createDoc.isPending}>
-                <Plus size={14} /> Save File
-              </Btn>
-            </form>
-            <div className="mt-5 space-y-2">
-              {sortedDocs.length === 0 ? <p className="text-sm text-stone-500">No project files yet.</p> : sortedDocs.map((doc) => (
-                <button
-                  key={doc.id}
-                  onClick={() => setSelectedPath(doc.path)}
-                  className={`w-full rounded-2xl border px-3 py-2 text-left text-sm ${selectedPath === doc.path ? 'border-stone-900 bg-stone-900 text-white' : 'border-stone-200 bg-white hover:bg-stone-50'}`}
-                >
-                  {doc.path}
-                </button>
-              ))}
-            </div>
-          </Card>
-
-          <div className="space-y-6">
-            <Card className="rounded-[32px] border-stone-200 bg-white p-6">
-              <p className="text-xs uppercase tracking-[0.22em] text-stone-500">Selected File</p>
-              {selectedDoc ? (
-                <div className="mt-4 rounded-3xl border border-stone-200 bg-[#faf7f1] p-5">
-                  <p className="text-xs uppercase tracking-wide text-stone-500">{selectedDoc.path}</p>
-                  <pre className="mt-3 whitespace-pre-wrap text-sm text-stone-700">{selectedDoc.content}</pre>
-                </div>
-              ) : (
-                <p className="mt-4 text-sm text-stone-500">Choose a file to preview it here.</p>
+              onDeleteFolder={(path) => setDeleteTarget({ kind: 'folder', path })}
+              isBusy={
+                renameProjectDocument.isPending
+                || updateGraph.isPending
+                || renameProjectFolder.isPending
+                || deleteProjectDocument.isPending
+                || deleteProjectFolder.isPending
+                || deleteGraph.isPending
+                || uploadProjectFile.isPending
+              }
+              busyLabel={
+                renameProjectDocument.isPending
+                  ? 'Renaming…'
+                  : renameProjectFolder.isPending
+                    ? 'Renaming folder…'
+                  : updateGraph.isPending
+                    ? 'Updating workflow…'
+                    : deleteProjectDocument.isPending || deleteProjectFolder.isPending || deleteGraph.isPending
+                      ? 'Deleting…'
+                      : uploadProjectFile.isPending
+                        ? 'Uploading…'
+                      : undefined
+              }
+              renamePending={renameProjectDocument.isPending || renameProjectFolder.isPending || updateGraph.isPending}
+              onUploadClick={() => uploadInputRef.current?.click()}
+              onDrop={async (e) => {
+                e.preventDefault()
+                const file = e.dataTransfer.files[0]
+                if (file) await handleProjectFileUpload(file, handbookState.currentFolder)
+              }}
+              onNavigateFolder={openProjectFolderPath}
+              onNavigateFile={openProjectFilePath}
+              onNavigateWorkflow={(graphId) => navigate(`/graphs/${graphId}`)}
+              onFileCreated={openProjectFilePath}
+              onWorkflowCreated={(graphId) => navigate(`/graphs/${graphId}`)}
+              onUploadSaved={openProjectFilePath}
+              renderFileView={(path) => (
+                <FileEditor path={path} workspaceId={workspaceId} projectId={projectId} />
               )}
-            </Card>
-
-            <Card className="rounded-[32px] border-stone-200 bg-white p-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-xs uppercase tracking-[0.22em] text-stone-500">Project Workflows</p>
-                  <p className="mt-1 text-sm text-stone-700">Workflows here stay scoped to this project.</p>
-                </div>
-                <Workflow size={16} className="text-stone-400" />
-              </div>
-              <form
-                className="mt-5 flex gap-2"
-                onSubmit={(e) => {
-                  e.preventDefault()
-                  if (!workflowName.trim()) return
-                  createGraph.mutate(
-                    { name: workflowName.trim(), project_id: projectId },
-                    { onSuccess: (graph) => { setWorkflowName(''); navigate(`/graphs/${graph.id}`) } },
-                  )
-                }}
-              >
-                <input
-                  value={workflowName}
-                  onChange={(e) => setWorkflowName(e.target.value)}
-                  placeholder="New project workflow"
-                  className="flex-1 rounded-xl border border-stone-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-stone-900"
+              renderWorkflowView={() => null}
+              renderNewFilePanel={(folder, onCreate, onCancel) => (
+                <ProjectNewFilePanel
+                  folder={folder}
+                  onCreate={onCreate}
+                  onCancel={onCancel}
+                  isPending={createProjectDocument.isPending}
+                  onSubmit={async (path) => {
+                    await createProjectDocument.mutateAsync({
+                      path,
+                      title: path.split('/').pop(),
+                      content: '',
+                    })
+                  }}
                 />
-                <Btn type="submit" size="sm" loading={createGraph.isPending}>
-                  <Plus size={14} /> Add
-                </Btn>
-              </form>
-              <div className="mt-4 space-y-2">
-                {workflows.length === 0 ? <p className="text-sm text-stone-500">No project workflows yet.</p> : workflows.map((graph) => (
-                  <button
-                    key={graph.id}
-                    onClick={() => navigate(`/graphs/${graph.id}`)}
-                    className="w-full rounded-2xl border border-stone-200 px-4 py-3 text-left hover:bg-stone-50"
-                  >
-                    <p className="font-medium text-stone-900">{graph.name}</p>
-                    <p className="mt-1 text-xs text-stone-500">{graph.run_count} run(s)</p>
-                  </button>
-                ))}
-              </div>
-            </Card>
+              )}
+              renderNewWorkflowPanel={(folder, onCreate, onCancel) => (
+                <NewWorkflowPanel
+                  folder={folder}
+                  projectId={projectId}
+                  onCreate={onCreate}
+                  onCancel={onCancel}
+                />
+              )}
+              renderNewFolderPanel={(parentPath, onDone, onCancel) => (
+                <ProjectNewFolderPanel
+                  parentPath={parentPath}
+                  onCreate={(path) => {
+                    openProjectFolderPath(path)
+                    onDone()
+                  }}
+                  onCancel={onCancel}
+                  isPending={createProjectFolder.isPending}
+                  onSubmit={async (path) => {
+                    await createProjectFolder.mutateAsync(path)
+                  }}
+                />
+              )}
+              renderUploadPanel={(preview, onSaved, onCancel) => (
+                <UploadPreviewPanel
+                  preview={preview}
+                  onSaved={onSaved}
+                  onCancel={onCancel}
+                  onSave={async (payload) => {
+                    await createProjectDocument.mutateAsync(payload)
+                  }}
+                  isSaving={createProjectDocument.isPending}
+                  saveLabel="Save to Project"
+                />
+              )}
+              allowNewFolder
+              allowUpload
+              allowFolderRename
+              allowFolderMove={false}
+              allowFolderDelete
+            />
           </div>
-        </div>
+
+          {handbookState.movingTarget ? (
+            <MoveToDialog
+              title={`Move "${handbookState.movingTarget.path.split('/').pop()}"`}
+              movingTargetKind={handbookState.movingTarget.kind}
+              movingTargetPath={handbookState.movingTarget.path}
+              browserFiles={allHandbookEntries}
+              folderPaths={handbookFolderPaths}
+              onConfirm={handleProjectMoveConfirm}
+              onCancel={() => handbookState.setMovingTarget(null)}
+              isPending={renameProjectDocument.isPending || updateGraph.isPending}
+            />
+          ) : null}
+
+          {deleteTarget ? (
+            <ConfirmDialog
+              title={
+                deleteTarget.kind === 'file'
+                  ? 'Delete File'
+                  : deleteTarget.kind === 'folder'
+                    ? 'Delete Folder'
+                    : 'Archive or Delete Workflow'
+              }
+              message={
+                deleteTarget.kind === 'file'
+                  ? `Delete "${deleteTarget.path}"?`
+                  : deleteTarget.kind === 'folder'
+                    ? `Delete folder "${deleteTarget.path}" and its contents?`
+                    : `Archive or delete "${deleteTarget.name}"?`
+              }
+              warning={
+                deleteTarget.kind === 'file'
+                  ? 'This action cannot be undone.'
+                  : deleteTarget.kind === 'folder'
+                    ? 'All files and sub-folders inside this folder will be deleted.'
+                    : 'Workflows with runs are archived. Workflows without runs are deleted.'
+              }
+              confirmLabel={deleteTarget.kind === 'workflow' ? 'Continue' : 'Delete'}
+              confirmVariant="danger"
+              isPending={
+                deleteTarget.kind === 'file'
+                  ? deleteProjectDocument.isPending
+                  : deleteTarget.kind === 'folder'
+                    ? deleteProjectFolder.isPending
+                    : deleteGraph.isPending
+              }
+              onCancel={() => setDeleteTarget(null)}
+              onConfirm={confirmProjectDelete}
+            />
+          ) : null}
+        </>
       )}
 
       {view === 'channel' && (
@@ -803,6 +1270,44 @@ export default function ProjectDetailPage() {
               <div className="flex justify-end gap-2">
                 <Btn type="button" variant="ghost" size="sm" onClick={() => setShowObjectiveComposer(false)}>Cancel</Btn>
                 <Btn type="submit" size="sm" loading={createObjective.isPending}>Create Objective</Btn>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {showStatusDialog && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 p-4">
+          <div className="w-full max-w-xl rounded-[32px] bg-white p-6 shadow-2xl">
+            <h2 className="text-xl font-semibold text-stone-950">Update Project Status</h2>
+            <form
+              className="mt-5 space-y-4"
+              onSubmit={(e) => {
+                e.preventDefault()
+                if (!projectStatusDraft.trim()) return
+                createStatus.mutate(
+                  { summary: projectStatusDraft.trim(), author_name: 'You' },
+                  {
+                    onSuccess: () => {
+                      setProjectStatusDraft('')
+                      setShowStatusDialog(false)
+                    },
+                  },
+                )
+              }}
+            >
+              <textarea
+                rows={6}
+                value={projectStatusDraft}
+                onChange={(e) => setProjectStatusDraft(e.target.value)}
+                placeholder="Write a concise project status update."
+                className="w-full rounded-2xl border border-stone-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-stone-900"
+              />
+              <div className="flex justify-end gap-2">
+                <Btn type="button" variant="ghost" size="sm" onClick={() => setShowStatusDialog(false)}>Cancel</Btn>
+                <Btn type="submit" size="sm" loading={createStatus.isPending}>
+                  <Send size={14} /> Save Status
+                </Btn>
               </div>
             </form>
           </div>

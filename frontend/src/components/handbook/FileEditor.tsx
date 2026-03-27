@@ -4,6 +4,15 @@
  */
 import { useState, useEffect } from 'react'
 import {
+  useProjectDocument,
+  useProjectDocumentHealth,
+  useProjectDocumentHistory,
+  useProjectDocumentSuggestions,
+  useRestoreProjectDocument,
+  useSummarizeProjectDocumentDiff,
+  useUpdateProjectDocument,
+} from '@/api/projects'
+import {
   useKnowledgeFile,
   useKnowledgeHistory,
   useKnowledgeHealth,
@@ -23,9 +32,23 @@ import FileViewer from '@/components/handbook/FileViewer'
 
 type Tab = 'editor' | 'history' | 'health'
 
-function HealthPanel({ path }: { path: string }) {
-  const { data: health, isLoading: hLoading } = useKnowledgeHealth(path)
-  const { data: sugg, isLoading: sLoading } = useKnowledgeSuggestions(path)
+function HealthPanel({
+  path,
+  workspaceId,
+  projectId,
+}: {
+  path: string
+  workspaceId?: string
+  projectId?: string
+}) {
+  const knowledgeHealth = useKnowledgeHealth(!projectId ? path : null)
+  const projectHealth = useProjectDocumentHealth(workspaceId ?? '', projectId ?? '', projectId ? path : null)
+  const knowledgeSuggestions = useKnowledgeSuggestions(!projectId ? path : null)
+  const projectSuggestions = useProjectDocumentSuggestions(workspaceId ?? '', projectId ?? '', projectId ? path : null)
+  const health = projectId ? projectHealth.data : knowledgeHealth.data
+  const sugg = projectId ? projectSuggestions.data : knowledgeSuggestions.data
+  const hLoading = projectId ? projectHealth.isLoading : knowledgeHealth.isLoading
+  const sLoading = projectId ? projectSuggestions.isLoading : knowledgeSuggestions.isLoading
   const score = health?.health_score ?? null
 
   return (
@@ -60,9 +83,22 @@ function HealthPanel({ path }: { path: string }) {
   )
 }
 
-function HistoryPanel({ path }: { path: string }) {
-  const { data: versions = [], isLoading } = useKnowledgeHistory(path)
-  const restore = useRestoreKnowledgeFile(path)
+function HistoryPanel({
+  path,
+  workspaceId,
+  projectId,
+}: {
+  path: string
+  workspaceId?: string
+  projectId?: string
+}) {
+  const knowledgeHistory = useKnowledgeHistory(!projectId ? path : null)
+  const projectHistory = useProjectDocumentHistory(workspaceId ?? '', projectId ?? '', projectId ? path : null)
+  const restoreKnowledge = useRestoreKnowledgeFile(path)
+  const restoreProject = useRestoreProjectDocument(workspaceId ?? '', projectId ?? '', path)
+  const versions = (projectId ? projectHistory.data : knowledgeHistory.data) ?? []
+  const isLoading = projectId ? projectHistory.isLoading : knowledgeHistory.isLoading
+  const restore = projectId ? restoreProject : restoreKnowledge
   if (isLoading) return <Spinner />
   if (!versions.length) return <p className="text-sm text-gray-400">No versions yet.</p>
   return (
@@ -86,12 +122,22 @@ function HistoryPanel({ path }: { path: string }) {
 
 interface Props {
   path: string
+  workspaceId?: string
+  projectId?: string
 }
 
-export default function FileEditor({ path }: Props) {
-  const { data: file, isLoading, error } = useKnowledgeFile(path || null)
-  const update = useUpdateKnowledgeFile(path)
-  const summarizeDiff = useSummarizeKnowledgeDiff(path)
+export default function FileEditor({ path, workspaceId, projectId }: Props) {
+  const knowledgeFile = useKnowledgeFile(!projectId ? path || null : null)
+  const projectFile = useProjectDocument(workspaceId ?? '', projectId ?? '', projectId ? path : '')
+  const updateKnowledge = useUpdateKnowledgeFile(path)
+  const updateProject = useUpdateProjectDocument(workspaceId ?? '', projectId ?? '', path)
+  const summarizeKnowledgeDiff = useSummarizeKnowledgeDiff(path)
+  const summarizeProjectDiff = useSummarizeProjectDocumentDiff(workspaceId ?? '', projectId ?? '', path)
+  const file = projectId ? projectFile.data : knowledgeFile.data
+  const isLoading = projectId ? projectFile.isLoading : knowledgeFile.isLoading
+  const error = projectId ? projectFile.error : knowledgeFile.error
+  const update = projectId ? updateProject : updateKnowledge
+  const summarizeDiff = projectId ? summarizeProjectDiff : summarizeKnowledgeDiff
 
   const [content, setContent] = useState('')
   const [summary, setSummary] = useState('')
@@ -118,9 +164,12 @@ export default function FileEditor({ path }: Props) {
   if (error) return <div className="p-6 text-red-500 text-sm">File not found.</div>
   if (!file) return null
 
+  const isEditable = 'is_editable' in file ? file.is_editable : true
+  const fileType = 'file_type' in file ? file.file_type : 'md'
+
   // Binary view-only files (PDF, DOCX, image) bypass the editor entirely
-  if (!file.is_editable) {
-    return <FileViewer path={file.path} file_type={file.file_type} title={file.title} />
+  if (!isEditable) {
+    return <FileViewer path={file.path} file_type={fileType} title={file.title} />
   }
 
   const tokenCount = file.raw_token_count
@@ -206,8 +255,8 @@ export default function FileEditor({ path }: Props) {
             )}
           </div>
         )}
-        {tab === 'history' && <HistoryPanel path={path} />}
-        {tab === 'health' && <HealthPanel path={path} />}
+        {tab === 'history' && <HistoryPanel path={path} workspaceId={workspaceId} projectId={projectId} />}
+        {tab === 'health' && <HealthPanel path={path} workspaceId={workspaceId} projectId={projectId} />}
       </div>
     </div>
   )

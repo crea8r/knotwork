@@ -16,7 +16,7 @@ class Project(Base):
     id: Mapped[UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid4)
     workspace_id: Mapped[UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("workspaces.id"), nullable=False)
     title: Mapped[str] = mapped_column(String(200), nullable=False)
-    objective: Mapped[str] = mapped_column(Text, nullable=False)
+    description: Mapped[str] = mapped_column(Text, nullable=False)
     status: Mapped[str] = mapped_column(String(50), nullable=False, default="open")
     deadline: Mapped[Date | None] = mapped_column(Date, nullable=True)
     created_at: Mapped[DateTime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
@@ -37,13 +37,13 @@ class ProjectStatusUpdate(Base):
     created_at: Mapped[DateTime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
 
-class Task(Base):
-    __tablename__ = "tasks"
+class Objective(Base):
+    __tablename__ = "objectives"
 
     id: Mapped[UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid4)
     workspace_id: Mapped[UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("workspaces.id"), nullable=False)
     project_id: Mapped[UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("projects.id"), nullable=True)
-    parent_task_id: Mapped[UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("tasks.id"), nullable=True)
+    parent_objective_id: Mapped[UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("objectives.id"), nullable=True)
     code: Mapped[str | None] = mapped_column(String(20), nullable=True)
     title: Mapped[str] = mapped_column(String(200), nullable=False)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)

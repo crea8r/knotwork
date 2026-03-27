@@ -5,7 +5,7 @@
  */
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { useKnowledgeFiles, useSearchKnowledgeFiles, useUploadFile, useUploadRawFile, useRenameKnowledgeFile, useDeleteKnowledgeFile } from '@/api/knowledge'
+import { useKnowledgeFiles, useSearchKnowledgeFiles, useUploadFile, useUploadRawFile, useRenameKnowledgeFile, useDeleteKnowledgeFile, useCreateKnowledgeFile } from '@/api/knowledge'
 import { useDeleteGraph, useGraphs, useUpdateGraph } from '@/api/graphs'
 import { useKnowledgeFolders, useDeleteFolder, useRenameFolder } from '@/api/folders'
 import { useChannels, useCreateChannel } from '@/api/channels'
@@ -50,6 +50,7 @@ export default function HandbookPage() {
   const deleteGraph = useDeleteGraph(workspaceId)
   const renameFile = useRenameKnowledgeFile()
   const deleteFile = useDeleteKnowledgeFile()
+  const createFile = useCreateKnowledgeFile()
   const uploadMutation = useUploadFile()
   const uploadRawMutation = useUploadRawFile()
 
@@ -307,7 +308,17 @@ export default function HandbookPage() {
         renderNewFolderPanel={(parentPath, onDone, onCancel) => (
           <NewFolderPanel parentPath={parentPath} onCreate={() => onDone()} onCancel={onCancel} />
         )}
-        renderUploadPanel={(preview, onSaved, onCancel) => <UploadPreviewPanel preview={preview} onSaved={onSaved} onCancel={onCancel} />}
+        renderUploadPanel={(preview, onSaved, onCancel) => (
+          <UploadPreviewPanel
+            preview={preview}
+            onSaved={onSaved}
+            onCancel={onCancel}
+            onSave={async (payload) => {
+              await createFile.mutateAsync(payload)
+            }}
+            isSaving={createFile.isPending}
+          />
+        )}
         sidePanel={
           <HandbookChatPanel
             workspaceId={workspaceId}

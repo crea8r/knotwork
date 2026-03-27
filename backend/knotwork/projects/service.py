@@ -1,29 +1,42 @@
 from __future__ import annotations
 
+import re
 from uuid import UUID
 
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from knotwork.channels.models import Channel
 from knotwork.graphs.models import Graph
-from knotwork.knowledge.models import KnowledgeFile
+from knotwork.knowledge.models import KnowledgeFile, KnowledgeFolder
+from knotwork.knowledge.change_summary import generate_change_summary
+from knotwork.knowledge.health import compute_health_score
+from knotwork.knowledge.suggestions import generate_suggestions
 from knotwork.knowledge.storage import get_storage_adapter
-from knotwork.projects.models import Project, ProjectStatusUpdate, Task
+from knotwork.projects.models import Objective, Project, ProjectStatusUpdate
 from knotwork.runs.models import Run
 from knotwork.projects.schemas import (
+    ObjectiveCreate,
+    ObjectiveUpdate,
     ProjectCreate,
     ProjectDocumentCreate,
+    ProjectDocumentRename,
     ProjectDocumentUpdate,
     ProjectUpdate,
     ProjectStatusUpdateCreate,
-    TaskCreate,
-    TaskUpdate,
 )
 
 
 def _project_storage_key(workspace_id: UUID, project_id: UUID) -> str:
     return f"{workspace_id}:project:{project_id}"
+
+
+def _count_tokens(content: str) -> int:
+    return max(1, len(content) // 4)
+
+
+def _extract_links(content: str) -> list[str]:
+    return re.findall(r"\[\[([^\]]+)\]\]", content)
 
 
 async def _get_project_channel_id(db: AsyncSession, project_id: UUID) -> UUID | None:
@@ -33,9 +46,9 @@ async def _get_project_channel_id(db: AsyncSession, project_id: UUID) -> UUID | 
     return result.scalar_one_or_none()
 
 
-async def _get_task_channel_id(db: AsyncSession, task_id: UUID) -> UUID | None:
+async def _get_objective_channel_id(db: AsyncSession, objective_id: UUID) -> UUID | None:
     result = await db.execute(
-        select(Channel.id).where(Channel.task_id == task_id, Channel.channel_type == "task")
+        select(Channel.id).where(Channel.objective_id == objective_id, Channel.channel_type == "objective")
     )
     return result.scalar_one_or_none()
 
@@ -49,17 +62,17 @@ async def list_projects(db: AsyncSession, workspace_id: UUID) -> list[dict]:
         return []
     project_ids = [p.id for p in projects]
 
-    task_counts_q = await db.execute(
-        select(Task.project_id, func.count(Task.id))
-        .where(Task.project_id.in_(project_ids))
-        .group_by(Task.project_id)
+    objective_counts_q = await db.execute(
+        select(Objective.project_id, func.count(Objective.id))
+        .where(Objective.project_id.in_(project_ids))
+        .group_by(Objective.project_id)
     )
-    task_counts = {row[0]: int(row[1]) for row in task_counts_q.all()}
+    objective_counts = {row[0]: int(row[1]) for row in objective_counts_q.all()}
 
     open_counts_q = await db.execute(
-        select(Task.project_id, func.count(Task.id))
-        .where(Task.project_id.in_(project_ids), Task.status.in_(("open", "in_progress")))
-        .group_by(Task.project_id)
+        select(Objective.project_id, func.count(Objective.id))
+        .where(Objective.project_id.in_(project_ids), Objective.status.in_(("open", "in_progress")))
+        .group_by(Objective.project_id)
     )
     open_counts = {row[0]: int(row[1]) for row in open_counts_q.all()}
 
@@ -84,8 +97,8 @@ async def list_projects(db: AsyncSession, workspace_id: UUID) -> list[dict]:
         out.append({
             **{c.key: getattr(project, c.key) for c in project.__table__.columns},
             "project_channel_id": await _get_project_channel_id(db, project.id),
-            "task_count": task_counts.get(project.id, 0),
-            "open_task_count": open_counts.get(project.id, 0),
+            "objective_count": objective_counts.get(project.id, 0),
+            "open_objective_count": open_counts.get(project.id, 0),
             "run_count": run_counts.get(project.id, 0),
             "latest_status_update": latest_updates.get(project.id),
         })
@@ -103,7 +116,7 @@ async def create_project(db: AsyncSession, workspace_id: UUID, data: ProjectCrea
     project = Project(
         workspace_id=workspace_id,
         title=data.title.strip(),
-        objective=data.objective.strip(),
+        description=data.description.strip(),
         status=data.status,
         deadline=data.deadline,
     )
@@ -133,63 +146,63 @@ async def update_project(db: AsyncSession, workspace_id: UUID, project_id: UUID,
     return project
 
 
-async def list_tasks(db: AsyncSession, workspace_id: UUID, project_id: UUID | None = None) -> list[dict]:
-    stmt = select(Task).where(Task.workspace_id == workspace_id)
+async def list_objectives(db: AsyncSession, workspace_id: UUID, project_id: UUID | None = None) -> list[dict]:
+    stmt = select(Objective).where(Objective.workspace_id == workspace_id)
     if project_id is None:
-        stmt = stmt.where(Task.project_id.is_(None))
+        stmt = stmt.where(Objective.project_id.is_(None))
     else:
-        stmt = stmt.where(Task.project_id == project_id)
-    rows = await db.execute(stmt.order_by(Task.updated_at.desc()))
-    tasks = list(rows.scalars())
-    if not tasks:
+        stmt = stmt.where(Objective.project_id == project_id)
+    rows = await db.execute(stmt.order_by(Objective.updated_at.desc()))
+    objectives = list(rows.scalars())
+    if not objectives:
         return []
-    task_ids = [t.id for t in tasks]
+    objective_ids = [objective.id for objective in objectives]
     runs_q = await db.execute(
-        select(Run.task_id, func.count(Run.id), func.max(Run.created_at))
-        .where(Run.task_id.in_(task_ids))
-        .group_by(Run.task_id)
+        select(Run.objective_id, func.count(Run.id), func.max(Run.created_at))
+        .where(Run.objective_id.in_(objective_ids))
+        .group_by(Run.objective_id)
     )
     run_counts = {row[0]: int(row[1]) for row in runs_q.all()}
 
     latest_run_rows = await db.execute(
         select(Run)
-        .where(Run.task_id.in_(task_ids))
+        .where(Run.objective_id.in_(objective_ids))
         .order_by(Run.created_at.desc())
     )
-    latest_by_task: dict[UUID, Run] = {}
+    latest_by_objective: dict[UUID, Run] = {}
     for run in latest_run_rows.scalars():
-        if run.task_id is not None:
-            latest_by_task.setdefault(run.task_id, run)
+        if run.objective_id is not None:
+            latest_by_objective.setdefault(run.objective_id, run)
 
     out = []
-    for task in tasks:
+    for objective in objectives:
         out.append({
-            **{c.key: getattr(task, c.key) for c in task.__table__.columns},
-            "channel_id": await _get_task_channel_id(db, task.id),
-            "run_count": run_counts.get(task.id, 0),
-            "latest_run_id": latest_by_task.get(task.id).id if task.id in latest_by_task else None,
+            **{c.key: getattr(objective, c.key) for c in objective.__table__.columns},
+            "channel_id": await _get_objective_channel_id(db, objective.id),
+            "run_count": run_counts.get(objective.id, 0),
+            "latest_run_id": latest_by_objective.get(objective.id).id if objective.id in latest_by_objective else None,
         })
     return out
 
 
-async def get_task(db: AsyncSession, workspace_id: UUID, task_id: UUID) -> dict | None:
-    task = await db.get(Task, task_id)
-    if task is None or task.workspace_id != workspace_id:
+async def get_objective(db: AsyncSession, workspace_id: UUID, objective_id: UUID) -> dict | None:
+    objective = await db.get(Objective, objective_id)
+    if objective is None or objective.workspace_id != workspace_id:
         return None
-    rows = await list_tasks(db, workspace_id, task.project_id)
+    rows = await list_objectives(db, workspace_id, objective.project_id)
     for row in rows:
-        if str(row["id"]) == str(task_id):
+        if str(row["id"]) == str(objective_id):
             return row
     return None
 
 
-async def create_task(db: AsyncSession, workspace_id: UUID, data: TaskCreate) -> Task:
+async def create_objective(db: AsyncSession, workspace_id: UUID, data: ObjectiveCreate) -> Objective:
     if data.project_id is not None:
         project = await get_project(db, workspace_id, data.project_id)
         if project is None:
             raise ValueError("Project not found")
-    if data.parent_task_id is not None:
-        parent = await db.get(Task, data.parent_task_id)
+    if data.parent_objective_id is not None:
+        parent = await db.get(Objective, data.parent_objective_id)
         if parent is None or parent.workspace_id != workspace_id:
             raise ValueError("Parent objective not found")
         if parent.project_id != data.project_id:
@@ -200,12 +213,12 @@ async def create_task(db: AsyncSession, workspace_id: UUID, data: TaskCreate) ->
         if graph is None or graph.workspace_id != workspace_id:
             raise ValueError("Workflow not found")
         if graph.project_id is not None and data.project_id != graph.project_id:
-            raise ValueError("Project workflow can only spawn tasks into its own project")
+            raise ValueError("Project workflow can only spawn objectives into its own project")
 
-    task = Task(
+    objective = Objective(
         workspace_id=workspace_id,
         project_id=data.project_id,
-        parent_task_id=data.parent_task_id,
+        parent_objective_id=data.parent_objective_id,
         code=(data.code or "").strip() or None,
         title=data.title.strip(),
         description=(data.description or "").strip() or None,
@@ -219,45 +232,45 @@ async def create_task(db: AsyncSession, workspace_id: UUID, data: TaskCreate) ->
         origin_type=data.origin_type,
         origin_graph_id=data.origin_graph_id,
     )
-    db.add(task)
+    db.add(objective)
     await db.flush()
     db.add(
         Channel(
             workspace_id=workspace_id,
-            name=f"objective: {task.code or task.title}",
-            channel_type="task",
-            project_id=task.project_id,
-            task_id=task.id,
+            name=f"objective: {objective.code or objective.title}",
+            channel_type="objective",
+            project_id=objective.project_id,
+            objective_id=objective.id,
         )
     )
     await db.commit()
-    await db.refresh(task)
-    return task
+    await db.refresh(objective)
+    return objective
 
 
-async def update_task(db: AsyncSession, workspace_id: UUID, task_id: UUID, data: TaskUpdate) -> Task | None:
-    task = await db.get(Task, task_id)
-    if task is None or task.workspace_id != workspace_id:
+async def update_objective(db: AsyncSession, workspace_id: UUID, objective_id: UUID, data: ObjectiveUpdate) -> Objective | None:
+    objective = await db.get(Objective, objective_id)
+    if objective is None or objective.workspace_id != workspace_id:
         return None
     payload = data.model_dump(exclude_unset=True)
     if "project_id" in payload and payload["project_id"] is not None:
         project = await get_project(db, workspace_id, payload["project_id"])
         if project is None:
             raise ValueError("Project not found")
-        if task.origin_graph_id is not None:
-            graph = await db.get(Graph, task.origin_graph_id)
+        if objective.origin_graph_id is not None:
+            graph = await db.get(Graph, objective.origin_graph_id)
             if graph and graph.project_id is not None and graph.project_id != payload["project_id"]:
-                raise ValueError("Task spawned from a project workflow cannot move to another project")
-    if "parent_task_id" in payload:
-        parent_task_id = payload["parent_task_id"]
-        if parent_task_id is not None:
-            parent = await db.get(Task, parent_task_id)
+                raise ValueError("Objective spawned from a project workflow cannot move to another project")
+    if "parent_objective_id" in payload:
+        parent_objective_id = payload["parent_objective_id"]
+        if parent_objective_id is not None:
+            parent = await db.get(Objective, parent_objective_id)
             if parent is None or parent.workspace_id != workspace_id:
                 raise ValueError("Parent objective not found")
-            target_project_id = payload.get("project_id", task.project_id)
+            target_project_id = payload.get("project_id", objective.project_id)
             if parent.project_id != target_project_id:
                 raise ValueError("Parent objective must belong to the same project")
-            if str(parent.id) == str(task.id):
+            if str(parent.id) == str(objective.id):
                 raise ValueError("Objective cannot be its own parent")
     if "progress_percent" in payload and payload["progress_percent"] is not None:
         payload["progress_percent"] = max(0, min(100, payload["progress_percent"]))
@@ -267,18 +280,16 @@ async def update_task(db: AsyncSession, workspace_id: UUID, task_id: UUID, data:
         if key in payload:
             payload[key] = (payload[key] or "").strip() or None
     for field, value in payload.items():
-        setattr(task, field, value)
-    await db.execute(
-        select(Channel).where(Channel.task_id == task.id)
-    )
-    result = await db.execute(select(Channel).where(Channel.task_id == task.id))
+        setattr(objective, field, value)
+    result = await db.execute(select(Channel).where(Channel.objective_id == objective.id))
     channel = result.scalar_one_or_none()
     if channel is not None:
-        channel.project_id = task.project_id
-        channel.name = f"objective: {task.code or task.title}"
+        channel.project_id = objective.project_id
+        channel.name = f"objective: {objective.code or objective.title}"
+        channel.channel_type = "objective"
     await db.commit()
-    await db.refresh(task)
-    return task
+    await db.refresh(objective)
+    return objective
 
 
 async def list_project_documents(db: AsyncSession, workspace_id: UUID, project_id: UUID) -> list[KnowledgeFile]:
@@ -288,6 +299,112 @@ async def list_project_documents(db: AsyncSession, workspace_id: UUID, project_i
         .order_by(KnowledgeFile.path.asc())
     )
     return list(result.scalars())
+
+
+async def list_project_folders(db: AsyncSession, workspace_id: UUID, project_id: UUID) -> list[KnowledgeFolder]:
+    result = await db.execute(
+        select(KnowledgeFolder)
+        .where(KnowledgeFolder.workspace_id == workspace_id, KnowledgeFolder.project_id == project_id)
+        .order_by(KnowledgeFolder.path.asc())
+    )
+    return list(result.scalars())
+
+
+async def create_project_folder(db: AsyncSession, workspace_id: UUID, project_id: UUID, path: str) -> KnowledgeFolder:
+    result = await db.execute(
+        select(KnowledgeFolder).where(
+            KnowledgeFolder.workspace_id == workspace_id,
+            KnowledgeFolder.project_id == project_id,
+            KnowledgeFolder.path == path,
+        )
+    )
+    folder = result.scalar_one_or_none()
+    if folder is not None:
+        return folder
+    folder = KnowledgeFolder(workspace_id=workspace_id, project_id=project_id, path=path)
+    db.add(folder)
+    await db.commit()
+    await db.refresh(folder)
+    return folder
+
+
+async def rename_project_folder(
+    db: AsyncSession,
+    workspace_id: UUID,
+    project_id: UUID,
+    old_path: str,
+    new_path: str,
+) -> None:
+    adapter = get_storage_adapter()
+    prefix = old_path + "/"
+
+    files_result = await db.execute(
+        select(KnowledgeFile).where(
+            KnowledgeFile.workspace_id == workspace_id,
+            KnowledgeFile.project_id == project_id,
+        )
+    )
+    for file in files_result.scalars().all():
+        if file.path.startswith(prefix):
+            new_file_path = new_path + "/" + file.path[len(prefix):]
+            try:
+                await adapter.move(_project_storage_key(workspace_id, project_id), file.path, new_file_path, "system")
+            except Exception:
+                pass
+            file.path = new_file_path
+
+    folders_result = await db.execute(
+        select(KnowledgeFolder).where(
+            KnowledgeFolder.workspace_id == workspace_id,
+            KnowledgeFolder.project_id == project_id,
+        )
+    )
+    for folder in folders_result.scalars().all():
+        if folder.path == old_path:
+            folder.path = new_path
+        elif folder.path.startswith(prefix):
+            folder.path = new_path + "/" + folder.path[len(prefix):]
+
+    await db.commit()
+
+
+async def delete_project_folder(db: AsyncSession, workspace_id: UUID, project_id: UUID, path: str) -> None:
+    adapter = get_storage_adapter()
+    prefix = path + "/"
+
+    files_result = await db.execute(
+        select(KnowledgeFile).where(
+            KnowledgeFile.workspace_id == workspace_id,
+            KnowledgeFile.project_id == project_id,
+        )
+    )
+    for file in files_result.scalars().all():
+        if file.path == path or file.path.startswith(prefix):
+            try:
+                await adapter.delete(_project_storage_key(workspace_id, project_id), file.path)
+            except Exception:
+                pass
+            await db.delete(file)
+
+    folders_result = await db.execute(
+        select(KnowledgeFolder).where(
+            KnowledgeFolder.workspace_id == workspace_id,
+            KnowledgeFolder.project_id == project_id,
+        )
+    )
+    paths_to_delete = [
+        row.path for row in folders_result.scalars().all()
+        if row.path == path or row.path.startswith(prefix)
+    ]
+    if paths_to_delete:
+        await db.execute(
+            delete(KnowledgeFolder).where(
+                KnowledgeFolder.workspace_id == workspace_id,
+                KnowledgeFolder.project_id == project_id,
+                KnowledgeFolder.path.in_(paths_to_delete),
+            )
+        )
+    await db.commit()
 
 
 async def get_project_document(db: AsyncSession, workspace_id: UUID, project_id: UUID, path: str) -> KnowledgeFile | None:
@@ -351,9 +468,94 @@ async def update_project_document(
     return file
 
 
+async def rename_project_document(
+    db: AsyncSession, workspace_id: UUID, project_id: UUID, path: str, data: ProjectDocumentRename
+) -> KnowledgeFile:
+    file = await get_project_document(db, workspace_id, project_id, path)
+    if file is None:
+        raise FileNotFoundError(path)
+    existing = await get_project_document(db, workspace_id, project_id, data.new_path)
+    if existing is not None and existing.id != file.id:
+        raise ValueError(f'File "{data.new_path}" already exists')
+    adapter = get_storage_adapter()
+    version_id = await adapter.move(
+        _project_storage_key(workspace_id, project_id),
+        path,
+        data.new_path,
+        "system",
+    )
+    file.path = data.new_path
+    file.current_version_id = version_id
+    await db.commit()
+    await db.refresh(file)
+    return file
+
+
+async def delete_project_document(db: AsyncSession, workspace_id: UUID, project_id: UUID, path: str) -> None:
+    file = await get_project_document(db, workspace_id, project_id, path)
+    if file is None:
+        raise FileNotFoundError(path)
+    adapter = get_storage_adapter()
+    await adapter.delete(_project_storage_key(workspace_id, project_id), path)
+    await db.delete(file)
+    await db.commit()
+
+
 async def get_project_document_content(workspace_id: UUID, project_id: UUID, path: str):
     adapter = get_storage_adapter()
     return await adapter.read(_project_storage_key(workspace_id, project_id), path)
+
+
+async def get_project_document_history(workspace_id: UUID, project_id: UUID, path: str):
+    adapter = get_storage_adapter()
+    return await adapter.history(_project_storage_key(workspace_id, project_id), path)
+
+
+async def restore_project_document(
+    db: AsyncSession, workspace_id: UUID, project_id: UUID, path: str, version_id: str, restored_by: str
+) -> KnowledgeFile:
+    adapter = get_storage_adapter()
+    new_version_id = await adapter.restore(_project_storage_key(workspace_id, project_id), path, version_id, restored_by)
+    file = await get_project_document(db, workspace_id, project_id, path)
+    if file is None:
+        raise FileNotFoundError(path)
+    fc = await adapter.read(_project_storage_key(workspace_id, project_id), path)
+    file.raw_token_count = _count_tokens(fc.content)
+    file.resolved_token_count = file.raw_token_count
+    file.linked_paths = _extract_links(fc.content)
+    file.current_version_id = new_version_id
+    await db.commit()
+    await db.refresh(file)
+    return file
+
+
+async def summarize_project_document_diff(
+    db: AsyncSession, workspace_id: UUID, project_id: UUID, path: str, content: str
+) -> str:
+    file = await get_project_document(db, workspace_id, project_id, path)
+    if file is None:
+        raise FileNotFoundError(path)
+    adapter = get_storage_adapter()
+    fc = await adapter.read(_project_storage_key(workspace_id, project_id), path)
+    return await generate_change_summary(path, fc.content, content)
+
+
+async def get_project_document_health(
+    db: AsyncSession, workspace_id: UUID, project_id: UUID, path: str
+) -> float:
+    file = await get_project_document(db, workspace_id, project_id, path)
+    if file is None:
+        raise FileNotFoundError(path)
+    return await compute_health_score(file.id, db)
+
+
+async def get_project_document_suggestions(
+    db: AsyncSession, workspace_id: UUID, project_id: UUID, path: str
+) -> list[str]:
+    file = await get_project_document(db, workspace_id, project_id, path)
+    if file is None:
+        raise FileNotFoundError(path)
+    return await generate_suggestions(file.id, db)
 
 
 async def render_project_context(db: AsyncSession, workspace_id: UUID, project_id: UUID | None) -> str:
@@ -407,7 +609,7 @@ async def get_project_dashboard(db: AsyncSession, workspace_id: UUID, project_id
         return None
     projects = await list_projects(db, workspace_id)
     project_row = next((row for row in projects if str(row["id"]) == str(project_id)), None)
-    tasks = await list_tasks(db, workspace_id, project_id)
+    objectives = await list_objectives(db, workspace_id, project_id)
     recent_runs_q = await db.execute(
         select(Run)
         .where(Run.workspace_id == workspace_id, Run.project_id == project_id)
@@ -418,11 +620,11 @@ async def get_project_dashboard(db: AsyncSession, workspace_id: UUID, project_id
         {c.key: getattr(run, c.key) for c in run.__table__.columns}
         for run in recent_runs_q.scalars()
     ]
-    blocked_tasks = [task for task in tasks if task["status"] == "blocked"]
+    blocked_objectives = [objective for objective in objectives if objective["status"] == "blocked"]
     return {
         "project": project_row,
-        "tasks": tasks,
+        "objectives": objectives,
         "recent_runs": recent_runs,
-        "blocked_tasks": blocked_tasks,
+        "blocked_objectives": blocked_objectives,
         "latest_status_update": project_row["latest_status_update"] if project_row else None,
     }

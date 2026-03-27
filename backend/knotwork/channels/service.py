@@ -531,15 +531,15 @@ async def create_channel(db: AsyncSession, workspace_id: UUID, data: ChannelCrea
         raise ValueError("graph_id is only valid for workflow channels")
     if data.channel_type == "project" and data.project_id is None:
         raise ValueError("project channels require project_id")
-    if data.channel_type == "task" and data.task_id is None:
-        raise ValueError("task channels require task_id")
+    if data.channel_type == "objective" and data.objective_id is None:
+        raise ValueError("objective channels require objective_id")
     ch = Channel(
         workspace_id=workspace_id,
         name=data.name.strip(),
         channel_type=data.channel_type,
         graph_id=data.graph_id,
         project_id=data.project_id,
-        task_id=data.task_id,
+        objective_id=data.objective_id,
     )
     db.add(ch)
     await db.commit()
@@ -898,7 +898,7 @@ async def get_or_create_run_channel(
         channel_type="run",
         graph_id=graph_id,
         project_id=None,
-        task_id=None,
+        objective_id=None,
     )
     db.add(row)
     await db.commit()

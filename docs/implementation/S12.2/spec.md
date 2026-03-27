@@ -2,7 +2,7 @@
 
 ## Goal
 
-Re-evaluate how agents can be invited or assigned into designer chat and workflow chat, how handbook-file mention syntax should work there, and whether workload-honesty / queue semantics should still be modeled around the OpenClaw plugin at all, after the S12 MCP/plugin split has clarified the role of MCP and the reduced role of the OpenClaw plugin.
+Re-evaluate how agents can be invited or assigned into designer chat and workflow chat, how handbook-file mention syntax should work there, whether workload-honesty / queue semantics should still be modeled around the OpenClaw plugin at all, and how project-level AI interaction should work after the S12 MCP/plugin split has clarified the role of MCP and the reduced role of the OpenClaw plugin.
 
 ## Why This Is Deferred From S9
 
@@ -14,6 +14,8 @@ After S12:
 - the pre-S12 execution/runtime assumptions behind "invite an agent into chat" may no longer hold
 
 Because of that, this feature should not be finalized in S9. It needs a fresh design after the MCP/plugin boundary is settled.
+
+The same applies to the AI-adjacent parts that were briefly implied around S11 project status behavior. S11 stays human-first. Any project-level AI behavior such as drafting status updates, posting project summaries, or acting as a configured project lieutenant needs to be designed here after the MCP/plugin boundary is clear.
 
 The same deferral now also applies to designer-chat Handbook-file mentions like `/filename` and `[[filename]]`, because that behavior depends on the same unresolved questions about how post-MCP designer/workflow chat should bind actions and context into workflow configuration.
 
@@ -37,6 +39,8 @@ S12.2 must answer at least these questions:
 7. If designer/workflow chat can act on handbook context, should `/filename` and `[[filename]]` mentions resolve directly to handbook paths, and how should those mentions safely mutate node or workflow configuration?
 8. After the MCP/plugin split, where should queue semantics, concurrency/backpressure policy, and workload visibility live?
 9. Is there still a plugin-owned claim loop, or does honest workload state need to be expressed elsewhere in the architecture?
+10. If project-level AI can draft or post status updates, what identity, permission, and review rules apply?
+11. Should project progress summaries be product features, workflow patterns, or both?
 
 ## Out of Scope
 
@@ -45,6 +49,7 @@ S12.2 must answer at least these questions:
 - Implementing designer-chat Handbook-file mentions in S9
 - Implementing the old S10 plugin-centric workload-honesty design before the post-MCP rethink is complete
 - Assuming the current OpenClaw execution flow can be reused unchanged for chat participation
+- Implementing project-level AI status writing inside S11
 
 ## Acceptance Criteria
 
@@ -53,4 +58,5 @@ S12.2 must answer at least these questions:
 3. The design covers participant identity, permissions, transcript visibility, and audit semantics.
 4. The design explicitly defines whether handbook-file mentions like `/filename` and `[[filename]]` are supported, how they resolve, and how they mutate workflow configuration safely if supported.
 5. The design explicitly states where workload-honesty semantics belong after the MCP/plugin split, including whether any part still belongs to the plugin.
-6. The feature set is implementable without relying on pre-S12 OpenClaw runtime assumptions.
+6. The design explicitly states how project-level AI status behavior works, including authorship, review, and product boundary.
+7. The feature set is implementable without relying on pre-S12 OpenClaw runtime assumptions.

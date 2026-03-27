@@ -26,15 +26,15 @@ export default function ProjectsPage() {
   const createProject = useCreateProject(workspaceId)
   const [showNew, setShowNew] = useState(false)
   const [title, setTitle] = useState('')
-  const [objective, setObjective] = useState('')
+  const [description, setDescription] = useState('')
 
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault()
-    if (!title.trim() || !objective.trim()) return
-    const project = await createProject.mutateAsync({ title: title.trim(), objective: objective.trim() })
+    if (!title.trim() || !description.trim()) return
+    const project = await createProject.mutateAsync({ title: title.trim(), description: description.trim() })
     setShowNew(false)
     setTitle('')
-    setObjective('')
+    setDescription('')
     navigate(`/projects/${project.id}`)
   }
 
@@ -66,17 +66,17 @@ export default function ProjectsPage() {
               <div className="flex items-start justify-between gap-3">
                 <div>
                   <h2 className="text-base font-semibold text-gray-900">{project.title}</h2>
-                  <p className="mt-1 text-sm text-gray-600 line-clamp-3">{project.objective}</p>
+                  <p className="mt-1 text-sm text-gray-600 line-clamp-3">{project.description}</p>
                 </div>
                 <Badge variant={statusVariant(project.status)}>{project.status.replace('_', ' ')}</Badge>
               </div>
               <div className="mt-4 grid grid-cols-3 gap-3 text-xs text-gray-500">
                 <div>
-                  <p className="font-medium text-gray-700">{project.task_count}</p>
+                  <p className="font-medium text-gray-700">{project.objective_count}</p>
                   <p>objectives</p>
                 </div>
                 <div>
-                  <p className="font-medium text-gray-700">{project.open_task_count}</p>
+                  <p className="font-medium text-gray-700">{project.open_objective_count}</p>
                   <p>open</p>
                 </div>
                 <div>
@@ -110,10 +110,10 @@ export default function ProjectsPage() {
                 />
               </div>
               <div>
-                <label className="block text-xs text-gray-500 mb-1">Objective</label>
+                <label className="block text-xs text-gray-500 mb-1">Description</label>
                 <textarea
-                  value={objective}
-                  onChange={(e) => setObjective(e.target.value)}
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
                   rows={4}
                   className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-brand-500"
                 />

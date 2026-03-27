@@ -42,7 +42,7 @@ This keeps execution power intact while making work itself visible and understan
    - project name
    - short description
    - optional deadline
-   - short current status summary authored by human or AI
+   - short current status summary authored by a human
 3. Objective model and CRUD.
    - objective belongs to a project
    - objective supports parent/child hierarchy
@@ -66,18 +66,18 @@ This keeps execution power intact while making work itself visible and understan
    - include project-scoped workflows
 7. Channel view.
    - one project-level chat channel
-   - collapsible left-side objective tree
+   - left-side objective tree with per-objective expand/collapse controls for child objectives
    - clicking an objective opens the chat attached to that objective
 8. Minimal workflow scoping by `project_id`.
    - `workflow.project_id IS NULL` means reusable/global
    - `workflow.project_id IS NOT NULL` means project-scoped
    - project workflows can only spawn work into their own project
-9. Human and AI status updates.
-   - project-level current status may be written by a human
-   - AI may draft or post ad hoc updates if cheap
+9. Human-authored status updates.
+   - project-level current status is written by a human
 
 ## Out of Scope
 
+- AI-authored or AI-drafted project status updates
 - autonomous project intelligence agent
 - predictive project health scoring
 - schedule/check-in systems
@@ -118,7 +118,7 @@ This keeps execution power intact while making work itself visible and understan
 6. Selecting an objective recenters the canvas and opens an objective detail panel.
 7. The detail panel shows objective metadata, key results, current status summary, and a path to objective chat.
 8. The project knowledge view supports project-scoped files and project-scoped workflows.
-9. The project channel view supports one project chat plus objective-attached chats via the left-side objective tree.
+9. The project channel view supports one project chat plus objective-attached chats via the left-side objective tree, with branch-level expand/collapse controls for nested objectives.
 10. Project workflows remain project-scoped via `workflow.project_id`.
 11. Project workflows can only spawn work into their own project.
 12. The project header always shows name, description, deadline if present, and latest project status summary.

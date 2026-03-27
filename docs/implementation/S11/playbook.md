@@ -41,14 +41,14 @@ Deliverables:
 
 Decisions to lock:
 
-- whether objective storage reuses the current task table/model underneath
+- whether objective storage uses a dedicated objective table/model
 - whether objective key results are stored as structured text or a small JSON list
-- whether objective channel is implemented as the existing task channel
+- whether objective channel uses the dedicated objective channel binding
 - whether project status remains a structured update record
 
 Rule:
 
-Prefer reuse of the current task and channel substrate if it keeps the product model clean.
+Prefer a direct objective-native model and channel binding when it keeps the product model clean.
 
 ---
 
@@ -75,7 +75,7 @@ Rules:
 
 Failure modes to avoid:
 
-- inventing a second objective table when the current task substrate can be extended cleanly
+- introducing parallel objective storage after the dedicated objective model is already in place
 - creating both `scope` and `project_id` for workflows
 - storing objective data in ad hoc channel metadata instead of a stable model
 
@@ -161,7 +161,7 @@ Outcome:
 Deliverables:
 
 - project channel main panel
-- collapsible objective tree sidebar
+- objective tree sidebar with per-objective branch expand/collapse
 - objective chat switching
 - objective detail entry point to open its chat
 
@@ -187,16 +187,15 @@ Deliverables:
 
 - latest project status summary in header
 - human-authored update flow
-- optional AI-authored or AI-drafted update flow if cheap
 
 Rules:
 
 - status summaries should be concise
-- AI may assist, but project truth should not depend on autonomous intelligence in S11
+- project truth should remain human-authored in S11
 
 Failure mode to avoid:
 
-Building a standing project intelligence subsystem.
+Building a standing project intelligence subsystem or sneaking in AI-assisted project updates.
 
 ---
 
@@ -206,7 +205,7 @@ Building a standing project intelligence subsystem.
 
 Build first:
 
-- objective schema extensions on the current project/task substrate
+- objective schema and hierarchy support on the dedicated objective substrate
 - objective tree and query support
 - project dashboard payload aligned to objective view
 - workflow `project_id` invariants
@@ -215,7 +214,6 @@ Then:
 
 - project knowledge endpoint refinements
 - objective-focused channel helpers
-- optional AI status helper hooks
 
 ### Frontend
 
@@ -254,7 +252,6 @@ S11 is mainly a product-surface and data-model session, not a runtime redesign.
 
 ### Nice to test
 
-- AI-authored status summary flow
 - canvas behavior with larger objective trees
 - moving between objective panel and objective chat smoothly
 

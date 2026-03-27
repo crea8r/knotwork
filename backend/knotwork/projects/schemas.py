@@ -8,14 +8,14 @@ from pydantic import BaseModel, Field
 
 class ProjectCreate(BaseModel):
     title: str
-    objective: str
+    description: str
     status: str = "open"
     deadline: date | None = None
 
 
 class ProjectUpdate(BaseModel):
     title: str | None = None
-    objective: str | None = None
+    description: str | None = None
     status: str | None = None
     deadline: date | None = None
 
@@ -26,7 +26,7 @@ class ProjectStatusUpdateCreate(BaseModel):
     author_name: str | None = None
 
 
-class TaskCreate(BaseModel):
+class ObjectiveCreate(BaseModel):
     code: str | None = None
     title: str
     description: str | None = None
@@ -38,12 +38,12 @@ class TaskCreate(BaseModel):
     owner_name: str | None = None
     deadline: date | None = None
     project_id: UUID | None = None
-    parent_task_id: UUID | None = None
+    parent_objective_id: UUID | None = None
     origin_type: str = "manual"
     origin_graph_id: UUID | None = None
 
 
-class TaskUpdate(BaseModel):
+class ObjectiveUpdate(BaseModel):
     code: str | None = None
     title: str | None = None
     description: str | None = None
@@ -55,7 +55,7 @@ class TaskUpdate(BaseModel):
     owner_name: str | None = None
     deadline: date | None = None
     project_id: UUID | None = None
-    parent_task_id: UUID | None = None
+    parent_objective_id: UUID | None = None
 
 
 class ProjectDocumentCreate(BaseModel):
@@ -68,6 +68,10 @@ class ProjectDocumentCreate(BaseModel):
 class ProjectDocumentUpdate(BaseModel):
     content: str
     change_summary: str | None = None
+
+
+class ProjectDocumentRename(BaseModel):
+    new_path: str
 
 
 class ProjectDocumentOut(BaseModel):
@@ -104,11 +108,11 @@ class ProjectStatusUpdateOut(BaseModel):
     model_config = {"from_attributes": True}
 
 
-class TaskOut(BaseModel):
+class ObjectiveOut(BaseModel):
     id: UUID
     workspace_id: UUID
     project_id: UUID | None = None
-    parent_task_id: UUID | None = None
+    parent_objective_id: UUID | None = None
     code: str | None = None
     title: str
     description: str | None = None
@@ -134,12 +138,12 @@ class ProjectOut(BaseModel):
     id: UUID
     workspace_id: UUID
     title: str
-    objective: str
+    description: str
     status: str
     deadline: date | None = None
     project_channel_id: UUID | None = None
-    task_count: int = 0
-    open_task_count: int = 0
+    objective_count: int = 0
+    open_objective_count: int = 0
     run_count: int = 0
     latest_status_update: ProjectStatusUpdateOut | None = None
     created_at: datetime
@@ -150,7 +154,7 @@ class ProjectOut(BaseModel):
 
 class ProjectDashboardOut(BaseModel):
     project: ProjectOut
-    tasks: list[TaskOut]
+    objectives: list[ObjectiveOut]
     recent_runs: list[dict]
-    blocked_tasks: list[TaskOut]
+    blocked_objectives: list[ObjectiveOut]
     latest_status_update: ProjectStatusUpdateOut | None = None

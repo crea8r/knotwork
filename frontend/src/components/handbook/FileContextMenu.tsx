@@ -15,9 +15,9 @@ interface Props {
   x: number
   y: number
   onClose: () => void
-  onNewFile: (folder: string) => void
-  onNewWorkflow: (folder: string) => void
-  onNewFolder: (parentPath: string) => void
+  onNewFile?: (folder: string) => void
+  onNewWorkflow?: (folder: string) => void
+  onNewFolder?: (parentPath: string) => void
   onRename: (target: ContextTarget) => void
   onMoveTo: (target: ContextTarget) => void
   onDelete: (target: ContextTarget) => void
@@ -66,23 +66,28 @@ export default function FileContextMenu({
 
   const folder = target.kind === 'folder' ? target.path : target.path.split('/').slice(0, -1).join('/')
 
-  const items: MenuItem[] = [
-    {
+  const items: MenuItem[] = []
+  if (onNewFile) {
+    items.push({
       icon: <FilePlus size={13} />,
       label: 'New File',
       onClick: () => { onNewFile(folder); onClose() },
-    },
-    {
+    })
+  }
+  if (onNewFolder) {
+    items.push({
       icon: <FolderPlus size={13} />,
       label: 'New Folder',
       onClick: () => { onNewFolder(folder); onClose() },
-    },
-    {
+    })
+  }
+  if (onNewWorkflow) {
+    items.push({
       icon: <GitBranch size={13} />,
       label: 'New Workflow',
       onClick: () => { onNewWorkflow(folder); onClose() },
-    },
-  ]
+    })
+  }
 
   if (!hideRename) {
     items.push({

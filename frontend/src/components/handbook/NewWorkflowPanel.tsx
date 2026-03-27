@@ -10,9 +10,10 @@ interface Props {
   folder: string
   onCreate: (graphId: string) => void
   onCancel: () => void
+  projectId?: string | null
 }
 
-export default function NewWorkflowPanel({ folder, onCreate, onCancel }: Props) {
+export default function NewWorkflowPanel({ folder, onCreate, onCancel, projectId }: Props) {
   const workspaceId = useAuthStore((s) => s.workspaceId) ?? DEV_WORKSPACE
   const createGraph = useCreateGraph(workspaceId)
   const [name, setName] = useState('')
@@ -28,6 +29,7 @@ export default function NewWorkflowPanel({ folder, onCreate, onCancel }: Props) 
         name: name.trim(),
         path: folder,
         description: description.trim() || undefined,
+        project_id: projectId ?? undefined,
       })
       onCreate(graph.id)
     } catch (err) {

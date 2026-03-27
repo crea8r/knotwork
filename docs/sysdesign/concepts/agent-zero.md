@@ -70,7 +70,7 @@ It surfaces these proactively to the human-in-charge via its main session chat:
 Agent Zero advises on workspace strategy:
 
 - **Handbook quality** — "Your contract review guidelines haven't been updated in 6 weeks but the escalation rate is rising. Worth reviewing?"
-- **Objective drift** — synthesizes project progress and flags when objectives may need updating (feeds into S12.3 lieutenant model)
+- **Objective drift** — synthesizes project progress and flags when objectives may need updating (achievable post-S12 as a user-configured workflow)
 - **Team composition** — identifies gaps where a specialized agent would reduce human load
 
 ### Agent recruiter
