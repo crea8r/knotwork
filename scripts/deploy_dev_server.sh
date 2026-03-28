@@ -6,6 +6,7 @@ ENV_FILE="$ROOT_DIR/.env"
 COMPOSE_FILE="$ROOT_DIR/docker-compose.yml"
 PROJECT_NAME="knotwork-dev-knotwork-space"
 HEALTH_URL="https://api.dev.knotwork.space/health"
+DEPLOY_SCOPE="${DEPLOY_SCOPE:-full}"
 
 log() { printf "\n[%s] %s\n" "$(date +'%H:%M:%S')" "$*"; }
 die() { echo "ERROR: $*" >&2; exit 1; }
@@ -13,6 +14,14 @@ die() { echo "ERROR: $*" >&2; exit 1; }
 [[ -d "$ROOT_DIR" ]] || die "Missing deploy dir: $ROOT_DIR"
 [[ -f "$ENV_FILE" ]] || die "Missing env file: $ENV_FILE"
 [[ -f "$COMPOSE_FILE" ]] || die "Missing compose file: $COMPOSE_FILE"
+
+case "$DEPLOY_SCOPE" in
+  frontend|backend|full) ;;
+  *)
+    log "Unknown DEPLOY_SCOPE='$DEPLOY_SCOPE', falling back to full"
+    DEPLOY_SCOPE="full"
+    ;;
+esac
 
 log "Updating source..."
 git -C "$ROOT_DIR" fetch origin
@@ -23,13 +32,31 @@ NET_NAME="$(awk -F= '$1=="KNOTWORK_NETWORK_NAME"{print substr($0,index($0,$2));e
 [[ -n "$NET_NAME" ]] || NET_NAME="knotwork-dev-knotwork-space-network"
 docker network create "$NET_NAME" 2>/dev/null || true
 
-log "Rebuilding and starting prod stack..."
-docker compose \
-  --project-name "$PROJECT_NAME" \
-  --env-file "$ENV_FILE" \
-  -f "$COMPOSE_FILE" \
-  --profile prod \
-  up -d --build
+compose() {
+  docker compose \
+    --project-name "$PROJECT_NAME" \
+    --env-file "$ENV_FILE" \
+    -f "$COMPOSE_FILE" \
+    --profile prod "$@"
+}
+
+log "Deploy scope: $DEPLOY_SCOPE"
+case "$DEPLOY_SCOPE" in
+  frontend)
+    log "Rebuilding frontend only..."
+    compose build frontend-prod
+    compose up -d frontend-prod
+    ;;
+  backend)
+    log "Rebuilding backend + worker..."
+    compose build backend worker
+    compose up -d backend worker
+    ;;
+  full)
+    log "Rebuilding full prod stack..."
+    compose up -d --build
+    ;;
+esac
 
 log "Waiting for health..."
 for i in $(seq 1 30); do
@@ -44,9 +71,4 @@ for i in $(seq 1 30); do
 done
 
 log "Compose status:"
-docker compose \
-  --project-name "$PROJECT_NAME" \
-  --env-file "$ENV_FILE" \
-  -f "$COMPOSE_FILE" \
-  --profile prod \
-  ps
+compose ps

@@ -24,6 +24,38 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Determine deploy scope
+        id: scope
+        shell: bash
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            echo "scope=full" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          CHANGED_FILES="$(git diff --name-only HEAD^ HEAD)"
+          echo "Changed files:"
+          echo "$CHANGED_FILES"
+
+          SCOPE="full"
+
+          if echo "$CHANGED_FILES" | grep -Eq '^(frontend/)'; then
+            if ! echo "$CHANGED_FILES" | grep -Eq '^(backend/|docker-compose.yml|scripts/|\.github/workflows/)'; then
+              SCOPE="frontend"
+            fi
+          fi
+
+          if echo "$CHANGED_FILES" | grep -Eq '^(backend/)'; then
+            if ! echo "$CHANGED_FILES" | grep -Eq '^(frontend/|docker-compose.yml|scripts/|\.github/workflows/)'; then
+              SCOPE="backend"
+            fi
+          fi
+
+          echo "scope=$SCOPE" >> "$GITHUB_OUTPUT"
+          echo "Resolved deploy scope: $SCOPE"
 
       - name: Prepare SSH key
         shell: bash
@@ -41,7 +73,8 @@ jobs:
       - name: Deploy to dev server
         shell: bash
         run: |
-          ssh -i ~/.ssh/dev_server_key "${{ secrets.DEV_SERVER_USER }}@${{ secrets.DEV_SERVER_HOST }}" 'bash /opt/knotwork/scripts/deploy_dev_server.sh'
+          ssh -i ~/.ssh/dev_server_key "${{ secrets.DEV_SERVER_USER }}@${{ secrets.DEV_SERVER_HOST }}" \
+            "DEPLOY_SCOPE=${{ steps.scope.outputs.scope }} bash /opt/knotwork/scripts/deploy_dev_server.sh"
 
       - name: Cleanup SSH key
         if: always()
