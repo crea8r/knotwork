@@ -41,6 +41,7 @@ export const useAuthStore = create<AuthState>()(
       partialize: (state) => ({
         token: state.token,
         user: state.user,
+        workspaceId: state.workspaceId,
         role: state.role,
         installationId: state.installationId,
       }),
