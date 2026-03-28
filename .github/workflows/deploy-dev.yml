@@ -4,26 +4,47 @@ on:
   push:
     branches:
       - main
+    paths:
+      - 'backend/**'
+      - 'frontend/**'
+      - 'docker-compose.yml'
+      - 'scripts/**'
+      - '.github/workflows/deploy-dev.yml'
   workflow_dispatch:
+
+concurrency:
+  group: knotwork-dev-deploy
+  cancel-in-progress: true
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Start SSH agent
-        uses: webfactory/ssh-agent@v0.9.0
-        with:
-          ssh-private-key: ${{ secrets.DEV_SERVER_SSH_KEY }}
+      - name: Prepare SSH key
+        shell: bash
+        run: |
+          mkdir -p ~/.ssh
+          printf '%s\n' "${{ secrets.DEV_SERVER_SSH_KEY }}" > ~/.ssh/dev_server_key
+          chmod 600 ~/.ssh/dev_server_key
 
       - name: Add server to known_hosts
+        shell: bash
         run: |
           mkdir -p ~/.ssh
           ssh-keyscan -H "${{ secrets.DEV_SERVER_HOST }}" >> ~/.ssh/known_hosts
 
       - name: Deploy to dev server
+        shell: bash
         run: |
-          ssh "${{ secrets.DEV_SERVER_USER }}@${{ secrets.DEV_SERVER_HOST }}" 'bash /opt/knotwork/scripts/deploy_dev_server.sh'
+          ssh -i ~/.ssh/dev_server_key "${{ secrets.DEV_SERVER_USER }}@${{ secrets.DEV_SERVER_HOST }}" 'bash /opt/knotwork/scripts/deploy_dev_server.sh'
+
+      - name: Cleanup SSH key
+        if: always()
+        shell: bash
+        run: |
+          rm -f ~/.ssh/dev_server_key
