@@ -113,6 +113,32 @@ prompt_with_default() {
   printf -v "$var_name" "%s" "$value"
 }
 
+prompt_yes_no_required() {
+  local var_name="$1"
+  local prompt_text="$2"
+  local value=""
+  while true; do
+    read -r -p "$prompt_text [y/n]: " value
+    value="$(echo "$value" | tr '[:upper:]' '[:lower:]' | sed 's/^ *//;s/ *$//')"
+    case "$value" in
+      y|yes)
+        printf -v "$var_name" "yes"
+        return
+        ;;
+      n|no)
+        printf -v "$var_name" "no"
+        return
+        ;;
+      "")
+        echo "Please choose at least one option: y or n."
+        ;;
+      *)
+        echo "Invalid choice. Enter y or n."
+        ;;
+    esac
+  done
+}
+
 resolve_root_dir() {
   local default_dir="${HOME}/.knotwork"
   prompt_with_default ROOT_DIR "Installation directory" "$default_dir"
@@ -163,6 +189,8 @@ write_env_file() {
     printf 'FRONTEND_HOST_PORT=%s\n'          "$FRONTEND_HOST_PORT"
     printf 'BACKEND_DEV_HOST_PORT=%s\n'       "$BACKEND_DEV_HOST_PORT"
     printf 'FRONTEND_DEV_HOST_PORT=%s\n'      "$FRONTEND_DEV_HOST_PORT"
+    printf 'POSTGRES_DEV_HOST_PORT=%s\n'      "$POSTGRES_DEV_HOST_PORT"
+    printf 'REDIS_DEV_HOST_PORT=%s\n'         "$REDIS_DEV_HOST_PORT"
     printf 'VITE_API_URL=%s\n'                "$VITE_API_URL"
   } > "$path"
 }
@@ -409,42 +437,14 @@ docker info >/dev/null 2>&1 || die "Docker daemon is not reachable. Start Docker
 resolve_root_dir
 
 if [[ -f ".env" ]]; then
-  log "Existing install detected in $ROOT_DIR — stopping old containers first..."
-  PREV_PROJECT="$(awk -F= '$1=="COMPOSE_PROJECT_NAME"{print substr($0,index($0,$2));exit}' .env || true)"
-  if [[ -n "$PREV_PROJECT" ]]; then
-    docker compose --project-name "$PREV_PROJECT" -f "$SCRIPT_DIR/docker-compose.yml" --env-file "$ROOT_DIR/.env" \
-      down --remove-orphans --volumes 2>/dev/null || true
-    docker compose --project-name "$PREV_PROJECT" -f "$SCRIPT_DIR/docker-compose.yml" --env-file "$ROOT_DIR/.env" \
-      --profile prod down --remove-orphans --volumes 2>/dev/null || true
-    docker compose --project-name "$PREV_PROJECT" -f "$SCRIPT_DIR/docker-compose.yml" --env-file "$ROOT_DIR/.env" \
-      --profile dev down --remove-orphans --volumes 2>/dev/null || true
-    # Force-remove all containers matching the project name prefix —
-    # compose down skips unlabelled containers, which keep the network alive
-    log "Force-removing any leftover containers for project '${PREV_PROJECT}'..."
-    while IFS= read -r _cid; do
-      [[ -n "$_cid" ]] || continue
-      docker rm -f "$_cid" 2>/dev/null || true
-    done < <(docker ps -a --filter "name=^${PREV_PROJECT}" --format '{{.ID}}')
-
-    # Now remove the network — no containers should be holding it open
-    local _prev_net="${PREV_PROJECT}-network"
-    if docker network inspect "$_prev_net" >/dev/null 2>&1; then
-      log "Force-removing leftover network '${_prev_net}'..."
-      docker network inspect --format '{{range $id,$c:=.Containers}}{{$id}} {{end}}' "$_prev_net" 2>/dev/null \
-        | tr ' ' '\n' | grep -v '^$' \
-        | while read -r _cid; do docker network disconnect -f "$_prev_net" "$_cid" 2>/dev/null || true; done
-      docker network rm "$_prev_net" 2>/dev/null || warn "Could not remove network ${_prev_net}"
-    fi
-  fi
-  cp .env ".env.backup.$(date +%Y%m%d%H%M%S)"
+  die "Existing install detected in $ROOT_DIR. Run ./scripts/uninstall.sh first, then rerun ./scripts/install.sh."
 fi
 
 if [[ "$DEV_FLAG_EXPLICIT" -eq 0 ]]; then
   echo ""
   echo "Install mode: prod (pass --dev for hot-reload dev install)"
-  read -r -p "Install in dev mode instead (localhost only, hot-reload)? [y/N]: " _dev_ans
-  _dev_ans="$(echo "$_dev_ans" | tr '[:upper:]' '[:lower:]' | sed 's/^ *//;s/ *$//')"
-  if [[ "$_dev_ans" == "y" || "$_dev_ans" == "yes" ]]; then
+  prompt_yes_no_required _dev_ans "Install in dev mode instead (localhost only, hot-reload)?"
+  if [[ "$_dev_ans" == "yes" ]]; then
     INSTALL_MODE="dev"
   fi
 fi
@@ -490,16 +490,29 @@ fi
 # ── Port selection ─────────────────────────────────────────────────────────────
 DEFAULT_BACKEND_PORT="$(next_free_port 8000)"
 DEFAULT_FRONTEND_PORT="$(next_free_port 3000)"
+DEFAULT_POSTGRES_PORT="$(next_free_port 5432)"
+DEFAULT_REDIS_PORT="$(next_free_port 6379)"
 if [[ "$INSTALL_MODE" == "dev" ]]; then
   # Dev mode uses the *-dev docker-compose services which bind BACKEND_DEV_HOST_PORT
   # and FRONTEND_DEV_HOST_PORT.  Prod ports default to same values (unused in dev).
   prompt_with_default BACKEND_DEV_HOST_PORT "Backend dev host port" "$DEFAULT_BACKEND_PORT"
   prompt_with_default FRONTEND_DEV_HOST_PORT "Frontend dev host port" "$DEFAULT_FRONTEND_PORT"
+  prompt_with_default POSTGRES_DEV_HOST_PORT "Postgres dev host port" "$DEFAULT_POSTGRES_PORT"
+  prompt_with_default REDIS_DEV_HOST_PORT "Redis dev host port" "$DEFAULT_REDIS_PORT"
   is_valid_port "$BACKEND_DEV_HOST_PORT" || die "Invalid backend port: $BACKEND_DEV_HOST_PORT"
   is_valid_port "$FRONTEND_DEV_HOST_PORT" || die "Invalid frontend port: $FRONTEND_DEV_HOST_PORT"
+  is_valid_port "$POSTGRES_DEV_HOST_PORT" || die "Invalid Postgres dev host port: $POSTGRES_DEV_HOST_PORT"
+  is_valid_port "$REDIS_DEV_HOST_PORT" || die "Invalid Redis dev host port: $REDIS_DEV_HOST_PORT"
   port_in_use "$BACKEND_DEV_HOST_PORT" && die "Backend dev host port ${BACKEND_DEV_HOST_PORT} is already in use."
   port_in_use "$FRONTEND_DEV_HOST_PORT" && die "Frontend dev host port ${FRONTEND_DEV_HOST_PORT} is already in use."
+  port_in_use "$POSTGRES_DEV_HOST_PORT" && die "Postgres dev host port ${POSTGRES_DEV_HOST_PORT} is already in use."
+  port_in_use "$REDIS_DEV_HOST_PORT" && die "Redis dev host port ${REDIS_DEV_HOST_PORT} is already in use."
   [[ "$BACKEND_DEV_HOST_PORT" == "$FRONTEND_DEV_HOST_PORT" ]] && die "Backend and frontend host ports cannot be the same."
+  [[ "$BACKEND_DEV_HOST_PORT" == "$POSTGRES_DEV_HOST_PORT" ]] && die "Backend and Postgres dev host ports cannot be the same."
+  [[ "$BACKEND_DEV_HOST_PORT" == "$REDIS_DEV_HOST_PORT" ]] && die "Backend and Redis dev host ports cannot be the same."
+  [[ "$FRONTEND_DEV_HOST_PORT" == "$POSTGRES_DEV_HOST_PORT" ]] && die "Frontend and Postgres dev host ports cannot be the same."
+  [[ "$FRONTEND_DEV_HOST_PORT" == "$REDIS_DEV_HOST_PORT" ]] && die "Frontend and Redis dev host ports cannot be the same."
+  [[ "$POSTGRES_DEV_HOST_PORT" == "$REDIS_DEV_HOST_PORT" ]] && die "Postgres and Redis dev host ports cannot be the same."
   BACKEND_HOST_PORT="$BACKEND_DEV_HOST_PORT"
   FRONTEND_HOST_PORT="$FRONTEND_DEV_HOST_PORT"
 else
@@ -512,6 +525,8 @@ else
   [[ "$BACKEND_HOST_PORT" == "$FRONTEND_HOST_PORT" ]] && die "Backend and frontend host ports cannot be the same."
   BACKEND_DEV_HOST_PORT="$BACKEND_HOST_PORT"
   FRONTEND_DEV_HOST_PORT="$FRONTEND_HOST_PORT"
+  POSTGRES_DEV_HOST_PORT=""
+  REDIS_DEV_HOST_PORT=""
 fi
 
 if [[ "$DOMAIN" == "localhost" ]]; then
@@ -521,9 +536,8 @@ if [[ "$DOMAIN" == "localhost" ]]; then
   # OpenClaw accesses Knotwork's backend — host depends on whether OpenClaw is in Docker or native
   echo ""
   echo "Is OpenClaw running inside Docker? (affects how it reaches this Knotwork backend)"
-  read -r -p "OpenClaw runs in Docker? [y/N]: " _oc_docker
-  _oc_docker="$(echo "$_oc_docker" | tr '[:upper:]' '[:lower:]' | sed 's/^ *//;s/ *$//')"
-  if [[ "$_oc_docker" == "y" || "$_oc_docker" == "yes" ]]; then
+  prompt_yes_no_required _oc_docker "OpenClaw runs in Docker?"
+  if [[ "$_oc_docker" == "yes" ]]; then
     OPENCLAW_BACKEND_URL="http://host.docker.internal:${BACKEND_HOST_PORT}"
   else
     OPENCLAW_BACKEND_URL="http://localhost:${BACKEND_HOST_PORT}"
@@ -563,9 +577,10 @@ write_install_manifest .knotwork-install.json
 log "Ensuring Docker network '${KNOTWORK_NETWORK_NAME}' exists..."
 docker network create "$KNOTWORK_NETWORK_NAME" 2>/dev/null || true
 
-COMPOSE_CMD=(docker compose --project-name "$COMPOSE_PROJECT_NAME" -f "$SCRIPT_DIR/docker-compose.yml" --env-file "$ROOT_DIR/.env")
+COMPOSE_FILES=(-f "$SCRIPT_DIR/docker-compose.yml")
 # Service names and compose profile differ by install mode.
 if [[ "$INSTALL_MODE" == "dev" ]]; then
+  COMPOSE_FILES+=(-f "$SCRIPT_DIR/docker-compose.dev-db-ports.yml")
   COMPOSE_PROFILE="dev"
   BACKEND_SERVICE="backend-dev"
   WORKER_SERVICE="worker-dev"
@@ -574,6 +589,7 @@ else
   BACKEND_SERVICE="backend"
   WORKER_SERVICE="worker"
 fi
+COMPOSE_CMD=(docker compose --project-name "$COMPOSE_PROJECT_NAME" "${COMPOSE_FILES[@]}" --env-file "$ROOT_DIR/.env")
 
 log "Creating Docker network '${KNOTWORK_NETWORK_NAME}' (if not exists)..."
 docker network inspect "$KNOTWORK_NETWORK_NAME" >/dev/null 2>&1 \
@@ -635,6 +651,11 @@ echo "Backend URL: $BACKEND_URL"
 if [[ "$INSTALL_MODE" == "dev" ]]; then
   echo "Backend dev port: $BACKEND_DEV_HOST_PORT"
   echo "Frontend dev port (Vite HMR): $FRONTEND_DEV_HOST_PORT"
+  echo "Postgres dev port: $POSTGRES_DEV_HOST_PORT"
+  echo "Redis dev port: $REDIS_DEV_HOST_PORT"
+  echo "Postgres connection: postgresql://knotwork:knotwork@localhost:${POSTGRES_DEV_HOST_PORT}/knotwork"
+  echo "Postgres connection (async): postgresql+asyncpg://knotwork:knotwork@localhost:${POSTGRES_DEV_HOST_PORT}/knotwork"
+  echo "Redis connection: redis://localhost:${REDIS_DEV_HOST_PORT}"
 else
   echo "Backend host port: $BACKEND_HOST_PORT"
   echo "Frontend host port: $FRONTEND_HOST_PORT"

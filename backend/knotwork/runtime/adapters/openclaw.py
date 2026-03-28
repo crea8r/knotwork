@@ -196,7 +196,6 @@ class OpenClawAdapter(AgentAdapter):
                 db.add(task)
                 await db.commit()
                 from knotwork.channels import service as channel_service
-                from knotwork.registered_agents.models import RegisteredAgent
 
                 registered_agent = (
                     await db.execute(

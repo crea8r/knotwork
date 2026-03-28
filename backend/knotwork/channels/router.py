@@ -441,6 +441,23 @@ async def get_inbox_summary(
     return InboxSummary.model_validate(summary)
 
 
+@router.post("/{workspace_id}/inbox/read-all", response_model=InboxSummary)
+async def mark_inbox_read_all(
+    workspace_id: UUID,
+    user: User = Depends(get_current_user),
+    _member: WorkspaceMember = Depends(get_workspace_member),
+    db: AsyncSession = Depends(get_db),
+):
+    participant_id = human_participant_id(user.id)
+    await notification_service.mark_all_app_deliveries_read(
+        db,
+        workspace_id=workspace_id,
+        participant_id=participant_id,
+    )
+    summary = await service.inbox_summary(db, workspace_id, participant_id)
+    return InboxSummary.model_validate(summary)
+
+
 @router.patch("/{workspace_id}/inbox/deliveries/{delivery_id}", response_model=InboxItem)
 async def update_inbox_delivery_state(
     workspace_id: UUID,

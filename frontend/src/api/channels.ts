@@ -49,6 +49,18 @@ export function useUpdateInboxDelivery(workspaceId: string) {
   })
 }
 
+export function useMarkAllInboxRead(workspaceId: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: () =>
+      api.post<InboxSummary>(`/workspaces/${workspaceId}/inbox/read-all`).then((r) => r.data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['inbox', workspaceId] })
+      qc.invalidateQueries({ queryKey: ['inbox-summary', workspaceId] })
+    },
+  })
+}
+
 export function useChannels(workspaceId: string) {
   return useQuery({
     queryKey: ['channels', workspaceId],
