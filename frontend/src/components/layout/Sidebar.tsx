@@ -19,7 +19,7 @@ import {
 import knotworkLogo from '@/assets/knotwork-logo.svg'
 import { useCreateChannel, useInboxSummary } from '@/api/channels'
 import { api } from '@/api/client'
-import { useProjectChannels, useProjectDashboard, useProjects } from '@/api/projects'
+import { useCreateProject, useProjectChannels, useProjectDashboard, useProjects } from '@/api/projects'
 import { useRuns } from '@/api/runs'
 import { useAuthStore } from '@/store/auth'
 import { projectChannelPath, projectObjectivePath, projectPath } from '@/lib/paths'
@@ -113,6 +113,7 @@ export default function Sidebar({
   const workspaceId = useAuthStore((s) => s.workspaceId) ?? import.meta.env.VITE_DEV_WORKSPACE_ID ?? 'dev-workspace'
   const { data: inboxSummary } = useInboxSummary(workspaceId)
   const { data: projects = [] } = useProjects(workspaceId)
+  const createProject = useCreateProject(workspaceId)
   const createChannel = useCreateChannel(workspaceId)
 
   const activeProjectSlug = useMemo(() => {
@@ -128,8 +129,11 @@ export default function Sidebar({
   const [expandedProjects, setExpandedProjects] = useState<Record<string, boolean>>({})
   const [pinnedProjectId, setPinnedProjectId] = useState<string | null>(() => localStorage.getItem('kw-pinned-project'))
   const [showNewChannelDialog, setShowNewChannelDialog] = useState(false)
+  const [showNewProjectDialog, setShowNewProjectDialog] = useState(false)
   const [newChannelProjectId, setNewChannelProjectId] = useState('')
   const [newChannelMessage, setNewChannelMessage] = useState('')
+  const [newProjectTitle, setNewProjectTitle] = useState('')
+  const [newProjectDescription, setNewProjectDescription] = useState('')
 
   const Item = collapsed ? IconNavItem : NavItem
   const iconSize = collapsed ? 18 : 16
@@ -218,6 +222,22 @@ export default function Sidebar({
     setShowNewChannelDialog(false)
     onCloseMobile?.()
     navigate(projectChannelPath(targetProject.slug, channel.slug))
+  }
+
+  function openNewProjectDialog() {
+    setNewProjectTitle('')
+    setNewProjectDescription('')
+    setShowNewProjectDialog(true)
+  }
+
+  async function submitNewProject() {
+    const title = newProjectTitle.trim()
+    const description = newProjectDescription.trim()
+    if (!title || !description) return
+    const project = await createProject.mutateAsync({ title, description })
+    setShowNewProjectDialog(false)
+    onCloseMobile?.()
+    navigate(projectPath(project.slug))
   }
 
   function handleKnowledgeClick(e: React.MouseEvent<HTMLAnchorElement>) {
@@ -309,6 +329,27 @@ export default function Sidebar({
       </div>
 
       <nav className={`flex-1 overflow-y-auto py-3 space-y-0.5 ${collapsed ? 'px-1 flex flex-col items-center' : 'px-2'}`}>
+        {collapsed ? (
+          <button
+            type="button"
+            onClick={openNewChannelDialog}
+            title="New channel"
+            aria-label="New channel"
+            className="mb-1 flex h-9 w-9 items-center justify-center rounded-lg text-gray-500 transition-colors hover:bg-gray-100"
+          >
+            <Plus size={18} />
+          </button>
+        ) : (
+          <button
+            type="button"
+            onClick={openNewChannelDialog}
+            className="mb-1 flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-sm text-gray-700 transition-colors hover:bg-gray-100"
+          >
+            <Plus size={16} />
+            <span>New channel</span>
+          </button>
+        )}
+
         <Item
           to="/inbox"
           icon={(
@@ -336,10 +377,10 @@ export default function Sidebar({
               </div>
               <button
                 type="button"
-                onClick={openNewChannelDialog}
+                onClick={openNewProjectDialog}
                 className="inline-flex h-6 w-6 items-center justify-center rounded-md text-gray-400 hover:bg-gray-100 hover:text-gray-700"
-                title="New channel"
-                aria-label="New channel"
+                title="New project"
+                aria-label="New project"
               >
                 <Plus size={13} />
               </button>
@@ -556,6 +597,69 @@ export default function Sidebar({
               </button>
             </div>
           </form>
+          </div>
+        </div>
+      )}
+      {showNewProjectDialog && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 p-4">
+          <div className="w-full max-w-lg rounded-[28px] bg-white p-6 shadow-2xl">
+            <div className="flex items-center justify-between gap-4">
+              <h2 className="text-xl font-semibold text-stone-950">New project</h2>
+              <button
+                type="button"
+                onClick={() => setShowNewProjectDialog(false)}
+                className="rounded-lg border border-stone-200 p-2 text-stone-500 hover:text-stone-900"
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            <form
+              className="mt-5 space-y-4"
+              onSubmit={(event) => {
+                event.preventDefault()
+                void submitNewProject()
+              }}
+            >
+              <label className="block text-sm text-stone-600">
+                Title
+                <input
+                  autoFocus
+                  value={newProjectTitle}
+                  onChange={(event) => setNewProjectTitle(event.target.value)}
+                  className="mt-2 w-full rounded-2xl border border-stone-200 px-4 py-3 text-sm text-stone-900 outline-none transition focus:border-brand-500 focus:ring-2 focus:ring-brand-200"
+                  placeholder="Project name"
+                />
+              </label>
+
+              <label className="block text-sm text-stone-600">
+                Description
+                <textarea
+                  value={newProjectDescription}
+                  onChange={(event) => setNewProjectDescription(event.target.value)}
+                  rows={4}
+                  className="mt-2 w-full rounded-2xl border border-stone-200 px-4 py-3 text-sm text-stone-900 outline-none transition focus:border-brand-500 focus:ring-2 focus:ring-brand-200"
+                  placeholder="What is this project for?"
+                />
+              </label>
+
+              <div className="flex justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowNewProjectDialog(false)}
+                  className="rounded-full px-4 py-2 text-sm font-medium text-stone-600 transition hover:bg-stone-100"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={createProject.isPending || !newProjectTitle.trim() || !newProjectDescription.trim()}
+                  className="rounded-full bg-stone-950 px-4 py-2 text-sm font-medium text-white transition hover:bg-stone-800 disabled:cursor-not-allowed disabled:bg-stone-300"
+                >
+                  {createProject.isPending ? 'Creating…' : 'Create'}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

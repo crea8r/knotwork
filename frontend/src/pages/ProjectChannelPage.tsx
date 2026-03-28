@@ -119,6 +119,11 @@ export default function ProjectChannelPage() {
           )}
           pending={postMessage.isPending}
           placeholder="Continue the thread without leaving project context…"
+          beforeInput={item.channel.channel_type === 'normal' ? (
+            <p className="text-xs text-stone-500">
+              Type <span className="font-mono text-stone-700">/</span> to start a workflow from this channel.
+            </p>
+          ) : null}
         />
       </ChannelShell>
     </div>
