@@ -52,7 +52,7 @@ services:
       # baked-in backend/.env which does not contain this key.
       AUTH_DEV_BYPASS_USER_ID: ${AUTH_DEV_BYPASS_USER_ID:-}
     ports:
-      - "${BACKEND_HOST_PORT:-8000}:8000"
+      - "127.0.0.1:${BACKEND_HOST_PORT:-8000}:8000"
     depends_on:
       postgres:
         condition: service_healthy
@@ -179,7 +179,7 @@ services:
       # Reuses VITE_API_URL from .env so only one variable needs to be set.
       API_URL: ${VITE_API_URL:-http://localhost:8000/api/v1}
     ports:
-      - "${FRONTEND_HOST_PORT:-3000}:80"
+      - "127.0.0.1:${FRONTEND_HOST_PORT:-3000}:80"
     depends_on:
       - backend
     profiles: ["prod"]
