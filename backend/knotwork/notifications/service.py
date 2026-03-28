@@ -5,7 +5,7 @@ from datetime import timedelta
 from urllib.parse import quote
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from knotwork.auth.models import User
@@ -348,6 +348,29 @@ async def update_delivery_state(
     await db.commit()
     await db.refresh(delivery)
     return delivery
+
+
+async def mark_all_app_deliveries_read(
+    db: AsyncSession,
+    *,
+    workspace_id: UUID,
+    participant_id: str,
+) -> int:
+    now = datetime.now(timezone.utc)
+    result = await db.execute(
+        update(EventDelivery)
+        .where(
+            EventDelivery.workspace_id == workspace_id,
+            EventDelivery.participant_id == participant_id,
+            EventDelivery.delivery_mean == "app",
+            EventDelivery.status == "sent",
+            EventDelivery.archived_at.is_(None),
+            EventDelivery.read_at.is_(None),
+        )
+        .values(read_at=now)
+    )
+    await db.commit()
+    return int(result.rowcount or 0)
 
 
 def _event_email_subject(event: ChannelEvent) -> str:

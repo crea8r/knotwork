@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { AlertCircle, Archive, ArchiveRestore, AtSign, CheckCheck, Clock3, FilePenLine, PlayCircle } from 'lucide-react'
-import { useInbox, useInboxSummary, useUpdateInboxDelivery } from '@/api/channels'
+import { useInbox, useInboxSummary, useMarkAllInboxRead, useUpdateInboxDelivery } from '@/api/channels'
 import { useAuthStore } from '@/store/auth'
 import Spinner from '@/components/shared/Spinner'
 import EmptyState from '@/components/shared/EmptyState'
@@ -14,6 +14,7 @@ export default function InboxPage() {
   const { data: items = [], isLoading } = useInbox(workspaceId, archived)
   const { data: summary } = useInboxSummary(workspaceId)
   const updateDelivery = useUpdateInboxDelivery(workspaceId)
+  const markAllRead = useMarkAllInboxRead(workspaceId)
 
   return (
     <div className="p-6 md:p-8 max-w-4xl mx-auto space-y-4">
@@ -22,19 +23,31 @@ export default function InboxPage() {
         <h1 className="text-xl font-semibold text-gray-900">Inbox</h1>
           <p className="text-sm text-gray-500 mt-1">Items routed to you from channel events.</p>
         </div>
-        <div className="inline-flex rounded-xl border border-gray-200 bg-white p-1">
-          <button
-            onClick={() => setArchived(false)}
-            className={`px-3 py-1.5 text-sm rounded-lg ${!archived ? 'bg-brand-50 text-brand-700' : 'text-gray-500'}`}
-          >
-            Active {summary ? `(${summary.active_count})` : ''}
-          </button>
-          <button
-            onClick={() => setArchived(true)}
-            className={`px-3 py-1.5 text-sm rounded-lg ${archived ? 'bg-brand-50 text-brand-700' : 'text-gray-500'}`}
-          >
-            Archived {summary ? `(${summary.archived_count})` : ''}
-          </button>
+        <div className="flex items-center gap-2">
+          {!archived && (summary?.unread_count ?? 0) > 0 && (
+            <button
+              onClick={() => markAllRead.mutate()}
+              disabled={markAllRead.isPending}
+              className="inline-flex items-center gap-1.5 rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+            >
+              <CheckCheck size={14} />
+              {markAllRead.isPending ? 'Marking…' : 'Read all'}
+            </button>
+          )}
+          <div className="inline-flex rounded-xl border border-gray-200 bg-white p-1">
+            <button
+              onClick={() => setArchived(false)}
+              className={`px-3 py-1.5 text-sm rounded-lg ${!archived ? 'bg-brand-50 text-brand-700' : 'text-gray-500'}`}
+            >
+              Active {summary ? `(${summary.active_count})` : ''}
+            </button>
+            <button
+              onClick={() => setArchived(true)}
+              className={`px-3 py-1.5 text-sm rounded-lg ${archived ? 'bg-brand-50 text-brand-700' : 'text-gray-500'}`}
+            >
+              Archived {summary ? `(${summary.archived_count})` : ''}
+            </button>
+          </div>
         </div>
       </div>
 

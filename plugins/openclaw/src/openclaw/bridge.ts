@@ -11,9 +11,20 @@ import type {
   RemoteAgent,
   RemoteTool,
 } from '../types'
+import { readFileSync } from 'node:fs'
 
 const PLUGIN_ID = 'knotwork-bridge'
-const PLUGIN_VERSION = '0.2.0'
+const PLUGIN_VERSION = (() => {
+  try {
+    const raw = readFileSync(new URL('../../openclaw.plugin.json', import.meta.url), 'utf8')
+    const parsed = JSON.parse(raw) as { version?: unknown }
+    return typeof parsed.version === 'string' && parsed.version.trim()
+      ? parsed.version.trim()
+      : '0.0.0'
+  } catch {
+    return '0.0.0'
+  }
+})()
 
 // ── Env helper ───────────────────────────────────────────────────────────────
 

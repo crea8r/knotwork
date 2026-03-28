@@ -335,11 +335,18 @@ PY
 
 force_remove_network() {
   local _net="$1"
-  docker network inspect "$_net" >/dev/null 2>&1 || return 0
+  if ! docker network inspect "$_net" >/dev/null 2>&1; then
+    log "Docker network '${_net}' already removed or not found; skipping."
+    return 0
+  fi
   log "Force-removing Docker network '${_net}'..."
-  docker network inspect --format '{{range $id,$c:=.Containers}}{{$id}} {{end}}' "$_net" 2>/dev/null \
-    | tr ' ' '\n' | grep -v '^$' \
-    | while read -r _cid; do docker network disconnect -f "$_net" "$_cid" 2>/dev/null || true; done
+  while IFS= read -r _cid; do
+    [[ -n "$_cid" ]] || continue
+    docker network disconnect -f "$_net" "$_cid" 2>/dev/null || true
+  done < <(
+    docker network inspect --format '{{range $id,$c:=.Containers}}{{$id}} {{end}}' "$_net" 2>/dev/null \
+      | tr ' ' '\n'
+  )
   docker network rm "$_net" 2>/dev/null || warn "Could not remove network: $_net"
 }
 
@@ -360,18 +367,28 @@ docker_cleanup() {
   # Force-remove any containers whose name starts with the project name —
   # these are stragglers not owned by compose (no labels) that compose down skips
   log "Force-removing any leftover containers matching '${project}*'..."
+  local found_containers=0
   while IFS= read -r _cid; do
     [[ -n "$_cid" ]] || continue
+    found_containers=1
     log "  removing container $_cid"
     docker rm -f "$_cid" 2>/dev/null || warn "Could not remove container $_cid"
   done < <(docker ps -a --filter "name=^${project}" --format '{{.ID}}')
+  if [[ "$found_containers" -eq 0 ]]; then
+    log "No leftover containers found for '${project}'."
+  fi
 
   # Also remove any volumes prefixed with the project name
   log "Removing any leftover volumes matching '${project}*'..."
+  local found_volumes=0
   while IFS= read -r _vol; do
     [[ -n "$_vol" ]] || continue
+    found_volumes=1
     docker volume rm "$_vol" 2>/dev/null || warn "Could not remove volume $_vol"
   done < <(docker volume ls --filter "name=^${project}" --format '{{.Name}}')
+  if [[ "$found_volumes" -eq 0 ]]; then
+    log "No leftover volumes found for '${project}'."
+  fi
 
   local net net_default
   net="$(manifest_value network_name 2>/dev/null || true)"
@@ -382,30 +399,73 @@ docker_cleanup() {
   done
 
   log "Removing project images only..."
+  local found_images=0
   while IFS= read -r image; do
     [[ -n "$image" ]] || continue
-    docker image inspect "$image" >/dev/null 2>&1 || continue
+    if ! docker image inspect "$image" >/dev/null 2>&1; then
+      log "Image already removed or not found: $image"
+      continue
+    fi
+    found_images=1
     if docker ps -a --filter "ancestor=$image" --format '{{.ID}}' | grep -q .; then
       warn "Skipping image still referenced by a container: $image"
       continue
     fi
     docker image rm -f "$image" >/dev/null 2>&1 || warn "Could not remove image: $image"
   done < <(owned_image_names)
+  if [[ "$found_images" -eq 0 ]]; then
+    log "No removable project images found."
+  fi
 }
 
 cleanup_runtime_files() {
   log "Cleaning runtime-generated files..."
-  rm -rf \
+  local path found_runtime_files=0
+  for path in \
     "$ROOT_DIR/.env" \
     "$ROOT_DIR/.knotwork-install.json" \
-    "$ROOT_DIR"/.env.backup.* \
     "$ROOT_DIR/data" \
-    "$ROOT_DIR/logs"
+    "$ROOT_DIR/logs"; do
+    if [[ -e "$path" || -L "$path" ]]; then
+      found_runtime_files=1
+      rm -rf "$path"
+      log "Removed: $path"
+    else
+      log "Already removed or not found: $path"
+    fi
+  done
+
+  local backup_found=0
+  shopt -s nullglob
+  for path in "$ROOT_DIR"/.env.backup.*; do
+    backup_found=1
+    found_runtime_files=1
+    rm -rf "$path"
+    log "Removed: $path"
+  done
+  shopt -u nullglob
+  if [[ "$backup_found" -eq 0 ]]; then
+    log "Already removed or not found: $ROOT_DIR/.env.backup.*"
+  fi
+  if [[ "$found_runtime_files" -eq 0 ]]; then
+    log "No runtime-generated files found to remove."
+  fi
 }
 
 cleanup_full_tree() {
   log "Removing project files (keeping .git only)..."
-  find "$ROOT_DIR" -mindepth 1 -maxdepth 1 ! -name ".git" -exec rm -rf {} +
+  local path found_entries=0
+  shopt -s dotglob nullglob
+  for path in "$ROOT_DIR"/*; do
+    [[ "$(basename "$path")" == ".git" ]] && continue
+    found_entries=1
+    rm -rf "$path"
+    log "Removed: $path"
+  done
+  shopt -u dotglob nullglob
+  if [[ "$found_entries" -eq 0 ]]; then
+    log "Project files already removed; nothing left besides .git."
+  fi
 }
 
 main() {
@@ -434,12 +494,10 @@ main() {
     fi
   fi
 
-  # Remove stale networks before backup so compose can start postgres cleanly
-  local _pre_net
-  _pre_net="$(compose_project_name)-network"
-  force_remove_network "$_pre_net"
-
-  create_backup_zip "$backup_zip" "$TEMP_DIR"
+  if ! ( create_backup_zip "$backup_zip" "$TEMP_DIR" ); then
+    warn "Backup zip creation failed; continuing uninstall without backup."
+    backup_zip="(skipped: backup creation failed)"
+  fi
   docker_cleanup
 
   case "$CLEAN_MODE" in
