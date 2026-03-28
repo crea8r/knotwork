@@ -5,6 +5,7 @@ import { useChannels, useCreateChannel, useMyChannelSubscriptions } from '@/api/
 import { useCreateGraph, useGraphs } from '@/api/graphs'
 import { useRuns } from '@/api/runs'
 import { useAuthStore } from '@/store/auth'
+import { channelPath } from '@/lib/paths'
 import RunTriggerModal from '@/components/operator/RunTriggerModal'
 import Spinner from '@/components/shared/Spinner'
 import EmptyState from '@/components/shared/EmptyState'
@@ -155,7 +156,7 @@ export default function ChannelsPage() {
     setShowCreate(false)
     setMode('menu')
     setChatName('')
-    navigate(`/channels/${channel.id}`)
+    navigate(channelPath(channel.slug))
   }
 
   function handleCreateRun(e: React.FormEvent) {

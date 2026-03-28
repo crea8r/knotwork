@@ -41,6 +41,7 @@ interface Props {
   onWorkflowCreated: (graphId: string) => void
   onUploadSaved: (path: string) => void
   renderFileView: (path: string) => React.ReactNode
+  renderKnowledgeFileView?: (path: string) => React.ReactNode
   renderWorkflowView: (graphId: string) => React.ReactNode
   renderNewFilePanel: (folder: string, onCreate: (path: string) => void, onCancel: () => void) => React.ReactNode
   renderNewWorkflowPanel: (folder: string, onCreate: (graphId: string) => void, onCancel: () => void) => React.ReactNode
@@ -63,7 +64,7 @@ export default function FileBrowserShell({
   state, onRenameFile, onRenameWorkflow, onRenameFolder, onMoveTo, onDeleteFile, onDeleteWorkflow, onDeleteFolder,
   onUploadClick, onDrop, isBusy = false, busyLabel, renamePending = false,
   onNavigateFolder, onNavigateFile, onNavigateWorkflow, onFileCreated, onWorkflowCreated, onUploadSaved,
-  renderFileView, renderWorkflowView, renderNewFilePanel, renderNewWorkflowPanel, renderNewFolderPanel, renderUploadPanel, sidePanel,
+  renderFileView, renderKnowledgeFileView, renderWorkflowView, renderNewFilePanel, renderNewWorkflowPanel, renderNewFolderPanel, renderUploadPanel, sidePanel,
   allowNewFile = true, allowNewWorkflow = true, allowNewFolder = true, allowUpload = true,
   allowFolderRename = true, allowFolderMove = true, allowFolderDelete = true,
 }: Props) {
@@ -107,7 +108,7 @@ export default function FileBrowserShell({
           {fileQuery && <button onClick={() => onFileQueryChange('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"><X size={13} /></button>}
           {searching && <Loader2 size={13} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 animate-spin" />}
         </div>
-        {(rightPanel.kind === 'file' || rightPanel.kind === 'workflow') && (
+        {(rightPanel.kind === 'file' || rightPanel.kind === 'knowledge-file' || rightPanel.kind === 'workflow') && (
           <button onClick={() => onNavigateFolder(currentFolder)} title="Back" className="ml-auto inline-flex items-center gap-1 px-2 py-1.5 md:px-2.5 rounded-lg border border-gray-200 text-gray-600 text-sm hover:border-gray-300">
             <ChevronLeft size={14} /><span className="hidden md:inline">Back</span>
           </button>
@@ -232,10 +233,11 @@ export default function FileBrowserShell({
                           onClick={() => {
                             onFileQueryChange('')
                             if (f.entryKind === 'workflow' && f.graphId) onNavigateWorkflow(f.graphId)
+                            else if (f.sourceScope === 'knowledge') setRightPanel({ kind: 'knowledge-file', path: f.path })
                             else onNavigateFile(f.path)
                           }}
                           className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg text-left text-sm transition-colors ${selectedPath === f.path ? 'bg-brand-50 text-brand-700' : 'hover:bg-gray-100 text-gray-700'}`}>
-                          <span className="font-mono text-xs truncate">{f.path}</span>
+                          <span className="font-mono text-xs truncate">{f.sourceScope === 'knowledge' ? `[Knowledge] ${f.path}` : f.path}</span>
                         </button>
                       ))
                   }
@@ -259,6 +261,7 @@ export default function FileBrowserShell({
                   onRenameFile={onRenameFile} onRenameWorkflow={onRenameWorkflow} onRenameFolder={onRenameFolder}
                   onMoveTo={onMoveTo} onDeleteFile={onDeleteFile} onDeleteWorkflow={onDeleteWorkflow} onDeleteFolder={onDeleteFolder} />
               ) : rightPanel.kind === 'file' ? renderFileView(rightPanel.path)
+                : rightPanel.kind === 'knowledge-file' ? renderKnowledgeFileView?.(rightPanel.path) ?? null
                 : rightPanel.kind === 'workflow' ? renderWorkflowView(rightPanel.graphId)
                 : rightPanel.kind === 'new' ? renderNewFilePanel(rightPanel.folder, onFileCreated, back)
                 : rightPanel.kind === 'new-workflow' ? renderNewWorkflowPanel(rightPanel.folder, onWorkflowCreated, back)

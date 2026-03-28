@@ -16,7 +16,7 @@ import RunsPage from './pages/RunsPage'
 import InboxPage from './pages/InboxPage'
 import ChannelsPage from './pages/ChannelsPage'
 import ChannelDetailPage from './pages/ChannelDetailPage'
-import HandbookPage from './pages/HandbookPage'
+import KnowledgePage from './pages/KnowledgePage'
 import KnowledgeFilePage from './pages/KnowledgeFilePage'
 import EscalationsPage from './pages/EscalationsPage'
 import SettingsPage from './pages/SettingsPage'
@@ -27,6 +27,10 @@ import PublicWorkflowPage from './pages/PublicWorkflowPage'
 import PublicRunPage from './pages/PublicRunPage'
 import ProjectsPage from './pages/ProjectsPage'
 import ProjectDetailPage from './pages/ProjectDetailPage'
+import ProjectMainContent from './pages/ProjectMainContent'
+import ProjectAssetsPage from './pages/ProjectAssetsPage'
+import ProjectChannelPage from './pages/ProjectChannelPage'
+import ObjectiveDetailPanel from './pages/ObjectiveDetailPanel'
 import ObjectiveDetailPage from './pages/ObjectiveDetailPage'
 
 export default function App() {
@@ -61,15 +65,22 @@ export default function App() {
       >
         <Route path="/inbox" element={<InboxPage />} />
         <Route path="/projects" element={<ProjectsPage />} />
-        <Route path="/projects/:projectId" element={<ProjectDetailPage />} />
-        <Route path="/objectives/:objectiveId" element={<ObjectiveDetailPage />} />
+        <Route path="/projects/:projectSlug" element={<ProjectDetailPage />}>
+          <Route index element={<ProjectMainContent />} />
+          <Route path="assets" element={<ProjectAssetsPage />} />
+          <Route path="channels/:channelSlug" element={<ProjectChannelPage />} />
+          <Route path="objectives/:objectiveSlug" element={<ObjectiveDetailPanel />} />
+        </Route>
+        <Route path="/objectives/:objectiveSlug" element={<ObjectiveDetailPage />} />
         <Route path="/channels" element={<ChannelsPage />} />
-        <Route path="/channels/:channelId" element={<ChannelDetailPage />} />
+        <Route path="/channels/:channelSlug" element={<ChannelDetailPage />} />
         <Route path="/graphs" element={<GraphsPage />} />
         <Route path="/runs" element={<RunsPage />} />
         <Route path="/runs/:runId" element={<RunDetailPage />} />
         <Route path="/escalations" element={<EscalationsPage />} />
-        <Route path="/handbook" element={<HandbookPage />} />
+        <Route path="/knowledge" element={<KnowledgePage />} />
+        <Route path="/knowledge/file" element={<KnowledgeFilePage />} />
+        <Route path="/handbook" element={<Navigate to="/knowledge" replace />} />
         <Route path="/handbook/file" element={<KnowledgeFilePage />} />
         <Route path="/settings" element={<SettingsPage />} />
         <Route path="/agents/:agentId" element={<AgentProfilePage />} />

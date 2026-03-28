@@ -1,5 +1,5 @@
-import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useEffect, useMemo, useState } from 'react'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { FolderKanban, Plus } from 'lucide-react'
 import { useProjects, useCreateProject } from '@/api/projects'
 import { useAuthStore } from '@/store/auth'
@@ -9,6 +9,7 @@ import Btn from '@/components/shared/Btn'
 import Badge from '@/components/shared/Badge'
 import Spinner from '@/components/shared/Spinner'
 import EmptyState from '@/components/shared/EmptyState'
+import { projectPath } from '@/lib/paths'
 
 const DEV_WORKSPACE = import.meta.env.VITE_DEV_WORKSPACE_ID ?? 'dev-workspace'
 
@@ -21,12 +22,31 @@ function statusVariant(status: string): 'gray' | 'green' | 'orange' | 'red' {
 
 export default function ProjectsPage() {
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
   const workspaceId = useAuthStore((s) => s.workspaceId) ?? DEV_WORKSPACE
   const { data: projects = [], isLoading } = useProjects(workspaceId)
   const createProject = useCreateProject(workspaceId)
   const [showNew, setShowNew] = useState(false)
   const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
+  const showProjectList = searchParams.get('view') === 'list'
+
+  const lastProjectSlug = useMemo(() => localStorage.getItem('kw-last-project'), [])
+  const resolvedLastProjectSlug = useMemo(() => {
+    if (!lastProjectSlug) return null
+    return projects.some((project) => project.slug === lastProjectSlug) ? lastProjectSlug : null
+  }, [lastProjectSlug, projects])
+
+  useEffect(() => {
+    if (isLoading || showProjectList) return
+    if (resolvedLastProjectSlug) {
+      navigate(projectPath(resolvedLastProjectSlug), { replace: true })
+      return
+    }
+    if (projects.length > 0) {
+      navigate(projectPath(projects[0].slug), { replace: true })
+    }
+  }, [isLoading, navigate, projects, resolvedLastProjectSlug, showProjectList])
 
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault()
@@ -35,14 +55,14 @@ export default function ProjectsPage() {
     setShowNew(false)
     setTitle('')
     setDescription('')
-    navigate(`/projects/${project.id}`)
+    navigate(projectPath(project.slug))
   }
 
   return (
     <div className="p-4 md:p-8 max-w-5xl mx-auto">
       <PageHeader
-        title="Projects"
-        subtitle="Objective-scoped work containers that bring together project knowledge, workflows, channels, and status."
+        title="Work"
+        subtitle="Your active projects. Everything you run needs a project home."
         actions={
           <Btn size="sm" onClick={() => setShowNew(true)}>
             <Plus size={14} /> New Project
@@ -56,13 +76,13 @@ export default function ProjectsPage() {
         <EmptyState
           icon={<FolderKanban size={32} />}
           heading="No projects yet"
-          subtext="Create the first project to start organizing work above workflows and runs."
+          subtext="Create your first project to start running workflows. Not sure where to start? Try a 'My Work' project for personal workflows."
           action={{ label: 'New Project', onClick: () => setShowNew(true) }}
         />
-      ) : (
+      ) : showProjectList ? (
         <div className="grid gap-4 md:grid-cols-2">
           {projects.map((project) => (
-            <Card key={project.id} className="p-5" onClick={() => navigate(`/projects/${project.id}`)}>
+            <Card key={project.id} className="p-5" onClick={() => navigate(projectPath(project.slug))}>
               <div className="flex items-start justify-between gap-3">
                 <div>
                   <h2 className="text-base font-semibold text-gray-900">{project.title}</h2>
@@ -93,7 +113,7 @@ export default function ProjectsPage() {
             </Card>
           ))}
         </div>
-      )}
+      ) : null}
 
       {showNew && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">

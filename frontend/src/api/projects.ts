@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import type {
-  Objective, Project, ProjectDashboard, ProjectDocument, ProjectDocumentWithContent, ProjectStatusUpdate,
+  Channel, Objective, Project, ProjectDashboard, ProjectDocument, ProjectDocumentWithContent, ProjectStatusUpdate,
 } from '@/types'
 import { api, API_BASE_URL } from './client'
 import type { UploadPreview } from './knowledge'
@@ -38,6 +38,18 @@ export function useProjectDashboard(workspaceId: string, projectId: string) {
   })
 }
 
+export function useProjectChannels(workspaceId: string, projectId: string, includeArchived = false) {
+  return useQuery({
+    queryKey: ['project-channels', workspaceId, projectId, includeArchived],
+    queryFn: () =>
+      api.get<Channel[]>(`/workspaces/${workspaceId}/projects/${projectId}/channels`, {
+        params: includeArchived ? { include_archived: true } : {},
+      }).then((r) => r.data),
+    enabled: !!workspaceId && !!projectId,
+    refetchInterval: 5_000,
+  })
+}
+
 export function useCreateProject(workspaceId: string) {
   const qc = useQueryClient()
   return useMutation({
@@ -54,8 +66,9 @@ export function useUpdateProject(workspaceId: string, projectId: string) {
       api.patch<Project>(`/workspaces/${workspaceId}/projects/${projectId}`, payload).then((r) => r.data),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['projects', workspaceId] })
-      qc.invalidateQueries({ queryKey: ['project', workspaceId, projectId] })
-      qc.invalidateQueries({ queryKey: ['project-dashboard', workspaceId, projectId] })
+      qc.invalidateQueries({ queryKey: ['project', workspaceId] })
+      qc.invalidateQueries({ queryKey: ['project-dashboard', workspaceId] })
+      qc.invalidateQueries({ queryKey: ['project-channels', workspaceId] })
     },
   })
 }
@@ -101,7 +114,8 @@ export function useCreateObjective(workspaceId: string) {
     onSuccess: (objective) => {
       qc.invalidateQueries({ queryKey: ['objectives', workspaceId] })
       qc.invalidateQueries({ queryKey: ['objectives', workspaceId, objective.project_id ?? 'unassigned'] })
-      if (objective.project_id) qc.invalidateQueries({ queryKey: ['project-dashboard', workspaceId, objective.project_id] })
+      qc.invalidateQueries({ queryKey: ['project-dashboard', workspaceId] })
+      qc.invalidateQueries({ queryKey: ['project-channels', workspaceId] })
     },
   })
 }
@@ -125,10 +139,11 @@ export function useUpdateObjective(workspaceId: string, objectiveId: string) {
     }) =>
       api.patch<Objective>(`/workspaces/${workspaceId}/objectives/${objectiveId}`, payload).then((r) => r.data),
     onSuccess: (objective) => {
-      qc.invalidateQueries({ queryKey: ['objective', workspaceId, objectiveId] })
+      qc.invalidateQueries({ queryKey: ['objective', workspaceId] })
       qc.invalidateQueries({ queryKey: ['objectives', workspaceId] })
       qc.invalidateQueries({ queryKey: ['objectives', workspaceId, objective.project_id ?? 'unassigned'] })
-      if (objective.project_id) qc.invalidateQueries({ queryKey: ['project-dashboard', workspaceId, objective.project_id] })
+      qc.invalidateQueries({ queryKey: ['project-dashboard', workspaceId] })
+      qc.invalidateQueries({ queryKey: ['project-channels', workspaceId] })
     },
   })
 }
@@ -336,8 +351,8 @@ export function useCreateProjectStatusUpdate(workspaceId: string, projectId: str
         .then((r) => r.data),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['projects', workspaceId] })
-      qc.invalidateQueries({ queryKey: ['project', workspaceId, projectId] })
-      qc.invalidateQueries({ queryKey: ['project-dashboard', workspaceId, projectId] })
+      qc.invalidateQueries({ queryKey: ['project', workspaceId] })
+      qc.invalidateQueries({ queryKey: ['project-dashboard', workspaceId] })
     },
   })
 }

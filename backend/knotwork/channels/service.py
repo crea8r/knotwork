@@ -7,7 +7,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from knotwork.channels.models import Channel, ChannelAssetBinding, ChannelEvent, ChannelMessage, ChannelSubscription, DecisionEvent
-from knotwork.channels.schemas import ChannelCreate, ChannelMessageCreate, DecisionEventCreate
+from knotwork.channels.schemas import ChannelCreate, ChannelMessageCreate, ChannelUpdate, DecisionEventCreate
 from knotwork.graphs.models import Graph
 from knotwork.knowledge.models import KnowledgeFile
 from knotwork.notifications import service as notification_service
@@ -20,6 +20,26 @@ from knotwork.participants import (
 )
 from knotwork.runs.models import Run, RunHandbookProposal
 from knotwork.escalations.models import Escalation
+from knotwork.utils.slugs import make_slug_candidate, parse_uuid_ref
+
+
+async def _generate_channel_slug(db: AsyncSession, name: str) -> str:
+    while True:
+        slug = make_slug_candidate(name, "channel")
+        existing = await db.execute(select(Channel.id).where(Channel.slug == slug))
+        if existing.scalar_one_or_none() is None:
+            return slug
+
+
+async def resolve_channel_ref(db: AsyncSession, workspace_id: UUID, channel_ref: str) -> Channel | None:
+    channel_uuid = parse_uuid_ref(channel_ref)
+    stmt = select(Channel).where(Channel.workspace_id == workspace_id, Channel.archived_at.is_(None))
+    if channel_uuid is not None:
+        stmt = stmt.where((Channel.id == channel_uuid) | (Channel.slug == channel_ref))
+    else:
+        stmt = stmt.where(Channel.slug == channel_ref)
+    result = await db.execute(stmt.limit(1))
+    return result.scalar_one_or_none()
 
 
 async def ensure_workflow_channels(db: AsyncSession, workspace_id: UUID) -> None:
@@ -45,6 +65,7 @@ async def ensure_workflow_channels(db: AsyncSession, workspace_id: UUID) -> None
             Channel(
                 workspace_id=workspace_id,
                 name=f"wf: {graph_name}",
+                slug=await _generate_channel_slug(db, graph_name),
                 channel_type="workflow",
                 graph_id=graph_id,
             )
@@ -70,6 +91,7 @@ async def ensure_handbook_channel(db: AsyncSession, workspace_id: UUID) -> None:
             Channel(
                 workspace_id=workspace_id,
                 name="handbook-chat",
+                slug=await _generate_channel_slug(db, "handbook chat"),
                 channel_type="handbook",
                 graph_id=None,
             )
@@ -278,8 +300,8 @@ async def list_channels(db: AsyncSession, workspace_id: UUID) -> list[Channel]:
     result = await db.execute(
         select(Channel)
         .where(Channel.workspace_id == workspace_id, Channel.archived_at.is_(None))
-        .where(Channel.channel_type.in_(("normal", "workflow", "handbook", "agent_main", "project", "task")))
-        .order_by(Channel.channel_type.asc(), Channel.created_at.asc())
+        .where(Channel.channel_type.in_(("normal", "workflow", "handbook", "run", "agent_main", "project", "objective", "task")))
+        .order_by(Channel.updated_at.desc(), Channel.created_at.desc())
     )
     return list(result.scalars())
 
@@ -451,6 +473,7 @@ async def attach_asset_to_channel(
     )
     row = existing.scalar_one_or_none()
     if row is None:
+        channel.updated_at = datetime.now(timezone.utc)
         row = ChannelAssetBinding(
             workspace_id=workspace_id,
             channel_id=channel_id,
@@ -536,6 +559,7 @@ async def create_channel(db: AsyncSession, workspace_id: UUID, data: ChannelCrea
     ch = Channel(
         workspace_id=workspace_id,
         name=data.name.strip(),
+        slug=await _generate_channel_slug(db, data.name.strip()),
         channel_type=data.channel_type,
         graph_id=data.graph_id,
         project_id=data.project_id,
@@ -548,11 +572,34 @@ async def create_channel(db: AsyncSession, workspace_id: UUID, data: ChannelCrea
     return ch
 
 
-async def get_channel(db: AsyncSession, workspace_id: UUID, channel_id: UUID) -> Channel | None:
-    ch = await db.get(Channel, channel_id)
-    if not ch or ch.workspace_id != workspace_id or ch.archived_at is not None:
+async def update_channel(db: AsyncSession, workspace_id: UUID, channel_id: UUID | str, data: ChannelUpdate) -> Channel | None:
+    ch = await get_channel(db, workspace_id, channel_id)
+    if ch is None:
         return None
+    payload = data.model_dump(exclude_unset=True)
+    if "name" in payload and payload["name"] is not None:
+        name = payload["name"].strip()
+        if not name:
+            raise ValueError("Channel name cannot be empty")
+        ch.name = name
+        if ch.channel_type == "normal":
+            ch.slug = await _generate_channel_slug(db, name)
+    if "archived" in payload and payload["archived"] is not None:
+        if ch.channel_type != "normal":
+            raise ValueError("Only normal channels can be archived")
+        ch.archived_at = datetime.now(timezone.utc) if payload["archived"] else None
+    await db.commit()
+    await db.refresh(ch)
     return ch
+
+
+async def get_channel(db: AsyncSession, workspace_id: UUID, channel_id: UUID | str) -> Channel | None:
+    if isinstance(channel_id, UUID):
+        ch = await db.get(Channel, channel_id)
+        if not ch or ch.workspace_id != workspace_id or ch.archived_at is not None:
+            return None
+        return ch
+    return await resolve_channel_ref(db, workspace_id, channel_id)
 
 
 async def list_messages(db: AsyncSession, workspace_id: UUID, channel_id: UUID) -> list[ChannelMessage]:
@@ -576,6 +623,7 @@ async def create_message(
     channel = await db.get(Channel, channel_id)
     if not channel or channel.workspace_id != workspace_id:
         raise ValueError("Channel not found")
+    channel.updated_at = datetime.now(timezone.utc)
 
     metadata = dict(data.metadata or {})
     mentioned = await resolve_mentioned_participants(db, workspace_id, data.content)
@@ -658,6 +706,10 @@ async def create_decision(
     channel_id: UUID | None,
     data: DecisionEventCreate,
 ) -> DecisionEvent:
+    if channel_id is not None:
+        channel = await db.get(Channel, channel_id)
+        if channel is not None and channel.workspace_id == workspace_id:
+            channel.updated_at = datetime.now(timezone.utc)
     event = DecisionEvent(
         workspace_id=workspace_id,
         channel_id=channel_id,
@@ -895,6 +947,7 @@ async def get_or_create_run_channel(
     row = Channel(
         workspace_id=workspace_id,
         name=f"run:{run_id}",
+        slug=await _generate_channel_slug(db, f"run {run_id}"),
         channel_type="run",
         graph_id=graph_id,
         project_id=None,
@@ -929,6 +982,7 @@ async def get_or_create_agent_main_channel(
     row = Channel(
         workspace_id=workspace_id,
         name=name,
+        slug=await _generate_channel_slug(db, display_name),
         channel_type="agent_main",
         graph_id=None,
     )

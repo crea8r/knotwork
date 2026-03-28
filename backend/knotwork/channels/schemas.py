@@ -11,6 +11,7 @@ class ChannelOut(BaseModel):
     id: UUID
     workspace_id: UUID
     name: str
+    slug: str
     channel_type: str
     graph_id: UUID | None = None
     project_id: UUID | None = None
@@ -28,6 +29,11 @@ class ChannelCreate(BaseModel):
     graph_id: UUID | None = None
     project_id: UUID | None = None
     objective_id: UUID | None = None
+
+
+class ChannelUpdate(BaseModel):
+    name: str | None = None
+    archived: bool | None = None
 
 
 class ChannelMessageOut(BaseModel):

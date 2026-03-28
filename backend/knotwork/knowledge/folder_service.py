@@ -18,7 +18,10 @@ from knotwork.knowledge.storage import get_storage_adapter
 
 async def list_folders(db: AsyncSession, workspace_id: UUID) -> list[KnowledgeFolder]:
     result = await db.execute(
-        select(KnowledgeFolder).where(KnowledgeFolder.workspace_id == workspace_id)
+        select(KnowledgeFolder).where(
+            KnowledgeFolder.workspace_id == workspace_id,
+            KnowledgeFolder.project_id.is_(None),
+        )
     )
     return list(result.scalars().all())
 
@@ -28,13 +31,14 @@ async def create_folder(db: AsyncSession, workspace_id: UUID, path: str) -> Know
     existing = await db.execute(
         select(KnowledgeFolder).where(
             KnowledgeFolder.workspace_id == workspace_id,
+            KnowledgeFolder.project_id.is_(None),
             KnowledgeFolder.path == path,
         )
     )
     folder = existing.scalars().first()
     if folder:
         return folder
-    folder = KnowledgeFolder(workspace_id=workspace_id, path=path)
+    folder = KnowledgeFolder(workspace_id=workspace_id, project_id=None, path=path)
     db.add(folder)
     await db.commit()
     await db.refresh(folder)
@@ -47,7 +51,10 @@ async def delete_folder(db: AsyncSession, workspace_id: UUID, path: str) -> None
     prefix = path + "/"
 
     files_result = await db.execute(
-        select(KnowledgeFile).where(KnowledgeFile.workspace_id == workspace_id)
+        select(KnowledgeFile).where(
+            KnowledgeFile.workspace_id == workspace_id,
+            KnowledgeFile.project_id.is_(None),
+        )
     )
     for f in files_result.scalars().all():
         if f.path == path or f.path.startswith(prefix):
@@ -59,7 +66,10 @@ async def delete_folder(db: AsyncSession, workspace_id: UUID, path: str) -> None
 
     # Collect folder paths to delete, then issue a single delete
     folders_result = await db.execute(
-        select(KnowledgeFolder).where(KnowledgeFolder.workspace_id == workspace_id)
+        select(KnowledgeFolder).where(
+            KnowledgeFolder.workspace_id == workspace_id,
+            KnowledgeFolder.project_id.is_(None),
+        )
     )
     paths_to_delete = [
         row.path for row in folders_result.scalars().all()
@@ -69,6 +79,7 @@ async def delete_folder(db: AsyncSession, workspace_id: UUID, path: str) -> None
         await db.execute(
             delete(KnowledgeFolder).where(
                 KnowledgeFolder.workspace_id == workspace_id,
+                KnowledgeFolder.project_id.is_(None),
                 KnowledgeFolder.path.in_(paths_to_delete),
             )
         )
@@ -87,7 +98,10 @@ async def rename_folder(
 
     # Update files
     files_result = await db.execute(
-        select(KnowledgeFile).where(KnowledgeFile.workspace_id == workspace_id)
+        select(KnowledgeFile).where(
+            KnowledgeFile.workspace_id == workspace_id,
+            KnowledgeFile.project_id.is_(None),
+        )
     )
     for f in files_result.scalars().all():
         if f.path.startswith(prefix):
@@ -100,7 +114,10 @@ async def rename_folder(
 
     # Update folder records
     folders_result = await db.execute(
-        select(KnowledgeFolder).where(KnowledgeFolder.workspace_id == workspace_id)
+        select(KnowledgeFolder).where(
+            KnowledgeFolder.workspace_id == workspace_id,
+            KnowledgeFolder.project_id.is_(None),
+        )
     )
     for folder in folders_result.scalars().all():
         if folder.path == old_path:

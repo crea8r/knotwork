@@ -2,8 +2,9 @@
  * HandbookChatPanel — AI chat panel for handbook editing.
  */
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Loader2, Send } from 'lucide-react'
+import { BookOpen, Loader2 } from 'lucide-react'
 import { useAskHandbookChat, useChannelDecisions, useChannelMessages } from '@/api/channels'
+import { ChannelComposer, ChannelContextPill, ChannelShell, ChannelTimeline, type ChannelTimelineItem } from '@/components/channel/ChannelFrame'
 import Spinner from '@/components/shared/Spinner'
 import HandbookProposalCard, { type HandbookProposalPayload } from './HandbookProposalCard'
 
@@ -84,89 +85,93 @@ export default function HandbookChatPanel({
   const contextLabel = currentFilePath
     ? currentFilePath
     : currentFolder || 'Home'
+  const timelineItems = useMemo<ChannelTimelineItem[]>(() => displayedTimeline.map((item) => {
+    if (item.type === 'msg') {
+      return {
+        id: item.id,
+        kind: 'message' as const,
+        authorLabel: item.payload.authorName,
+        mine: item.payload.authorType === 'human',
+        tone: item.payload.authorType === 'human' ? 'human' : 'agent',
+        content: item.payload.content,
+      }
+    }
+    if (item.type === 'decision') {
+      return {
+        id: item.id,
+        kind: 'decision' as const,
+        label: decisionLabel(item.payload.decisionType),
+        actorName: item.payload.actorName,
+      }
+    }
+    return {
+      id: item.id,
+      kind: 'custom' as const,
+      content: <HandbookProposalCard proposal={item.payload} workspaceId={workspaceId} channelId={channelId ?? ''} onOpenFile={onOpenFile} showRaw={showRaw} />,
+    }
+  }), [channelId, displayedTimeline, onOpenFile, showRaw, workspaceId])
 
   return (
-    <div className="h-full flex flex-col">
-      <div className="px-3 py-2 border-b border-gray-100 flex items-center justify-between flex-shrink-0">
-        <div>
-          <p className="text-xs text-gray-500">Ask the agent to create or edit handbook files.</p>
-          <p className="mt-0.5 text-[11px] font-mono text-gray-400 truncate">Context: {contextLabel}</p>
-        </div>
+    <ChannelShell
+      title="Handbook Agent"
+      typeIcon={<BookOpen size={14} />}
+      parentLabel="Knowledge maintenance channel"
+      actions={(
         <button onClick={() => setShowRaw(v => !v)} className="text-xs px-2 py-1 rounded border border-gray-200 text-gray-500 hover:border-gray-300">
           {showRaw ? 'Hide raw' : 'Debug'}
         </button>
-      </div>
+      )}
+      context={(
+        <>
+          <ChannelContextPill>{contextLabel}</ChannelContextPill>
+          {channelId ? null : <ChannelContextPill>Create channel required</ChannelContextPill>}
+        </>
+      )}
+    >
       {!channelId ? (
-        <div className="p-4 flex-1">
+        <div className="p-4 flex-1 bg-[#faf7f1]">
           <div className="rounded-xl border border-gray-200 bg-white p-4">
             <p className="text-sm text-gray-700">Create handbook chat channel to start.</p>
             <button onClick={onCreateChannel} className="mt-3 px-3 py-2 rounded-lg bg-brand-600 text-white text-sm">Create handbook chat</button>
           </div>
         </div>
+      ) : isLoading ? (
+        <div className="flex flex-1 items-center justify-center bg-[#faf7f1]"><Spinner size="lg" /></div>
       ) : (
         <>
-          <div className="flex-1 overflow-y-auto p-3 space-y-3">
-            {isLoading ? <div className="flex justify-center py-10"><Spinner size="lg" /></div> : (
-              <>
-                {olderCount > 0 && (
-                  <div className="flex justify-center">
-                    <button onClick={() => { loadingOlderRef.current = true; setShowOlder(true) }}
-                      className="text-xs text-brand-600 hover:text-brand-800 underline underline-offset-2 py-1">
-                      Load {olderCount} older message{olderCount !== 1 ? 's' : ''}
-                    </button>
+          <div className="flex-1 min-h-0 flex flex-col">
+            {olderCount > 0 && !showOlder ? (
+              <div className="bg-[#faf7f1] px-4 pt-3">
+                <button
+                  onClick={() => { loadingOlderRef.current = true; setShowOlder(true) }}
+                  className="text-xs text-brand-600 hover:text-brand-800 underline underline-offset-2 py-1"
+                >
+                  Load {olderCount} older message{olderCount !== 1 ? 's' : ''}
+                </button>
+              </div>
+            ) : null}
+            <ChannelTimeline items={timelineItems} emptyState="No conversation yet." />
+            {askHandbook.isPending ? (
+              <div className="bg-[#faf7f1] px-4 pb-3">
+                <div className="max-w-[92%] mr-auto">
+                  <p className="text-[10px] uppercase tracking-wide text-gray-400 mb-1">Knotwork Agent</p>
+                  <div className="rounded-2xl px-3 py-2 text-sm border bg-white text-gray-700 border-gray-200 inline-flex items-center gap-2">
+                    <Loader2 size={14} className="animate-spin" />Agent is thinking…
                   </div>
-                )}
-                {displayedTimeline.length === 0
-                  ? <p className="text-sm text-gray-400 italic">No conversation yet.</p>
-                  : displayedTimeline.map(item => {
-                      if (item.type === 'msg') {
-                        const mine = item.payload.authorType === 'human'
-                        return (
-                          <div key={item.id} className={`max-w-[92%] ${mine ? 'ml-auto' : 'mr-auto'}`}>
-                            <p className="text-[10px] uppercase tracking-wide text-gray-400 mb-1">{item.payload.authorName}</p>
-                            <div className={`rounded-2xl px-3 py-2 text-sm border whitespace-pre-wrap ${mine ? 'bg-brand-600 text-white border-brand-600' : 'bg-white text-gray-800 border-gray-200'}`}>{item.payload.content}</div>
-                          </div>
-                        )
-                      }
-                      if (item.type === 'decision') {
-                        return (
-                          <div key={item.id} className="max-w-[92%] mr-auto rounded-xl border border-amber-200 bg-amber-50 px-3 py-2">
-                            <p className="text-[10px] uppercase tracking-wide text-amber-700">Action</p>
-                            <p className="text-sm text-amber-900">{decisionLabel(item.payload.decisionType)}</p>
-                            {item.payload.actorName && <p className="text-[11px] text-amber-700 mt-1">by {item.payload.actorName}</p>}
-                          </div>
-                        )
-                      }
-                      return <HandbookProposalCard key={item.id} proposal={item.payload} workspaceId={workspaceId} channelId={channelId} onOpenFile={onOpenFile} showRaw={showRaw} />
-                    })
-                }
-                {askHandbook.isPending && (
-                  <div className="max-w-[92%] mr-auto">
-                    <p className="text-[10px] uppercase tracking-wide text-gray-400 mb-1">Knotwork Agent</p>
-                    <div className="rounded-2xl px-3 py-2 text-sm border bg-white text-gray-700 border-gray-200 inline-flex items-center gap-2">
-                      <Loader2 size={14} className="animate-spin" />Agent is thinking…
-                    </div>
-                  </div>
-                )}
-                <div ref={bottomRef} />
-              </>
-            )}
+                </div>
+              </div>
+            ) : null}
+            <div ref={bottomRef} />
           </div>
-          <div className="border-t border-gray-200 bg-white p-3 flex-shrink-0">
-            <textarea value={draft} onChange={e => setDraft(e.target.value)} rows={3} disabled={askHandbook.isPending}
-              onKeyDown={e => { if ((e.metaKey || e.ctrlKey) && e.key === 'Enter' && draft.trim()) { e.preventDefault(); void sendRequest() } }}
-              placeholder="Ask to create/edit/move handbook content… (⌘↵ to send)"
-              className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-brand-500 resize-none disabled:bg-gray-50 disabled:text-gray-500" />
-            <div className="mt-2 flex justify-end">
-              <button onClick={() => { void sendRequest() }} disabled={!draft.trim() || askHandbook.isPending}
-                className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-brand-600 text-white text-sm disabled:opacity-40">
-                {askHandbook.isPending ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
-                {askHandbook.isPending ? 'Thinking…' : 'Send'}
-              </button>
-            </div>
-          </div>
+          <ChannelComposer
+            draft={draft}
+            setDraft={setDraft}
+            onSend={() => { void sendRequest() }}
+            pending={askHandbook.isPending}
+            placeholder="Ask to create, edit, move, or restructure handbook content…"
+          />
         </>
       )}
-    </div>
+    </ChannelShell>
   )
 }

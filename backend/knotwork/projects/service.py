@@ -6,7 +6,8 @@ from uuid import UUID
 from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from knotwork.channels.models import Channel
+from knotwork.channels.models import Channel, ChannelAssetBinding
+from knotwork.channels.service import _generate_channel_slug
 from knotwork.graphs.models import Graph
 from knotwork.knowledge.models import KnowledgeFile, KnowledgeFolder
 from knotwork.knowledge.change_summary import generate_change_summary
@@ -15,6 +16,7 @@ from knotwork.knowledge.suggestions import generate_suggestions
 from knotwork.knowledge.storage import get_storage_adapter
 from knotwork.projects.models import Objective, Project, ProjectStatusUpdate
 from knotwork.runs.models import Run
+from knotwork.utils.slugs import make_slug_candidate, parse_uuid_ref
 from knotwork.projects.schemas import (
     ObjectiveCreate,
     ObjectiveUpdate,
@@ -53,6 +55,45 @@ async def _get_objective_channel_id(db: AsyncSession, objective_id: UUID) -> UUI
     return result.scalar_one_or_none()
 
 
+async def _generate_project_slug(db: AsyncSession, title: str) -> str:
+    while True:
+        slug = make_slug_candidate(title, "project")
+        existing = await db.execute(select(Project.id).where(Project.slug == slug))
+        if existing.scalar_one_or_none() is None:
+            return slug
+
+
+async def _generate_objective_slug(db: AsyncSession, title: str, code: str | None = None) -> str:
+    source = " ".join(part for part in (code, title) if part)
+    while True:
+        slug = make_slug_candidate(source, "objective")
+        existing = await db.execute(select(Objective.id).where(Objective.slug == slug))
+        if existing.scalar_one_or_none() is None:
+            return slug
+
+
+async def resolve_project_ref(db: AsyncSession, workspace_id: UUID, project_ref: str) -> Project | None:
+    project_uuid = parse_uuid_ref(project_ref)
+    stmt = select(Project).where(Project.workspace_id == workspace_id)
+    if project_uuid is not None:
+        stmt = stmt.where((Project.id == project_uuid) | (Project.slug == project_ref))
+    else:
+        stmt = stmt.where(Project.slug == project_ref)
+    result = await db.execute(stmt.limit(1))
+    return result.scalar_one_or_none()
+
+
+async def resolve_objective_ref(db: AsyncSession, workspace_id: UUID, objective_ref: str) -> Objective | None:
+    objective_uuid = parse_uuid_ref(objective_ref)
+    stmt = select(Objective).where(Objective.workspace_id == workspace_id)
+    if objective_uuid is not None:
+        stmt = stmt.where((Objective.id == objective_uuid) | (Objective.slug == objective_ref))
+    else:
+        stmt = stmt.where(Objective.slug == objective_ref)
+    result = await db.execute(stmt.limit(1))
+    return result.scalar_one_or_none()
+
+
 async def list_projects(db: AsyncSession, workspace_id: UUID) -> list[dict]:
     rows = await db.execute(
         select(Project).where(Project.workspace_id == workspace_id).order_by(Project.updated_at.desc())
@@ -83,6 +124,27 @@ async def list_projects(db: AsyncSession, workspace_id: UUID) -> list[dict]:
     )
     run_counts = {row[0]: int(row[1]) for row in run_counts_q.all()}
 
+    objective_updates_q = await db.execute(
+        select(Objective.project_id, func.max(Objective.updated_at))
+        .where(Objective.project_id.in_(project_ids))
+        .group_by(Objective.project_id)
+    )
+    objective_updates = {row[0]: row[1] for row in objective_updates_q.all() if row[0] is not None and row[1] is not None}
+
+    channel_updates_q = await db.execute(
+        select(Channel.project_id, func.max(Channel.updated_at))
+        .where(Channel.project_id.in_(project_ids), Channel.archived_at.is_(None))
+        .group_by(Channel.project_id)
+    )
+    channel_updates = {row[0]: row[1] for row in channel_updates_q.all() if row[0] is not None and row[1] is not None}
+
+    status_updates_q = await db.execute(
+        select(ProjectStatusUpdate.project_id, func.max(ProjectStatusUpdate.created_at))
+        .where(ProjectStatusUpdate.project_id.in_(project_ids))
+        .group_by(ProjectStatusUpdate.project_id)
+    )
+    status_updates = {row[0]: row[1] for row in status_updates_q.all() if row[0] is not None and row[1] is not None}
+
     updates_q = await db.execute(
         select(ProjectStatusUpdate)
         .where(ProjectStatusUpdate.project_id.in_(project_ids))
@@ -94,6 +156,14 @@ async def list_projects(db: AsyncSession, workspace_id: UUID) -> list[dict]:
 
     out = []
     for project in projects:
+        latest_activity_at = max(
+            [
+                project.updated_at,
+                objective_updates.get(project.id, project.updated_at),
+                channel_updates.get(project.id, project.updated_at),
+                status_updates.get(project.id, project.updated_at),
+            ]
+        )
         out.append({
             **{c.key: getattr(project, c.key) for c in project.__table__.columns},
             "project_channel_id": await _get_project_channel_id(db, project.id),
@@ -101,21 +171,26 @@ async def list_projects(db: AsyncSession, workspace_id: UUID) -> list[dict]:
             "open_objective_count": open_counts.get(project.id, 0),
             "run_count": run_counts.get(project.id, 0),
             "latest_status_update": latest_updates.get(project.id),
+            "latest_activity_at": latest_activity_at,
         })
+    out.sort(key=lambda project: project["latest_activity_at"], reverse=True)
     return out
 
 
-async def get_project(db: AsyncSession, workspace_id: UUID, project_id: UUID) -> Project | None:
-    project = await db.get(Project, project_id)
-    if project is None or project.workspace_id != workspace_id:
-        return None
-    return project
+async def get_project(db: AsyncSession, workspace_id: UUID, project_ref: UUID | str) -> Project | None:
+    if isinstance(project_ref, UUID):
+        project = await db.get(Project, project_ref)
+        if project is None or project.workspace_id != workspace_id:
+            return None
+        return project
+    return await resolve_project_ref(db, workspace_id, project_ref)
 
 
 async def create_project(db: AsyncSession, workspace_id: UUID, data: ProjectCreate) -> Project:
     project = Project(
         workspace_id=workspace_id,
         title=data.title.strip(),
+        slug=await _generate_project_slug(db, data.title.strip()),
         description=data.description.strip(),
         status=data.status,
         deadline=data.deadline,
@@ -126,6 +201,7 @@ async def create_project(db: AsyncSession, workspace_id: UUID, data: ProjectCrea
         Channel(
             workspace_id=workspace_id,
             name=f"project: {project.title}",
+            slug=await _generate_channel_slug(db, project.title),
             channel_type="project",
             project_id=project.id,
         )
@@ -176,8 +252,13 @@ async def list_objectives(db: AsyncSession, workspace_id: UUID, project_id: UUID
 
     out = []
     for objective in objectives:
+        project_slug = None
+        if objective.project_id is not None:
+            project_row = await db.get(Project, objective.project_id)
+            project_slug = project_row.slug if project_row is not None else None
         out.append({
             **{c.key: getattr(objective, c.key) for c in objective.__table__.columns},
+            "project_slug": project_slug,
             "channel_id": await _get_objective_channel_id(db, objective.id),
             "run_count": run_counts.get(objective.id, 0),
             "latest_run_id": latest_by_objective.get(objective.id).id if objective.id in latest_by_objective else None,
@@ -185,13 +266,16 @@ async def list_objectives(db: AsyncSession, workspace_id: UUID, project_id: UUID
     return out
 
 
-async def get_objective(db: AsyncSession, workspace_id: UUID, objective_id: UUID) -> dict | None:
-    objective = await db.get(Objective, objective_id)
+async def get_objective(db: AsyncSession, workspace_id: UUID, objective_ref: UUID | str) -> dict | None:
+    if isinstance(objective_ref, UUID):
+        objective = await db.get(Objective, objective_ref)
+    else:
+        objective = await resolve_objective_ref(db, workspace_id, objective_ref)
     if objective is None or objective.workspace_id != workspace_id:
         return None
     rows = await list_objectives(db, workspace_id, objective.project_id)
     for row in rows:
-        if str(row["id"]) == str(objective_id):
+        if str(row["id"]) == str(objective.id):
             return row
     return None
 
@@ -220,6 +304,7 @@ async def create_objective(db: AsyncSession, workspace_id: UUID, data: Objective
         project_id=data.project_id,
         parent_objective_id=data.parent_objective_id,
         code=(data.code or "").strip() or None,
+        slug=await _generate_objective_slug(db, data.title.strip(), (data.code or "").strip() or None),
         title=data.title.strip(),
         description=(data.description or "").strip() or None,
         status=data.status,
@@ -238,6 +323,7 @@ async def create_objective(db: AsyncSession, workspace_id: UUID, data: Objective
         Channel(
             workspace_id=workspace_id,
             name=f"objective: {objective.code or objective.title}",
+            slug=await _generate_channel_slug(db, objective.code or objective.title),
             channel_type="objective",
             project_id=objective.project_id,
             objective_id=objective.id,
@@ -628,3 +714,141 @@ async def get_project_dashboard(db: AsyncSession, workspace_id: UUID, project_id
         "blocked_objectives": blocked_objectives,
         "latest_status_update": project_row["latest_status_update"] if project_row else None,
     }
+
+
+async def list_project_channels(
+    db: AsyncSession,
+    workspace_id: UUID,
+    project_id: UUID,
+    *,
+    include_archived: bool = False,
+) -> list[Channel]:
+    from knotwork.channels import service as channel_service
+
+    await channel_service.ensure_workflow_channels(db, workspace_id)
+    await channel_service.ensure_handbook_channel(db, workspace_id)
+    await channel_service.ensure_default_channel_subscriptions(db, workspace_id)
+
+    project = await get_project(db, workspace_id, project_id)
+    if project is None:
+        return []
+
+    objective_ids = [row[0] for row in (await db.execute(
+        select(Objective.id).where(
+            Objective.workspace_id == workspace_id,
+            Objective.project_id == project_id,
+        )
+    )).all()]
+    graph_ids = [str(row[0]) for row in (await db.execute(
+        select(Graph.id).where(
+            Graph.workspace_id == workspace_id,
+            Graph.project_id == project_id,
+        )
+    )).all()]
+    run_ids = [row[0] for row in (await db.execute(
+        select(Run.id).where(
+            Run.workspace_id == workspace_id,
+            Run.project_id == project_id,
+        )
+    )).all()]
+    file_ids = [str(row[0]) for row in (await db.execute(
+        select(KnowledgeFile.id).where(
+            KnowledgeFile.workspace_id == workspace_id,
+            KnowledgeFile.project_id == project_id,
+        )
+    )).all()]
+
+    channel_ids: set[UUID] = set()
+
+    archive_filter = True if include_archived else Channel.archived_at.is_(None)
+
+    direct_rows = await db.execute(
+        select(Channel.id).where(
+            Channel.workspace_id == workspace_id,
+            archive_filter,
+            Channel.project_id == project_id,
+            Channel.channel_type.in_(("project", "normal", "objective")),
+        )
+    )
+    channel_ids.update(row[0] for row in direct_rows.all())
+
+    if objective_ids:
+        objective_rows = await db.execute(
+            select(Channel.id).where(
+                Channel.workspace_id == workspace_id,
+                archive_filter,
+                Channel.objective_id.in_(objective_ids),
+            )
+        )
+        channel_ids.update(row[0] for row in objective_rows.all())
+
+    if graph_ids:
+        workflow_rows = await db.execute(
+            select(Channel.id).where(
+                Channel.workspace_id == workspace_id,
+                archive_filter,
+                Channel.channel_type == "workflow",
+                Channel.graph_id.in_(graph_ids),
+            )
+        )
+        channel_ids.update(row[0] for row in workflow_rows.all())
+
+    if run_ids:
+        run_rows = await db.execute(
+            select(Channel.id).where(
+                Channel.workspace_id == workspace_id,
+                archive_filter,
+                Channel.channel_type == "run",
+                Channel.name.in_([f"run:{run_id}" for run_id in run_ids]),
+            )
+        )
+        channel_ids.update(row[0] for row in run_rows.all())
+
+    if graph_ids or run_ids or file_ids:
+        binding_base = select(ChannelAssetBinding.channel_id).join(
+            Channel,
+            Channel.id == ChannelAssetBinding.channel_id,
+        ).where(
+            Channel.workspace_id == workspace_id,
+            archive_filter,
+            Channel.channel_type == "normal",
+            ChannelAssetBinding.workspace_id == workspace_id,
+        )
+        if graph_ids:
+            workflow_binding_rows = await db.execute(
+                binding_base.where(
+                    ChannelAssetBinding.asset_type == "workflow",
+                    ChannelAssetBinding.asset_id.in_(graph_ids),
+                )
+            )
+            channel_ids.update(row[0] for row in workflow_binding_rows.all())
+        if run_ids:
+            run_binding_rows = await db.execute(
+                binding_base.where(
+                    ChannelAssetBinding.asset_type == "run",
+                    ChannelAssetBinding.asset_id.in_(run_ids),
+                )
+            )
+            channel_ids.update(row[0] for row in run_binding_rows.all())
+        if file_ids:
+            file_binding_rows = await db.execute(
+                binding_base.where(
+                    ChannelAssetBinding.asset_type == "file",
+                    ChannelAssetBinding.asset_id.in_(file_ids),
+                )
+            )
+            channel_ids.update(row[0] for row in file_binding_rows.all())
+
+    if not channel_ids:
+        return []
+
+    result = await db.execute(
+        select(Channel)
+        .where(
+            Channel.workspace_id == workspace_id,
+            archive_filter,
+            Channel.id.in_(channel_ids),
+        )
+        .order_by(Channel.archived_at.is_not(None).asc(), Channel.updated_at.desc(), Channel.created_at.desc())
+    )
+    return list(result.scalars())

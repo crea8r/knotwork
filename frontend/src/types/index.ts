@@ -262,7 +262,8 @@ export interface Channel {
   id: string
   workspace_id: string
   name: string
-  channel_type: 'normal' | 'workflow' | 'handbook' | 'agent_main' | 'project' | 'objective'
+  slug: string
+  channel_type: 'normal' | 'workflow' | 'handbook' | 'run' | 'agent_main' | 'project' | 'objective'
   graph_id: string | null
   project_id: string | null
   objective_id: string | null
@@ -284,6 +285,7 @@ export interface ProjectStatusUpdate {
 export interface Project {
   id: string
   workspace_id: string
+  slug: string
   title: string
   description: string
   status: 'open' | 'in_progress' | 'blocked' | 'done'
@@ -293,6 +295,7 @@ export interface Project {
   open_objective_count: number
   run_count: number
   latest_status_update: ProjectStatusUpdate | null
+  latest_activity_at: string
   created_at: string
   updated_at: string
 }
@@ -300,7 +303,9 @@ export interface Project {
 export interface Objective {
   id: string
   workspace_id: string
+  slug: string
   project_id: string | null
+  project_slug: string | null
   parent_objective_id: string | null
   code: string | null
   title: string

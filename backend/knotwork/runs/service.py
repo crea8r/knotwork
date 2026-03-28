@@ -163,6 +163,49 @@ async def create_run(
             metadata={"kind": "run_start"},
         ),
     )
+
+    announced_channel_ids: set[UUID] = set()
+
+    async def attach_and_announce(
+        target_channel_id: UUID,
+        *,
+        content: str,
+        metadata: dict,
+    ) -> None:
+        if target_channel_id == run_channel.id or target_channel_id in announced_channel_ids:
+            return
+        await channel_service.attach_asset_to_channel(
+            db,
+            workspace_id,
+            target_channel_id,
+            asset_type="run",
+            asset_id=str(run.id),
+        )
+        await channel_service.create_message(
+            db,
+            workspace_id,
+            target_channel_id,
+            ChannelMessageCreate(
+                role="system",
+                author_type="system",
+                author_name="Knotwork",
+                content=content,
+                run_id=run.id,
+                metadata=metadata,
+            ),
+        )
+        announced_channel_ids.add(target_channel_id)
+
+    if data.source_channel_id is not None:
+        source_channel = await channel_service.get_channel(db, workspace_id, data.source_channel_id)
+        if source_channel is None:
+            raise ValueError("Source channel not found")
+        await attach_and_announce(
+            source_channel.id,
+            content=f"Started workflow run {run.name or run.id}. Follow progress here or open the run thread.",
+            metadata={"kind": "channel_run_started", "graph_id": str(graph_id), "run_id": str(run.id)},
+        )
+
     if objective is not None:
         objective_channel = await db.execute(
             select(Channel).where(
@@ -173,18 +216,10 @@ async def create_run(
         )
         objective_channel_row = objective_channel.scalar_one_or_none()
         if objective_channel_row is not None:
-            await channel_service.create_message(
-                db,
-                workspace_id=workspace_id,
-                channel_id=objective_channel_row.id,
-                data=ChannelMessageCreate(
-                    role="system",
-                    author_type="system",
-                    author_name="Knotwork",
-                    content=f"Triggered run {run.id} from objective.",
-                    run_id=run.id,
-                    metadata={"kind": "objective_run_started", "graph_id": str(graph_id)},
-                ),
+            await attach_and_announce(
+                objective_channel_row.id,
+                content=f"Triggered run {run.id} from objective.",
+                metadata={"kind": "objective_run_started", "graph_id": str(graph_id), "run_id": str(run.id)},
             )
 
     bound_channel_ids = await channel_service.list_bound_channel_ids_for_asset(
@@ -194,25 +229,10 @@ async def create_run(
         asset_id=str(graph_id),
     )
     for bound_channel_id in bound_channel_ids:
-        await channel_service.attach_asset_to_channel(
-            db,
-            workspace_id,
+        await attach_and_announce(
             bound_channel_id,
-            asset_type="run",
-            asset_id=str(run.id),
-        )
-        await channel_service.create_message(
-            db,
-            workspace_id,
-            bound_channel_id,
-            ChannelMessageCreate(
-                role="system",
-                author_type="system",
-                author_name="Knotwork",
-                content=f"New run created from attached workflow: {run.name or run.id}",
-                run_id=run.id,
-                metadata={"kind": "workflow_run_created", "graph_id": str(graph_id), "run_id": str(run.id)},
-            ),
+            content=f"New run created from attached workflow: {run.name or run.id}",
+            metadata={"kind": "workflow_run_created", "graph_id": str(graph_id), "run_id": str(run.id)},
         )
 
     from arq import create_pool

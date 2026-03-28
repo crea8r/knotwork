@@ -379,14 +379,26 @@ async def list_designer_messages(
     workspace_id: UUID, graph_id: UUID, db: AsyncSession = Depends(get_db)
 ):
     from sqlalchemy import select
-    from knotwork.designer.models import DesignerChatMessage
+    from knotwork.channels.models import Channel, ChannelMessage
     graph = await service.get_graph(db, graph_id)
     if not graph or graph.workspace_id != workspace_id:
         raise HTTPException(404, "Graph not found")
+    channel_id = (
+        await db.execute(
+            select(Channel.id).where(
+                Channel.workspace_id == workspace_id,
+                Channel.graph_id == graph_id,
+                Channel.channel_type == "workflow",
+                Channel.archived_at.is_(None),
+            ).limit(1)
+        )
+    ).scalar_one_or_none()
+    if channel_id is None:
+        return []
     result = await db.execute(
-        select(DesignerChatMessage)
-        .where(DesignerChatMessage.graph_id == graph_id)
-        .order_by(DesignerChatMessage.created_at.asc())
+        select(ChannelMessage)
+        .where(ChannelMessage.channel_id == channel_id)
+        .order_by(ChannelMessage.created_at.asc())
     )
     msgs = result.scalars().all()
     return [
@@ -400,11 +412,23 @@ async def clear_designer_messages(
     workspace_id: UUID, graph_id: UUID, db: AsyncSession = Depends(get_db)
 ):
     from sqlalchemy import delete
-    from knotwork.designer.models import DesignerChatMessage
+    from knotwork.channels.models import Channel, ChannelMessage
     graph = await service.get_graph(db, graph_id)
     if not graph or graph.workspace_id != workspace_id:
         raise HTTPException(404, "Graph not found")
+    channel_id = (
+        await db.execute(
+            select(Channel.id).where(
+                Channel.workspace_id == workspace_id,
+                Channel.graph_id == graph_id,
+                Channel.channel_type == "workflow",
+                Channel.archived_at.is_(None),
+            ).limit(1)
+        )
+    ).scalar_one_or_none()
+    if channel_id is None:
+        return
     await db.execute(
-        delete(DesignerChatMessage).where(DesignerChatMessage.graph_id == graph_id)
+        delete(ChannelMessage).where(ChannelMessage.channel_id == channel_id)
     )
     await db.commit()

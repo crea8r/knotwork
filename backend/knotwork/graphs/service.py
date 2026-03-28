@@ -6,6 +6,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from knotwork.channels.models import Channel
+from knotwork.channels.service import _generate_channel_slug
 from knotwork.graphs.models import Graph, GraphVersion
 from knotwork.runs.models import Run
 from knotwork.tools.models import Tool, ToolVersion
@@ -88,8 +89,20 @@ async def create_graph(
         created_by=created_by,
     )
     db.add(draft)
+    db.add(
+        Channel(
+            workspace_id=workspace_id,
+            name=f"wf: {graph.name}",
+            slug=await _generate_channel_slug(db, graph.name),
+            channel_type="workflow",
+            graph_id=graph.id,
+            project_id=data.project_id,
+        )
+    )
     await db.commit()
     await db.refresh(graph)
+    from knotwork.channels import service as channel_service
+    await channel_service.ensure_default_channel_subscriptions(db, workspace_id)
     return graph
 
 
@@ -101,6 +114,18 @@ async def update_graph(
         return None
     for field, value in data.model_dump(exclude_none=True).items():
         setattr(graph, field, value)
+    workflow_channel = (
+        await db.execute(
+            select(Channel).where(
+                Channel.workspace_id == graph.workspace_id,
+                Channel.graph_id == graph_id,
+                Channel.channel_type == "workflow",
+            ).limit(1)
+        )
+    ).scalar_one_or_none()
+    if workflow_channel is not None:
+        workflow_channel.name = f"wf: {graph.name}"
+        workflow_channel.project_id = graph.project_id
     await db.commit()
     await db.refresh(graph)
     return graph

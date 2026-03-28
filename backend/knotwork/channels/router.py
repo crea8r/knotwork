@@ -13,6 +13,7 @@ from knotwork.channels.schemas import (
     ChannelAssetBindingCreate,
     ChannelAssetBindingOut,
     ChannelCreate,
+    ChannelUpdate,
     ChannelSubscriptionOut,
     ChannelSubscriptionUpdate,
     HandbookChatAskRequest,
@@ -74,96 +75,119 @@ async def create_channel(
     return ChannelOut.model_validate(ch)
 
 
-@router.get("/{workspace_id}/channels/{channel_id}", response_model=ChannelOut)
+@router.get("/{workspace_id}/channels/{channel_ref}", response_model=ChannelOut)
 async def get_channel(
     workspace_id: UUID,
-    channel_id: UUID,
+    channel_ref: str,
     _member: WorkspaceMember = Depends(get_workspace_member),
     db: AsyncSession = Depends(get_db),
 ):
-    ch = await service.get_channel(db, workspace_id, channel_id)
+    ch = await service.get_channel(db, workspace_id, channel_ref)
     if not ch:
         raise HTTPException(404, "Channel not found")
     return ChannelOut.model_validate(ch)
 
 
-@router.get("/{workspace_id}/channels/{channel_id}/assets", response_model=list[ChannelAssetBindingOut])
-async def get_channel_assets(
+@router.patch("/{workspace_id}/channels/{channel_ref}", response_model=ChannelOut)
+async def update_channel(
     workspace_id: UUID,
-    channel_id: UUID,
-    _member: WorkspaceMember = Depends(get_workspace_member),
-    db: AsyncSession = Depends(get_db),
-):
-    ch = await service.get_channel(db, workspace_id, channel_id)
-    if not ch:
-        raise HTTPException(404, "Channel not found")
-    rows = await service.list_channel_asset_bindings(db, workspace_id, channel_id)
-    return [ChannelAssetBindingOut.model_validate(row) for row in rows]
-
-
-@router.post("/{workspace_id}/channels/{channel_id}/assets", response_model=ChannelAssetBindingOut, status_code=201)
-async def attach_channel_asset(
-    workspace_id: UUID,
-    channel_id: UUID,
-    data: ChannelAssetBindingCreate,
+    channel_ref: str,
+    data: ChannelUpdate,
     _member: WorkspaceMember = Depends(get_workspace_member),
     db: AsyncSession = Depends(get_db),
 ):
     try:
+        ch = await service.update_channel(db, workspace_id, channel_ref, data)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+    if not ch:
+        raise HTTPException(404, "Channel not found")
+    return ChannelOut.model_validate(ch)
+
+
+@router.get("/{workspace_id}/channels/{channel_ref}/assets", response_model=list[ChannelAssetBindingOut])
+async def get_channel_assets(
+    workspace_id: UUID,
+    channel_ref: str,
+    _member: WorkspaceMember = Depends(get_workspace_member),
+    db: AsyncSession = Depends(get_db),
+):
+    ch = await service.get_channel(db, workspace_id, channel_ref)
+    if not ch:
+        raise HTTPException(404, "Channel not found")
+    rows = await service.list_channel_asset_bindings(db, workspace_id, ch.id)
+    return [ChannelAssetBindingOut.model_validate(row) for row in rows]
+
+
+@router.post("/{workspace_id}/channels/{channel_ref}/assets", response_model=ChannelAssetBindingOut, status_code=201)
+async def attach_channel_asset(
+    workspace_id: UUID,
+    channel_ref: str,
+    data: ChannelAssetBindingCreate,
+    _member: WorkspaceMember = Depends(get_workspace_member),
+    db: AsyncSession = Depends(get_db),
+):
+    ch = await service.get_channel(db, workspace_id, channel_ref)
+    if not ch:
+        raise HTTPException(404, "Channel not found")
+    try:
         binding = await service.attach_asset_to_channel(
             db,
             workspace_id,
-            channel_id,
+            ch.id,
             asset_type=data.asset_type,
             asset_id=data.asset_id,
         )
     except ValueError as exc:
         raise HTTPException(400, str(exc))
-    rows = await service.list_channel_asset_bindings(db, workspace_id, channel_id)
+    rows = await service.list_channel_asset_bindings(db, workspace_id, ch.id)
     row = next((item for item in rows if item["id"] == str(binding.id)), None)
     if row is None:
         raise HTTPException(500, "Attached asset could not be loaded")
     return ChannelAssetBindingOut.model_validate(row)
 
 
-@router.delete("/{workspace_id}/channels/{channel_id}/assets/{binding_id}", status_code=204)
+@router.delete("/{workspace_id}/channels/{channel_ref}/assets/{binding_id}", status_code=204)
 async def remove_channel_asset(
     workspace_id: UUID,
-    channel_id: UUID,
+    channel_ref: str,
     binding_id: UUID,
     _member: WorkspaceMember = Depends(get_workspace_member),
     db: AsyncSession = Depends(get_db),
 ):
+    ch = await service.get_channel(db, workspace_id, channel_ref)
+    if not ch:
+        raise HTTPException(404, "Channel not found")
     try:
-        await service.detach_asset_binding(db, workspace_id, channel_id, binding_id)
+        await service.detach_asset_binding(db, workspace_id, ch.id, binding_id)
     except ValueError as exc:
         raise HTTPException(404, str(exc))
 
 
-@router.get("/{workspace_id}/channels/{channel_id}/messages", response_model=list[ChannelMessageOut])
+@router.get("/{workspace_id}/channels/{channel_ref}/messages", response_model=list[ChannelMessageOut])
 async def list_messages(
     workspace_id: UUID,
-    channel_id: UUID,
+    channel_ref: str,
     _member: WorkspaceMember = Depends(get_workspace_member),
     db: AsyncSession = Depends(get_db),
 ):
-    ch = await service.get_channel(db, workspace_id, channel_id)
+    ch = await service.get_channel(db, workspace_id, channel_ref)
     if not ch:
         raise HTTPException(404, "Channel not found")
-    rows = await service.list_messages(db, workspace_id, channel_id)
+    rows = await service.list_messages(db, workspace_id, ch.id)
     return [ChannelMessageOut.model_validate(r) for r in rows]
 
 
-@router.post("/{workspace_id}/channels/{channel_id}/messages", response_model=ChannelMessageOut, status_code=201)
+@router.post("/{workspace_id}/channels/{channel_ref}/messages", response_model=ChannelMessageOut, status_code=201)
 async def create_message(
     workspace_id: UUID,
-    channel_id: UUID,
+    channel_ref: str,
     data: ChannelMessageCreate,
     user: User = Depends(get_current_user),
     _member: WorkspaceMember = Depends(get_workspace_member),
     db: AsyncSession = Depends(get_db),
 ):
-    ch = await service.get_channel(db, workspace_id, channel_id)
+    ch = await service.get_channel(db, workspace_id, channel_ref)
     if not ch:
         raise HTTPException(404, "Channel not found")
     payload = data
@@ -177,46 +201,46 @@ async def create_message(
                 },
             }
         )
-    msg = await service.create_message(db, workspace_id, channel_id, payload)
+    msg = await service.create_message(db, workspace_id, ch.id, payload)
     return ChannelMessageOut.model_validate(msg)
 
 
-@router.get("/{workspace_id}/channels/{channel_id}/decisions", response_model=list[DecisionEventOut])
+@router.get("/{workspace_id}/channels/{channel_ref}/decisions", response_model=list[DecisionEventOut])
 async def list_decisions(
     workspace_id: UUID,
-    channel_id: UUID,
+    channel_ref: str,
     _member: WorkspaceMember = Depends(get_workspace_member),
     db: AsyncSession = Depends(get_db),
 ):
-    ch = await service.get_channel(db, workspace_id, channel_id)
+    ch = await service.get_channel(db, workspace_id, channel_ref)
     if not ch:
         raise HTTPException(404, "Channel not found")
-    rows = await service.list_decisions(db, workspace_id, channel_id)
+    rows = await service.list_decisions(db, workspace_id, ch.id)
     return [DecisionEventOut.model_validate(r) for r in rows]
 
 
-@router.post("/{workspace_id}/channels/{channel_id}/decisions", response_model=DecisionEventOut, status_code=201)
+@router.post("/{workspace_id}/channels/{channel_ref}/decisions", response_model=DecisionEventOut, status_code=201)
 async def create_decision(
     workspace_id: UUID,
-    channel_id: UUID,
+    channel_ref: str,
     data: DecisionEventCreate,
     _member: WorkspaceMember = Depends(get_workspace_member),
     db: AsyncSession = Depends(get_db),
 ):
-    ch = await service.get_channel(db, workspace_id, channel_id)
+    ch = await service.get_channel(db, workspace_id, channel_ref)
     if not ch:
         raise HTTPException(404, "Channel not found")
-    event = await service.create_decision(db, workspace_id, channel_id, data)
+    event = await service.create_decision(db, workspace_id, ch.id, data)
     return DecisionEventOut.model_validate(event)
 
 
 @router.post(
-    "/{workspace_id}/channels/{channel_id}/handbook/ask",
+    "/{workspace_id}/channels/{channel_ref}/handbook/ask",
     response_model=HandbookChatAskResponse,
 )
 async def ask_handbook_chat(
     workspace_id: UUID,
-    channel_id: UUID,
+    channel_ref: str,
     body: HandbookChatAskRequest,
     user: User = Depends(get_current_user),
     _member: WorkspaceMember = Depends(get_workspace_member),
@@ -224,7 +248,7 @@ async def ask_handbook_chat(
 ):
     from knotwork.channels.handbook_agent import ask_handbook_agent
 
-    ch = await service.get_channel(db, workspace_id, channel_id)
+    ch = await service.get_channel(db, workspace_id, channel_ref)
     if not ch:
         raise HTTPException(404, "Channel not found")
     if ch.channel_type != "handbook":
@@ -237,7 +261,7 @@ async def ask_handbook_chat(
     await service.create_message(
         db,
         workspace_id,
-        channel_id,
+        ch.id,
         ChannelMessageCreate(
             role="user",
             author_type="human",
@@ -255,7 +279,7 @@ async def ask_handbook_chat(
     await service.create_message(
         db,
         workspace_id,
-        channel_id,
+        ch.id,
         ChannelMessageCreate(
             role="assistant",
             author_type="agent",
@@ -272,7 +296,7 @@ async def ask_handbook_chat(
         await service.create_decision(
             db,
             workspace_id,
-            channel_id,
+            ch.id,
             DecisionEventCreate(
                 decision_type="handbook_proposal",
                 actor_type="agent",
@@ -284,7 +308,7 @@ async def ask_handbook_chat(
         await service.create_decision(
             db,
             workspace_id,
-            channel_id,
+            ch.id,
             DecisionEventCreate(
                 decision_type="handbook_change_requested",
                 actor_type="human",
@@ -296,10 +320,10 @@ async def ask_handbook_chat(
     return HandbookChatAskResponse(reply=result["reply"], proposal_id=proposal_id)
 
 
-@router.post("/{workspace_id}/channels/{channel_id}/handbook/proposals/{proposal_id}/resolve")
+@router.post("/{workspace_id}/channels/{channel_ref}/handbook/proposals/{proposal_id}/resolve")
 async def resolve_handbook_proposal(
     workspace_id: UUID,
-    channel_id: UUID,
+    channel_ref: str,
     proposal_id: str,
     body: HandbookProposalResolveRequest,
     _member: WorkspaceMember = Depends(get_workspace_member),
@@ -308,7 +332,7 @@ async def resolve_handbook_proposal(
     from knotwork.channels.models import DecisionEvent
     from knotwork.knowledge import service as knowledge_service
 
-    ch = await service.get_channel(db, workspace_id, channel_id)
+    ch = await service.get_channel(db, workspace_id, channel_ref)
     if not ch:
         raise HTTPException(404, "Channel not found")
     if ch.channel_type != "handbook":
@@ -318,7 +342,7 @@ async def resolve_handbook_proposal(
         select(DecisionEvent)
         .where(
             DecisionEvent.workspace_id == workspace_id,
-            DecisionEvent.channel_id == channel_id,
+            DecisionEvent.channel_id == ch.id,
             DecisionEvent.decision_type == "handbook_proposal",
         )
         .order_by(DecisionEvent.created_at.desc())
@@ -377,7 +401,7 @@ async def resolve_handbook_proposal(
     await service.create_message(
         db,
         workspace_id,
-        channel_id,
+        ch.id,
         ChannelMessageCreate(
             role="assistant",
             author_type="agent",
@@ -469,20 +493,23 @@ async def get_my_channel_subscriptions(
     ]
 
 
-@router.patch("/{workspace_id}/channels/{channel_id}/subscription", response_model=ChannelSubscriptionOut)
+@router.patch("/{workspace_id}/channels/{channel_ref}/subscription", response_model=ChannelSubscriptionOut)
 async def update_my_channel_subscription(
     workspace_id: UUID,
-    channel_id: UUID,
+    channel_ref: str,
     data: ChannelSubscriptionUpdate,
     user: User = Depends(get_current_user),
     _member: WorkspaceMember = Depends(get_workspace_member),
     db: AsyncSession = Depends(get_db),
 ):
+    ch = await service.get_channel(db, workspace_id, channel_ref)
+    if not ch:
+        raise HTTPException(status_code=404, detail="Channel not found")
     try:
         row = await service.set_channel_subscription(
             db,
             workspace_id,
-            channel_id,
+            ch.id,
             human_participant_id(user.id),
             subscribed=data.subscribed,
         )

@@ -1,7 +1,7 @@
 """
 Designer agent: LLM assistant that produces graph_delta objects.
 
-Conversation history is persisted per graph_id in the DB (DesignerChatMessage).
+Conversation history is persisted in the canonical workflow channel for the graph.
 Output is always JSON: {reply, graph_delta, questions}.
 """
 from __future__ import annotations
@@ -72,21 +72,79 @@ _FALLBACK = {
 
 
 async def _load_history(graph_id: UUID, db: AsyncSession) -> list[dict]:
-    from knotwork.designer.models import DesignerChatMessage
+    from knotwork.channels.models import Channel, ChannelMessage
+    channel_id = (
+        await db.execute(
+            select(Channel.id).where(
+                Channel.graph_id == graph_id,
+                Channel.channel_type == "workflow",
+                Channel.archived_at.is_(None),
+            ).limit(1)
+        )
+    ).scalar_one_or_none()
+    if channel_id is None:
+        return []
     result = await db.execute(
-        select(DesignerChatMessage)
-        .where(DesignerChatMessage.graph_id == graph_id)
-        .order_by(DesignerChatMessage.created_at.asc())
+        select(ChannelMessage)
+        .where(ChannelMessage.channel_id == channel_id)
+        .order_by(ChannelMessage.created_at.asc())
         .limit(_HISTORY_LIMIT)
     )
     return [{"role": m.role, "content": m.content} for m in result.scalars()]
 
 
 async def _save_messages(graph_id: UUID, db: AsyncSession, user_msg: str, assistant_msg: str) -> None:
-    from knotwork.designer.models import DesignerChatMessage
-    db.add(DesignerChatMessage(graph_id=graph_id, role="user", content=user_msg))
-    db.add(DesignerChatMessage(graph_id=graph_id, role="assistant", content=assistant_msg))
-    await db.commit()
+    from knotwork.channels.models import Channel
+    from knotwork.channels.schemas import ChannelMessageCreate
+    from knotwork.channels.service import create_message
+    from knotwork.graphs.models import Graph
+
+    graph = await db.get(Graph, graph_id)
+    if graph is None:
+        return
+    channel = (
+        await db.execute(
+            select(Channel).where(
+                Channel.graph_id == graph_id,
+                Channel.channel_type == "workflow",
+                Channel.archived_at.is_(None),
+            ).limit(1)
+        )
+    ).scalar_one_or_none()
+    if channel is None:
+        channel = Channel(
+            workspace_id=graph.workspace_id,
+            name=f"wf: {graph.name}",
+            channel_type="workflow",
+            graph_id=graph.id,
+            project_id=graph.project_id,
+        )
+        db.add(channel)
+        await db.commit()
+        await db.refresh(channel)
+
+    await create_message(
+        db,
+        workspace_id=graph.workspace_id,
+        channel_id=channel.id,
+        data=ChannelMessageCreate(
+            role="user",
+            author_type="human",
+            author_name="You",
+            content=user_msg,
+        ),
+    )
+    await create_message(
+        db,
+        workspace_id=graph.workspace_id,
+        channel_id=channel.id,
+        data=ChannelMessageCreate(
+            role="assistant",
+            author_type="agent",
+            author_name="Knotwork Agent",
+            content=assistant_msg,
+        ),
+    )
 
 
 def _normalize_result(result: dict | None) -> dict:

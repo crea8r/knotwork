@@ -57,6 +57,14 @@ export function useChannels(workspaceId: string) {
   })
 }
 
+export function useChannel(workspaceId: string, channelId: string) {
+  return useQuery({
+    queryKey: ['channel', workspaceId, channelId],
+    queryFn: () => api.get<Channel>(`/workspaces/${workspaceId}/channels/${channelId}`).then((r) => r.data),
+    enabled: !!workspaceId && !!channelId,
+  })
+}
+
 export function useChannelParticipants(workspaceId: string) {
   return useQuery({
     queryKey: ['channel-participants', workspaceId],
@@ -131,10 +139,27 @@ export function useUpdateParticipantDeliveryPreference(workspaceId: string, part
 export function useCreateChannel(workspaceId: string) {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (payload: { name: string; channel_type?: 'normal' | 'workflow' | 'handbook'; graph_id?: string }) =>
+    mutationFn: (payload: { name: string; channel_type?: 'normal' | 'workflow' | 'handbook'; graph_id?: string; project_id?: string; objective_id?: string }) =>
       api.post<Channel>(`/workspaces/${workspaceId}/channels`, payload).then((r) => r.data),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['channels', workspaceId] })
+      qc.invalidateQueries({ queryKey: ['projects', workspaceId] })
+      qc.invalidateQueries({ queryKey: ['project-channels', workspaceId] })
+      qc.invalidateQueries({ queryKey: ['project-dashboard', workspaceId] })
+    },
+  })
+}
+
+export function useUpdateChannel(workspaceId: string, channelId: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (payload: { name?: string; archived?: boolean }) =>
+      api.patch<Channel>(`/workspaces/${workspaceId}/channels/${channelId}`, payload).then((r) => r.data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['channel', workspaceId] })
+      qc.invalidateQueries({ queryKey: ['channels', workspaceId] })
+      qc.invalidateQueries({ queryKey: ['projects', workspaceId] })
+      qc.invalidateQueries({ queryKey: ['project-channels', workspaceId] })
     },
   })
 }

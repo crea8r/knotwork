@@ -149,7 +149,7 @@ export default function HandbookPage() {
   }, [searchParams, setRightPanel, setSearchParams, urlFilePath, urlFolder, urlNew])
 
   function openFilePath(path: string) {
-    navigate(`/handbook?path=${encodeURIComponent(path)}`)
+    navigate(`/knowledge?path=${encodeURIComponent(path)}`)
   }
 
   function openWorkflow(graphId: string) {
@@ -157,7 +157,7 @@ export default function HandbookPage() {
   }
 
   function openFolderPath(path: string) {
-    navigate(path ? `/handbook?folder=${encodeURIComponent(path)}` : '/handbook')
+    navigate(path ? `/knowledge?folder=${encodeURIComponent(path)}` : '/knowledge')
   }
 
   // ── Upload flow ──────────────────────────────────────────────────────────────

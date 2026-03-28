@@ -30,6 +30,10 @@ export function useCreateGraph(workspaceId: string) {
     onSuccess: (_, data) => {
       qc.invalidateQueries({ queryKey: ['graphs', workspaceId] })
       qc.invalidateQueries({ queryKey: ['graphs', workspaceId, data.project_id ?? 'global'] })
+      qc.invalidateQueries({ queryKey: ['channels', workspaceId] })
+      if (data.project_id) {
+        qc.invalidateQueries({ queryKey: ['project-channels', workspaceId, data.project_id] })
+      }
     },
   })
 }

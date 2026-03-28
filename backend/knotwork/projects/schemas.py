@@ -111,7 +111,9 @@ class ProjectStatusUpdateOut(BaseModel):
 class ObjectiveOut(BaseModel):
     id: UUID
     workspace_id: UUID
+    slug: str
     project_id: UUID | None = None
+    project_slug: str | None = None
     parent_objective_id: UUID | None = None
     code: str | None = None
     title: str
@@ -137,6 +139,7 @@ class ObjectiveOut(BaseModel):
 class ProjectOut(BaseModel):
     id: UUID
     workspace_id: UUID
+    slug: str
     title: str
     description: str
     status: str
@@ -146,6 +149,7 @@ class ProjectOut(BaseModel):
     open_objective_count: int = 0
     run_count: int = 0
     latest_status_update: ProjectStatusUpdateOut | None = None
+    latest_activity_at: datetime
     created_at: datetime
     updated_at: datetime
 

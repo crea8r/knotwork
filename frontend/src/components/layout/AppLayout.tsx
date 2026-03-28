@@ -29,12 +29,12 @@ export default function AppLayout() {
   }, [mobileNavOpen])
 
   const mobileTitle = (() => {
-    if (location.pathname.startsWith('/inbox')) return 'Inbox'
-    if (location.pathname.startsWith('/projects')) return 'Projects'
+    if (location.pathname.startsWith('/inbox')) return 'Now'
+    if (location.pathname.startsWith('/projects')) return 'Work'
     if (location.pathname.startsWith('/objectives')) return 'Objective'
     if (location.pathname.startsWith('/channels')) return 'Channels'
     if (location.pathname.startsWith('/runs')) return 'Runs'
-    if (location.pathname.startsWith('/graphs') || location.pathname.startsWith('/handbook')) return 'Handbook'
+    if (location.pathname.startsWith('/knowledge') || location.pathname.startsWith('/handbook') || location.pathname.startsWith('/graphs')) return 'Knowledge'
     if (location.pathname.startsWith('/settings')) return 'Settings'
     return 'Knotwork'
   })()

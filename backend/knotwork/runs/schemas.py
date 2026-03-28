@@ -31,6 +31,7 @@ class RunCreate(BaseModel):
     trigger: str = "manual"
     graph_version_id: UUID | None = None
     objective_id: UUID | None = None
+    source_channel_id: UUID | None = None
 
 
 class RunUpdate(BaseModel):
