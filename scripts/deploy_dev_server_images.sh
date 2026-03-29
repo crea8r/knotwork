@@ -47,7 +47,7 @@ case "$DEPLOY_SCOPE" in
     log "Pulling frontend image..."
     compose pull frontend-prod
     log "Recreating frontend service..."
-    compose up -d --force-recreate frontend-prod
+    compose up -d --no-deps --force-recreate frontend-prod
     ;;
   backend)
     log "Pulling backend image..."
