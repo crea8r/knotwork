@@ -1,0 +1,12 @@
+services:
+  backend:
+    build: !reset null
+    image: ghcr.io/crea8r/knotwork-backend:${BACKEND_IMAGE_TAG}
+
+  worker:
+    build: !reset null
+    image: ghcr.io/crea8r/knotwork-backend:${BACKEND_IMAGE_TAG}
+
+  frontend-prod:
+    build: !reset null
+    image: ghcr.io/crea8r/knotwork-frontend:${FRONTEND_IMAGE_TAG}
