@@ -75,11 +75,17 @@ jobs:
           mkdir -p ~/.ssh
           ssh-keyscan -H "${{ secrets.DEV_SERVER_HOST }}" >> ~/.ssh/known_hosts
 
+      - name: Write deploy image tags on server
+        shell: bash
+        run: |
+          ssh -i ~/.ssh/dev_server_key "${{ secrets.DEV_SERVER_USER }}@${{ secrets.DEV_SERVER_HOST }}" \
+            "printf 'BACKEND_IMAGE_TAG=%s\nFRONTEND_IMAGE_TAG=%s\n' '${{ github.sha }}' '${{ github.sha }}' > /opt/knotwork/.deploy-images.env"
+
       - name: Deploy GHCR images to dev server
         shell: bash
         run: |
           ssh -i ~/.ssh/dev_server_key "${{ secrets.DEV_SERVER_USER }}@${{ secrets.DEV_SERVER_HOST }}" \
-            "cd /opt/knotwork && cat > .deploy-images.env <<'EOF'\nBACKEND_IMAGE_TAG=${{ github.sha }}\nFRONTEND_IMAGE_TAG=${{ github.sha }}\nEOF\nDEPLOY_SCOPE=${{ steps.scope.outputs.scope }} bash /opt/knotwork/scripts/deploy_dev_server_images.sh"
+            "DEPLOY_SCOPE=${{ steps.scope.outputs.scope }} bash /opt/knotwork/scripts/deploy_dev_server_images.sh"
 
       - name: Cleanup SSH key
         if: always()
