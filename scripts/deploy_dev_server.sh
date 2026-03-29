@@ -45,12 +45,12 @@ case "$DEPLOY_SCOPE" in
   frontend)
     log "Rebuilding frontend only..."
     compose build frontend-prod
-    compose up -d frontend-prod
+    compose up -d --force-recreate frontend-prod
     ;;
   backend)
     log "Rebuilding backend + worker..."
     compose build backend worker
-    compose up -d backend worker
+    compose up -d --force-recreate backend worker
     ;;
   full)
     log "Rebuilding full prod stack..."
