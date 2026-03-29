@@ -190,8 +190,36 @@ jobs:
       - name: Write deploy image tags on server
         shell: bash
         run: |
-          ssh -i ~/.ssh/dev_server_key "${{ secrets.DEV_SERVER_USER }}@${{ secrets.DEV_SERVER_HOST }}" \
-            "printf 'BACKEND_IMAGE_TAG=%s\nFRONTEND_IMAGE_TAG=%s\n' '${{ github.sha }}' '${{ github.sha }}' > /opt/knotwork/.deploy-images.env"
+          ssh -i ~/.ssh/dev_server_key "${{ secrets.DEV_SERVER_USER }}@${{ secrets.DEV_SERVER_HOST }}" 'bash -s' -- "${{ steps.scope.outputs.scope }}" "${{ github.sha }}" <<'EOF'
+          set -euo pipefail
+          SCOPE="$1"
+          SHA="$2"
+          DEPLOY_ENV="/opt/knotwork/.deploy-images.env"
+
+          BACKEND_CURRENT="$(grep '^BACKEND_IMAGE_TAG=' "$DEPLOY_ENV" | cut -d= -f2-)"
+          FRONTEND_CURRENT="$(grep '^FRONTEND_IMAGE_TAG=' "$DEPLOY_ENV" | cut -d= -f2-)"
+
+          case "$SCOPE" in
+            backend)
+              BACKEND_NEW="$SHA"
+              FRONTEND_NEW="$FRONTEND_CURRENT"
+              ;;
+            frontend)
+              BACKEND_NEW="$BACKEND_CURRENT"
+              FRONTEND_NEW="$SHA"
+              ;;
+            full)
+              BACKEND_NEW="$SHA"
+              FRONTEND_NEW="$SHA"
+              ;;
+            *)
+              echo "Invalid scope: $SCOPE" >&2
+              exit 1
+              ;;
+          esac
+
+          printf 'BACKEND_IMAGE_TAG=%s\nFRONTEND_IMAGE_TAG=%s\n' "$BACKEND_NEW" "$FRONTEND_NEW" > "$DEPLOY_ENV"
+          EOF
 
       - name: Deploy GHCR images to dev server
         shell: bash
