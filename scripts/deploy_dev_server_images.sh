@@ -34,27 +34,46 @@ compose() {
     --profile prod "$@"
 }
 
-log "Image deploy foundation script ready"
+log "Image deploy mode"
 log "Deploy scope: $DEPLOY_SCOPE"
-log "This script is the GHCR/image-mode foundation and is not yet wired as the default live deploy path."
-
-log "Planned target services for scope: $DEPLOY_SCOPE"
-case "$DEPLOY_SCOPE" in
-  frontend)
-    echo "Would pull/recreate: frontend-prod"
-    ;;
-  backend)
-    echo "Would pull/recreate: backend worker"
-    ;;
-  full)
-    echo "Would pull/recreate: backend worker frontend-prod"
-    ;;
-esac
-
 log "Configured image tags:"
 grep -E '^(BACKEND_IMAGE_TAG|FRONTEND_IMAGE_TAG)=' "$DEPLOY_IMAGE_ENV" || true
 
-log "Current compose render check:"
+log "Validating compose render..."
 compose config >/dev/null
 
-echo "Foundation OK"
+case "$DEPLOY_SCOPE" in
+  frontend)
+    log "Pulling frontend image..."
+    compose pull frontend-prod
+    log "Recreating frontend service..."
+    compose up -d --force-recreate frontend-prod
+    ;;
+  backend)
+    log "Pulling backend image..."
+    compose pull backend worker
+    log "Recreating backend + worker services..."
+    compose up -d --force-recreate backend worker
+    ;;
+  full)
+    log "Pulling all app images..."
+    compose pull backend worker frontend-prod
+    log "Recreating full app stack..."
+    compose up -d --force-recreate backend worker frontend-prod
+    ;;
+esac
+
+log "Waiting for health..."
+for i in $(seq 1 30); do
+  if curl -fsS "$HEALTH_URL" >/dev/null 2>&1; then
+    echo "Health check passed."
+    break
+  fi
+  if [[ "$i" -eq 30 ]]; then
+    die "Health check failed after 30 attempts: $HEALTH_URL"
+  fi
+  sleep 3
+done
+
+log "Compose status:"
+compose ps
