@@ -1,0 +1,122 @@
+name: Build and Publish Knotwork Dev Images
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'backend/**'
+      - 'frontend/**'
+      - 'docker-compose.yml'
+      - 'docker-compose.deploy.yml'
+      - 'scripts/**'
+      - '.github/workflows/build-and-publish-dev.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: knotwork-dev-build-publish
+  cancel-in-progress: true
+
+jobs:
+  classify:
+    runs-on: ubuntu-latest
+    outputs:
+      scope: ${{ steps.scope.outputs.scope }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Determine build scope
+        id: scope
+        shell: bash
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            echo "scope=full" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          CHANGED_FILES="$(git diff --name-only HEAD^ HEAD)"
+          echo "Changed files:"
+          echo "$CHANGED_FILES"
+
+          SCOPE="full"
+
+          if echo "$CHANGED_FILES" | grep -Eq '^(frontend/)'; then
+            if ! echo "$CHANGED_FILES" | grep -Eq '^(backend/|docker-compose.yml|docker-compose.deploy.yml|scripts/|\.github/workflows/)'; then
+              SCOPE="frontend"
+            fi
+          fi
+
+          if echo "$CHANGED_FILES" | grep -Eq '^(backend/)'; then
+            if ! echo "$CHANGED_FILES" | grep -Eq '^(frontend/|docker-compose.yml|docker-compose.deploy.yml|scripts/|\.github/workflows/)'; then
+              SCOPE="backend"
+            fi
+          fi
+
+          echo "scope=$SCOPE" >> "$GITHUB_OUTPUT"
+          echo "Resolved build scope: $SCOPE"
+
+  build-backend:
+    needs: classify
+    if: needs.classify.outputs.scope == 'backend' || needs.classify.outputs.scope == 'full'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and push backend image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./backend
+          file: ./backend/Dockerfile
+          push: true
+          tags: |
+            ghcr.io/crea8r/knotwork-backend:${{ github.sha }}
+            ghcr.io/crea8r/knotwork-backend:dev
+
+  build-frontend:
+    needs: classify
+    if: needs.classify.outputs.scope == 'frontend' || needs.classify.outputs.scope == 'full'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and push frontend image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./frontend
+          file: ./frontend/Dockerfile
+          target: prod
+          push: true
+          tags: |
+            ghcr.io/crea8r/knotwork-frontend:${{ github.sha }}
+            ghcr.io/crea8r/knotwork-frontend:dev
