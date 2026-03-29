@@ -20,3 +20,5 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
 )
 
 // frontend-only scoped deploy validation
+
+// frontend-only scoped deploy revalidation
