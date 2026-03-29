@@ -1,18 +1,11 @@
 name: Deploy Knotwork Dev
 
 on:
-  push:
-    branches:
-      - main
-    paths:
-      - 'backend/**'
-      - 'frontend/**'
-      - 'docker-compose.yml'
-      - 'docker-compose.deploy.yml'
-      - 'scripts/**'
-      - '.github/workflows/deploy-dev.yml'
-      - '.github/workflows/build-and-publish-dev.yml'
-  workflow_dispatch:
+  workflow_run:
+    workflows:
+      - Build and Publish Knotwork Dev Images
+    types:
+      - completed
 
 concurrency:
   group: knotwork-dev-deploy
@@ -20,6 +13,7 @@ concurrency:
 
 jobs:
   deploy:
+    if: github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
@@ -27,20 +21,16 @@ jobs:
       packages: read
 
     steps:
-      - name: Checkout
+      - name: Checkout triggering commit
         uses: actions/checkout@v4
         with:
+          ref: ${{ github.event.workflow_run.head_sha }}
           fetch-depth: 2
 
       - name: Determine deploy scope
         id: scope
         shell: bash
         run: |
-          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
-            echo "scope=full" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-
           CHANGED_FILES="$(git diff --name-only HEAD^ HEAD)"
           echo "Changed files:"
           echo "$CHANGED_FILES"
@@ -79,7 +69,7 @@ jobs:
         shell: bash
         run: |
           ssh -i ~/.ssh/dev_server_key "${{ secrets.DEV_SERVER_USER }}@${{ secrets.DEV_SERVER_HOST }}" \
-            "printf 'BACKEND_IMAGE_TAG=%s\nFRONTEND_IMAGE_TAG=%s\n' '${{ github.sha }}' '${{ github.sha }}' > /opt/knotwork/.deploy-images.env"
+            "printf 'BACKEND_IMAGE_TAG=%s\nFRONTEND_IMAGE_TAG=%s\n' '${{ github.event.workflow_run.head_sha }}' '${{ github.event.workflow_run.head_sha }}' > /opt/knotwork/.deploy-images.env"
 
       - name: Deploy GHCR images to dev server
         shell: bash
