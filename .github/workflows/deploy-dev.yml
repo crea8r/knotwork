@@ -8,8 +8,10 @@ on:
       - 'backend/**'
       - 'frontend/**'
       - 'docker-compose.yml'
+      - 'docker-compose.deploy.yml'
       - 'scripts/**'
       - '.github/workflows/deploy-dev.yml'
+      - '.github/workflows/build-and-publish-dev.yml'
   workflow_dispatch:
 
 concurrency:
@@ -20,6 +22,9 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    permissions:
+      contents: read
+      packages: read
 
     steps:
       - name: Checkout
@@ -43,13 +48,13 @@ jobs:
           SCOPE="full"
 
           if echo "$CHANGED_FILES" | grep -Eq '^(frontend/)'; then
-            if ! echo "$CHANGED_FILES" | grep -Eq '^(backend/|docker-compose.yml|scripts/|\.github/workflows/)'; then
+            if ! echo "$CHANGED_FILES" | grep -Eq '^(backend/|docker-compose.yml|docker-compose.deploy.yml|scripts/|\.github/workflows/)'; then
               SCOPE="frontend"
             fi
           fi
 
           if echo "$CHANGED_FILES" | grep -Eq '^(backend/)'; then
-            if ! echo "$CHANGED_FILES" | grep -Eq '^(frontend/|docker-compose.yml|scripts/|\.github/workflows/)'; then
+            if ! echo "$CHANGED_FILES" | grep -Eq '^(frontend/|docker-compose.yml|docker-compose.deploy.yml|scripts/|\.github/workflows/)'; then
               SCOPE="backend"
             fi
           fi
@@ -70,11 +75,11 @@ jobs:
           mkdir -p ~/.ssh
           ssh-keyscan -H "${{ secrets.DEV_SERVER_HOST }}" >> ~/.ssh/known_hosts
 
-      - name: Deploy to dev server
+      - name: Deploy GHCR images to dev server
         shell: bash
         run: |
           ssh -i ~/.ssh/dev_server_key "${{ secrets.DEV_SERVER_USER }}@${{ secrets.DEV_SERVER_HOST }}" \
-            "DEPLOY_SCOPE=${{ steps.scope.outputs.scope }} bash /opt/knotwork/scripts/deploy_dev_server.sh"
+            "cd /opt/knotwork && cat > .deploy-images.env <<'EOF'\nBACKEND_IMAGE_TAG=${{ github.sha }}\nFRONTEND_IMAGE_TAG=${{ github.sha }}\nEOF\nDEPLOY_SCOPE=${{ steps.scope.outputs.scope }} bash /opt/knotwork/scripts/deploy_dev_server_images.sh"
 
       - name: Cleanup SSH key
         if: always()
