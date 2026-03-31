@@ -224,38 +224,37 @@ def test_merge_outputs_reducer():
 
 # ── config key alignment ──────────────────────────────────────────────────────
 
-def test_llm_agent_reads_system_prompt_key():
-    """make_llm_agent_node reads 'system_prompt' config key (not 'instructions')."""
-    from knotwork.runtime.nodes.llm_agent import make_llm_agent_node
+def test_agent_node_reads_system_prompt_key():
+    """make_agent_node keeps the unified 'system_prompt' config key."""
+    from knotwork.runtime.nodes.agent import make_agent_node
 
     node_def = {
         "id": "n1",
-        "type": "llm_agent",
+        "type": "agent",
         "name": "N1",
         "config": {"system_prompt": "You are a legal assistant."},
     }
-    # Factory should not raise; the instructions are captured at factory time
-    fn = make_llm_agent_node(node_def)
+    fn = make_agent_node(node_def)
     assert fn is not None
-    # Verify it captured the correct value via closure inspection
     assert fn.__closure__ is not None
-    closure_vars = {cell.cell_contents for cell in fn.__closure__ if isinstance(
-        getattr(cell, 'cell_contents', None), str
-    )}
-    assert "You are a legal assistant." in closure_vars
+    closure_dicts = [
+        cell.cell_contents for cell in fn.__closure__
+        if isinstance(getattr(cell, "cell_contents", None), dict)
+    ]
+    assert {"system_prompt": "You are a legal assistant."} in closure_dicts
 
 
-def test_llm_agent_reads_knowledge_paths_key():
-    """make_llm_agent_node reads 'knowledge_paths' config key (not 'knowledge_files')."""
-    from knotwork.runtime.nodes.llm_agent import make_llm_agent_node
+def test_agent_node_reads_knowledge_paths_key():
+    """make_agent_node reads 'knowledge_paths' config key (not 'knowledge_files')."""
+    from knotwork.runtime.nodes.agent import make_agent_node
 
     node_def = {
         "id": "n1",
-        "type": "llm_agent",
+        "type": "agent",
         "name": "N1",
         "config": {"knowledge_paths": ["legal/review.md"]},
     }
-    fn = make_llm_agent_node(node_def)
+    fn = make_agent_node(node_def)
     assert fn is not None
     closure_vars = [cell.cell_contents for cell in fn.__closure__
                     if isinstance(getattr(cell, 'cell_contents', None), list)]

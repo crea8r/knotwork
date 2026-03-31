@@ -4,7 +4,34 @@ from datetime import datetime
 from typing import Literal
 from uuid import UUID
 
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator, model_validator
+
+
+LEGACY_NODE_TYPE_MAP = {
+    "llm_agent": "agent",
+    "human_checkpoint": "agent",
+    "conditional_router": "agent",
+    "tool_executor": "agent",
+}
+
+
+def normalize_node_def(node: dict) -> dict:
+    if not isinstance(node, dict):
+        return node
+    normalized = dict(node)
+    legacy_type = str(normalized.get("type") or "")
+    normalized["type"] = LEGACY_NODE_TYPE_MAP.get(legacy_type, legacy_type)
+    if legacy_type == "human_checkpoint" and not normalized.get("agent_ref"):
+        normalized["agent_ref"] = "human"
+    return normalized
+
+
+def normalize_graph_definition(definition: dict | None) -> dict:
+    payload = dict(definition or {})
+    payload["nodes"] = [normalize_node_def(node) for node in payload.get("nodes", [])]
+    payload.setdefault("edges", [])
+    payload.setdefault("input_schema", [])
+    return payload
 
 
 class NodeDefSchema(BaseModel):
@@ -17,6 +44,11 @@ class NodeDefSchema(BaseModel):
     # (e.g. agent_ref, trust_level, registered_agent_id) instead of
     # silently dropping them during GraphVersion model validation.
     model_config = {"extra": "allow"}
+
+    @model_validator(mode="before")
+    @classmethod
+    def _normalize_legacy_type(cls, data):
+        return normalize_node_def(data)
 
 
 class EdgeDefSchema(BaseModel):
@@ -40,6 +72,11 @@ class GraphDefinitionSchema(BaseModel):
     edges: list[EdgeDefSchema] = []
     entry_point: str | None = None
     input_schema: list[InputFieldDef] = []
+
+    @model_validator(mode="before")
+    @classmethod
+    def _normalize_legacy_nodes(cls, data):
+        return normalize_graph_definition(data)
 
 
 class GraphUpdate(BaseModel):
@@ -115,6 +152,11 @@ class GraphVersionOut(BaseModel):
     run_count: int = 0
 
     model_config = {"from_attributes": True}
+
+    @field_validator("definition", mode="before")
+    @classmethod
+    def _normalize_definition(cls, value):
+        return normalize_graph_definition(value)
 
 
 # Forward reference needed for self-referential `draft` field

@@ -1,21 +1,16 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
-import { BookOpen, ChevronDown, ChevronRight, Hash, GitBranch, Plus, PlayCircle, Search, X } from 'lucide-react'
-import { useChannels, useCreateChannel, useMyChannelSubscriptions } from '@/api/channels'
-import { useCreateGraph, useGraphs } from '@/api/graphs'
+import { Link } from 'react-router-dom'
+import { BookOpen, ChevronDown, ChevronRight, Hash, Megaphone, GitBranch, PlayCircle, Search } from 'lucide-react'
+import { useChannelMessages, useChannels, useMyChannelSubscriptions } from '@/api/channels'
+import { useObjectives } from '@/api/projects'
 import { useRuns } from '@/api/runs'
+import { projectObjectivePath } from '@/lib/paths'
 import { useAuthStore } from '@/store/auth'
-import { channelPath } from '@/lib/paths'
-import RunTriggerModal from '@/components/operator/RunTriggerModal'
 import Spinner from '@/components/shared/Spinner'
 import EmptyState from '@/components/shared/EmptyState'
-import { validateGraph } from '@/utils/validateGraph'
-import type { GraphDefinition } from '@/types'
 
 const DEV_WORKSPACE = import.meta.env.VITE_DEV_WORKSPACE_ID ?? 'dev-workspace'
 const PAGE_SIZE = 10
-
-type CreateMode = 'menu' | 'workflow' | 'run' | 'chat'
 
 type PagerProps = {
   page: number
@@ -59,30 +54,21 @@ function paginate<T>(items: T[], page: number): T[] {
 
 export default function ChannelsPage() {
   const workspaceId = useAuthStore((s) => s.workspaceId) ?? DEV_WORKSPACE
-  const navigate = useNavigate()
 
   const { data: channels = [], isLoading: channelsLoading } = useChannels(workspaceId)
   const { data: subscriptions = [] } = useMyChannelSubscriptions(workspaceId)
   const { data: runs = [], isLoading: runsLoading } = useRuns(workspaceId)
-  const { data: graphs = [] } = useGraphs(workspaceId)
-
-  const createGraph = useCreateGraph(workspaceId)
-  const createChannel = useCreateChannel(workspaceId)
-
-  const [showCreate, setShowCreate] = useState(false)
-  const [mode, setMode] = useState<CreateMode>('menu')
+  const { data: objectives = [] } = useObjectives(workspaceId)
   const [search, setSearch] = useState('')
-
-  const [workflowName, setWorkflowName] = useState('')
-  const [chatName, setChatName] = useState('')
-  const [selectedGraphId, setSelectedGraphId] = useState('')
-  const [runTrigger, setRunTrigger] = useState<{ graphId: string; definition: GraphDefinition } | null>(null)
 
   const [freeChatPage, setFreeChatPage] = useState(1)
   const [runPage, setRunPage] = useState(1)
   const [workflowPage, setWorkflowPage] = useState(1)
   const [handbookPage, setHandbookPage] = useState(1)
+  const [objectivePage, setObjectivePage] = useState(1)
+  const [bulletinOpen, setBulletinOpen] = useState(true)
   const [freeChatOpen, setFreeChatOpen] = useState(true)
+  const [objectiveOpen, setObjectiveOpen] = useState(true)
   const [runsOpen, setRunsOpen] = useState(true)
   const [workflowsOpen, setWorkflowsOpen] = useState(true)
   const [handbookOpen, setHandbookOpen] = useState(true)
@@ -92,26 +78,47 @@ export default function ChannelsPage() {
     setRunPage(1)
     setWorkflowPage(1)
     setHandbookPage(1)
+    setObjectivePage(1)
   }, [search])
 
-  const runnableGraphs = useMemo(
-    () =>
-      graphs.filter((g) => {
-        if (g.status === 'archived') return false
-        const def = g.latest_version?.definition
-        if (!def) return false
-        return validateGraph(def).length === 0
-      }),
-    [graphs],
-  )
-
   const q = search.trim().toLowerCase()
+
+  const bulletinChannels = useMemo(() => {
+    const bulletins = channels.filter((c) => c.channel_type === 'bulletin')
+    const filtered = q ? bulletins.filter((c) => c.name.toLowerCase().includes(q)) : bulletins
+    return [...filtered].sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime())
+  }, [channels, q])
+  const primaryBulletin = bulletinChannels[0] ?? null
+  const { data: bulletinMessages = [] } = useChannelMessages(workspaceId, primaryBulletin?.slug ?? '')
+  const latestBulletinMessage = bulletinMessages.length > 0 ? bulletinMessages[bulletinMessages.length - 1] : null
 
   const freeChats = useMemo(() => {
     const normals = channels.filter((c) => c.channel_type === 'normal' || c.channel_type === 'agent_main')
     const filtered = q ? normals.filter((c) => c.name.toLowerCase().includes(q)) : normals
     return [...filtered].sort((a, b) => a.name.localeCompare(b.name))
   }, [channels, q])
+
+  const objectiveByChannelId = useMemo(
+    () => new Map(objectives.filter((objective) => objective.channel_id).map((objective) => [objective.channel_id as string, objective])),
+    [objectives],
+  )
+
+  const objectiveChannels = useMemo(() => {
+    const rows = channels.filter((c) => c.channel_type === 'objective')
+    const filtered = q
+      ? rows.filter((channel) => {
+          const objective = objectiveByChannelId.get(channel.id)
+          const label = objective ? [objective.code, objective.title].filter(Boolean).join(' ') : channel.name
+          return `${label} ${channel.name}`.toLowerCase().includes(q)
+        })
+      : rows
+    return filtered
+      .map((channel) => ({
+        channel,
+        objective: objectiveByChannelId.get(channel.id) ?? null,
+      }))
+      .sort((a, b) => new Date(b.channel.updated_at).getTime() - new Date(a.channel.updated_at).getTime())
+  }, [channels, objectiveByChannelId, q])
 
   const workflowChannels = useMemo(() => {
     const workflows = channels.filter((c) => c.channel_type === 'workflow')
@@ -137,52 +144,11 @@ export default function ChannelsPage() {
   const isLoading = channelsLoading || runsLoading
   const subscribedChannelIds = new Set(subscriptions.filter((row) => row.subscribed).map((row) => row.channel_id))
 
-  async function handleCreateWorkflow(e: React.FormEvent) {
-    e.preventDefault()
-    const name = workflowName.trim()
-    if (!name) return
-    const g = await createGraph.mutateAsync({ name })
-    setShowCreate(false)
-    setMode('menu')
-    setWorkflowName('')
-    navigate(`/graphs/${g.id}?chat=1`)
-  }
-
-  async function handleCreateChat(e: React.FormEvent) {
-    e.preventDefault()
-    const name = chatName.trim()
-    if (!name) return
-    const channel = await createChannel.mutateAsync({ name, channel_type: 'normal' })
-    setShowCreate(false)
-    setMode('menu')
-    setChatName('')
-    navigate(channelPath(channel.slug))
-  }
-
-  function handleCreateRun(e: React.FormEvent) {
-    e.preventDefault()
-    if (!selectedGraphId) return
-    const graph = runnableGraphs.find((g) => g.id === selectedGraphId)
-    const def = graph?.latest_version?.definition
-    if (!graph || !def) return
-    setShowCreate(false)
-    setMode('menu')
-    setRunTrigger({ graphId: graph.id, definition: def })
-  }
-
   return (
     <div className="p-6 md:p-8 max-w-5xl mx-auto space-y-5">
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <h1 className="text-xl font-semibold text-gray-900">Channels</h1>
-          <p className="text-sm text-gray-500 mt-1">Free chat, handbook, runs, and workflows in one place.</p>
-        </div>
-        <button
-          onClick={() => { setShowCreate(true); setMode('menu') }}
-          className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-brand-600 text-white text-sm"
-        >
-          <Plus size={14} /> Create
-        </button>
+      <div>
+        <h1 className="text-xl font-semibold text-gray-900">Channels</h1>
+        <p className="text-sm text-gray-500 mt-1">Workspace bulletin, free chat, objective threads, handbook, runs, and workflows in one place.</p>
       </div>
 
       <div className="relative">
@@ -197,10 +163,50 @@ export default function ChannelsPage() {
 
       {isLoading ? (
         <div className="flex justify-center py-16"><Spinner size="lg" /></div>
-      ) : freeChats.length === 0 && workflowChannels.length === 0 && handbookChannels.length === 0 && runItems.length === 0 ? (
+      ) : bulletinChannels.length === 0 && freeChats.length === 0 && objectiveChannels.length === 0 && workflowChannels.length === 0 && handbookChannels.length === 0 && runItems.length === 0 ? (
         <EmptyState heading="No items found" subtext="Try a different search or create new items." />
       ) : (
         <>
+          <section>
+            <div className="flex items-center justify-between mb-2">
+              <button
+                onClick={() => setBulletinOpen((v) => !v)}
+                className="inline-flex items-center gap-1.5 text-xs uppercase tracking-wide text-gray-500 hover:text-gray-700"
+              >
+                {bulletinOpen ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+                Bulletin
+              </button>
+              <p className="text-xs text-gray-400">{bulletinChannels.length}</p>
+            </div>
+            {bulletinOpen && (
+              <div className="space-y-2">
+                {bulletinChannels.map((ch) => (
+                  <Link
+                    key={ch.id}
+                    to={`/channels/${ch.slug}`}
+                    className="flex items-center justify-between gap-3 rounded-xl border border-amber-200 bg-amber-50/60 p-3 hover:border-amber-300"
+                  >
+                    <div className="flex items-center gap-2 min-w-0">
+                      <Megaphone size={15} className="text-amber-700 shrink-0" />
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium text-gray-900 truncate">{ch.name}</p>
+                        <p className="text-xs text-amber-800 truncate">
+                          {latestBulletinMessage?.channel_id === ch.id
+                            ? latestBulletinMessage.content
+                            : 'Workspace-wide announcements and shared updates'}
+                        </p>
+                      </div>
+                    </div>
+                    <span className="text-[11px] px-2 py-0.5 rounded-full bg-amber-100 text-amber-800">
+                      {subscribedChannelIds.has(ch.id) ? 'following' : 'muted'}
+                    </span>
+                  </Link>
+                ))}
+                {bulletinChannels.length === 0 && <p className="text-sm text-gray-500">No workspace bulletin yet.</p>}
+              </div>
+            )}
+          </section>
+
           <section>
             <div className="flex items-center justify-between mb-2">
               <button
@@ -218,7 +224,7 @@ export default function ChannelsPage() {
                   {paginate(freeChats, freeChatPage).map((ch) => (
                     <Link
                       key={ch.id}
-                      to={`/channels/${ch.id}`}
+                      to={`/channels/${ch.slug}`}
                       className="flex items-center justify-between gap-3 bg-white border border-gray-200 rounded-xl p-3 hover:border-brand-300"
                     >
                       <div className="flex items-center gap-2 min-w-0">
@@ -233,6 +239,47 @@ export default function ChannelsPage() {
                   {freeChats.length === 0 && <p className="text-sm text-gray-500">No free chats.</p>}
                 </div>
                 <Pager page={freeChatPage} setPage={setFreeChatPage} total={freeChats.length} />
+              </>
+            )}
+          </section>
+
+          <section className="pt-1">
+            <div className="flex items-center justify-between mb-2">
+              <button
+                onClick={() => setObjectiveOpen((v) => !v)}
+                className="inline-flex items-center gap-1.5 text-xs uppercase tracking-wide text-gray-500 hover:text-gray-700"
+              >
+                {objectiveOpen ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+                Objectives
+              </button>
+              <p className="text-xs text-gray-400">{objectiveChannels.length}</p>
+            </div>
+            {objectiveOpen && (
+              <>
+                <div className="space-y-2">
+                  {paginate(objectiveChannels, objectivePage).map(({ channel, objective }) => (
+                    <Link
+                      key={channel.id}
+                      to={objective?.project_slug ? projectObjectivePath(objective.project_slug, objective.slug) : `/channels/${channel.slug}`}
+                      className="flex items-center justify-between gap-3 bg-white border border-gray-200 rounded-xl p-3 hover:border-brand-300"
+                    >
+                      <div className="flex items-center gap-2 min-w-0">
+                        <Hash size={15} className="text-stone-500 shrink-0" />
+                        <div className="min-w-0">
+                          <p className="text-sm text-gray-800 truncate">
+                            {objective ? [objective.code, objective.title].filter(Boolean).join(' · ') : channel.name}
+                          </p>
+                          <p className="text-xs text-gray-500 truncate">{channel.name}</p>
+                        </div>
+                      </div>
+                      <span className="text-[11px] px-2 py-0.5 rounded-full bg-gray-100 text-gray-600">
+                        {subscribedChannelIds.has(channel.id) ? 'following' : 'muted'}
+                      </span>
+                    </Link>
+                  ))}
+                  {objectiveChannels.length === 0 && <p className="text-sm text-gray-500">No objective channels.</p>}
+                </div>
+                <Pager page={objectivePage} setPage={setObjectivePage} total={objectiveChannels.length} />
               </>
             )}
           </section>
@@ -288,7 +335,7 @@ export default function ChannelsPage() {
                   {paginate(workflowChannels, workflowPage).map((ch) => (
                     <Link
                       key={ch.id}
-                      to={ch.graph_id ? `/graphs/${ch.graph_id}?chat=1` : `/channels/${ch.id}`}
+                      to={ch.graph_id ? `/graphs/${ch.graph_id}?chat=1` : `/channels/${ch.slug}`}
                       className="flex items-center justify-between gap-3 bg-white border border-gray-200 rounded-xl p-3 hover:border-brand-300"
                     >
                       <div className="flex items-center gap-2 min-w-0">
@@ -324,7 +371,7 @@ export default function ChannelsPage() {
                   {paginate(handbookChannels, handbookPage).map((ch) => (
                     <Link
                       key={ch.id}
-                      to={`/channels/${ch.id}`}
+                      to={`/channels/${ch.slug}`}
                       className="flex items-center justify-between gap-3 bg-white border border-gray-200 rounded-xl p-3 hover:border-brand-300"
                     >
                       <div className="flex items-center gap-2 min-w-0">
@@ -341,100 +388,6 @@ export default function ChannelsPage() {
             )}
           </section>
         </>
-      )}
-
-      {showCreate && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-lg p-5">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="font-semibold text-gray-900">Create</h2>
-              <button onClick={() => setShowCreate(false)} className="text-gray-400 hover:text-gray-700">
-                <X size={16} />
-              </button>
-            </div>
-
-            {mode === 'menu' && (
-              <div className="grid gap-2">
-                <button onClick={() => setMode('workflow')} className="text-left border border-gray-200 rounded-lg p-3 hover:border-brand-300">
-                  <p className="text-sm font-medium text-gray-900">Create a workflow</p>
-                  <p className="text-xs text-gray-500 mt-1">Start a new workflow design chat.</p>
-                </button>
-                <button onClick={() => setMode('run')} className="text-left border border-gray-200 rounded-lg p-3 hover:border-brand-300">
-                  <p className="text-sm font-medium text-gray-900">Create a run</p>
-                  <p className="text-xs text-gray-500 mt-1">Pick a runnable workflow and continue in Trigger Run dialog.</p>
-                </button>
-                <button onClick={() => setMode('chat')} className="text-left border border-gray-200 rounded-lg p-3 hover:border-brand-300">
-                  <p className="text-sm font-medium text-gray-900">Create a free chat</p>
-                  <p className="text-xs text-gray-500 mt-1">Start a channel and attach workflows, runs, or files later.</p>
-                </button>
-              </div>
-            )}
-
-            {mode === 'workflow' && (
-              <form onSubmit={handleCreateWorkflow} className="space-y-3">
-                <label className="block text-xs text-gray-500">Workflow name</label>
-                <input
-                  autoFocus
-                  value={workflowName}
-                  onChange={(e) => setWorkflowName(e.target.value)}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
-                  placeholder="Contract review"
-                />
-                <div className="flex justify-between pt-2">
-                  <button type="button" onClick={() => setMode('menu')} className="text-sm text-gray-600">Back</button>
-                  <button type="submit" disabled={!workflowName.trim() || createGraph.isPending} className="px-3 py-2 rounded-lg bg-brand-600 text-white text-sm disabled:opacity-40">Create workflow</button>
-                </div>
-              </form>
-            )}
-
-            {mode === 'run' && (
-              <form onSubmit={handleCreateRun} className="space-y-3">
-                <label className="block text-xs text-gray-500">Runnable workflow</label>
-                <select
-                  value={selectedGraphId}
-                  onChange={(e) => setSelectedGraphId(e.target.value)}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
-                >
-                  <option value="">Select workflow...</option>
-                  {runnableGraphs.map((g) => (
-                    <option key={g.id} value={g.id}>{g.name}</option>
-                  ))}
-                </select>
-                <p className="text-xs text-gray-500">Only eligible workflows are listed.</p>
-                <div className="flex justify-between pt-2">
-                  <button type="button" onClick={() => setMode('menu')} className="text-sm text-gray-600">Back</button>
-                  <button type="submit" disabled={!selectedGraphId} className="px-3 py-2 rounded-lg bg-brand-600 text-white text-sm disabled:opacity-40">Next</button>
-                </div>
-              </form>
-            )}
-
-            {mode === 'chat' && (
-              <form onSubmit={handleCreateChat} className="space-y-3">
-                <label className="block text-xs text-gray-500">Channel name</label>
-                <input
-                  autoFocus
-                  value={chatName}
-                  onChange={(e) => setChatName(e.target.value)}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
-                  placeholder="Design ops"
-                />
-                <p className="text-xs text-gray-500">Free chat channels can publish updates from attached workflows, runs, and files.</p>
-                <div className="flex justify-between pt-2">
-                  <button type="button" onClick={() => setMode('menu')} className="text-sm text-gray-600">Back</button>
-                  <button type="submit" disabled={!chatName.trim() || createChannel.isPending} className="px-3 py-2 rounded-lg bg-brand-600 text-white text-sm disabled:opacity-40">Create chat</button>
-                </div>
-              </form>
-            )}
-          </div>
-        </div>
-      )}
-
-      {runTrigger && (
-        <RunTriggerModal
-          graphId={runTrigger.graphId}
-          definition={runTrigger.definition}
-          onClose={() => setRunTrigger(null)}
-        />
       )}
     </div>
   )

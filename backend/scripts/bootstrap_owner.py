@@ -12,6 +12,7 @@ from uuid import uuid4
 from sqlalchemy import and_, select
 
 from knotwork.auth.models import User
+from knotwork.channels import service as channel_service
 from knotwork.database import AsyncSessionLocal
 from knotwork.workspaces.models import Workspace, WorkspaceMember
 
@@ -103,6 +104,9 @@ async def main() -> None:
             if member.role != "owner":
                 member.role = "owner"
 
+        await db.flush()
+        await channel_service.ensure_bulletin_channel(db, workspace.id)
+        await channel_service.ensure_default_channel_subscriptions(db, workspace.id)
         await db.commit()
 
         print(json.dumps({

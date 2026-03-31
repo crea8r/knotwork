@@ -25,7 +25,7 @@ class ChannelOut(BaseModel):
 
 class ChannelCreate(BaseModel):
     name: str
-    channel_type: Literal["normal", "workflow", "handbook", "run", "agent_main", "project", "objective"] = "normal"
+    channel_type: Literal["normal", "bulletin", "workflow", "handbook", "run", "agent_main", "project", "objective"] = "normal"
     graph_id: UUID | None = None
     project_id: UUID | None = None
     objective_id: UUID | None = None

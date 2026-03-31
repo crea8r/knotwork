@@ -27,6 +27,9 @@ def validate_graph(definition: dict) -> list[str]:
 
     All graphs with work nodes must have Start and End nodes wired up.
     """
+    from knotwork.graphs.schemas import normalize_graph_definition
+
+    definition = normalize_graph_definition(definition)
     nodes = definition.get("nodes", [])
     edges = definition.get("edges", [])
 
@@ -85,8 +88,17 @@ def validate_graph(definition: dict) -> list[str]:
             errors.append(f'Node "{name}" is not reachable from Start')
         elif nid not in can_reach_end:
             errors.append(f'Node "{name}" has no path to End')
-        # Model validation for llm_agent nodes
-        if node.get("type") == "llm_agent":
+        if node.get("type") == "agent":
+            supervisor_id = str(node.get("supervisor_id") or "").strip()
+            if not supervisor_id:
+                errors.append(f'Node "{name}" is missing a supervisor')
+            operator_id = str(node.get("operator_id") or "").strip()
+            registered_agent_id = str(node.get("registered_agent_id") or "").strip()
+            operator_agent_id = operator_id or (f"agent:{registered_agent_id}" if registered_agent_id else "")
+            if operator_agent_id.startswith("agent:") and supervisor_id == operator_agent_id:
+                errors.append(
+                    f'Node "{name}" cannot use the same agent as both operator and supervisor'
+                )
             model = (node.get("config") or {}).get("model")
             if model and model not in VALID_MODELS:
                 errors.append(f'Node "{name}": unknown model "{model}"')

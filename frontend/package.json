@@ -22,7 +22,7 @@
     "@tiptap/react": "^3.20.0",
     "@tiptap/starter-kit": "^3.20.0",
     "@types/turndown": "^5.0.6",
-    "axios": "^1.7",
+    "axios": "1.7",
     "lucide-react": "^0.400",
     "marked": "^17.0.3",
     "react": "^18.3",

@@ -6,10 +6,7 @@ export const NODE_H = 56
 export const PAD = 32
 
 export const NODE_COLORS: Record<string, string> = {
-  llm_agent: '#3b82f6',
-  human_checkpoint: '#f59e0b',
-  conditional_router: '#8b5cf6',
-  tool_executor: '#10b981',
+  agent: '#3b82f6',
   start: '#22c55e',
   end: '#6b7280',
 }

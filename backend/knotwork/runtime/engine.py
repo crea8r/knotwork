@@ -1,9 +1,8 @@
 """
 Runtime engine: compile GraphDefinition → LangGraph.
 
-S7: unified dispatch — all non-start/end nodes use make_agent_node().
-Legacy types (llm_agent, human_checkpoint, conditional_router) are
-auto-converted. tool_executor raises RuntimeError.
+All non-start/end nodes use make_agent_node().
+Graph definitions are normalized to the unified `agent` node type at load time.
 
 Dynamic routing: nodes with >1 outgoing edge use add_conditional_edges
 driven by state["next_branch"].
@@ -123,12 +122,14 @@ def compile_graph(graph_def: dict, checkpointer: Any = None) -> CompiledGraph:
     """Compile a stored graph definition into a runnable LangGraph object."""
     from langgraph.graph import END, START as LG_START, StateGraph
 
+    from knotwork.graphs.schemas import normalize_graph_definition
     from knotwork.runtime.nodes.agent import make_agent_node
 
     if checkpointer is None:
         from langgraph.checkpoint.memory import MemorySaver
         checkpointer = MemorySaver()
 
+    graph_def = normalize_graph_definition(graph_def)
     nodes = graph_def.get("nodes", [])
     start_ids = {n["id"] for n in nodes if n.get("type") == "start"}
     end_ids = {n["id"] for n in nodes if n.get("type") == "end"}
@@ -158,11 +159,6 @@ def compile_graph(graph_def: dict, checkpointer: Any = None) -> CompiledGraph:
         nid = node["id"]
         if nid in skip_ids:
             continue
-        if node.get("type") == "tool_executor":
-            raise RuntimeError(
-                f"Node '{nid}' has type 'tool_executor' which was removed in S7. "
-                "Delete this node or replace it with an agent node."
-            )
         workflow.add_node(nid, make_agent_node(node, outgoing_edges=outgoing.get(nid, [])))
         node_ids.add(nid)
 

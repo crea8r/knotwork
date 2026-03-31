@@ -24,12 +24,8 @@ Help the user build agent workflow graphs by modifying the graph definition via 
 - start: Entry node. id MUST be "start". Connect to one or more nodes for parallel starts. \
 No config needed.
 - end: Terminal node. id MUST be "end". All terminal paths must connect here. No config needed.
-- llm_agent: LLM reasoning node. Config: model, system_prompt, knowledge_paths (list), \
-confidence_threshold (0.0-1.0), fail_safe (escalate|retry|stop), \
-confidence_rules [{condition, set}], checkpoints [{type, expression}], tools (list)
-- human_checkpoint: Human review gate. Config: prompt, timeout_hours
-- conditional_router: Branch on conditions. Config: routing_rules [{condition, target}], default_target
-- tool_executor: Run a tool. Config: tool_id, tool_config (dict)
+- agent: Unified work node. Top-level fields: agent_ref, trust_level, registered_agent_id. \
+Config: system_prompt (or question for human nodes), knowledge_paths (list), model (optional).
 
 ## graph_delta schema
 {
@@ -52,11 +48,9 @@ Rules:
 - Omit delta keys that have no changes.
 - questions is empty when the request is unambiguous.
 - Return an empty graph_delta ({}) when you are only asking questions.
-- ALWAYS ask before adding a conditional_router: you need at minimum the branch conditions \
-and their target nodes. Do not add a router with empty routing_rules.
-- ALWAYS ask before adding a tool_executor: you need the tool_id.
-- For llm_agent and human_checkpoint you may add with sensible defaults and note what \
-still needs configuring.
+- Use multi-branch edges from an `agent` node instead of separate router nodes. \
+When adding branching, make sure every outgoing edge has a condition_label.
+- Use `agent_ref: "human"` when the step is human-supervised or manually performed.
 - ALWAYS include set_input_schema when creating or significantly modifying a graph. \
 Define the case data the entry node needs (e.g. customer_email, contract_text). \
 Use type "textarea" for long text (>1 paragraph), "text" for short values, "number" for numeric inputs.

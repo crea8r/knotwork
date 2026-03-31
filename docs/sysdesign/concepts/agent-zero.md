@@ -1,6 +1,6 @@
 # Core Concepts — Agent Zero
 
-Added in S12. Agent Zero is the optional but recommended first step in workspace setup — the orchestrator, advisor, and primary representative for the workspace.
+Planned for S12.2. S12 establishes the human-only baseline; Agent Zero is introduced after the plugin boundary (S12.1) is defined. Agent Zero is the optional but recommended first step in workspace setup — the orchestrator, advisor, and primary representative for the workspace.
 
 ---
 

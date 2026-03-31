@@ -23,22 +23,22 @@ def test_single_node():
     node = result["nodes"][0]
     assert node["id"] == "contract-review"
     assert node["name"] == "Contract Review"
-    assert node["type"] == "llm_agent"  # default
+    assert node["type"] == "agent"  # default
     assert result["entry_point"] == "contract-review"
 
 
 def test_node_type_extraction():
-    """**Type:** field overrides the default node type."""
+    """Legacy type markers now collapse to the unified agent type."""
     md = "## Review Gate\n\n**Type:** human_checkpoint\n\nReviewer must approve."
     result = parse_md_to_graph(md, "Types")
-    assert result["nodes"][0]["type"] == "human_checkpoint"
+    assert result["nodes"][0]["type"] == "agent"
 
 
-def test_invalid_type_defaults_to_llm_agent():
-    """Unknown type strings fall back to llm_agent."""
+def test_invalid_type_defaults_to_agent():
+    """Unknown type strings fall back to agent."""
     md = "## My Node\n\n**Type:** unknown_type"
     result = parse_md_to_graph(md, "Fallback")
-    assert result["nodes"][0]["type"] == "llm_agent"
+    assert result["nodes"][0]["type"] == "agent"
 
 
 def test_edge_extraction():
@@ -89,8 +89,8 @@ def test_multiple_edges_from_one_node():
     assert edge_sources.count("router") == 2
 
 
-def test_all_node_types_parsed():
-    """All four node types are recognised."""
+def test_all_legacy_node_types_normalize_to_agent():
+    """Historical type markers all normalize to the unified agent type."""
     md = "\n".join([
         "## LLM Node\n**Type:** llm_agent",
         "## Gate\n**Type:** human_checkpoint",
@@ -99,7 +99,4 @@ def test_all_node_types_parsed():
     ])
     result = parse_md_to_graph(md, "All types")
     types = [n["type"] for n in result["nodes"]]
-    assert "llm_agent" in types
-    assert "human_checkpoint" in types
-    assert "conditional_router" in types
-    assert "tool_executor" in types
+    assert types == ["agent", "agent", "agent", "agent"]

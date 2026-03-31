@@ -20,17 +20,10 @@ MAX_NODE_VISITS_PER_RUN = 5
 
 
 def _resolve_agent_ref(node_def: dict) -> str:
-    """Return 'human' or 'openclaw'. Legacy type fallbacks included."""
+    """Return 'human' or 'openclaw' for the unified agent node."""
     ref = (node_def.get("agent_ref") or "").strip()
     if ref == "human":
         return "human"
-    if ref.startswith("openclaw"):
-        return "openclaw"
-    # Legacy type fallbacks
-    legacy = node_def.get("type")
-    if legacy == "human_checkpoint":
-        return "human"
-    # All other types (llm_agent, conditional_router, agent) → openclaw
     return "openclaw"
 
 
@@ -127,6 +120,7 @@ def make_agent_node(node_def: dict, outgoing_edges: list[dict] | None = None):
     node_name: str = node_def.get("name") or node_id
     config: dict = node_def.get("config") or {}
     knowledge_files: list[str] = config.get("knowledge_paths") or config.get("knowledge_files", [])
+    supervisor_id = str(node_def.get("supervisor_id") or "").strip() or None
 
     # Pre-compute edge list once — used in every prompt build inside node_fn
     _edges: list[dict] = outgoing_edges or []
@@ -489,7 +483,7 @@ def make_agent_node(node_def: dict, outgoing_edges: list[dict] | None = None):
                     "node_id": node_id,
                 }
                 await _handle_escalation(
-                    ns_id, run_id, node_id, workspace_id, grouped_payload, agent_ref
+                    ns_id, run_id, node_id, workspace_id, grouped_payload, agent_ref, supervisor_id
                 )
                 await publish_event(
                     state["run_id"], {"type": "escalation_created", "node_id": node_id}
@@ -558,7 +552,7 @@ def make_agent_node(node_def: dict, outgoing_edges: list[dict] | None = None):
                     "node_id": node_id,
                 }
                 await _handle_escalation(
-                    ns_id, run_id, node_id, workspace_id, routing_payload, agent_ref
+                    ns_id, run_id, node_id, workspace_id, routing_payload, agent_ref, supervisor_id
                 )
                 await publish_event(
                     state["run_id"], {"type": "escalation_created", "node_id": node_id}
@@ -660,7 +654,7 @@ def make_agent_node(node_def: dict, outgoing_edges: list[dict] | None = None):
 
 async def _handle_escalation(
     ns_id: UUID | None, run_id: str, node_id: str, workspace_id: str,
-    payload: dict, agent_ref: str,
+    payload: dict, agent_ref: str, supervisor_id: str | None,
 ) -> None:
     from sqlalchemy import update
 
@@ -704,7 +698,9 @@ async def _handle_escalation(
                 "questions": questions,
                 "messages": messages,
                 "node_id": node_id,
+                "supervisor_id": supervisor_id,
             },
+            assigned_to=[supervisor_id] if supervisor_id else None,
         )
 
         # Post each question as a channel message

@@ -8,13 +8,13 @@ Conventions:
   - ``**Type:** <type>`` inside a section sets the node type.
   - Lines matching ``-> Other Node`` define edges to sibling nodes.
   - The first node defined is the entry point.
-  - Node types: llm_agent (default), human_checkpoint, conditional_router, tool_executor.
+  - Node types: agent (default).
 """
 from __future__ import annotations
 
 import re
 
-_VALID_TYPES = {"llm_agent", "human_checkpoint", "conditional_router", "tool_executor"}
+_VALID_TYPES = {"agent"}
 
 
 def _slugify(name: str) -> str:
@@ -43,8 +43,8 @@ def parse_md_to_graph(content: str, name: str) -> dict:
         node_id = _slugify(node_name)
         name_to_id[node_name.lower()] = node_id
 
-        # Extract type from **Type:** field, default llm_agent
-        node_type = "llm_agent"
+        # Extract type from **Type:** field, default agent
+        node_type = "agent"
         type_match = re.search(r"\*\*Type:\*\*\s*(\w+)", section)
         if type_match and type_match.group(1) in _VALID_TYPES:
             node_type = type_match.group(1)

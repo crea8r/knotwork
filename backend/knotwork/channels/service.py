@@ -109,6 +109,30 @@ async def ensure_handbook_channel(db: AsyncSession, workspace_id: UUID) -> None:
         await db.commit()
 
 
+async def ensure_bulletin_channel(db: AsyncSession, workspace_id: UUID) -> None:
+    """Ensure one canonical workspace bulletin channel exists per workspace."""
+    existing = await db.execute(
+        select(Channel).where(
+            Channel.workspace_id == workspace_id,
+            Channel.channel_type == "bulletin",
+            Channel.archived_at.is_(None),
+        )
+    )
+    channel = existing.scalar_one_or_none()
+    if channel is not None:
+        return
+
+    db.add(
+        Channel(
+            workspace_id=workspace_id,
+            name="Workspace Bulletin",
+            slug=await _generate_channel_slug(db, "workspace bulletin"),
+            channel_type="bulletin",
+        )
+    )
+    await db.commit()
+
+
 async def ensure_default_channel_subscriptions(
     db: AsyncSession,
     workspace_id: UUID,
@@ -296,11 +320,12 @@ async def publish_event_to_channel_subscribers(
 async def list_channels(db: AsyncSession, workspace_id: UUID) -> list[Channel]:
     await ensure_workflow_channels(db, workspace_id)
     await ensure_handbook_channel(db, workspace_id)
+    await ensure_bulletin_channel(db, workspace_id)
     await ensure_default_channel_subscriptions(db, workspace_id)
     result = await db.execute(
         select(Channel)
         .where(Channel.workspace_id == workspace_id, Channel.archived_at.is_(None))
-        .where(Channel.channel_type.in_(("normal", "workflow", "handbook", "run", "agent_main", "project", "objective", "task")))
+        .where(Channel.channel_type.in_(("normal", "bulletin", "workflow", "handbook", "run", "agent_main", "project", "objective", "task")))
         .order_by(Channel.updated_at.desc(), Channel.created_at.desc())
     )
     return list(result.scalars())

@@ -23,6 +23,8 @@ Auth:      API key passed in MCP client configuration
 
 ## MCP Tools
 
+The intent is whole-product coverage for Phase 1 user-facing operations, not a narrow add-on for one subsystem. The API/OpenAPI baseline should be used to review this surface regularly so MCP planning stays aligned with what the backend actually exposes.
+
 ### Graph Management
 
 ```

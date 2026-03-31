@@ -6,14 +6,17 @@
 import { useState } from 'react'
 import { Search, X, Maximize2 } from 'lucide-react'
 import { useKnowledgeFile, useKnowledgeFiles, useSearchKnowledgeFiles } from '@/api/knowledge'
-import { useRegisteredAgents } from '@/api/agents'
+import { useChannelParticipants } from '@/api/channels'
 import Btn from '@/components/shared/Btn'
+import { useAuthStore } from '@/store/auth'
 
 interface Props {
   node: {
     agent_ref?: string
     trust_level?: number
     registered_agent_id?: string | null
+    operator_id?: string | null
+    supervisor_id?: string | null
     config: Record<string, unknown>
   }
   onChange: (nodeFieldsPatch: Record<string, unknown>, configPatch?: Record<string, unknown>) => void
@@ -36,14 +39,19 @@ function trustLabel(val: number): string {
 }
 
 export default function AgentNodeConfig({ node, onChange, readOnly = false }: Props) {
+  const workspaceId = useAuthStore((s) => s.workspaceId) ?? ''
   const { data: files = [] } = useKnowledgeFiles()
-  const { data: agents = [] } = useRegisteredAgents()
+  const { data: participants = [] } = useChannelParticipants(workspaceId)
   const config = node.config
 
   const registeredAgentId = node.registered_agent_id ?? null
+  const operatorId = node.operator_id ?? null
+  const supervisorId = node.supervisor_id ?? null
   const agentRef = node.agent_ref ?? ''
   const isHuman = agentRef === 'human'
   const trustLevel: number = typeof node.trust_level === 'number' ? node.trust_level : 0.5
+  const operatorParticipantId = operatorId ?? (registeredAgentId ? `agent:${registeredAgentId}` : null)
+  const supervisorMatchesOperatorAgent = !!operatorParticipantId && supervisorId === operatorParticipantId
 
   const paths: string[] = (config.knowledge_paths as string[]) ?? []
   const [pickerOpen, setPickerOpen] = useState(false)
@@ -57,21 +65,30 @@ export default function AgentNodeConfig({ node, onChange, readOnly = false }: Pr
   const setField = (patch: Record<string, unknown>) => onChange(patch)
   const setConfig = (patch: Record<string, unknown>) => onChange({}, patch)
 
-  const selectValue = isHuman ? 'human' : (registeredAgentId ?? '')
-  const selectedAgent = registeredAgentId ? agents.find(a => a.id === registeredAgentId) : undefined
-  const agentNotFound = !!registeredAgentId && !selectedAgent && !isHuman
-  const selectableAgents = agents.filter((a) => a.status !== 'archived')
+  const selectValue = operatorParticipantId ?? ''
+  const selectedOperator = operatorParticipantId
+    ? participants.find((participant) => participant.participant_id === operatorParticipantId)
+    : undefined
+  const operatorNotFound = !!operatorParticipantId && !selectedOperator
 
   function handleAgentSelect(e: React.ChangeEvent<HTMLSelectElement>) {
     const val = e.target.value
-    if (val === 'human') {
-      setField({ agent_ref: 'human', registered_agent_id: null })
-    } else if (val === '') {
-      setField({ agent_ref: '', registered_agent_id: null })
-    } else {
-      const agent = agents.find(a => a.id === val)
-      if (agent) setField({ agent_ref: 'openclaw', registered_agent_id: agent.id })
+    const participant = participants.find((item) => item.participant_id === val)
+    if (!participant) {
+      setField({ agent_ref: '', registered_agent_id: null, operator_id: null })
+      return
     }
+    if (participant.kind === 'human') {
+      setField({ agent_ref: 'human', registered_agent_id: null, operator_id: participant.participant_id })
+      return
+    }
+    const rawAgentId = participant.participant_id.split(':', 2)[1] ?? ''
+    setField({
+      agent_ref: 'openclaw',
+      registered_agent_id: rawAgentId,
+      operator_id: participant.participant_id,
+      ...(supervisorId === participant.participant_id ? { supervisor_id: null } : {}),
+    })
   }
 
   const pickerResults = pickerQuery.trim() ? searchedFiles : files
@@ -86,34 +103,62 @@ export default function AgentNodeConfig({ node, onChange, readOnly = false }: Pr
 
   return (
     <div className="space-y-4 text-sm">
-      {/* Agent selector */}
+      {/* Operator selector */}
       <div>
-        <label className="block text-xs text-gray-500 mb-1">Agent</label>
+        <label className="block text-xs text-gray-500 mb-1">Operator</label>
         <select
           className="border rounded px-2 py-1 text-sm w-full bg-white"
           value={selectValue}
           disabled={readOnly}
           onChange={handleAgentSelect}
         >
-          <option value="">— Select agent —</option>
-          <option value="human">Human (always ask)</option>
-          {selectableAgents.map(a => (
-            <option key={a.id} value={a.id}>
-              {a.display_name}{a.status !== 'active' ? ` (${a.status})` : ''}
+          <option value="">— Select operator —</option>
+          {participants.map((participant) => (
+            <option key={participant.participant_id} value={participant.participant_id}>
+              {participant.display_name} ({participant.kind})
             </option>
           ))}
         </select>
-        {agentNotFound && (
+        {operatorNotFound && (
           <p className="text-xs text-amber-600 mt-1">
-            The previously selected agent was removed. Please select a new one.
+            The previously selected operator is no longer available. Please select a new one.
           </p>
         )}
-        {selectableAgents.length === 0 && (
+        {participants.length === 0 && (
           <p className="text-xs text-gray-400 mt-1">
-            No agents registered yet.{' '}
-            <a href="/settings?tab=agents" className="text-brand-500 hover:underline">
-              Go to Settings → Agents to add one.
-            </a>
+            No participants available yet.
+          </p>
+        )}
+      </div>
+
+      <div>
+        <label className="block text-xs text-gray-500 mb-1">Supervisor</label>
+        <select
+          className="border rounded px-2 py-1 text-sm w-full bg-white"
+          value={supervisorId ?? ''}
+          disabled={readOnly}
+          onChange={(e) => setField({ supervisor_id: e.target.value || null })}
+        >
+          <option value="">— Select supervisor —</option>
+          {participants.map((participant) => {
+            const disabled = !!operatorParticipantId
+              && participant.kind === 'agent'
+              && participant.participant_id === operatorParticipantId
+            return (
+              <option key={participant.participant_id} value={participant.participant_id} disabled={disabled}>
+                {participant.display_name} ({participant.kind})
+                {disabled ? ' — already the operator' : ''}
+              </option>
+            )
+          })}
+        </select>
+        {supervisorMatchesOperatorAgent ? (
+          <p className="text-xs text-red-600 mt-1">
+            Supervisor cannot be the same agent as the node operator.
+          </p>
+        ) : (
+          <p className="text-xs text-gray-400 mt-1">
+            Humans may supervise themselves. Agents must escalate to a different participant.
           </p>
         )}
       </div>

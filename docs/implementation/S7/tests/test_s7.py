@@ -140,8 +140,8 @@ def test_compile_graph_agent_node():
     assert graph is not None
 
 
-def test_compile_graph_tool_executor_raises():
-    """tool_executor type should raise RuntimeError — it's been removed."""
+def test_compile_graph_tool_executor_normalizes_to_agent():
+    """Historical tool_executor nodes are normalized to the unified agent type."""
     from knotwork.runtime.engine import compile_graph
 
     definition = {
@@ -155,8 +155,8 @@ def test_compile_graph_tool_executor_raises():
             {"id": "e1", "source": "run_tool", "target": "end", "type": "direct"},
         ],
     }
-    with pytest.raises(RuntimeError, match="tool_executor"):
-        compile_graph(definition)
+    graph = compile_graph(definition)
+    assert graph is not None
 
 
 # ── Proposal CRUD ─────────────────────────────────────────────────────────────

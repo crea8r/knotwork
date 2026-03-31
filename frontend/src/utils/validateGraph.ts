@@ -63,12 +63,17 @@ export function validateGraph(definition: GraphDefinition): string[] {
     } else if (!canReachEnd.has(nid)) {
       errors.push(`Node "${label}" has no path to End`)
     }
-    // tool_executor is removed in S7
-    if (node?.type === 'tool_executor') {
-      errors.push(`Node "${label}" uses the removed 'tool_executor' type — replace it with an agent node`)
-    }
-    // Model validation for legacy llm_agent nodes
-    if (node?.type === 'llm_agent') {
+    if (node?.type === 'agent') {
+      const supervisorId = typeof node.supervisor_id === 'string' ? node.supervisor_id.trim() : ''
+      if (!supervisorId) {
+        errors.push(`Node "${label}" is missing a supervisor`)
+      }
+      const operatorId = typeof node.operator_id === 'string' ? node.operator_id.trim() : ''
+      const registeredAgentId = typeof node.registered_agent_id === 'string' ? node.registered_agent_id : ''
+      const operatorAgentId = operatorId || (registeredAgentId ? `agent:${registeredAgentId}` : '')
+      if (operatorAgentId.startsWith('agent:') && supervisorId === operatorAgentId) {
+        errors.push(`Node "${label}" cannot use the same agent as both operator and supervisor`)
+      }
       const model = node.config?.model as string | undefined
       if (model && !VALID_MODEL_VALUES.has(model)) {
         errors.push(`Node "${label}": unknown model "${model}"`)

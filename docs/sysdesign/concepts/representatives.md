@@ -1,6 +1,6 @@
 # Core Concepts — Workspace Representatives
 
-Added in S12. Representatives are how Knotwork models accountability for external interactions while keeping a clean boundary between Knotwork-managed internal delivery and representative-managed external communication.
+Phased introduction: human representatives in S12 (human-first baseline), agent representatives (including Agent Zero) in S12.2. Representatives are how Knotwork models accountability for external interactions while keeping a clean boundary between Knotwork-managed internal delivery and representative-managed external communication.
 
 ---
 
@@ -11,11 +11,11 @@ A **Representative** is a WorkspaceMember or RegisteredAgent designated as in ch
 ```
 Workspace
   └─ Representatives[]
-       ├─ Agent Zero  (RegisteredAgent, role: orchestrator, via OpenClaw)  is_primary: true
-       └─ Sarah Chen  (WorkspaceMember, human)                             is_primary: false
+       ├─ Sarah Chen  (WorkspaceMember, human)                             is_primary: true
+       └─ Agent Zero  (RegisteredAgent, role: orchestrator, via OpenClaw)  is_primary: true  [S12.2]
 ```
 
-**Agent Zero** is the canonical primary representative when it exists — the workspace's orchestrator agent, created optionally during post-install onboarding. See [concepts/agent-zero.md](./agent-zero.md).
+In S12 (human-first baseline), only human representatives are supported. Agent representatives, including **Agent Zero** — the workspace's optional orchestrator agent — are introduced in S12.2 after the plugin boundary is defined. See [concepts/agent-zero.md](./agent-zero.md).
 
 Representatives are a workspace-level designation — not tied to a specific channel, project, or workflow. They are the people and agents the workspace puts in charge.
 

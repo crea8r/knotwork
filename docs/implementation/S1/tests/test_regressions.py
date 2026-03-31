@@ -27,10 +27,10 @@ def test_knowledge_loader_importable():
     assert load_knowledge_tree is not None
 
 
-def test_llm_agent_node_importable():
-    """llm_agent imports knowledge_loader inside node_fn; the module itself must load."""
-    from knotwork.runtime.nodes.llm_agent import make_llm_agent_node  # noqa: F401
-    assert make_llm_agent_node is not None
+def test_agent_node_importable():
+    """Unified agent node imports knowledge_loader inside node_fn; the module itself must load."""
+    from knotwork.runtime.nodes.agent import make_agent_node  # noqa: F401
+    assert make_agent_node is not None
 
 
 # ── Bug 2: worker FK error (missing model imports) ────────────────────────────

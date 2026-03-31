@@ -1,10 +1,6 @@
 /**
- * NodeConfigPanel — dispatches to AgentNodeConfig for all agent-capable nodes.
+ * NodeConfigPanel — dispatches to AgentNodeConfig for the unified agent node.
  * Shown in the right sidebar when a node is selected on the canvas.
- *
- * S7: all llm_agent / human_checkpoint / conditional_router / tool_executor
- * nodes are replaced by the unified 'agent' type. Legacy types still render
- * via AgentNodeConfig with backward-compat defaults.
  *
  * Connections with ≥2 outgoing edges require a condition_label on each edge
  * so the agent knows which branch to evaluate. Missing labels are flagged
@@ -32,15 +28,9 @@ interface Props {
 
 const TYPE_LABEL: Record<string, string> = {
   agent: 'Agent',
-  llm_agent: 'Agent (legacy)',
-  human_checkpoint: 'Human (legacy)',
-  conditional_router: 'Router (legacy)',
-  tool_executor: 'Tool Executor (removed)',
   start: 'Start',
   end: 'End',
 }
-
-const AGENT_TYPES = new Set(['agent', 'llm_agent', 'human_checkpoint', 'conditional_router'])
 
 export default function NodeConfigPanel({
   node, allNodes, edges, inputFields = [], readOnly = false, onInputSchemaChange, onConfigChange, onRemove, onAddEdge, onUpdateEdge, onRemoveEdge,
@@ -93,7 +83,6 @@ export default function NodeConfigPanel({
 
   const isStartOrEnd = node.type === 'start' || node.type === 'end'
   const showHeader = !isStartOrEnd
-  const isToolExecutor = node.type === 'tool_executor'
   const contentClass = node.type === 'start'
     ? 'flex-1 overflow-y-auto px-0 py-0'
     : 'flex-1 overflow-y-auto px-4 py-4 space-y-6'
@@ -141,13 +130,7 @@ export default function NodeConfigPanel({
               </p>
             )
           )}
-          {isToolExecutor && (
-            <div className="bg-red-50 border border-red-200 rounded p-3 text-xs text-red-700">
-              <strong>Removed in S7.</strong> Tool Executor nodes are no longer supported.
-              Delete this node and replace it with an Agent node.
-            </div>
-          )}
-          {AGENT_TYPES.has(node.type) && (
+          {node.type === 'agent' && (
             <AgentNodeConfig
               node={node}
               onChange={handleAgentChange}

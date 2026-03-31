@@ -1,8 +1,7 @@
 // Core domain types — mirror backend Pydantic schemas.
 // Keep in sync with backend schemas when they are implemented.
 
-/** S7: 'agent' is the unified type. Legacy types kept for backward-compat display only. */
-export type NodeType = 'agent' | 'llm_agent' | 'human_checkpoint' | 'conditional_router' | 'tool_executor' | 'start' | 'end'
+export type NodeType = 'agent' | 'start' | 'end'
 /** trust_level is now a float 0.0–1.0. Legacy string enum kept for backward-compat display. */
 export type TrustLevel = number
 export type RunStatus = 'draft' | 'queued' | 'running' | 'paused' | 'completed' | 'failed' | 'stopped'
@@ -84,6 +83,10 @@ export interface NodeDef {
   trust_level?: TrustLevel
   /** S7.1: UUID of registered agent — used to look up per-workspace API key at runtime */
   registered_agent_id?: string | null
+  /** S12: participant selected as the visible operator for this node */
+  operator_id?: string | null
+  /** S12: participant responsible for handling escalations from this node */
+  supervisor_id?: string | null
   // type-specific fields stored in config
   config: Record<string, unknown>
 }
@@ -263,7 +266,7 @@ export interface Channel {
   workspace_id: string
   name: string
   slug: string
-  channel_type: 'normal' | 'workflow' | 'handbook' | 'run' | 'agent_main' | 'project' | 'objective'
+  channel_type: 'normal' | 'bulletin' | 'workflow' | 'handbook' | 'run' | 'agent_main' | 'project' | 'objective'
   graph_id: string | null
   project_id: string | null
   objective_id: string | null

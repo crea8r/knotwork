@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from datetime import datetime, timedelta, timezone
 from uuid import UUID
 
@@ -10,6 +11,8 @@ from knotwork.channels import service as channel_service
 from knotwork.escalations.models import Escalation
 from knotwork.escalations.schemas import EscalationResolve
 from knotwork.participants import list_workspace_human_participants
+
+logger = logging.getLogger(__name__)
 
 
 async def create_escalation(
@@ -84,7 +87,16 @@ async def create_escalation(
                 recipient_participant_ids=recipients,
             )
     except Exception:
-        pass
+        logger.exception(
+            "Failed to publish escalation channel event",
+            extra={
+                "run_id": run_id,
+                "workspace_id": str(workspace_id),
+                "run_node_state_id": str(run_node_state_id),
+                "escalation_id": str(esc.id),
+                "recipient_count": len(recipients),
+            },
+        )
 
     return esc
 

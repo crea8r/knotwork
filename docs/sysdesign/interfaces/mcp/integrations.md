@@ -116,6 +116,9 @@ Supported fully through MCP:
 - Trigger and monitor runs
 - Handle all escalations
 - Read and update knowledge
+- Operate project/task workflows
+- Inspect the operational state of the workspace
+- Manage the important agent-facing/runtime-facing parts of the product where chat is an appropriate interface
 - Rate outputs
 - Test tools
 - View audit log summaries

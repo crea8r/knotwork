@@ -1,10 +1,9 @@
 import { useState } from 'react'
 import { AlertTriangle, Archive, Globe, Loader2, Pencil, Play, Plus, Trash2 } from 'lucide-react'
 import Btn from '@/components/shared/Btn'
-import type { Graph, GraphDefinition, NodeDef, NodeType } from '@/types'
+import type { Graph, GraphDefinition, NodeDef } from '@/types'
 import { useCanvasStore } from '@/store/canvas'
 import type { AutosaveState } from './graphVersionUtils'
-import { NODE_TYPES } from './graphVersionUtils'
 
 export default function GraphTabBar({
   editorMode,
@@ -45,7 +44,6 @@ export default function GraphTabBar({
 }) {
   const [addingNode, setAddingNode] = useState(false)
   const [newNodeName, setNewNodeName] = useState('')
-  const [newNodeType, setNewNodeType] = useState<NodeType>('agent')
   const [showErrorDialog, setShowErrorDialog] = useState(false)
 
   const addNode = useCanvasStore((s) => s.addNode)
@@ -58,12 +56,14 @@ export default function GraphTabBar({
     e.preventDefault()
     if (!newNodeName.trim()) return
     if (!isDirty) setGraph(graphId, serverDefinition)
-    const id = newNodeType === 'start' || newNodeType === 'end'
-      ? newNodeType
-      : `${newNodeType}-${Date.now()}`
+    const id = `agent-${Date.now()}`
     const node: NodeDef = {
-      id, type: newNodeType, name: newNodeName.trim(), config: {},
-      ...(newNodeType === 'agent' ? { agent_ref: 'openclaw', trust_level: 0.5 } : {}),
+      id,
+      type: 'agent',
+      name: newNodeName.trim(),
+      config: {},
+      agent_ref: 'openclaw',
+      trust_level: 0.5,
     }
     addNode(node)
     const nodes = isDirty ? storeDefinition.nodes : serverDefinition.nodes
@@ -152,14 +152,44 @@ export default function GraphTabBar({
       )}
 
       {addingNode && editorMode === 'edit' && (
-        <form onSubmit={handleAddNode} className="flex items-center gap-2 border-b border-gray-200 bg-gray-50 px-3 md:px-6 py-2" style={{ flexShrink: 0 }}>
-          <select value={newNodeType} onChange={(e) => setNewNodeType(e.target.value as NodeType)} className="rounded border border-gray-300 px-2 py-1 text-sm outline-none">
-            {NODE_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
-          </select>
-          <input autoFocus value={newNodeName} onChange={(e) => setNewNodeName(e.target.value)} placeholder="Node name" className="w-48 rounded border border-gray-300 px-2 py-1 text-sm outline-none focus:ring-2 focus:ring-brand-500" />
-          <button type="submit" className="rounded bg-brand-500 px-3 py-1 text-sm text-white">Add</button>
-          <button type="button" onClick={() => setAddingNode(false)} className="px-3 py-1 text-sm text-gray-500">Cancel</button>
-        </form>
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4"
+          onClick={() => { setAddingNode(false); setNewNodeName('') }}
+        >
+          <form
+            onSubmit={handleAddNode}
+            className="w-full max-w-sm rounded-xl bg-white p-5 shadow-xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="mb-4">
+              <p className="text-sm font-semibold text-gray-900">Add node</p>
+              <p className="mt-1 text-sm text-gray-500">Create a new workflow step.</p>
+            </div>
+            <label className="block text-xs font-medium text-gray-600 mb-1">Node name</label>
+            <input
+              autoFocus
+              value={newNodeName}
+              onChange={(e) => setNewNodeName(e.target.value)}
+              placeholder="Node name"
+              className="w-full rounded border border-gray-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-brand-500"
+            />
+            <div className="mt-4 flex items-center justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => { setAddingNode(false); setNewNodeName('') }}
+                className="px-3 py-1.5 text-sm text-gray-500"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                className="rounded bg-brand-500 px-3 py-1.5 text-sm text-white"
+              >
+                Add
+              </button>
+            </div>
+          </form>
+        </div>
       )}
 
       {showErrorDialog && (

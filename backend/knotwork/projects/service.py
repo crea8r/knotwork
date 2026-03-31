@@ -727,6 +727,7 @@ async def list_project_channels(
 
     await channel_service.ensure_workflow_channels(db, workspace_id)
     await channel_service.ensure_handbook_channel(db, workspace_id)
+    await channel_service.ensure_bulletin_channel(db, workspace_id)
     await channel_service.ensure_default_channel_subscriptions(db, workspace_id)
 
     project = await get_project(db, workspace_id, project_id)

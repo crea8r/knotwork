@@ -10,13 +10,15 @@ import asyncio
 from pathlib import Path
 from typing import Any
 
+from knotwork.channels import service as channel_service
+
 ROOT = Path(__file__).parent.parent
 
 DEMO_GRAPH = {
     "nodes": [
         {
             "id": "agent-1",
-            "type": "llm_agent",
+            "type": "agent",
             "name": "Analyse",
             "config": {
                 "instructions": "You are a helpful assistant. Summarise the input clearly and concisely."
@@ -24,8 +26,9 @@ DEMO_GRAPH = {
         },
         {
             "id": "checkpoint-1",
-            "type": "human_checkpoint",
+            "type": "agent",
             "name": "Review",
+            "agent_ref": "human",
             "config": {
                 "prompt_to_operator": "Please review the summary above and approve or edit."
             },
@@ -552,8 +555,12 @@ async def main() -> None:
             db.add(ws)
             await db.commit()
             await db.refresh(ws)
+            await channel_service.ensure_bulletin_channel(db, ws.id)
+            await channel_service.ensure_default_channel_subscriptions(db, ws.id)
             print(f"Created workspace: {ws.id}")
         else:
+            await channel_service.ensure_bulletin_channel(db, ws.id)
+            await channel_service.ensure_default_channel_subscriptions(db, ws.id)
             print(f"Using existing workspace: {ws.id}")
 
         # Demo graph

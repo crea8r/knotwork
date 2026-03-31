@@ -16,7 +16,9 @@ import {
 } from '@/api/channels'
 import { useGraphs } from '@/api/graphs'
 import { useKnowledgeFiles } from '@/api/knowledge'
+import { useObjectives, useProjects } from '@/api/projects'
 import { useRuns } from '@/api/runs'
+import { projectPath } from '@/lib/paths'
 import { useAuthStore } from '@/store/auth'
 import { ChannelContextPill, ChannelShell, ChannelTimeline, type ChannelTimelineItem } from '@/components/channel/ChannelFrame'
 import WorkflowSlashComposer from '@/components/channel/WorkflowSlashComposer'
@@ -84,6 +86,8 @@ export default function ChannelDetailPage() {
   const { data: channels = [] } = useChannels(workspaceId)
   const { data: participants = [] } = useChannelParticipants(workspaceId)
   const { data: subscriptions = [] } = useMyChannelSubscriptions(workspaceId)
+  const { data: objectives = [] } = useObjectives(workspaceId)
+  const { data: projects = [] } = useProjects(workspaceId)
   const { data: messages = [], isLoading: messagesLoading } = useChannelMessages(workspaceId, channelSlug ?? '')
   const { data: decisions = [], isLoading: decisionsLoading } = useChannelDecisions(workspaceId, channelSlug ?? '')
   const { data: assets = [] } = useChannelAssets(workspaceId, channelSlug ?? '')
@@ -100,7 +104,15 @@ export default function ChannelDetailPage() {
   const [assetPickerOpen, setAssetPickerOpen] = useState(false)
   const [assetQuery, setAssetQuery] = useState('')
   const inputRef = useRef<HTMLTextAreaElement | null>(null)
-  const channel = channels.find((c) => c.slug === channelSlug)
+  const channel = channels.find((c) => c.slug === channelSlug || c.id === channelSlug)
+  const linkedObjective = useMemo(
+    () => objectives.find((objective) => objective.channel_id === channel?.id) ?? null,
+    [channel?.id, objectives],
+  )
+  const linkedProject = useMemo(() => {
+    const projectId = linkedObjective?.project_id ?? channel?.project_id ?? null
+    return projects.find((project) => project.id === projectId) ?? null
+  }, [channel?.project_id, linkedObjective?.project_id, projects])
   const isSubscribed = subscriptions.find((row) => row.channel_id === channel?.id)?.subscribed ?? true
   const isFreeChat = channel?.channel_type === 'normal'
 
@@ -205,25 +217,30 @@ export default function ChannelDetailPage() {
     }))
     return [...msgItems, ...decItems].sort((a, b) => a.ts - b.ts)
   }, [messages, decisions])
-  const timelineItems = useMemo<ChannelTimelineItem[]>(() => timeline.map((item) => {
-    if (item.kind === 'message') {
-      const message = item.data
-      return {
-        id: item.id,
-        kind: 'message' as const,
-        authorLabel: message.author_name ?? (message.author_type === 'human' ? 'You' : 'Agent'),
-        mine: message.role === 'user',
-        tone: message.author_type === 'system' ? 'system' : message.author_type === 'human' ? 'human' : 'agent',
-        content: message.content,
-      }
-    }
-    return {
-      id: item.id,
-      kind: 'decision' as const,
-      label: decisionLabel(item.data.decision_type),
-      actorName: item.data.actor_name,
-    }
-  }), [timeline])
+
+  const timelineItems = useMemo<ChannelTimelineItem[]>(
+    () =>
+      timeline.map((item) => {
+        if (item.kind === 'message') {
+          const message = item.data
+          return {
+            id: item.id,
+            kind: 'message' as const,
+            authorLabel: message.author_name ?? (message.author_type === 'human' ? 'You' : 'Agent'),
+            mine: message.role === 'user',
+            tone: message.author_type === 'system' ? 'system' : message.author_type === 'human' ? 'human' : 'agent',
+            content: message.content,
+          }
+        }
+        return {
+          id: item.id,
+          kind: 'decision' as const,
+          label: decisionLabel(item.data.decision_type),
+          actorName: item.data.actor_name,
+        }
+      }),
+    [timeline],
+  )
 
   const loading = messagesLoading || decisionsLoading
 
@@ -231,7 +248,32 @@ export default function ChannelDetailPage() {
     <div className="p-4 md:p-6 max-w-7xl mx-auto h-full flex flex-col min-h-0 w-full">
       <div className="mb-4 space-y-3">
         <div>
-          <Link to="/channels" className="text-xs text-gray-500 hover:text-gray-700">Channels</Link>
+          <div className="flex items-center gap-1 text-xs text-gray-500">
+            <Link to="/channels" className="hover:text-gray-700">Channels</Link>
+            <span>/</span>
+            {linkedProject?.slug ? (
+              <Link
+                to={projectPath(linkedProject.slug)}
+                className="hover:text-gray-700"
+              >
+                {linkedProject.title}
+              </Link>
+            ) : (
+              <span>
+                {channel?.channel_type === 'bulletin'
+                  ? 'Bulletin'
+                  : channel?.channel_type === 'workflow'
+                    ? 'Workflows'
+                    : channel?.channel_type === 'handbook'
+                      ? 'Handbook'
+                      : channel?.channel_type === 'run'
+                        ? 'Runs'
+                        : 'Channels'}
+              </span>
+            )}
+            <span>/</span>
+            <span className="truncate">{channel?.name ?? 'Channel'}</span>
+          </div>
           <div className="mt-1 flex items-center justify-between gap-3">
             <h1 className="text-xl font-semibold text-gray-900">{channel?.name ?? 'Channel'}</h1>
             {channel?.id && (
@@ -296,7 +338,7 @@ export default function ChannelDetailPage() {
         parentLabel="Unified channel view"
         onRenameTitle={async (value) => {
           const next = await updateChannel.mutateAsync({ name: value })
-          if (next.channel_type === 'normal' && next.slug !== channelSlug) {
+          if ((next.channel_type === 'normal' || next.channel_type === 'bulletin') && next.slug !== channelSlug) {
             navigate(`/channels/${next.slug}`, { replace: true })
           }
         }}
@@ -418,9 +460,8 @@ export default function ChannelDetailPage() {
 
               <div className="max-h-[420px] overflow-y-auto space-y-2">
                 {assetSearchResults.length === 0 ? (
-                  <div className="rounded-2xl border border-dashed border-gray-200 bg-gray-50/70 px-4 py-10 text-center">
-                    <p className="text-sm font-medium text-gray-700">No matching assets</p>
-                    <p className="mt-1 text-sm text-gray-500">Try another term or create the asset first.</p>
+                  <div className="rounded-2xl border border-dashed border-gray-300 bg-gray-50 px-4 py-10 text-center text-sm text-gray-500">
+                    No assets match your search.
                   </div>
                 ) : (
                   assetSearchResults.map((item) => (
@@ -428,18 +469,18 @@ export default function ChannelDetailPage() {
                       key={`${item.asset_type}:${item.asset_id}`}
                       type="button"
                       onClick={() => handleAttachAsset(item.asset_type, item.asset_id)}
-                      className="flex w-full items-start justify-between gap-3 rounded-2xl border border-gray-200 bg-white px-4 py-3 text-left hover:border-brand-300 hover:bg-brand-50/40"
+                      className="flex w-full items-start justify-between rounded-2xl border border-gray-200 px-4 py-3 text-left hover:border-brand-300 hover:bg-brand-50/40"
                     >
-                      <div className="flex min-w-0 items-start gap-3">
-                        <span className="mt-0.5 inline-flex h-8 w-8 items-center justify-center rounded-full bg-gray-100">
-                          {assetIcon(item.asset_type)}
-                        </span>
-                        <div className="min-w-0">
-                          <p className="truncate text-sm font-semibold text-gray-900">{item.title}</p>
-                          <p className="mt-1 truncate text-xs text-gray-500">{item.meta}</p>
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2 text-sm font-medium text-gray-900">
+                          <span className="inline-flex h-6 w-6 items-center justify-center rounded-full border border-gray-200 bg-white">
+                            {assetIcon(item.asset_type)}
+                          </span>
+                          <span className="truncate">{item.title}</span>
                         </div>
+                        <p className="mt-1 truncate text-xs text-gray-500">{item.meta}</p>
                       </div>
-                      <span className="rounded-full bg-gray-100 px-2.5 py-1 text-[11px] font-medium uppercase tracking-wide text-gray-600">
+                      <span className="ml-3 rounded-full bg-white px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-gray-500">
                         {item.asset_type}
                       </span>
                     </button>

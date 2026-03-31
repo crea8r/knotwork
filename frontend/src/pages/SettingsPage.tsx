@@ -4,14 +4,15 @@ import PageHeader from '@/components/shared/PageHeader'
 import AgentsTab from '@/components/settings/AgentsTab'
 import MembersTab from '@/components/settings/MembersTab'
 import AccountTab from '@/components/settings/AccountTab'
+import ChannelsTab from '@/components/settings/ChannelsTab'
 import SystemTab from '@/components/settings/SystemTab'
 
-type Tab = 'account' | 'members' | 'agents' | 'system'
+type Tab = 'account' | 'members' | 'agents' | 'channels' | 'system'
 
 export default function SettingsPage() {
   const [searchParams, setSearchParams] = useSearchParams()
   const tabFromUrl = searchParams.get('tab') as Tab | null
-  const TABS: Tab[] = ['account', 'members', 'agents', 'system']
+  const TABS: Tab[] = ['account', 'members', 'agents', 'channels', 'system']
   const initialTab: Tab = TABS.includes(tabFromUrl as Tab) ? (tabFromUrl as Tab) : 'account'
   const [tab, setTab] = useState<Tab>(initialTab)
 
@@ -47,6 +48,8 @@ export default function SettingsPage() {
       {tab === 'members' && <MembersTab />}
 
       {tab === 'agents' && <AgentsTab />}
+
+      {tab === 'channels' && <ChannelsTab />}
 
       {tab === 'system' && <SystemTab />}
     </div>
