@@ -64,7 +64,7 @@ export default function GraphCanvas({ definition, nodeStatuses = {}, selectedNod
   useEffect(() => {
     const id = requestAnimationFrame(() => { fitToView(); setReady(true) })
     return () => cancelAnimationFrame(id)
-  }, [definition.nodes.length]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [definition.nodes.length])
 
   function onMouseDown(e: React.MouseEvent<SVGSVGElement>) {
     if (e.button !== 0) return

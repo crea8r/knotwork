@@ -131,7 +131,9 @@ export default function AgentProfilePage() {
         const stored: StoredSkillsReply = JSON.parse(raw)
         setSkillsReply(stored.reply)
         setSkillsReplyAt(stored.timestamp)
-      } catch {}
+      } catch {
+        localStorage.removeItem(SKILLS_REPLY_KEY(agentId))
+      }
     }
   }, [agentId])
 

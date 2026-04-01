@@ -38,8 +38,7 @@ export default function AcceptInvitePage() {
         navigate('/inbox', { replace: true })
       },
     })
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [magicToken])
+  }, [login, magicToken, navigate, verifyMagic])
 
   if (magicToken) {
     return (

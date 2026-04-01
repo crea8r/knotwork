@@ -72,17 +72,6 @@ export default function ObjectiveCanvas({ objectives, selectedObjectiveId, onSel
     setPan({ x: (clientWidth - graphWidth * scale) / 2, y: (clientHeight - graphHeight * scale) / 2 })
   }
 
-  function centerNode(nodeId: string) {
-    const svg = svgRef.current
-    const node = graph.node(nodeId) as LayoutNode | undefined
-    if (!svg || !node) return
-    const { clientWidth, clientHeight } = svg
-    setPan({
-      x: clientWidth / 2 - node.x * zoom,
-      y: clientHeight / 2 - node.y * zoom,
-    })
-  }
-
   useEffect(() => {
     const id = requestAnimationFrame(() => {
       fitToView()
@@ -92,8 +81,16 @@ export default function ObjectiveCanvas({ objectives, selectedObjectiveId, onSel
   }, [graphWidth, graphHeight])
 
   useEffect(() => {
-    if (selectedObjectiveId) centerNode(selectedObjectiveId)
-  }, [selectedObjectiveId]) // eslint-disable-line react-hooks/exhaustive-deps
+    if (!selectedObjectiveId) return
+    const svg = svgRef.current
+    const node = graph.node(selectedObjectiveId) as LayoutNode | undefined
+    if (!svg || !node) return
+    const { clientWidth, clientHeight } = svg
+    setPan({
+      x: clientWidth / 2 - node.x * zoom,
+      y: clientHeight / 2 - node.y * zoom,
+    })
+  }, [graph, selectedObjectiveId, zoom])
 
   function onMouseDown(e: React.MouseEvent<SVGSVGElement>) {
     if (e.button !== 0) return

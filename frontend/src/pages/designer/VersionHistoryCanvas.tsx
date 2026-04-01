@@ -1,5 +1,5 @@
 // VersionHistoryCanvas — dagre TB layout; zoomToNodeId centers on node; detailContent overlays it.
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import dagre from '@dagrejs/dagre'
 import { Maximize2, Minus, Plus } from 'lucide-react'
 import type { GraphVersion } from '@/types'
@@ -75,16 +75,16 @@ export default function VersionHistoryCanvas({
     return { x: pos.x * zoom + pan.x, y: pos.y * zoom + pan.y }
   }, [zoomToNodeId, zoom, pan, g])
 
-  function fitToView() {
+  const fitToView = useCallback(() => {
     const svg = svgRef.current; if (!svg) return
     const { clientWidth: cw, clientHeight: ch } = svg; if (!cw || !ch) return
     const s = Math.min(cw / (gw + PAD * 2), ch / (gh + PAD * 2))
     setZoom(s); setPan({ x: (cw - gw * s) / 2, y: (ch - gh * s) / 2 })
-  }
+  }, [gh, gw])
 
   // Fit to view on mount and whenever the version count changes — no animation.
   useEffect(() => { const id = requestAnimationFrame(() => { fitToView(); setReady(true) }); return () => cancelAnimationFrame(id) },
-    [namedVersions.length]) // eslint-disable-line react-hooks/exhaustive-deps
+    [fitToView])
 
   // Zoom to a specific node with animation, or fit back without animation.
   // userHasInteracted gates animation so the very first open never flashes.
@@ -103,7 +103,7 @@ export default function VersionHistoryCanvas({
       setTimeout(() => setAnimated(false), 400)
     }
     setZoom(tz); setPan({ x: cw / 2 - pos.x * tz, y: ch / 2 - pos.y * tz })
-  }, [zoomToNodeId]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [fitToView, g, zoomToNodeId])
 
   function handleNodeClick(nodeId: string) {
     if (wasDragging.current) return

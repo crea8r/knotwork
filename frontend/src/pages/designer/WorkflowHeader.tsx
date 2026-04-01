@@ -5,7 +5,7 @@ import Breadcrumb from '@/components/handbook/Breadcrumb'
 import type { Graph } from '@/types'
 
 export default function WorkflowHeader({
-  workspaceId: _workspaceId, graph, defaultVersionIsPublic, showChat, onToggleChat, renamePending, onRename,
+  workspaceId, graph, defaultVersionIsPublic, showChat, onToggleChat, renamePending, onRename,
 }: {
   workspaceId: string
   graph: Graph
@@ -15,6 +15,7 @@ export default function WorkflowHeader({
   renamePending: boolean
   onRename: (name: string) => void
 }) {
+  void workspaceId
   const navigate = useNavigate()
   const menuRef = useRef<HTMLDivElement>(null)
   const [menuOpen, setMenuOpen] = useState(false)
