@@ -426,7 +426,7 @@ async def test_participant_preferences_and_channel_subscriptions(db, workspace):
     prefs = await get_or_build_participant_preferences(db, workspace.id, human_participant_id(user.id))
     mention_pref = next(pref for pref in prefs if pref["event_type"] == "mentioned_message")
     assert mention_pref["app_enabled"] is True
-    assert mention_pref["plugin_enabled"] is False
+    assert mention_pref["push_enabled"] is True
 
     updated = await update_participant_preference(
         db,

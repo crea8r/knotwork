@@ -42,7 +42,7 @@ def test_get_adapter_openai():
 
 def test_get_adapter_unknown():
     from knotwork.runtime.adapters import get_adapter
-    with pytest.raises(ValueError, match="Unknown agent_ref"):
+    with pytest.raises(NotImplementedError):
         get_adapter("unknown:model")
 
 

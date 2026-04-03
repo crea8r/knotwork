@@ -7,7 +7,6 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from knotwork.auth.models import User
-from knotwork.registered_agents.models import RegisteredAgent
 from knotwork.workspaces.models import WorkspaceMember
 
 
@@ -20,6 +19,12 @@ def human_participant_id(user_id: UUID) -> str:
 
 def agent_participant_id(agent_id: UUID) -> str:
     return f"agent:{agent_id}"
+
+
+def member_participant_id(member: WorkspaceMember, user_id: UUID) -> str:
+    if member.kind == "agent":
+        return agent_participant_id(member.id)
+    return human_participant_id(user_id)
 
 
 def participant_kind(participant_id: str) -> str:
@@ -82,7 +87,10 @@ async def list_workspace_human_participants(
     rows = await db.execute(
         select(WorkspaceMember, User)
         .join(User, User.id == WorkspaceMember.user_id)
-        .where(WorkspaceMember.workspace_id == workspace_id)
+        .where(
+            WorkspaceMember.workspace_id == workspace_id,
+            WorkspaceMember.kind == "human",
+        )
     )
     out: list[dict] = []
     for member, user in rows.all():
@@ -110,25 +118,30 @@ async def list_workspace_agent_participants(
     db: AsyncSession, workspace_id: UUID
 ) -> list[dict]:
     rows = await db.execute(
-        select(RegisteredAgent).where(
-            RegisteredAgent.workspace_id == workspace_id,
-            RegisteredAgent.archived_at.is_(None),
-            RegisteredAgent.is_active.is_(True),
+        select(WorkspaceMember, User)
+        .join(User, User.id == WorkspaceMember.user_id)
+        .where(
+            WorkspaceMember.workspace_id == workspace_id,
+            WorkspaceMember.kind == "agent",
         )
     )
     out: list[dict] = []
-    for agent in rows.scalars():
-        aliases = _name_aliases(agent.display_name)
-        ref_alias = _normalize_alias((agent.agent_ref or "").split(":", 1)[-1])
+    for member, user in rows.all():
+        config = member.agent_config or {}
+        agent_ref = config.get("agent_ref") or ""
+        aliases = _name_aliases(user.name)
+        ref_alias = _normalize_alias(
+            agent_ref.split(":", 1)[-1] if ":" in agent_ref else agent_ref
+        )
         if ref_alias:
             aliases.add(ref_alias)
         out.append(
             {
-                "participant_id": agent_participant_id(agent.id),
-                "agent_id": agent.id,
-                "display_name": agent.display_name,
-                "mention_handle": _preferred_agent_handle(agent.display_name, agent.agent_ref),
-                "provider": agent.provider,
+                "participant_id": agent_participant_id(member.id),
+                "member_id": member.id,
+                "display_name": user.name,
+                "mention_handle": _preferred_agent_handle(user.name, agent_ref),
+                "provider": config.get("provider"),
                 "kind": "agent",
                 "aliases": aliases,
             }
@@ -143,8 +156,7 @@ async def resolve_mentioned_participants(
     if not tokens:
         return []
 
-    participants = await list_workspace_human_participants(db, workspace_id)
-    participants.extend(await list_workspace_agent_participants(db, workspace_id))
+    participants = await list_workspace_participants(db, workspace_id)
 
     matched: list[dict] = []
     for participant in participants:
@@ -156,12 +168,42 @@ async def resolve_mentioned_participants(
 async def list_workspace_participants(
     db: AsyncSession, workspace_id: UUID
 ) -> list[dict]:
-    participants = await list_workspace_human_participants(db, workspace_id)
-    participants.extend(await list_workspace_agent_participants(db, workspace_id))
-    participants.sort(
-        key=lambda participant: (
-            0 if participant.get("kind") == "human" else 1,
-            str(participant.get("display_name") or "").lower(),
-        )
+    rows = await db.execute(
+        select(WorkspaceMember, User)
+        .join(User, User.id == WorkspaceMember.user_id)
+        .where(WorkspaceMember.workspace_id == workspace_id)
     )
+    participants: list[dict] = []
+    for member, user in rows.all():
+        config = member.agent_config or {}
+        agent_ref = str(config.get("agent_ref") or "")
+        aliases = _name_aliases(user.name)
+        email_local = (user.email or "").split("@", 1)[0]
+        email_alias = _normalize_alias(email_local)
+        if email_alias:
+            aliases.add(email_alias)
+        ref_alias = _normalize_alias(
+            agent_ref.split(":", 1)[-1] if ":" in agent_ref else agent_ref
+        )
+        if ref_alias:
+            aliases.add(ref_alias)
+        participants.append(
+            {
+                "participant_id": member_participant_id(member, user.id),
+                "member_id": member.id,
+                "user_id": user.id,
+                "display_name": user.name,
+                "mention_handle": (
+                    _preferred_agent_handle(user.name, agent_ref)
+                    if member.kind == "agent"
+                    else _preferred_human_handle(user.name, user.email)
+                ),
+                "email": user.email,
+                "provider": config.get("provider"),
+                "role": member.role,
+                "kind": member.kind,
+                "aliases": aliases,
+            }
+        )
+    participants.sort(key=lambda participant: str(participant.get("display_name") or "").lower())
     return participants

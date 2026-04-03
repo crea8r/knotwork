@@ -1,0 +1,45 @@
+{
+  "id": "knotwork-bridge",
+  "name": "Knotwork Bridge",
+  "version": "1.0.0",
+  "description": "Connect an OpenClaw agent to a Knotwork workspace via ed25519 auth and inbox polling.",
+  "author": "Knotwork",
+  "entry": "./index.ts",
+  "permissions": [
+    "network",
+    "operator.read",
+    "operator.write"
+  ],
+  "configSchema": {
+    "type": "object",
+    "properties": {
+      "knotworkBackendUrl": {
+        "type": "string",
+        "description": "Knotwork server base URL reachable from the OpenClaw runtime (e.g. http://host.docker.internal:8000)."
+      },
+      "workspaceId": {
+        "type": "string",
+        "description": "Workspace UUID from Knotwork Settings."
+      },
+      "privateKeyPath": {
+        "type": "string",
+        "description": "Absolute path to the ed25519 private key PEM file used to authenticate this agent."
+      },
+      "pluginInstanceId": {
+        "type": "string",
+        "description": "Stable identifier for this agent instance. Auto-generated if omitted."
+      },
+      "autoAuthOnStart": {
+        "type": "boolean",
+        "description": "Authenticate on startup if no valid JWT is cached.",
+        "default": true
+      },
+      "taskPollIntervalMs": {
+        "type": "number",
+        "description": "Inbox polling interval in milliseconds.",
+        "default": 30000
+      }
+    },
+    "required": []
+  }
+}

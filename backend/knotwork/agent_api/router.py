@@ -46,6 +46,7 @@ class ProposeBody(BaseModel):
     path: str
     proposed_content: str
     reason: str
+    source_channel_id: str | None = None
 
 
 class EscalateBody(BaseModel):
@@ -93,26 +94,25 @@ async def propose_handbook(body: ProposeBody, authorization: str | None = Header
     claims = _decode(authorization)
     run_id = str(claims["run_id"])
     node_id = claims["node_id"]
+    workspace_id = UUID(claims["workspace_id"])
 
     from knotwork.database import AsyncSessionLocal
-    from knotwork.runs.models import RunHandbookProposal
+    from knotwork.knowledge.change_service import create_knowledge_change
 
-    proposal = RunHandbookProposal(
-        id=uuid4(),
-        run_id=run_id,
-        node_id=node_id,
-        agent_ref=claims.get("agent_ref"),
-        path=body.path,
-        proposed_content=body.proposed_content,
-        reason=body.reason,
-        status="pending",
-    )
     async with AsyncSessionLocal() as db:
-        db.add(proposal)
-        await db.commit()
-        await db.refresh(proposal)
+        proposal = await create_knowledge_change(
+            db,
+            workspace_id=workspace_id,
+            path=body.path,
+            proposed_content=body.proposed_content,
+            reason=body.reason,
+            run_id=run_id,
+            node_id=node_id,
+            agent_ref=claims.get("agent_ref"),
+            source_channel_id=UUID(body.source_channel_id) if body.source_channel_id else None,
+        )
 
-    return {"id": str(proposal.id)}
+    return {"id": str(proposal.id), "channel_id": str(proposal.channel_id) if proposal.channel_id else None}
 
 
 @router.post("/escalate")

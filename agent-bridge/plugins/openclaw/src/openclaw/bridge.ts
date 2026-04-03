@@ -1,0 +1,224 @@
+// bridge.ts — all communication with Knotwork + OpenClaw agent discovery.
+// Three responsibilities: config resolution, agent discovery, Knotwork HTTP calls.
+
+import type {
+  InboxEvent,
+  JsonObject,
+  LooseRecord,
+  OpenClawApi,
+  PluginConfig,
+  RemoteAgent,
+  RemoteTool,
+} from '../types'
+import { readFileSync } from 'node:fs'
+
+const PLUGIN_ID = 'knotwork-bridge'
+const PLUGIN_VERSION = (() => {
+  try {
+    const raw = readFileSync(new URL('../../openclaw.plugin.json', import.meta.url), 'utf8')
+    const parsed = JSON.parse(raw) as { version?: unknown }
+    return typeof parsed.version === 'string' && parsed.version.trim()
+      ? parsed.version.trim()
+      : '0.0.0'
+  } catch {
+    return '0.0.0'
+  }
+})()
+
+// suppress unused warning — version is included in request headers for debugging
+void PLUGIN_VERSION
+
+// ── Env helper ───────────────────────────────────────────────────────────────
+
+function env(name: string): string | undefined {
+  try {
+    return (process?.env?.[name] as string | undefined)?.trim() || undefined
+  } catch {
+    return undefined
+  }
+}
+
+// ── Config ───────────────────────────────────────────────────────────────────
+
+export function getConfig(api: OpenClawApi): PluginConfig {
+  const direct = (api.pluginConfig ?? {}) as LooseRecord
+  const entries = (((api.config ?? {}) as LooseRecord).plugins as LooseRecord | undefined)?.entries as LooseRecord | undefined
+  const entry = (
+    (entries?.[PLUGIN_ID] as LooseRecord | undefined)?.config ??
+    (entries?.knotwork as LooseRecord | undefined)?.config ??
+    {}
+  ) as LooseRecord
+  const merged = { ...entry, ...direct }
+  return {
+    knotworkBackendUrl: typeof merged.knotworkBackendUrl === 'string' ? merged.knotworkBackendUrl : env('KNOTWORK_BACKEND_URL'),
+    workspaceId: typeof merged.workspaceId === 'string' ? merged.workspaceId : env('KNOTWORK_WORKSPACE_ID'),
+    privateKeyPath: typeof merged.privateKeyPath === 'string' ? merged.privateKeyPath : env('KNOTWORK_PRIVATE_KEY_PATH'),
+    pluginInstanceId: typeof merged.pluginInstanceId === 'string' ? merged.pluginInstanceId : env('KNOTWORK_PLUGIN_INSTANCE_ID'),
+    autoAuthOnStart:
+      typeof merged.autoAuthOnStart === 'boolean'
+        ? merged.autoAuthOnStart
+        : (env('KNOTWORK_AUTO_AUTH_ON_START') ?? 'true') !== 'false',
+    taskPollIntervalMs:
+      typeof merged.taskPollIntervalMs === 'number'
+        ? merged.taskPollIntervalMs
+        : parseInt(env('KNOTWORK_TASK_POLL_INTERVAL_MS') ?? '30000', 10),
+  }
+}
+
+export function resolveInstanceId(cfg: PluginConfig): string {
+  if (cfg.pluginInstanceId?.trim()) return cfg.pluginInstanceId.trim()
+  return `knotwork-${Math.random().toString(36).slice(2, 12)}`
+}
+
+// Gateway WebSocket config — port + auth credentials for the native protocol.
+export function getGatewayConfig(api: OpenClawApi): { port: number; token: string | null; password: string | null } {
+  const gw = (((api.config ?? {}) as LooseRecord).gateway ?? {}) as LooseRecord
+  const auth = (gw.auth ?? {}) as LooseRecord
+  const port = parseInt(String(gw.port ?? env('OPENCLAW_GATEWAY_PORT') ?? '18789'), 10) || 18789
+  const token = String(auth.token ?? env('OPENCLAW_GATEWAY_TOKEN') ?? '').trim() || null
+  const password = String(auth.password ?? env('OPENCLAW_GATEWAY_PASSWORD') ?? '').trim() || null
+  return { port, token, password }
+}
+
+// ── Agent discovery ───────────────────────────────────────────────────────────
+
+function normalizeAgent(raw: unknown): RemoteAgent | null {
+  if (!raw || typeof raw !== 'object') return null
+  const a = raw as LooseRecord
+  const id = [a.id, a.agentId, a.slug, a.name].find((v) => typeof v === 'string' && v)
+  if (!id) return null
+  const sid = String(id)
+  const toolsRaw = Array.isArray(a.tools ?? a.skills) ? (a.tools ?? a.skills) : []
+  const tools = (toolsRaw as unknown[]).map(normalizeTool)
+  const rawDesc = a.description ?? a.about ?? a.shortDescription ?? a.summary
+  const description = typeof rawDesc === 'string' && rawDesc.trim() ? rawDesc.trim() : undefined
+  return {
+    remote_agent_id: sid,
+    slug: String(a.slug ?? sid),
+    display_name: String(a.displayName ?? a.display_name ?? a.name ?? sid),
+    description,
+    tools,
+    constraints: {
+      model: a.model ?? null,
+      max_tool_calls: a.maxToolCalls ?? a.max_tool_calls ?? null,
+      max_runtime_seconds: a.maxRuntimeSeconds ?? a.max_runtime_seconds ?? null,
+    },
+  }
+}
+
+function normalizeTool(raw: unknown): RemoteTool {
+  if (typeof raw === 'string') return { name: raw, description: '' }
+  if (!raw || typeof raw !== 'object') return { name: 'tool', description: '' }
+  const tool = raw as LooseRecord
+  return {
+    name: String(tool.name ?? tool.id ?? 'tool'),
+    description: String(tool.description ?? ''),
+    input_schema: asJsonObject(tool.input_schema ?? tool.schema ?? { type: 'object' }),
+  }
+}
+
+function unpackAgentList(raw: unknown): unknown[] {
+  if (Array.isArray(raw)) return raw
+  if (raw && typeof raw === 'object') {
+    const obj = raw as LooseRecord
+    const result = obj.result
+    const nested = result && typeof result === 'object' ? (result as LooseRecord).agents : undefined
+    const list = obj.agents ?? obj.list ?? obj.items ?? obj.data ?? nested
+    if (Array.isArray(list)) return list
+  }
+  return []
+}
+
+export async function discoverAgents(api: OpenClawApi): Promise<RemoteAgent[]> {
+  // 1. agents.list() SDK method
+  if (typeof api.agents?.list === 'function') {
+    try {
+      const res = await api.agents.list({})
+      const out = unpackAgentList(res).map(normalizeAgent).filter(Boolean) as RemoteAgent[]
+      if (out.length) return out
+    } catch (e) {
+      console.log(`[knotwork-bridge] agents-list-error ${e instanceof Error ? e.message : String(e)}`)
+    }
+  }
+  // 2. config.agents.list fallback
+  const config = (api.config ?? {}) as LooseRecord
+  const agentsConfig = (config.agents ?? {}) as LooseRecord
+  const cfgList = unpackAgentList(agentsConfig.list)
+  const fromCfg = cfgList.map(normalizeAgent).filter(Boolean) as RemoteAgent[]
+  if (fromCfg.length) return fromCfg
+  // 3. defaults stub
+  const defaults = agentsConfig.defaults as LooseRecord | undefined
+  if (defaults) {
+    const name = String(defaults.displayName ?? defaults.display_name ?? defaults.name ?? 'Main Agent')
+    return [{
+      remote_agent_id: 'main', slug: 'main', display_name: name, tools: [],
+      constraints: { model: (defaults.model as LooseRecord | undefined)?.primary ?? null },
+    }]
+  }
+  return []
+}
+
+// ── HTTP helpers ──────────────────────────────────────────────────────────────
+
+function bearerHeaders(jwt: string): Record<string, string> {
+  return { 'Authorization': `Bearer ${jwt}`, 'Content-Type': 'application/json' }
+}
+
+async function httpGet<T>(url: string, jwt: string): Promise<T> {
+  const res = await fetch(url, { headers: { 'Authorization': `Bearer ${jwt}` } })
+  const text = await res.text()
+  if (!res.ok) throw new Error(`GET ${url} failed (${res.status}): ${text.slice(0, 240)}`)
+  return JSON.parse(text) as T
+}
+
+async function httpPost<T>(url: string, body: LooseRecord, jwt: string): Promise<T> {
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: bearerHeaders(jwt),
+    body: JSON.stringify(body),
+  })
+  const text = await res.text()
+  if (!res.ok) throw new Error(`POST ${url} failed (${res.status}): ${text.slice(0, 240)}`)
+  return (text ? JSON.parse(text) : {}) as T
+}
+
+async function httpPatch(url: string, body: LooseRecord, jwt: string): Promise<void> {
+  const res = await fetch(url, {
+    method: 'PATCH',
+    headers: bearerHeaders(jwt),
+    body: JSON.stringify(body),
+  })
+  const text = await res.text()
+  if (!res.ok) throw new Error(`PATCH ${url} failed (${res.status}): ${text.slice(0, 240)}`)
+}
+
+// ── Knotwork API calls ────────────────────────────────────────────────────────
+
+/** Fetch unread inbox items for the authenticated agent participant. */
+export async function pollInbox(baseUrl: string, workspaceId: string, jwt: string): Promise<InboxEvent[]> {
+  const items = await httpGet<InboxEvent[]>(
+    `${baseUrl}/api/v1/workspaces/${workspaceId}/inbox`,
+    jwt,
+  )
+  return Array.isArray(items) ? items.filter((i) => i.unread) : []
+}
+
+/** Fetch the workspace guide document and its version number. */
+export async function fetchGuide(baseUrl: string, workspaceId: string, jwt: string): Promise<{ guide_md: string | null; guide_version: number }> {
+  return httpGet(`${baseUrl}/api/v1/workspaces/${workspaceId}/guide`, jwt)
+}
+
+/** Mark a single inbox delivery as read via its delivery_id. */
+export async function ackInboxDelivery(baseUrl: string, workspaceId: string, jwt: string, deliveryId: string): Promise<void> {
+  await httpPatch(
+    `${baseUrl}/api/v1/workspaces/${workspaceId}/inbox/deliveries/${deliveryId}`,
+    { read: true },
+    jwt,
+  )
+}
+
+
+function asJsonObject(value: unknown): JsonObject | undefined {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined
+  return value as JsonObject
+}

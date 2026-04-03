@@ -19,6 +19,7 @@ from uuid import uuid4
 # ── Session Execution Contract ─────────────────────────────────────────────────
 
 
+@pytest.mark.xfail(reason="superseded by S12.2: OpenClaw module removed")
 def test_session_execution_contract_operations():
     """SESSION_EXECUTION_CONTRACT_OPERATIONS contains exactly the 3 canonical ops."""
     from knotwork.openclaw_integrations.service import SESSION_EXECUTION_CONTRACT_OPERATIONS
@@ -86,6 +87,7 @@ def test_visible_tools_filters_file_shell():
 # ── Agent session naming ───────────────────────────────────────────────────────
 
 
+@pytest.mark.xfail(reason="superseded by S12.2: OpenClaw module removed")
 def test_agent_session_name_main():
     """agent_main channel uses mode='main'."""
     from knotwork.openclaw_integrations.service import _agent_session_name
@@ -95,6 +97,7 @@ def test_agent_session_name_main():
     assert name == f"knotwork:myagentkey:{ws_id}:main"
 
 
+@pytest.mark.xfail(reason="superseded by S12.2: OpenClaw module removed")
 def test_agent_session_name_run():
     """run channel uses mode='run' with a run_id."""
     from knotwork.openclaw_integrations.service import _agent_session_name
@@ -107,6 +110,7 @@ def test_agent_session_name_run():
     assert name == f"knotwork:myagentkey:{ws_id}:run:{run_id}"
 
 
+@pytest.mark.xfail(reason="superseded by S12.2: OpenClaw module removed")
 def test_agent_session_name_handbook():
     """handbook channel uses mode='handbook'."""
     from knotwork.openclaw_integrations.service import _agent_session_name

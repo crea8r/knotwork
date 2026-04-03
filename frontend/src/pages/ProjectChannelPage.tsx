@@ -1,10 +1,12 @@
-import { useMemo, useState } from 'react'
+import { useRef, useState } from 'react'
 import { GitBranch, MessageSquare, PlayCircle } from 'lucide-react'
 import { Link, useNavigate, useOutletContext, useParams } from 'react-router-dom'
-import { useChannelDecisions, useChannelMessages, usePostChannelMessage, useUpdateChannel } from '@/api/channels'
+import { usePostChannelMessage, useUpdateChannel } from '@/api/channels'
 import { useGraphs } from '@/api/graphs'
-import { ChannelContextPill, ChannelShell, ChannelTimeline, type ChannelTimelineItem } from '@/components/channel/ChannelFrame'
+import { ChannelContextPill, ChannelShell, ChannelTimeline } from '@/components/channel/ChannelFrame'
 import WorkflowSlashComposer from '@/components/channel/WorkflowSlashComposer'
+import { useChannelTimeline } from '@/components/channel/useChannelTimeline'
+import { useMentionDetection } from '@/components/channel/useMentionDetection'
 import Btn from '@/components/shared/Btn'
 import { projectPath } from '@/lib/paths'
 import type { ProjectOutletContext } from './ProjectDetailPage'
@@ -15,45 +17,13 @@ export default function ProjectChannelPage() {
   const navigate = useNavigate()
   const item = projectChannels.find((channel) => channel.channel.slug === channelSlug)
   const { data: workflows = [] } = useGraphs(workspaceId)
-  const { data: messages = [] } = useChannelMessages(workspaceId, channelSlug)
-  const { data: decisions = [] } = useChannelDecisions(workspaceId, channelSlug)
   const postMessage = usePostChannelMessage(workspaceId, channelSlug)
   const updateChannel = useUpdateChannel(workspaceId, channelSlug)
   const [draft, setDraft] = useState('')
+  const inputRef = useRef<HTMLTextAreaElement | null>(null)
 
-  const timeline = useMemo(() => {
-    const msgItems = messages.map((message) => ({
-      id: `m-${message.id}`,
-      kind: 'message' as const,
-      ts: new Date(message.created_at).getTime(),
-      data: message,
-    }))
-    const decisionItems = decisions.map((decision) => ({
-      id: `d-${decision.id}`,
-      kind: 'decision' as const,
-      ts: new Date(decision.created_at).getTime(),
-      data: decision,
-    }))
-    return [...msgItems, ...decisionItems].sort((a, b) => a.ts - b.ts)
-  }, [decisions, messages])
-  const timelineItems = useMemo<ChannelTimelineItem[]>(() => timeline.map((entry) => {
-    if (entry.kind === 'message') {
-      return {
-        id: entry.id,
-        kind: 'message' as const,
-        authorLabel: entry.data.author_name ?? (entry.data.author_type === 'human' ? 'You' : 'Agent'),
-        mine: entry.data.role === 'user',
-        tone: entry.data.author_type === 'system' ? 'system' : entry.data.author_type === 'human' ? 'human' : 'agent',
-        content: entry.data.content,
-      }
-    }
-    return {
-      id: entry.id,
-      kind: 'decision' as const,
-      label: entry.data.decision_type.replace(/_/g, ' '),
-      actorName: entry.data.actor_name,
-    }
-  }), [timeline])
+  const { items: timelineItems } = useChannelTimeline(workspaceId, channelSlug)
+  const { mentionMenuNode } = useMentionDetection(workspaceId, draft, setDraft, inputRef)
 
   if (!item) {
     return <div className="p-8 text-sm text-stone-500">Channel not found in this project.</div>
@@ -119,11 +89,17 @@ export default function ProjectChannelPage() {
           )}
           pending={postMessage.isPending}
           placeholder="Continue the thread without leaving project context…"
-          beforeInput={item.channel.channel_type === 'normal' ? (
-            <p className="text-xs text-stone-500">
-              Type <span className="font-mono text-stone-700">/</span> to start a workflow from this channel.
-            </p>
-          ) : null}
+          inputRef={inputRef}
+          beforeInput={(
+            <>
+              {item.channel.channel_type === 'normal' ? (
+                <p className="text-xs text-stone-500">
+                  Type <span className="font-mono text-stone-700">/</span> to start a workflow from this channel.
+                </p>
+              ) : null}
+              {mentionMenuNode}
+            </>
+          )}
         />
       </ChannelShell>
     </div>

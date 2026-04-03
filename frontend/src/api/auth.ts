@@ -46,8 +46,9 @@ export interface MemberOut {
   id: string
   user_id: string
   name: string
-  email: string
+  email: string | null  // null for agent accounts
   role: string
+  kind: string          // 'human' | 'agent'
   avatar_url: string | null
   bio: string | null
   joined_at: string
@@ -139,14 +140,37 @@ export function useUpdateMe() {
   })
 }
 
-export function useWorkspaceMembers(workspaceId: string | null, page = 1) {
+export function useWorkspaceMembers(
+  workspaceId: string | null,
+  page = 1,
+  kind?: 'human' | 'agent',
+) {
   return useQuery<MembersPage>({
-    queryKey: ['workspaces', workspaceId, 'members', page],
+    queryKey: ['workspaces', workspaceId, 'members', page, kind ?? 'all'],
     queryFn: () =>
       api
-        .get(`/workspaces/${workspaceId}/members`, { params: { page, page_size: 20 } })
+        .get(`/workspaces/${workspaceId}/members`, {
+          params: { page, page_size: 20, ...(kind ? { kind } : {}) },
+        })
         .then((r) => r.data),
     enabled: !!workspaceId,
+  })
+}
+
+export interface AddAgentMemberIn {
+  display_name: string
+  public_key: string
+  role: 'operator' | 'owner'
+}
+
+export function useAddAgentMember(workspaceId: string | null) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (data: AddAgentMemberIn) =>
+      api.post<MemberOut>(`/workspaces/${workspaceId}/members`, data).then((r) => r.data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['workspaces', workspaceId, 'members'] })
+    },
   })
 }
 
@@ -182,6 +206,30 @@ export function useUpdateWorkspaceEmailConfig(workspaceId: string | null) {
       api.patch<WorkspaceEmailConfig>(`/workspaces/${workspaceId}/email-config`, data).then((r) => r.data),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['workspaces', workspaceId, 'email-config'] })
+    },
+  })
+}
+
+export interface WorkspaceGuide {
+  guide_md: string | null
+  guide_version: number
+}
+
+export function useWorkspaceGuide(workspaceId: string | null) {
+  return useQuery<WorkspaceGuide>({
+    queryKey: ['workspaces', workspaceId, 'guide'],
+    queryFn: () => api.get(`/workspaces/${workspaceId}/guide`).then((r) => r.data),
+    enabled: !!workspaceId,
+  })
+}
+
+export function useUpdateWorkspaceGuide(workspaceId: string | null) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (guide_md: string) =>
+      api.put<WorkspaceGuide>(`/workspaces/${workspaceId}/guide`, { guide_md }).then((r) => r.data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['workspaces', workspaceId, 'guide'] })
     },
   })
 }

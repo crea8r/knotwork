@@ -1,107 +1,187 @@
-# Session 12.1 — Plugin Boundary: How Agents Connect to Knotwork
+# Session 12.1 — Unified Participant Model + Agent Bridge Design
+
+**Status: ✅ Done**
 
 ## Goal
 
-Define the clear boundary between Knotwork and its agents. The plugin is a credential holder and inbound notification channel — not an execution layer. Agents execute in their own environment. This session establishes the onboarding model and notification contract that S12.2 (Agent Zero, representatives) and S12.3 (OpenClaw plugin redesign) build on.
+Unify human and agent identity into one participant model. One auth system, one onboarding path, one set of channels. Design the agent-bridge spec — the behavioral layer that tells agents how to be good Knotwork participants.
 
 ## Context
 
-Before S12.1, the OpenClaw plugin served as both the transport and the execution environment — claiming tasks, spawning subprocesses, running LLM calls inside the gateway. That model conflated "how agents receive information" with "how agents do work."
+S12 proved the product works for humans. Now agents need to participate as equals. The prior architecture had three separate identity/auth systems (JWT for humans, integration_secret for OpenClaw, session_token for task execution), a special `agent_main` channel type, and `RegisteredAgent` as a separate table from `WorkspaceMember`. This separation is gone.
 
-S12.1 makes the boundary explicit:
+**Core principle:** a participant is a participant. Human or agent is a `kind` field used for settings display and transport-specific metadata, not a separate product surface. An agent onboards the same way a human does — gets credentials, joins channels, reads the same inbox/channel surfaces, and calls the same API/MCP endpoints. How it does its work is its own business.
 
-- **Plugin** (Knotwork → agent): credential holder + inbound notification channel. Delivers task notifications, escalation alerts, status events. Holds connection state and liveness heartbeat.
-- **MCP / API** (agent → Knotwork): the interaction surface. Agents call Knotwork to create tasks, resolve escalations, read project status, etc.
+**Agent discovery:** Both MCP (runtime tool discovery) and `skills.md` (narrative context + behavioral guidance). MCP tells agents what they CAN do. The agent-bridge spec tells them what they SHOULD do and WHEN.
 
-The analogy: a human onboards to a company through account registration and an email address. An agent onboards through credential registration and a notification channel. How either does their work is entirely their own business.
+---
 
-## In Scope
+## What Was Built
 
-### 1. Plugin boundary definition
+### 1. Unified participant model
 
-Document and enforce what the plugin does and does not do:
+`WorkspaceMember` is now the single identity table for all participants.
 
-**Plugin does:**
-- Hold agent credentials (registration token, API key, session state)
-- Receive inbound notifications from Knotwork (task assignments, escalation alerts, run status changes, workspace events)
-- Maintain liveness heartbeat so Knotwork knows the agent is reachable
-- Surface connection state and diagnostics
+- `kind` field: `'human'` | `'agent'`
+- `agent_config` JSON: provider-specific metadata for agent members
+- Every agent has a `User` row (no email, has `public_key` instead)
+- `RegisteredAgent` table: removed — migrated to `WorkspaceMember` rows with `kind='agent'`
+- Participant IDs remain typed synthetic ids. Runtime behavior should treat both as normal members; the type exists for transport/routing and settings display, not as a separate product surface.
 
-**Plugin does NOT:**
-- Execute tasks or run LLM calls
-- Manage queue, backpressure, or concurrency
-- Spawn subprocesses for task execution
-- Own the claim loop or task lifecycle beyond receiving notifications
+**Migration:** Alembic `0024_unified_participant_model` — existing `RegisteredAgent` rows became `WorkspaceMember kind=agent` rows. FK references updated.
 
-### 2. Agent onboarding model
+### 2. One auth system — ed25519 challenge-response
 
-Define the lifecycle: how an agent goes from "unknown" to "active workspace participant."
+Both humans and agents get JWT bearer tokens. The path to the token differs:
+
+**Humans:** email → magic link → JWT (unchanged)
+
+**Agents:** ed25519 public key + challenge-response:
+1. Admin registers agent: `POST /api/v1/workspaces/{id}/members` with `{display_name, public_key, role}` — creates a `User` row (no email, stores base64url-encoded ed25519 public key) and a `WorkspaceMember(kind='agent')` row
+2. Agent requests a nonce: `POST /api/v1/auth/agent-challenge` with `{public_key}` → `{nonce, expires_at}` (2-minute TTL, single-use)
+3. Agent signs the nonce with its ed25519 private key: `signature = private_key.sign(nonce.encode())`
+4. Agent redeems: `POST /api/v1/auth/agent-token` with `{public_key, nonce, signature}` → `{access_token}` (30-day JWT)
+5. Agent uses `Authorization: Bearer <JWT>` on all subsequent calls — same as humans
+
+**Why ed25519 over API keys:** Keys are never transmitted; only the public key is stored; nonces prevent replay attacks. An agent never sends its private key over the wire.
+
+**New DB table:** `AgentAuthChallenge` — stores `{public_key, nonce, expires_at, used}`. Nonces expire in 2 minutes, single-use.
+
+**New backend files:**
+- `auth/models.py` — `AgentAuthChallenge` model added
+- `auth/service.py` — `get_user_by_public_key()`, `create_agent_challenge()`, `verify_agent_challenge()`
+- `auth/router.py` — `POST /auth/agent-challenge`, `POST /auth/agent-token`
+- `workspaces/router.py` — `POST /{workspace_id}/members` (owner-only agent registration)
+- `alembic/versions/0026_agent_auth_challenges.py`
+
+### 3. Kill agent_main channel type
+
+Removed entirely:
+- `channel_type: "agent_main"` — gone from `ChannelCreate` schema
+- `get_or_create_agent_main_channel()` — deleted from `channels/service.py`
+- `list_channels` filter — `"agent_main"` removed
+- Frontend hooks: `useAgentMainChatMessages`, `useAskAgentMainChat`, `useEnsureAgentMainChat` — deleted from `api/agents.ts`
+- `AgentChatTab.tsx`, `AgentProfilePage.tsx` — deleted (all hooks were dead)
+- Route `/agents/:agentId` — removed from `App.tsx`
+
+No DM-style channels for any participant. Communication happens in shared channels.
+
+### 4. Agent discovery: three endpoints
+
+**`.well-known/agent` (unauthenticated)**
+```
+GET /api/v1/workspaces/{workspace_id}/.well-known/agent
+```
+Returns JSON: auth endpoints, key type, nonce TTL, token lifetime, skills endpoint URL, MCP server URL. An agent needs only `backend_url` + `workspace_id` to discover everything else. Modelled after OAuth's `/.well-known/openid-configuration`.
+
+**`skills.md` (authenticated)**
+```
+GET /api/v1/workspaces/{workspace_id}/skills
+```
+Returns `text/markdown` — personalised to the calling participant (name + role embedded). Covers: workspace purpose, auth flow, MCP tool categories, handbook file list, active channels. Generated at request time from live workspace data.
+
+**MCP resource**
+`knotwork://workspace/skills` — same content as the REST endpoint, accessible via the MCP server. Agents can load it at startup via their MCP host.
+
+**New backend files:**
+- `workspaces/skills.py` — `generate_skills_md()` pure function
+- `workspaces/skills_router.py` — `GET /{workspace_id}/skills` endpoint
+- `workspaces/well_known_router.py` — `GET /{workspace_id}/.well-known/agent` endpoint
+- `mcp/server.py` — `knotwork://workspace/skills` resource added
+
+**Frontend:** Discovery URL shown in Settings → Members → "Add agent by public key" form with copy button. Operator gives this URL to the agent at setup time.
+
+### 5. Agent-bridge spec
+
+`agent-bridge/spec/` — behavioral protocol for all Knotwork participants:
 
 ```
-Registration → Handshake → Token → Steady State → Renewal/Recovery
+agent-bridge/spec/
+  README.md             — overview + folder map
+  participant.md        — shared contract: channels, escalations, inbox, handbook, runs
+  events.md             — 5 event types, payload schemas, ACK semantics
+  priority.md           — non-preemptive task queue + dynamic scoring formula
+  skills-template.md    — workspace context template
+  human/
+    auth.md             — magic link → JWT
+    interface.md        — DecisionCard, inbox, channel mentions
+  agent/
+    auth.md             — ed25519 challenge-response flow
+    protocol.md         — polling loop, session management, event handlers, error recovery
+  plugin/openclaw/
+    README.md           — placeholder for S12.2 rewrite
 ```
 
-- **Registration:** admin registers agent in workspace (display name, provider, capabilities)
-- **Handshake:** agent connects via plugin, proves identity, receives credentials
-- **Token:** agent receives API token for calling Knotwork MCP/REST endpoints
-- **Steady state:** agent receives notifications via plugin, calls Knotwork via MCP/API when it decides to act
-- **Renewal/Recovery:** credential refresh on expiry, automatic re-handshake on auth failure
+**Priority system** (`priority.md`) — the same scoring logic governs both the human UI and the agent bridge:
+- Non-preemptive: current task runs to completion; full re-score before picking next
+- `score = nature_weight + age_score + deadline_score + context_boost`
+- `nature_weight`: escalation_assigned=80, channel_mention=60, workspace_announcement=30, run_status_changed=20, channel_message=10
+- `age_score`: `min(40, 10 × log₂(age_minutes + 1))` — plateaus at 64 min to prevent stale events burying fresh ones
+- `deadline_score` (0–60): explicit timeout or synthetic deadline from **channel rhythm** (median inter-message gap, clamped [5 min, 4 h]; empty channel = 15 min)
+- `context_boost`: in-memory run +10, open channel session +5, workspace owner sender +5
+- **Obligation promotion**: a `channel_message` (weight=10) promotes to weight=55 when all three hold: unanswered question + in-domain + response gap elapsed since channel rhythm window opened
 
-This mirrors human onboarding: register account → verify email → receive access → work → password reset if needed.
+### 6. Credential lifecycle
 
-### 3. Agent discovery of Knotwork capabilities
+| Phase | What happens |
+|---|---|
+| Registration | Owner adds agent in Settings → Members with display name + ed25519 public key + role |
+| Authentication | Agent requests nonce → signs → receives 30-day JWT |
+| Steady state | Agent uses JWT on all API/MCP calls; refreshes before expiry |
+| Renewal | Agent re-runs challenge-response before JWT expires (or after 401) |
+| Revocation | Not yet implemented — planned for S12.3 (deactivate member → invalidate JWT) |
+| Audit | Challenge/token events flow through standard DB audit trail |
 
-**OPEN QUESTION — to be discussed after doc skeleton is settled.**
+Key rotation = admin removes old `User.public_key` and re-registers agent with new public key.
 
-How does an agent learn what Knotwork can do? Options:
+### 7. Notification contract
 
-- **Option A: MCP tool definitions.** Agent's host (Claude Desktop, OpenClaw, etc.) discovers tools via MCP protocol. Agent sees available tools and their schemas. Runtime discovery.
-- **Option B: skills.md / capability manifest.** Static file that describes Knotwork's capabilities in natural language. Agent reads it at startup or on demand. Bootstrap discovery.
-- **Option C: Both.** MCP for runtime tool execution, skills.md for high-level understanding and bootstrapping context. Layered discovery.
+Five event types defined in `agent-bridge/spec/events.md`:
 
-Decision criteria: What does an agent need to know before it can be useful? Is protocol-level tool discovery sufficient, or does an agent need narrative context about the workspace's purpose and conventions?
-
-### 4. Credential lifecycle
-
-Detailed specification of each credential state and transition:
-
-- Token format and scope (workspace-scoped, time-limited)
-- Refresh mechanism (automatic before expiry vs. on-failure)
-- Recovery from stale credentials (re-handshake without manual restart)
-- Revocation (admin removes agent, credentials invalidated immediately)
-- Audit trail (credential events logged)
-
-### 5. Notification contract
-
-What events flow from Knotwork to agent via plugin:
-
-| Event Type | Payload | When |
+| Event type | Nature weight | Delivery semantics |
 |---|---|---|
-| `task_assigned` | task_id, project_id, description, priority | Task created and assigned to this agent |
-| `escalation_created` | escalation_id, run_id, node_id, context | Human or system escalated to this agent |
-| `run_status_changed` | run_id, old_status, new_status | Run the agent is involved in changed state |
-| `workspace_announcement` | channel_id, message | Bulletin or channel event |
+| `escalation_assigned` | 80 | ACK required; at-least-once |
+| `channel_mention` | 60 | ACK required; at-least-once |
+| `workspace_announcement` | 30 | Best-effort |
+| `run_status_changed` | 20 | Best-effort |
+| `channel_message` | 10 (or 55 if obligation) | Best-effort |
 
-Delivery semantics:
-- At-least-once delivery (agent must handle duplicates)
-- ACK required for durable events (task_assigned, escalation_created)
-- Best-effort for informational events (run_status_changed, workspace_announcement)
-- Retry with backoff on delivery failure
-- Dead-letter after N failures (event logged, admin notified)
+Delivery: inbox polling (`GET /api/v1/workspaces/{id}/inbox?unread=true`). Mark read via `PATCH /inbox/deliveries/{id}` or bulk `POST /inbox/read-all`.
 
-## Explicitly Out of Scope
+The important boundary is:
+- Knotwork exposes participant-scoped inbox/events/preferences through normal API/MCP surfaces.
+- Any plugin or bridge is agent-side only. Knotwork does not contain a plugin-specific dispatch subsystem.
+- Human and agent members should see the same product behavior outside settings/admin UX; differences are transport capabilities, not separate interaction models.
 
-- Transport implementation (HTTP polling vs WebSocket) → S12.3
-- Auth-mode auto-resolution implementation → S12.3
-- `callGateway()` wrapper implementation → S12.3
-- Deployment guidance for transport → S12.3
-- Agent Zero, representatives, workload honesty → S12.2
-- Pre-S12 assumptions about plugin as execution environment
+---
 
-## Acceptance Criteria
+## Settings UI
 
-1. Plugin boundary is documented: what it does, what it doesn't do, with clear examples of each.
-2. Agent onboarding lifecycle is defined from registration through steady-state operation and recovery.
-3. Notification contract specifies event types, delivery semantics, ACK requirements, and failure handling.
-4. The design does not assume agents execute inside the plugin.
-5. Agent discovery mechanism is either decided or explicitly flagged as an open question with options and decision criteria.
+Settings → Members tab updated:
+- Kind filter pills (all / human / agent)
+- Members table shows Kind column with badges
+- Agent accounts display "agent account" (italic) instead of email
+- Two invite modes: "Invite by email" (existing) and "Add agent by public key" (new)
+- "Add agent by public key" form shows discovery URL prominently with copy button — operator gives this URL to the agent at setup time
+
+---
+
+## Acceptance Criteria — Final State
+
+1. ✅ One participant model: `WorkspaceMember` with `kind` field. No separate `RegisteredAgent` table for identity.
+2. ✅ Agents authenticate via ed25519 challenge-response → JWT on the same endpoints as humans. No API keys stored.
+3. ✅ `agent_main` channel type is gone. No DM-style channels for any participant.
+4. ✅ `skills.md` generated from live workspace data (knowledge files + channels) and served as both REST endpoint and MCP resource.
+5. ✅ `agent-bridge/spec/` exists with behavioral protocol covering notification rhythm (channel rhythm + obligation model), task priority scoring, session management, event handling, and state management.
+6. ✅ Notification contract specifies 5 event types, payload schemas, delivery semantics, and ACK requirements.
+7. ✅ Credential lifecycle defined and implemented: registration → ed25519 key → challenge-response → 30-day JWT → renewal. Discovery endpoint gives agents everything they need from just `backend_url + workspace_id`.
+
+---
+
+## Out of Scope (deferred)
+
+- Building the bridge software / OpenClaw plugin rewrite (→ S12.2)
+- Agent Zero, representatives (→ S12.3)
+- Workload honesty (→ S12.3)
+- JWT revocation / member deactivation (→ S12.3)
+- Transport upgrade (WebSocket vs polling) — bridge decides per-implementation

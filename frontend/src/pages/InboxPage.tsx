@@ -60,15 +60,13 @@ export default function InboxPage() {
           {items.map((item) => {
             const target = item.item_type === 'escalation' || item.item_type === 'run_event'
               ? `/runs/${item.run_id}`
-              : item.item_type === 'mentioned_message' || item.item_type === 'task_assigned'
+              : item.item_type === 'mentioned_message' || item.item_type === 'task_assigned' || item.item_type === 'message_posted' || item.item_type === 'knowledge_change'
                 ? item.channel_id
                   ? `/channels/${item.channel_id}`
                   : item.run_id
                     ? `/runs/${item.run_id}`
                     : '/channels'
-                : item.proposal_id
-                  ? '/handbook?tab=proposals'
-                  : '/runs'
+                : '/runs'
 
             return (
               <Link

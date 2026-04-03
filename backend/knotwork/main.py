@@ -36,9 +36,7 @@ import knotwork.escalations.models   # noqa: F401
 import knotwork.ratings.models       # noqa: F401
 import knotwork.audit.models         # noqa: F401
 import knotwork.notifications.models  # noqa: F401
-import knotwork.registered_agents.models  # noqa: F401
 import knotwork.channels.models  # noqa: F401
-import knotwork.openclaw_integrations.models  # noqa: F401
 import knotwork.public_workflows.models  # noqa: F401
 import knotwork.projects.models  # noqa: F401
 
@@ -58,16 +56,12 @@ from knotwork.runs.ws import ws_router
 from knotwork.notifications.router import router as notifications_router
 from knotwork.tools.router import router as tools_router
 from knotwork.workspaces.router import router as workspaces_router
+from knotwork.workspaces.skills_router import router as workspaces_skills_router
+from knotwork.workspaces.well_known_router import router as workspaces_well_known_router
 from knotwork.agent_api.router import router as agent_api_router
-from knotwork.registered_agents.router import router as registered_agents_router
 from knotwork.channels.router import router as channels_router
-from knotwork.openclaw_integrations.router import (
-    plugin_router as openclaw_plugin_router,
-)
-from knotwork.openclaw_integrations.router import router as openclaw_router
 from knotwork.workspaces.invitations.router import router as invitations_router
 from knotwork.workspaces.invitations.router import public_router as invitations_public_router
-from knotwork.openclaw_integrations.install_router import router as openclaw_install_router
 from knotwork.public_workflows.router import router as public_workflows_router
 from knotwork.public_workflows.public_router import public_router as public_workflows_public_router
 from knotwork.projects.router import router as projects_router
@@ -138,6 +132,8 @@ def create_app() -> FastAPI:
     prefix = "/api/v1"
     app.include_router(auth_router, prefix=prefix)
     app.include_router(workspaces_router, prefix=prefix)
+    app.include_router(workspaces_skills_router, prefix=prefix)
+    app.include_router(workspaces_well_known_router, prefix=prefix)
     app.include_router(graphs_router, prefix=prefix)
     app.include_router(runs_router, prefix=prefix)
     app.include_router(knowledge_router, prefix=prefix)
@@ -149,17 +145,13 @@ def create_app() -> FastAPI:
     app.include_router(escalations_router, prefix=prefix)
     app.include_router(ratings_router, prefix=prefix)
     app.include_router(ws_router, prefix=prefix)
-    app.include_router(registered_agents_router, prefix=prefix)
     app.include_router(channels_router, prefix=prefix)
     app.include_router(projects_router, prefix=prefix)
-    app.include_router(openclaw_router, prefix=prefix)
     app.include_router(invitations_router, prefix=prefix)
     app.include_router(invitations_public_router, prefix=prefix)
     app.include_router(public_workflows_router, prefix=prefix)
     app.include_router(public_workflows_public_router, prefix=prefix)
     app.include_router(agent_api_router)  # no /api/v1 prefix — agents use /agent-api
-    app.include_router(openclaw_plugin_router)  # no /api/v1 prefix — plugin callback
-    app.include_router(openclaw_install_router)  # no /api/v1 prefix — plugin install
 
     @app.get("/health")
     async def healthcheck():
@@ -176,7 +168,6 @@ def create_app() -> FastAPI:
 
         now = datetime.now(timezone.utc)
         uptime_seconds = round(monotonic() - _START_MONOTONIC, 2)
-        from knotwork.config import settings as _settings
         worker = await _read_worker_status()
         payload = {
             "service": "knotwork-api",
@@ -184,7 +175,6 @@ def create_app() -> FastAPI:
             "version": app.version,
             "installation_id": _INSTALLATION_ID,
             "schema_version": _SCHEMA_VERSION,
-            "min_openclaw_version": _settings.min_openclaw_version,
             "worker": worker,
             "now_utc": now.isoformat(),
             "started_at_utc": _STARTED_AT.isoformat(),

@@ -16,6 +16,8 @@ services:
       POSTGRES_DB: knotwork
       POSTGRES_USER: knotwork
       POSTGRES_PASSWORD: knotwork
+    ports:
+      - "127.0.0.1:${POSTGRES_DEV_HOST_PORT:-5432}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:

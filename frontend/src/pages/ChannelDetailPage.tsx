@@ -4,9 +4,6 @@ import { Bot, BookOpen, FileText, GitBranch, MessageSquare, PlayCircle, Plus, Se
 import {
   useAttachChannelAsset,
   useChannelAssets,
-  useChannelDecisions,
-  useChannelMessages,
-  useChannelParticipants,
   useChannels,
   useDetachChannelAsset,
   useMyChannelSubscriptions,
@@ -20,33 +17,16 @@ import { useObjectives, useProjects } from '@/api/projects'
 import { useRuns } from '@/api/runs'
 import { projectPath } from '@/lib/paths'
 import { useAuthStore } from '@/store/auth'
-import { ChannelContextPill, ChannelShell, ChannelTimeline, type ChannelTimelineItem } from '@/components/channel/ChannelFrame'
+import { ChannelContextPill, ChannelShell, ChannelTimeline } from '@/components/channel/ChannelFrame'
 import WorkflowSlashComposer from '@/components/channel/WorkflowSlashComposer'
+import { useChannelTimeline } from '@/components/channel/useChannelTimeline'
+import { useMentionDetection } from '@/components/channel/useMentionDetection'
 import Btn from '@/components/shared/Btn'
 import Spinner from '@/components/shared/Spinner'
 
 const DEV_WORKSPACE = import.meta.env.VITE_DEV_WORKSPACE_ID ?? 'dev-workspace'
 
 type AssetType = 'workflow' | 'run' | 'file'
-
-function decisionLabel(kind: string): string {
-  switch (kind) {
-    case 'approved':
-    case 'accept_output':
-      return 'Accepted output'
-    case 'edited':
-    case 'override_output':
-      return 'Overrode with human output'
-    case 'guided':
-    case 'request_revision':
-      return 'Requested revision'
-    case 'aborted':
-    case 'abort_run':
-      return 'Aborted run'
-    default:
-      return kind.replace(/_/g, ' ')
-  }
-}
 
 function assetIcon(type: AssetType) {
   switch (type) {
@@ -84,12 +64,9 @@ export default function ChannelDetailPage() {
   const workspaceId = useAuthStore((s) => s.workspaceId) ?? DEV_WORKSPACE
 
   const { data: channels = [] } = useChannels(workspaceId)
-  const { data: participants = [] } = useChannelParticipants(workspaceId)
   const { data: subscriptions = [] } = useMyChannelSubscriptions(workspaceId)
   const { data: objectives = [] } = useObjectives(workspaceId)
   const { data: projects = [] } = useProjects(workspaceId)
-  const { data: messages = [], isLoading: messagesLoading } = useChannelMessages(workspaceId, channelSlug ?? '')
-  const { data: decisions = [], isLoading: decisionsLoading } = useChannelDecisions(workspaceId, channelSlug ?? '')
   const { data: assets = [] } = useChannelAssets(workspaceId, channelSlug ?? '')
   const { data: graphs = [] } = useGraphs(workspaceId)
   const { data: runs = [] } = useRuns(workspaceId)
@@ -116,27 +93,7 @@ export default function ChannelDetailPage() {
   const isSubscribed = subscriptions.find((row) => row.channel_id === channel?.id)?.subscribed ?? true
   const isFreeChat = channel?.channel_type === 'normal'
 
-  const activeMention = useMemo(() => {
-    const cursor = inputRef.current?.selectionStart ?? draft.length
-    const beforeCursor = draft.slice(0, cursor)
-    const match = beforeCursor.match(/(^|\s)@([A-Za-z0-9._-]*)$/)
-    if (!match || match.index == null) return null
-    const query = match[2] ?? ''
-    const start = match.index + match[1].length
-    return { query: query.toLowerCase(), start, end: cursor }
-  }, [draft])
-
-  const mentionSuggestions = useMemo(() => {
-    if (!activeMention) return []
-    return participants
-      .filter((participant) => participant.mention_handle)
-      .filter((participant) => {
-        const handle = (participant.mention_handle ?? '').toLowerCase()
-        const name = participant.display_name.toLowerCase()
-        return !activeMention.query || handle.includes(activeMention.query) || name.includes(activeMention.query)
-      })
-      .slice(0, 6)
-  }, [activeMention, participants])
+  const { mentionMenuNode } = useMentionDetection(workspaceId, draft, setDraft, inputRef)
 
   const attachableWorkflows = useMemo(() => {
     const attachedIds = new Set(assets.filter((asset) => asset.asset_type === 'workflow').map((asset) => asset.asset_id))
@@ -191,58 +148,7 @@ export default function ChannelDetailPage() {
     )
   }
 
-  function insertMention(mentionHandle: string) {
-    if (!activeMention) return
-    const next = `${draft.slice(0, activeMention.start)}@${mentionHandle} ${draft.slice(activeMention.end)}`
-    setDraft(next)
-    requestAnimationFrame(() => {
-      inputRef.current?.focus()
-      const pos = activeMention.start + mentionHandle.length + 2
-      inputRef.current?.setSelectionRange(pos, pos)
-    })
-  }
-
-  const timeline = useMemo(() => {
-    const msgItems = messages.map((m) => ({
-      id: `m-${m.id}`,
-      kind: 'message' as const,
-      ts: new Date(m.created_at).getTime(),
-      data: m,
-    }))
-    const decItems = decisions.map((d) => ({
-      id: `d-${d.id}`,
-      kind: 'decision' as const,
-      ts: new Date(d.created_at).getTime(),
-      data: d,
-    }))
-    return [...msgItems, ...decItems].sort((a, b) => a.ts - b.ts)
-  }, [messages, decisions])
-
-  const timelineItems = useMemo<ChannelTimelineItem[]>(
-    () =>
-      timeline.map((item) => {
-        if (item.kind === 'message') {
-          const message = item.data
-          return {
-            id: item.id,
-            kind: 'message' as const,
-            authorLabel: message.author_name ?? (message.author_type === 'human' ? 'You' : 'Agent'),
-            mine: message.role === 'user',
-            tone: message.author_type === 'system' ? 'system' : message.author_type === 'human' ? 'human' : 'agent',
-            content: message.content,
-          }
-        }
-        return {
-          id: item.id,
-          kind: 'decision' as const,
-          label: decisionLabel(item.data.decision_type),
-          actorName: item.data.actor_name,
-        }
-      }),
-    [timeline],
-  )
-
-  const loading = messagesLoading || decisionsLoading
+  const { items: timelineItems, isLoading: loading } = useChannelTimeline(workspaceId, channelSlug ?? '')
 
   return (
     <div className="p-4 md:p-6 max-w-7xl mx-auto h-full flex flex-col min-h-0 w-full">
@@ -402,24 +308,7 @@ export default function ChannelDetailPage() {
                     Type <span className="font-mono text-stone-700">/</span> to start a workflow from this channel.
                   </p>
                 ) : null}
-                {mentionSuggestions.length > 0 ? (
-                  <div className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
-                    {mentionSuggestions.map((participant) => (
-                      <button
-                        key={participant.participant_id}
-                        type="button"
-                        onClick={() => insertMention(participant.mention_handle ?? '')}
-                        className="w-full border-b border-gray-100 px-3 py-2 text-left hover:bg-gray-50 last:border-b-0"
-                      >
-                        <div className="text-sm text-gray-800">{participant.display_name}</div>
-                        <div className="text-xs text-gray-500">
-                          @{participant.mention_handle}
-                          {participant.email ? ` · ${participant.email}` : ''}
-                        </div>
-                      </button>
-                    ))}
-                  </div>
-                ) : null}
+                {mentionMenuNode}
               </>
             )}
           />

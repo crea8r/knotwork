@@ -218,13 +218,19 @@ export interface RunWorklogEntry {
 
 export interface RunHandbookProposal {
   id: string
-  run_id: string
-  node_id: string
+  workspace_id: string
+  project_id: string | null
+  run_id: string | null
+  node_id: string | null
   agent_ref: string | null
-  path: string
-  proposed_content: string
+  channel_id: string
+  action_type: string
+  target_type: string
+  target_path: string
+  proposed_content: string | null
+  payload: Record<string, unknown>
   reason: string
-  status: 'pending' | 'approved' | 'rejected' | 'edited'
+  status: 'pending' | 'approved' | 'rejected'
   reviewed_by: string | null
   reviewed_at: string | null
   final_content: string | null
@@ -266,7 +272,7 @@ export interface Channel {
   workspace_id: string
   name: string
   slug: string
-  channel_type: 'normal' | 'bulletin' | 'workflow' | 'handbook' | 'run' | 'agent_main' | 'project' | 'objective'
+  channel_type: 'normal' | 'bulletin' | 'workflow' | 'handbook' | 'run' | 'agent_main' | 'project' | 'objective' | 'knowledge_change'
   graph_id: string | null
   project_id: string | null
   objective_id: string | null
@@ -386,7 +392,7 @@ export interface DecisionEvent {
 
 export interface InboxItem {
   id: string
-  item_type: 'escalation' | 'handbook_proposal' | 'mentioned_message' | 'task_assigned' | 'run_event'
+  item_type: 'escalation' | 'knowledge_change' | 'mentioned_message' | 'message_posted' | 'task_assigned' | 'run_event'
   delivery_id: string | null
   title: string
   subtitle: string | null
@@ -426,7 +432,7 @@ export interface ChannelSubscription {
 export interface ChannelAssetBinding {
   id: string
   channel_id: string
-  asset_type: 'workflow' | 'run' | 'file'
+  asset_type: 'workflow' | 'run' | 'file' | 'folder'
   asset_id: string
   display_name: string
   path: string | null
@@ -439,7 +445,7 @@ export interface ParticipantDeliveryPreference {
   event_type: string
   app_enabled: boolean
   email_enabled: boolean
-  plugin_enabled: boolean
+  push_enabled: boolean
   email_address: string | null
 }
 

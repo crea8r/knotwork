@@ -4799,7 +4799,7 @@
             "title": "Participant Id",
             "type": "string"
           },
-          "plugin_enabled": {
+          "push_enabled": {
             "title": "Plugin Enabled",
             "type": "boolean"
           }
@@ -4809,7 +4809,7 @@
           "event_type",
           "app_enabled",
           "email_enabled",
-          "plugin_enabled"
+          "push_enabled"
         ],
         "title": "ParticipantDeliveryPreferenceOut",
         "type": "object"
@@ -4849,7 +4849,7 @@
             ],
             "title": "Email Enabled"
           },
-          "plugin_enabled": {
+          "push_enabled": {
             "anyOf": [
               {
                 "type": "boolean"

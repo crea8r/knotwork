@@ -1,5 +1,5 @@
 /**
- * SystemTab — shows version alignment across backend, schema, worker, and plugins.
+ * SystemTab — shows version alignment across backend, schema, and worker.
  * Operators use this to confirm all components are in sync after an update.
  */
 import { useEffect, useState } from 'react'
@@ -12,7 +12,6 @@ import {
   useUpdateParticipantDeliveryPreference,
 } from '@/api/channels'
 import { useHealthStatus } from '@/api/health'
-import { useOpenClawIntegrations } from '@/api/agents'
 
 function StatusIcon({ ok }: { ok: boolean | null }) {
   if (ok === true) return <CheckCircle size={14} className="text-green-500 shrink-0" />
@@ -32,22 +31,12 @@ function Row({ label, value, ok }: { label: string; value: string; ok?: boolean 
   )
 }
 
-function meetsMinVersion(version: string, min: string): boolean {
-  const parse = (v: string) => v.split('.').map(Number)
-  const [ma, mi, pa] = parse(version)
-  const [mb, mib, pb] = parse(min)
-  if (ma !== mb) return ma > mb
-  if (mi !== mib) return mi > mib
-  return pa >= pb
-}
-
 export default function SystemTab() {
   const workspaceId = useAuthStore((s) => s.workspaceId)
   const user = useAuthStore((s) => s.user)
   const role = useAuthStore((s) => s.role)
   const isOwner = role === 'owner'
   const { data: health, isLoading, refetch } = useHealthStatus()
-  const { data: integrations } = useOpenClawIntegrations()
   const { data: emailConfig, isLoading: loadingEmailConfig } = useWorkspaceEmailConfig(workspaceId)
   const updateEmailConfig = useUpdateWorkspaceEmailConfig(workspaceId)
   const { data: participants = [] } = useChannelParticipants(workspaceId ?? '')
@@ -105,7 +94,7 @@ export default function SystemTab() {
 
   const toggleParticipantMean = (
     eventType: string,
-    field: 'app_enabled' | 'email_enabled' | 'plugin_enabled',
+    field: 'app_enabled' | 'email_enabled',
     value: boolean,
   ) => {
     updateParticipantPreference.mutate({
@@ -316,7 +305,6 @@ export default function SystemTab() {
                       <th className="text-left py-2">Event</th>
                       <th className="text-center py-2">App</th>
                       <th className="text-center py-2">Email</th>
-                      <th className="text-center py-2">Plugin</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -338,53 +326,19 @@ export default function SystemTab() {
                             onChange={(e) => toggleParticipantMean(pref.event_type, 'email_enabled', e.target.checked)}
                           />
                         </td>
-                        <td className="py-2 text-center">
-                          <input
-                            type="checkbox"
-                            checked={pref.plugin_enabled}
-                            disabled={participantPrefs.kind !== 'agent'}
-                            onChange={(e) => toggleParticipantMean(pref.event_type, 'plugin_enabled', e.target.checked)}
-                          />
-                        </td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
               </div>
               <p className="text-xs text-gray-400">
-                App is the default inbox path for humans. Plugin is available only for agent participants. Email depends on workspace mail configuration.
+                App is the default inbox path for humans. Email depends on workspace mail configuration.
               </p>
             </>
           )}
         </div>
       </div>
 
-      <div>
-        <h3 className="text-sm font-semibold text-gray-700 mb-3">Plugin Compatibility</h3>
-        <div className="rounded-lg border border-gray-200 bg-white px-4 divide-y divide-gray-100">
-          <Row label="Required OpenClaw version" value={`≥ ${health.min_openclaw_version}`} />
-          {integrations?.length ? (
-            integrations.map((i) => {
-              const ver = i.plugin_version ?? 'unknown'
-              const ok = i.plugin_version
-                ? meetsMinVersion(i.plugin_version, health.min_openclaw_version)
-                : null
-              return (
-                <Row
-                  key={i.id}
-                  label={`Plugin ${i.plugin_instance_id.slice(0, 12)}…`}
-                  value={ver}
-                  ok={ok}
-                />
-              )
-            })
-          ) : (
-            <div className="py-2">
-              <p className="text-sm text-gray-400">No OpenClaw integrations connected.</p>
-            </div>
-          )}
-        </div>
-      </div>
     </div>
   )
 }

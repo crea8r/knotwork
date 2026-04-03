@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from knotwork.channels import service as channel_service
 from knotwork.escalations.models import Escalation
 from knotwork.escalations.schemas import EscalationResolve
-from knotwork.participants import list_workspace_human_participants
+from knotwork.participants import list_workspace_participants
 
 logger = logging.getLogger(__name__)
 
@@ -48,8 +48,8 @@ async def create_escalation(
     try:
         channel_id = await channel_service.resolve_run_channel_id(db, workspace_id, run_id, context)
         if not recipients:
-            humans = await list_workspace_human_participants(db, workspace_id)
-            human_ids = {participant["participant_id"] for participant in humans}
+            participants = await list_workspace_participants(db, workspace_id)
+            participant_ids = {participant["participant_id"] for participant in participants}
             if channel_id is not None:
                 subscriptions = await channel_service.list_channel_subscriptions_for_channel(
                     db,
@@ -59,10 +59,10 @@ async def create_escalation(
                 recipients = [
                     subscription.participant_id
                     for subscription in subscriptions
-                    if subscription.unsubscribed_at is None and subscription.participant_id in human_ids
+                    if subscription.unsubscribed_at is None and subscription.participant_id in participant_ids
                 ]
             if not recipients:
-                recipients = list(human_ids)
+                recipients = list(participant_ids)
 
         if channel_id is not None and recipients:
             node_id = str((context or {}).get("node_id") or "node")

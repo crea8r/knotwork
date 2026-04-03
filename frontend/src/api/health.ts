@@ -11,7 +11,6 @@ export interface HealthStatus {
   version: string
   installation_id: string
   schema_version: string
-  min_openclaw_version: string
   worker: WorkerStatus
 }
 

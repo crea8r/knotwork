@@ -27,7 +27,6 @@ import knotwork.audit.models  # noqa: F401
 import knotwork.registered_agents.models  # noqa: F401
 import knotwork.channels.models  # noqa: F401
 import knotwork.notifications.models  # noqa: F401
-import knotwork.openclaw_integrations.models  # noqa: F401
 
 from knotwork.database import Base
 

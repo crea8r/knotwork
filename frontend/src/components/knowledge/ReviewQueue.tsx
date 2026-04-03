@@ -1,17 +1,17 @@
 import { useState } from 'react'
 import { CheckCircle, FileText } from 'lucide-react'
 import {
-  useHandbookProposals,
-  useApproveProposal,
-  useRejectProposal,
-  type HandbookProposal,
+  useKnowledgeChanges,
+  useApproveKnowledgeChange,
+  useRejectKnowledgeChange,
+  type KnowledgeChange,
 } from '@/api/knowledge'
 import Spinner from '@/components/shared/Spinner'
 import Btn from '@/components/shared/Btn'
 
-function ProposalCard({ proposal }: { proposal: HandbookProposal }) {
-  const approve = useApproveProposal()
-  const reject = useRejectProposal()
+function ProposalCard({ proposal }: { proposal: KnowledgeChange }) {
+  const approve = useApproveKnowledgeChange()
+  const reject = useRejectKnowledgeChange()
   const [expanded, setExpanded] = useState(false)
 
   return (
@@ -20,7 +20,7 @@ function ProposalCard({ proposal }: { proposal: HandbookProposal }) {
         <div className="flex items-start gap-2 min-w-0">
           <FileText size={14} className="flex-shrink-0 mt-0.5 text-gray-400" />
           <div className="min-w-0">
-            <p className="text-sm font-medium text-gray-900 font-mono truncate">{proposal.path}</p>
+            <p className="text-sm font-medium text-gray-900 font-mono truncate">{proposal.target_path}</p>
             <p className="text-xs text-gray-500 mt-0.5 line-clamp-2">{proposal.reason}</p>
           </div>
         </div>
@@ -35,7 +35,7 @@ function ProposalCard({ proposal }: { proposal: HandbookProposal }) {
 
       {expanded && (
         <pre className="text-xs bg-gray-50 border border-gray-200 rounded-lg p-3 overflow-x-auto whitespace-pre-wrap max-h-48">
-          {proposal.proposed_content}
+          {proposal.proposed_content ?? JSON.stringify(proposal.payload, null, 2)}
         </pre>
       )}
 
@@ -43,7 +43,7 @@ function ProposalCard({ proposal }: { proposal: HandbookProposal }) {
         <Btn
           size="sm"
           loading={approve.isPending}
-          onClick={() => approve.mutate({ id: proposal.id, final_content: proposal.proposed_content })}
+          onClick={() => approve.mutate({ id: proposal.id, final_content: proposal.proposed_content ?? undefined })}
         >
           Approve
         </Btn>
@@ -61,7 +61,7 @@ function ProposalCard({ proposal }: { proposal: HandbookProposal }) {
 }
 
 export default function ReviewQueue() {
-  const { data: proposals = [], isLoading } = useHandbookProposals('pending')
+  const { data: proposals = [], isLoading } = useKnowledgeChanges('pending')
 
   if (isLoading) {
     return <div className="flex justify-center py-16"><Spinner size="lg" /></div>
@@ -82,7 +82,7 @@ export default function ReviewQueue() {
   return (
     <div className="p-4 space-y-3 overflow-y-auto h-full">
       <p className="text-sm text-gray-500">
-        {proposals.length} item{proposals.length !== 1 ? 's' : ''} to review
+        {proposals.length} knowledge change{proposals.length !== 1 ? 's' : ''} to review
       </p>
       {proposals.map((proposal) => (
         <ProposalCard key={proposal.id} proposal={proposal} />

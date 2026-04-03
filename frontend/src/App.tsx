@@ -20,7 +20,6 @@ import KnowledgePage from './pages/KnowledgePage'
 import KnowledgeFilePage from './pages/KnowledgeFilePage'
 import EscalationsPage from './pages/EscalationsPage'
 import SettingsPage from './pages/SettingsPage'
-import AgentProfilePage from './pages/AgentProfilePage'
 import LoginPage from './pages/LoginPage'
 import AcceptInvitePage from './pages/AcceptInvitePage'
 import PublicWorkflowPage from './pages/PublicWorkflowPage'
@@ -83,7 +82,6 @@ export default function App() {
         <Route path="/handbook" element={<Navigate to="/knowledge" replace />} />
         <Route path="/handbook/file" element={<KnowledgeFilePage />} />
         <Route path="/settings" element={<SettingsPage />} />
-        <Route path="/agents/:agentId" element={<AgentProfilePage />} />
       </Route>
     </Routes>
   )

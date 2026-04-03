@@ -88,6 +88,7 @@ class RunHandbookProposal(Base):
     path: Mapped[str] = mapped_column(String, nullable=False)
     proposed_content: Mapped[str] = mapped_column(Text, nullable=False)
     reason: Mapped[str] = mapped_column(Text, nullable=False)
+    channel_id: Mapped[UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("channels.id", ondelete="SET NULL"), nullable=True)
     # status: 'pending' | 'approved' | 'rejected' | 'edited'
     status: Mapped[str] = mapped_column(String, nullable=False, default="pending")
     reviewed_by: Mapped[UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)

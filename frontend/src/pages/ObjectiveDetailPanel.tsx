@@ -1,11 +1,13 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Hash, Plus, X } from 'lucide-react'
 import { Link, useOutletContext, useParams } from 'react-router-dom'
-import { useChannel, useChannelDecisions, useChannelMessages, usePostChannelMessage, useUpdateChannel } from '@/api/channels'
+import { useChannel, usePostChannelMessage, useUpdateChannel } from '@/api/channels'
 import { useGraphs } from '@/api/graphs'
 import { useUpdateObjective } from '@/api/projects'
-import { ChannelShell, ChannelTimeline, type ChannelTimelineItem } from '@/components/channel/ChannelFrame'
+import { ChannelShell, ChannelTimeline } from '@/components/channel/ChannelFrame'
 import WorkflowSlashComposer from '@/components/channel/WorkflowSlashComposer'
+import { useChannelTimeline } from '@/components/channel/useChannelTimeline'
+import { useMentionDetection } from '@/components/channel/useMentionDetection'
 import Badge from '@/components/shared/Badge'
 import { projectObjectivePath, projectPath } from '@/lib/paths'
 import type { ProjectOutletContext } from './ProjectDetailPage'
@@ -23,14 +25,15 @@ export default function ObjectiveDetailPanel() {
   const objective = objectives.find((item) => item.slug === objectiveSlug)
   const { data: workflows = [] } = useGraphs(workspaceId)
   const { data: objectiveChannel } = useChannel(workspaceId, objective?.channel_id ?? '')
-  const { data: messages = [] } = useChannelMessages(workspaceId, objective?.channel_id ?? '')
-  const { data: decisions = [] } = useChannelDecisions(workspaceId, objective?.channel_id ?? '')
   const postMessage = usePostChannelMessage(workspaceId, objective?.channel_id ?? '')
   const updateObjective = useUpdateObjective(workspaceId, objective?.id ?? '')
   const updateChannel = useUpdateChannel(workspaceId, objective?.channel_id ?? '')
   const currentProgress = objective?.progress_percent ?? 0
 
   const [draft, setDraft] = useState('')
+  const inputRef = useRef<HTMLTextAreaElement | null>(null)
+  const { items: timelineItems } = useChannelTimeline(workspaceId, objective?.channel_id ?? '')
+  const { mentionMenuNode } = useMentionDetection(workspaceId, draft, setDraft, inputRef)
   const [progressDraft, setProgressDraft] = useState(String(currentProgress))
   const [keyResultsDraft, setKeyResultsDraft] = useState(objective?.key_results ?? [])
   const [editingProgress, setEditingProgress] = useState(false)
@@ -81,40 +84,6 @@ export default function ObjectiveDetailPanel() {
     setNewKeyResult('')
     await updateObjective.mutateAsync({ key_results: next })
   }
-
-  const timeline = useMemo(() => {
-    const msgItems = messages.map((message) => ({
-      id: `m-${message.id}`,
-      kind: 'message' as const,
-      ts: new Date(message.created_at).getTime(),
-      data: message,
-    }))
-    const decisionItems = decisions.map((decision) => ({
-      id: `d-${decision.id}`,
-      kind: 'decision' as const,
-      ts: new Date(decision.created_at).getTime(),
-      data: decision,
-    }))
-    return [...msgItems, ...decisionItems].sort((a, b) => a.ts - b.ts)
-  }, [decisions, messages])
-  const timelineItems = useMemo<ChannelTimelineItem[]>(() => timeline.map((item) => {
-    if (item.kind === 'message') {
-      return {
-        id: item.id,
-        kind: 'message' as const,
-        authorLabel: item.data.author_name ?? (item.data.author_type === 'human' ? 'You' : 'Agent'),
-        mine: item.data.role === 'user',
-        tone: item.data.author_type === 'system' ? 'system' : item.data.author_type === 'human' ? 'human' : 'agent',
-        content: item.data.content,
-      }
-    }
-    return {
-      id: item.id,
-      kind: 'decision' as const,
-      label: item.data.decision_type.replace(/_/g, ' '),
-      actorName: item.data.actor_name,
-    }
-  }), [timeline])
 
   if (!objective) {
     return (
@@ -275,6 +244,8 @@ export default function ObjectiveDetailPanel() {
           )}
           pending={postMessage.isPending}
           placeholder="Move this objective forward, ask for help, or trigger a workflow with /…"
+          inputRef={inputRef}
+          beforeInput={mentionMenuNode}
         />
       </ChannelShell>
 

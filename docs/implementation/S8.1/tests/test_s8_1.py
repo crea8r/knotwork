@@ -762,6 +762,7 @@ async def test_public_verify_invitation_reports_already_accepted(client, db, wor
 # ─────────────────────────────────────────────────────────────────────────────
 
 
+@pytest.mark.xfail(reason="superseded by S12.2: OpenClaw module removed")
 @pytest.mark.asyncio
 async def test_create_handshake_token_missing_workspace_returns_404(db):
     """Service should reject handshake token creation for a non-existent workspace."""
@@ -775,6 +776,7 @@ async def test_create_handshake_token_missing_workspace_returns_404(db):
     assert exc.value.detail == "Workspace not found"
 
 
+@pytest.mark.xfail(reason="superseded by S12.2: OpenClaw module removed")
 @pytest.mark.asyncio
 async def test_create_handshake_token_route_requires_owner(client, workspace):
     """Handshake token route should be owner-protected like other workspace settings."""
@@ -804,6 +806,7 @@ async def _create_handshake_token(db, workspace, expired: bool = False) -> str:
     return token_str
 
 
+@pytest.mark.xfail(reason="superseded by S12.2: OpenClaw module removed")
 @pytest.mark.asyncio
 async def test_install_endpoint_valid_token_returns_bundle(client, db, workspace, openclaw_plugin_package_url):
     """GET /openclaw-plugin/install with a valid token returns the install bundle."""
@@ -849,6 +852,7 @@ async def test_install_endpoint_valid_token_returns_bundle(client, db, workspace
     assert data["token"] == token
 
 
+@pytest.mark.xfail(reason="superseded by S12.2: OpenClaw module removed")
 @pytest.mark.asyncio
 async def test_install_endpoint_bundle_contains_token_in_command(client, db, workspace, openclaw_plugin_package_url):
     """The install bundle must persist the handshake token in plugin config."""
@@ -861,6 +865,7 @@ async def test_install_endpoint_bundle_contains_token_in_command(client, db, wor
     assert ".tar.gz" in data["install_command"]
 
 
+@pytest.mark.xfail(reason="superseded by S12.2: OpenClaw module removed")
 @pytest.mark.asyncio
 async def test_install_endpoint_uses_forwarded_host_for_bundle_urls(client, db, workspace, openclaw_plugin_package_url):
     """Install bundle should advertise the externally requested host, not static BACKEND_URL."""
@@ -880,6 +885,7 @@ async def test_install_endpoint_uses_forwarded_host_for_bundle_urls(client, db, 
     assert data["plugin_archive_url"] == openclaw_plugin_package_url
 
 
+@pytest.mark.xfail(reason="superseded by S12.2: OpenClaw module removed")
 @pytest.mark.asyncio
 async def test_install_endpoint_requires_configured_plugin_package_url(client, db, workspace, monkeypatch):
     """Install bundle should fail closed when the plugin artifact URL is not configured."""
@@ -893,6 +899,7 @@ async def test_install_endpoint_requires_configured_plugin_package_url(client, d
     assert resp.json()["detail"] == "OpenClaw plugin package URL is not configured"
 
 
+@pytest.mark.xfail(reason="superseded by S12.2: OpenClaw module removed")
 @pytest.mark.asyncio
 async def test_install_endpoint_invalid_token_returns_404(client):
     """GET /openclaw-plugin/install with a non-existent token returns 404."""
@@ -900,6 +907,7 @@ async def test_install_endpoint_invalid_token_returns_404(client):
     assert resp.status_code == 404
 
 
+@pytest.mark.xfail(reason="superseded by S12.2: OpenClaw module removed")
 @pytest.mark.asyncio
 async def test_install_endpoint_expired_token_returns_410(client, db, workspace):
     """GET /openclaw-plugin/install with an expired token returns 410."""
@@ -929,6 +937,7 @@ async def _do_handshake(client, db, workspace, agents: list[dict]) -> dict:
     return resp.json()
 
 
+@pytest.mark.xfail(reason="superseded by S12.2: OpenClaw module removed")
 @pytest.mark.asyncio
 async def test_handshake_persists_agent_description(client, db, workspace):
     """Agent description sent in handshake is stored in openclaw_remote_agents."""
@@ -958,6 +967,7 @@ async def test_handshake_persists_agent_description(client, db, workspace):
     assert row.description == "Handles customer research tasks"
 
 
+@pytest.mark.xfail(reason="superseded by S12.2: OpenClaw module removed")
 @pytest.mark.asyncio
 async def test_handshake_description_null_when_not_provided(client, db, workspace):
     """When description is absent from the handshake payload, DB column is NULL."""
@@ -985,6 +995,7 @@ async def test_handshake_description_null_when_not_provided(client, db, workspac
     assert row.description is None
 
 
+@pytest.mark.xfail(reason="superseded by S12.2: OpenClaw module removed")
 @pytest.mark.asyncio
 async def test_handshake_description_updates_on_second_sync(client, db, workspace):
     """Re-running handshake with an updated description overwrites the old one."""

@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from knotwork.channels.models import Channel, ChannelAssetBinding, ChannelEvent, ChannelMessage, ChannelSubscription, DecisionEvent
 from knotwork.channels.schemas import ChannelCreate, ChannelMessageCreate, ChannelUpdate, DecisionEventCreate
 from knotwork.graphs.models import Graph
-from knotwork.knowledge.models import KnowledgeFile
+from knotwork.knowledge.models import KnowledgeChange, KnowledgeFile, KnowledgeFolder
 from knotwork.notifications import service as notification_service
 from knotwork.notifications.models import EventDelivery
 from knotwork.participants import (
@@ -18,7 +18,7 @@ from knotwork.participants import (
     list_workspace_human_participants,
     resolve_mentioned_participants,
 )
-from knotwork.runs.models import Run, RunHandbookProposal
+from knotwork.runs.models import Run
 from knotwork.escalations.models import Escalation
 from knotwork.utils.slugs import make_slug_candidate, parse_uuid_ref
 
@@ -325,7 +325,7 @@ async def list_channels(db: AsyncSession, workspace_id: UUID) -> list[Channel]:
     result = await db.execute(
         select(Channel)
         .where(Channel.workspace_id == workspace_id, Channel.archived_at.is_(None))
-        .where(Channel.channel_type.in_(("normal", "bulletin", "workflow", "handbook", "run", "agent_main", "project", "objective", "task")))
+        .where(Channel.channel_type.in_(("normal", "bulletin", "workflow", "handbook", "run", "project", "objective", "task", "knowledge_change")))
         .order_by(Channel.updated_at.desc(), Channel.created_at.desc())
     )
     return list(result.scalars())
@@ -429,6 +429,23 @@ async def list_channel_asset_bindings(
                     "created_at": binding.created_at,
                 }
             )
+            continue
+        if binding.asset_type == "folder":
+            folder = await db.get(KnowledgeFolder, UUID(binding.asset_id))
+            if not folder or folder.workspace_id != workspace_id:
+                continue
+            out.append(
+                {
+                    "id": str(binding.id),
+                    "channel_id": binding.channel_id,
+                    "asset_type": "folder",
+                    "asset_id": binding.asset_id,
+                    "display_name": folder.path.split("/")[-1] if folder.path else "Workspace Assets",
+                    "path": folder.path,
+                    "status": None,
+                    "created_at": binding.created_at,
+                }
+            )
     return out
 
 
@@ -485,6 +502,12 @@ async def attach_asset_to_channel(
             raise ValueError("File not found")
         normalized_asset_id = str(kf.id)
         display_name = kf.title
+    elif asset_type == "folder":
+        folder = await db.get(KnowledgeFolder, UUID(asset_id))
+        if not folder or folder.workspace_id != workspace_id:
+            raise ValueError("Folder not found")
+        normalized_asset_id = str(folder.id)
+        display_name = folder.path or "Workspace Assets"
     else:
         raise ValueError("Unsupported asset type")
 
@@ -521,6 +544,161 @@ async def attach_asset_to_channel(
             ),
         )
     return row
+
+
+async def get_or_create_asset_chat_channel(
+    db: AsyncSession,
+    workspace_id: UUID,
+    *,
+    asset_type: str,
+    path: str | None = None,
+    asset_id: str | None = None,
+    project_id: UUID | None = None,
+) -> Channel:
+    from knotwork.knowledge import folder_service, service as knowledge_service
+
+    if asset_type == "folder":
+        normalized_path = (path or "").strip("/")
+        if not normalized_path:
+            if project_id is None:
+                await ensure_handbook_channel(db, workspace_id)
+                result = await db.execute(
+                    select(Channel).where(
+                        Channel.workspace_id == workspace_id,
+                        Channel.channel_type == "handbook",
+                        Channel.archived_at.is_(None),
+                    ).limit(1)
+                )
+                channel = result.scalar_one_or_none()
+                if channel is None:
+                    raise ValueError("Handbook channel not found")
+                return channel
+            result = await db.execute(
+                select(Channel).where(
+                    Channel.workspace_id == workspace_id,
+                    Channel.project_id == project_id,
+                    Channel.channel_type == "normal",
+                    Channel.name == "project assets",
+                    Channel.archived_at.is_(None),
+                ).limit(1)
+            )
+            channel = result.scalar_one_or_none()
+            if channel is not None:
+                return channel
+            channel = Channel(
+                workspace_id=workspace_id,
+                name="project assets",
+                slug=await _generate_channel_slug(db, "project assets"),
+                channel_type="normal",
+                project_id=project_id,
+            )
+            db.add(channel)
+            await db.commit()
+            await db.refresh(channel)
+            await ensure_default_channel_subscriptions(db, workspace_id, channel_id=channel.id)
+            return channel
+
+        folder = None
+        if asset_id:
+            folder = await db.get(KnowledgeFolder, UUID(asset_id))
+        if folder is None:
+            if project_id is None:
+                folder = await folder_service.create_folder(db, workspace_id, normalized_path)
+            else:
+                result = await db.execute(
+                    select(KnowledgeFolder).where(
+                        KnowledgeFolder.workspace_id == workspace_id,
+                        KnowledgeFolder.project_id == project_id,
+                        KnowledgeFolder.path == normalized_path,
+                    ).limit(1)
+                )
+                folder = result.scalar_one_or_none()
+                if folder is None:
+                    folder = KnowledgeFolder(workspace_id=workspace_id, project_id=project_id, path=normalized_path)
+                    db.add(folder)
+                    await db.commit()
+                    await db.refresh(folder)
+        channel_ids = await list_bound_channel_ids_for_asset(
+            db,
+            workspace_id,
+            asset_type="folder",
+            asset_id=str(folder.id),
+        )
+        for channel_id in channel_ids:
+            channel = await db.get(Channel, channel_id)
+            if channel and channel.workspace_id == workspace_id and channel.archived_at is None:
+                return channel
+        channel = await create_channel(
+            db,
+            workspace_id,
+            ChannelCreate(name=f"folder: {normalized_path}", channel_type="normal"),
+        )
+        if project_id is not None:
+            channel.project_id = project_id
+            await db.commit()
+            await db.refresh(channel)
+        await attach_asset_to_channel(db, workspace_id, channel.id, asset_type="folder", asset_id=str(folder.id))
+        return channel
+
+    if asset_type == "file":
+        knowledge_file = None
+        if asset_id:
+            knowledge_file = await db.get(KnowledgeFile, UUID(asset_id))
+        elif path:
+            knowledge_file = await knowledge_service.get_file_by_path(db, workspace_id, path, project_id=project_id)
+        if knowledge_file is None:
+            raise ValueError("File not found")
+        channel_ids = await list_bound_channel_ids_for_asset(
+            db,
+            workspace_id,
+            asset_type="file",
+            asset_id=str(knowledge_file.id),
+        )
+        for channel_id in channel_ids:
+            channel = await db.get(Channel, channel_id)
+            if channel and channel.workspace_id == workspace_id and channel.archived_at is None:
+                return channel
+        channel = await create_channel(
+            db,
+            workspace_id,
+            ChannelCreate(name=f"file: {knowledge_file.path}", channel_type="normal"),
+        )
+        if knowledge_file.project_id is not None:
+            channel.project_id = knowledge_file.project_id
+            await db.commit()
+            await db.refresh(channel)
+        await attach_asset_to_channel(db, workspace_id, channel.id, asset_type="file", asset_id=str(knowledge_file.id))
+        return channel
+
+    if asset_type == "workflow":
+        if not asset_id:
+            raise ValueError("Workflow not found")
+        graph = await db.get(Graph, UUID(asset_id))
+        if graph is None or graph.workspace_id != workspace_id:
+            raise ValueError("Workflow not found")
+        channel_ids = await list_bound_channel_ids_for_asset(
+            db,
+            workspace_id,
+            asset_type="workflow",
+            asset_id=str(graph.id),
+        )
+        for channel_id in channel_ids:
+            channel = await db.get(Channel, channel_id)
+            if channel and channel.workspace_id == workspace_id and channel.archived_at is None:
+                return channel
+        channel = await create_channel(
+            db,
+            workspace_id,
+            ChannelCreate(name=f"workflow: {graph.name}", channel_type="normal"),
+        )
+        if graph.project_id is not None:
+            channel.project_id = graph.project_id
+            await db.commit()
+            await db.refresh(channel)
+        await attach_asset_to_channel(db, workspace_id, channel.id, asset_type="workflow", asset_id=str(graph.id))
+        return channel
+
+    raise ValueError("Unsupported asset type")
 
 
 async def detach_asset_binding(
@@ -827,6 +1005,27 @@ async def inbox_items(
             )
             continue
 
+        if event.event_type == "message_posted":
+            out.append(
+                {
+                    "id": f"delivery:{delivery.id}",
+                    "item_type": "message_posted",
+                    "delivery_id": str(delivery.id),
+                    "title": str(payload.get("title") or f"New message in {payload.get('channel_name') or 'channel'}"),
+                    "subtitle": str(payload.get("subtitle") or payload.get("message_preview") or ""),
+                    "status": "read" if delivery.read_at else "new",
+                    "run_id": None,
+                    "channel_id": str(event.channel_id),
+                    "escalation_id": None,
+                    "proposal_id": None,
+                    "due_at": None,
+                    "created_at": delivery.sent_at,
+                    "unread": delivery.read_at is None,
+                    "archived_at": delivery.archived_at,
+                }
+            )
+            continue
+
         if event.event_type == "task_assigned":
             out.append(
                 {
@@ -870,22 +1069,25 @@ async def inbox_items(
 
     if not archived:
         proposal_result = await db.execute(
-            select(RunHandbookProposal)
-            .where(RunHandbookProposal.status == "pending")
-            .order_by(RunHandbookProposal.created_at.desc())
+            select(KnowledgeChange)
+            .where(
+                KnowledgeChange.workspace_id == workspace_id,
+                KnowledgeChange.status == "pending",
+            )
+            .order_by(KnowledgeChange.created_at.desc())
             .limit(100)
         )
         for p in proposal_result.scalars():
             out.append(
                 {
                     "id": f"proposal:{p.id}",
-                    "item_type": "handbook_proposal",
+                    "item_type": "knowledge_change",
                     "delivery_id": None,
-                    "title": f"Handbook proposal: {p.path}",
+                    "title": f"Knowledge change: {p.target_path}",
                     "subtitle": p.reason[:140],
                     "status": p.status,
                     "run_id": p.run_id,
-                    "channel_id": None,
+                    "channel_id": str(p.channel_id),
                     "escalation_id": None,
                     "proposal_id": p.id,
                     "due_at": None,
@@ -984,51 +1186,6 @@ async def get_or_create_run_channel(
     await ensure_default_channel_subscriptions(db, workspace_id, channel_id=row.id)
     return row
 
-
-async def get_or_create_agent_main_channel(
-    db: AsyncSession,
-    workspace_id: UUID,
-    agent_id: UUID,
-    display_name: str,
-) -> Channel:
-    name = f"agent-main:{agent_id}"
-    existing = await db.execute(
-        select(Channel).where(
-            Channel.workspace_id == workspace_id,
-            Channel.channel_type == "agent_main",
-            Channel.name == name,
-            Channel.archived_at.is_(None),
-        ).limit(1)
-    )
-    row = existing.scalar_one_or_none()
-    if row:
-        return row
-
-    row = Channel(
-        workspace_id=workspace_id,
-        name=name,
-        slug=await _generate_channel_slug(db, display_name),
-        channel_type="agent_main",
-        graph_id=None,
-    )
-    db.add(row)
-    await db.commit()
-    await db.refresh(row)
-    await ensure_default_channel_subscriptions(db, workspace_id, channel_id=row.id)
-
-    await create_message(
-        db,
-        workspace_id,
-        row.id,
-        ChannelMessageCreate(
-            role="system",
-            author_type="system",
-            author_name="Knotwork",
-            content=f"Main session chat for agent: {display_name}",
-            metadata={"kind": "main_session_init", "agent_id": str(agent_id)},
-        ),
-    )
-    return row
 
 
 async def emit_run_status_event(

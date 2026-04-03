@@ -6,6 +6,7 @@ from sqlalchemy import delete, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from knotwork.channels.models import Channel
+from knotwork.knowledge.models import KnowledgeChange
 from knotwork.runs.id import generate_run_id  # noqa: F401 — re-export for callers
 
 from knotwork.graphs.service import get_graph, get_latest_version
@@ -354,11 +355,11 @@ async def list_worklog(db: AsyncSession, run_id: str) -> list[RunWorklogEntry]:
     return list(result.scalars())
 
 
-async def list_proposals(db: AsyncSession, run_id: str) -> list[RunHandbookProposal]:
+async def list_proposals(db: AsyncSession, run_id: str) -> list[KnowledgeChange]:
     result = await db.execute(
-        select(RunHandbookProposal)
-        .where(RunHandbookProposal.run_id == run_id)
-        .order_by(RunHandbookProposal.created_at)
+        select(KnowledgeChange)
+        .where(KnowledgeChange.run_id == run_id)
+        .order_by(KnowledgeChange.created_at)
     )
     return list(result.scalars())
 
@@ -449,6 +450,7 @@ async def delete_run(db: AsyncSession, run_id: str) -> None:
     await db.execute(delete(OpenAICallLog).where(OpenAICallLog.run_id == run_id))
     await db.execute(delete(Rating).where(Rating.run_id == run_id))
     await db.execute(delete(RunHandbookProposal).where(RunHandbookProposal.run_id == run_id))
+    await db.execute(delete(KnowledgeChange).where(KnowledgeChange.run_id == run_id))
     await db.execute(delete(RunWorklogEntry).where(RunWorklogEntry.run_id == run_id))
     await db.execute(delete(RunNodeState).where(RunNodeState.run_id == run_id))
     await db.delete(run)

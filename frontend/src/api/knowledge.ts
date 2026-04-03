@@ -221,48 +221,61 @@ export function useUploadRawFile() {
   })
 }
 
-// ── Handbook proposals ────────────────────────────────────────────────────────
+// ── Knowledge changes ─────────────────────────────────────────────────────────
 
-export interface HandbookProposal {
+export interface KnowledgeChange {
   id: string
-  run_id: string
-  node_id: string
+  workspace_id: string
+  project_id: string | null
+  run_id: string | null
+  node_id: string | null
   agent_ref: string | null
-  path: string
-  proposed_content: string
+  channel_id: string | null
+  action_type: string
+  target_type: string
+  target_path: string
+  proposed_content: string | null
+  payload: Record<string, unknown>
   reason: string
   status: 'pending' | 'approved' | 'rejected'
+  reviewed_by?: string | null
+  reviewed_at?: string | null
+  final_content?: string | null
   created_at: string
 }
 
-export function useHandbookProposals(status?: string) {
+export function useKnowledgeChanges(status?: string) {
   const workspaceId = useWorkspaceId()
-  return useQuery<HandbookProposal[]>({
-    queryKey: ['handbook-proposals', workspaceId, status],
+  return useQuery<KnowledgeChange[]>({
+    queryKey: ['knowledge-changes', workspaceId, status],
     queryFn: () =>
-      api.get(`/workspaces/${workspaceId}/handbook/proposals`, { params: status ? { status } : {} }).then(r => r.data),
+      api.get(`/workspaces/${workspaceId}/knowledge/changes`, { params: status ? { status } : {} }).then(r => r.data),
   })
 }
 
-export function useApproveProposal() {
+export function useApproveKnowledgeChange() {
   const workspaceId = useWorkspaceId()
   const qc = useQueryClient()
   return useMutation({
     mutationFn: ({ id, final_content }: { id: string; final_content?: string }) =>
-      api.post(`/workspaces/${workspaceId}/handbook/proposals/${id}/approve`, { final_content }).then(r => r.data),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['handbook-proposals', workspaceId] }),
+      api.post(`/workspaces/${workspaceId}/knowledge/changes/${id}/approve`, { final_content }).then(r => r.data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['knowledge-changes', workspaceId] }),
   })
 }
 
-export function useRejectProposal() {
+export function useRejectKnowledgeChange() {
   const workspaceId = useWorkspaceId()
   const qc = useQueryClient()
   return useMutation({
     mutationFn: (id: string) =>
-      api.post(`/workspaces/${workspaceId}/handbook/proposals/${id}/reject`, {}).then(r => r.data),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['handbook-proposals', workspaceId] }),
+      api.post(`/workspaces/${workspaceId}/knowledge/changes/${id}/reject`, {}).then(r => r.data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['knowledge-changes', workspaceId] }),
   })
 }
+
+export const useHandbookProposals = useKnowledgeChanges
+export const useApproveProposal = useApproveKnowledgeChange
+export const useRejectProposal = useRejectKnowledgeChange
 
 export function useRestoreKnowledgeFile(path: string) {
   const workspaceId = useWorkspaceId()

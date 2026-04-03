@@ -84,7 +84,6 @@ export default function AgentNodeConfig({ node, onChange, readOnly = false }: Pr
     }
     const rawAgentId = participant.participant_id.split(':', 2)[1] ?? ''
     setField({
-      agent_ref: 'openclaw',
       registered_agent_id: rawAgentId,
       operator_id: participant.participant_id,
       ...(supervisorId === participant.participant_id ? { supervisor_id: null } : {}),

@@ -14,6 +14,7 @@ from sqlalchemy import and_, select
 from knotwork.auth.models import User
 from knotwork.channels import service as channel_service
 from knotwork.database import AsyncSessionLocal
+from knotwork.workspaces.guide import DEFAULT_GUIDE_MD
 from knotwork.workspaces.models import Workspace, WorkspaceMember
 
 
@@ -86,6 +87,7 @@ async def main() -> None:
                 id=uuid4(),
                 name=workspace_name,
                 slug=slug,
+                guide_md=DEFAULT_GUIDE_MD,
             )
             db.add(workspace)
             await db.flush()

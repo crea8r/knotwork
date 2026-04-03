@@ -1,5 +1,5 @@
 from uuid import uuid4
-from sqlalchemy import String, Integer, Float, JSON, DateTime, ForeignKey, Boolean
+from sqlalchemy import String, Integer, Float, JSON, DateTime, ForeignKey, Boolean, Text
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.sql import func
@@ -67,3 +67,26 @@ class KnowledgeHealthLog(Base):
     rating_score: Mapped[float] = mapped_column(Float, nullable=False)
     run_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     computed_at: Mapped[DateTime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+
+class KnowledgeChange(Base):
+    __tablename__ = "knowledge_changes"
+
+    id: Mapped[UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid4)
+    workspace_id: Mapped[UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("workspaces.id"), nullable=False)
+    project_id: Mapped[UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("projects.id"), nullable=True)
+    channel_id: Mapped[UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("channels.id", ondelete="CASCADE"), nullable=False)
+    run_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("runs.id"), nullable=True)
+    node_id: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    agent_ref: Mapped[str | None] = mapped_column(String, nullable=True)
+    action_type: Mapped[str] = mapped_column(String(40), nullable=False, default="update_content")
+    target_type: Mapped[str] = mapped_column(String(40), nullable=False, default="file")
+    target_path: Mapped[str] = mapped_column(String, nullable=False)
+    proposed_content: Mapped[str | None] = mapped_column(Text, nullable=True)
+    payload: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    reason: Mapped[str] = mapped_column(Text, nullable=False)
+    status: Mapped[str] = mapped_column(String, nullable=False, default="pending")
+    reviewed_by: Mapped[UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
+    reviewed_at: Mapped[DateTime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    final_content: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[DateTime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)

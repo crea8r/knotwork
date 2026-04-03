@@ -62,7 +62,6 @@ export default function GraphTabBar({
       type: 'agent',
       name: newNodeName.trim(),
       config: {},
-      agent_ref: 'openclaw',
       trust_level: 0.5,
     }
     addNode(node)

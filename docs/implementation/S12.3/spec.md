@@ -1,85 +1,132 @@
-# Session 12.3 — OpenClaw Plugin Redesign
+# Session 12.3 — Agent Zero, Representatives, and Workload Honesty
 
 ## Goal
 
-Rewrite the OpenClaw plugin to match the S12.1 boundary: credential holder + inbound notification channel only. Strip the execution layer. Upgrade transport if justified by S12.1's notification contract.
+With the unified participant model (S12.1) and working bridge layer (S12.2), introduce the agent features that sit on top. Agent Zero, workspace representatives, and workload honesty are configuration on a solid foundation — not architecture.
 
-S12.3 can run in parallel with S12.2 (Agent Zero, representatives, workload honesty). Both depend only on S12.1's boundary being defined.
+S12.3 depends on S12.2 (working bridge layer). It can begin design work in parallel with S12.2 but should not ship until agents can actually connect via the bridge.
 
 ## Context
 
-The current OpenClaw plugin was built as both transport and execution environment — it claims tasks, spawns subprocesses via `openclaw gateway call knotwork.execute_task`, and runs LLM calls inside the gateway request context. After S12.1 defines the plugin as notification-only, the execution code must be stripped and the plugin rewritten around its reduced role.
+The foundation is now:
+- **S12.1:** One `WorkspaceMember` table with `kind` field. JWT-based auth for both humans and agents, with ed25519 challenge-response for agent login. `skills.md`. Agent-bridge behavioral spec.
+- **S12.2:** Working bridge software. OpenClaw plugin rewritten as bridge implementation. Agents can connect, receive notifications, and call Knotwork API.
+
+S12.3 adds the workspace-level features that make agents useful team members: Agent Zero as orchestrator, representatives as accountability model, and workload honesty as operational visibility.
 
 ## In Scope
 
-### 1. Transport decision
+### 1. Agent Zero
 
-Informed by S12.1's notification contract, decide whether to upgrade from HTTP polling to WebSocket:
+Agent Zero is a WorkspaceMember with `kind=agent` and a special role: `orchestrator`. It is the workspace's optional generalist intelligence. See `docs/sysdesign/concepts/agent-zero.md` for the full concept.
 
-- If notification volume is low and ACK semantics are simple → keep HTTP polling (simpler, proven)
-- If real-time delivery matters and ACK/replay/resume semantics are needed → upgrade to WebSocket
+- Add `role` field to WorkspaceMember agent config JSON (`specialist` | `orchestrator`, default: `specialist`)
+- Only one orchestrator per workspace (UI enforces)
+- Guided onboarding conversation (re-runnable):
+  - Understand the work -> create starter workflows
+  - Create starter Handbook content
+  - Create first project
+  - Invite team members
+  - Recruit specialist agents
+- Workspace-wide read access for ongoing monitoring:
+  - Stalled runs (paused beyond threshold)
+  - Project health (deadlines vs. incomplete objectives)
+  - Escalation backlog
+  - Agent utilization (success vs. escalation rates)
+- Primary representative designation (`is_primary: true`)
 
-The decision must be recorded with rationale in this spec after S12.1 is complete.
+Agent Zero connects via the bridge (S12.2). It uses the same notification polling, session management, and API access as any other agent participant. The "orchestrator" role grants broader read permissions, not a different connection mechanism.
 
-### 2. If WebSocket is adopted
+### 2. Workspace representatives
 
-- Frame contract: auth/identify on connect, event dispatch (server → plugin), ACK/retry, keepalive/heartbeat
-- Reconnect/resume: connection loss does not silently drop notifications
-- Remove polling code for responsibilities that move to WebSocket
+Representatives are the workspace members (human or agent) designated as in charge of the workspace's interactions. See `docs/sysdesign/concepts/representatives.md`.
 
-### 3. Auth-mode auto-resolution
+**Data model:**
+```
+WorkspaceRepresentative
+  id                uuid  PK
+  workspace_id      uuid  FK -> Workspace
+  member_id         uuid  FK -> WorkspaceMember
+  is_primary        bool
+  created_at        timestamptz
+```
 
-Plugin startup resolves gateway auth strategy from OpenClaw runtime config:
+Note: `member_id` references the unified `WorkspaceMember` table (from S12.1). Both human and agent representatives use the same FK — no separate `agent_id` column needed.
 
-- Strategy matrix: `none`, `token`, `password`, `trusted-proxy`
-- `authAuto: true` default; optional config overrides
-- Startup resolves strategy once, applies consistently
+- Human + agent representatives coexist
+- Representative-priority routing: events route to primary first, then others
+- CRUD endpoints: `GET/POST/DELETE /api/v1/workspaces/:id/representatives`
+- Agent Zero is the canonical primary representative when it exists
 
-### 4. Unified `callGateway()` wrapper
+**What representatives do:**
+- Receive Knotwork internal events via their configured delivery means
+- Handle external interactions using their own tools
+- Call Knotwork MCP/API when structured work is needed
+- Knotwork does not manage how they communicate externally
 
-- Applies resolved auth consistently across all gateway calls
-- Retries once on auth errors with fallback strategy when safe
-- Classifies failures into explicit codes: `AUTH_PASSWORD_MISSING`, `AUTH_INVALID`, `AUTH_MODE_UNSUPPORTED`, `AUTH_TRUSTED_PROXY_UNAVAILABLE`
+### 3. Workload honesty
 
-### 5. Automatic credential recovery
+Queue state must be visible and honest — not hidden behind generic "pending."
 
-- Startup handshake retries with backoff until success
-- Auth failures during notification delivery trigger re-handshake automatically
-- Stale credentials do not require manual restart as the primary recovery path
+**Queue states:**
+- `unclaimed` — task created, no participant has picked it up
+- `queued` — assigned to a participant but not yet started
+- `running` — actively being worked
+- `stalled` — started but heartbeat/progress gone quiet (configurable threshold)
+- `orphaned` — participant disconnected, task left in limbo
 
-### 6. Degraded-state observability
+**Assignment semantics anchored to participants (not plugins):**
+- Tasks are assigned to workspace members (human or agent), not to plugins or bridge instances
+- Participant capacity is self-reported (via heartbeat from bridge, or manual status from human)
+- Knotwork does not manage execution — it tracks what participants claim and report
 
-- Explicit states: `connected`, `handshake_failed`, `auth_stale`, `gateway_unavailable`, `idle`
-- Visible timestamps: last successful handshake, last notification received, last heartbeat
-- Gateway auth diagnostics: detected auth mode, active strategy, last auth error code, next remediation suggestion
+**Operator UI:**
+- Status buckets with badges in dashboard
+- Task state labels in run detail with context
+- Cancel button for unclaimed/queued tasks
+- Queue depth warning on run trigger
 
-### 7. Strip execution layer
+**Historical input:** `workload-honesty-spec.md` and `workload-honesty-plan.md` are preserved in this directory as design input. They reflect pre-MCP assumptions and should not be implemented as written — the problem statements remain valid but the solutions need fresh design anchored to the unified participant model from S12.1.
 
-Remove from plugin:
-- Task execution subprocess spawning (`openclaw gateway call knotwork.execute_task`)
-- `subagent.run()` integration for task execution
-- Concurrency management (`maxConcurrentTasks`, slot tracking)
-- Claim loop and task lifecycle management beyond receiving notifications
+### 4. Design questions
 
-### 8. Deployment guidance
+These questions carry forward from earlier planning:
 
-- Reverse proxy / TLS configuration for long-lived WS connections (if WS chosen)
-- Update install/deploy docs to reflect the final transport
-- Document the new plugin role for operators migrating from the old model
+- **Identity/permission model for agent participants.** What can an agent see and do in the workspace? Read-only by default? Scoped to assigned projects? The orchestrator role (Agent Zero) gets broader permissions — what does "broader" mean precisely?
+- **Transcript visibility and audit.** When an agent resolves an escalation or posts to a channel, how is authorship recorded? What audit trail is required? The unified `WorkspaceMember` model should make this cleaner — participant identity is always tied back to a workspace member, even though the typed participant id may still encode transport/routing information.
+- **Workload-honesty placement.** Where do queue semantics live now that execution is agent-side? In the Knotwork backend (state machine tracking claims and heartbeats), in the agent's self-reporting (via bridge heartbeat), or both?
 
 ## Explicitly Out of Scope
 
-- Plugin boundary definition (→ S12.1, already settled)
-- Agent Zero, representatives, workload honesty (→ S12.2)
-- Re-adding execution capabilities to the plugin
-- Long-term coexistence of polling + WS unless explicitly chosen as interim migration
+- Unified participant model (done in S12.1)
+- Bridge software and plugin rewrite (done in S12.2)
+- Designer/workflow chat agent participation (beyond Phase 1)
+- Handbook mention syntax (`/filename`, `[[filename]]`) (beyond Phase 1)
+- Project-level AI status writing (beyond Phase 1)
+
+## Key Files
+
+**Backend — new:**
+- `workspaces/representatives.py` — WorkspaceRepresentative model + service
+- `workspaces/router_representatives.py` — CRUD endpoints
+- Migration: add `WorkspaceRepresentative` table
+
+**Backend — modify:**
+- `workspaces/models.py` — add `role` to agent config in WorkspaceMember
+- `notifications/service.py` — representative-priority routing
+- `runs/service.py` — workload state tracking (unclaimed/queued/running/stalled/orphaned)
+
+**Frontend — new/modify:**
+- Settings -> Representatives tab
+- Agent Zero onboarding flow UI
+- Dashboard workload status buckets
+- Run detail task state labels
 
 ## Acceptance Criteria
 
-1. Plugin matches S12.1 boundary — credential + notification only, no execution code remains.
-2. Transport decision is recorded with rationale.
-3. No silent notification loss on transient backend/network failures.
-4. Plugin recovers from routine disconnect or auth drift without requiring manual OpenClaw restart.
-5. Operator-facing status/debug surfaces show explicit degraded-state diagnostics.
-6. Auth failures surface with explicit error codes and remediation guidance.
-7. Install/deploy docs match the final transport decision.
+1. Agent Zero is a registerable orchestrator (`role: orchestrator` in WorkspaceMember config) with guided onboarding flow.
+2. Representatives model supports human + agent designation with priority routing, using unified `WorkspaceMember` FK.
+3. Workload state is visible to operators with honest queue semantics (unclaimed/queued/running/stalled/orphaned).
+4. Agent Zero connects via the same bridge mechanism as any other agent (S12.2) — no special connection path.
+5. Identity, permission, and audit semantics for agent participants are documented.
+6. Historical workload-honesty material has been reviewed and solutions redesigned for the unified participant model.

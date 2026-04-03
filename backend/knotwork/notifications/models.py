@@ -65,7 +65,7 @@ class ParticipantDeliveryPreference(Base):
     event_type: Mapped[str] = mapped_column(String(50), nullable=False)
     app_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     email_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
-    plugin_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    push_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     email_address: Mapped[str | None] = mapped_column(String(320), nullable=True)
     updated_at: Mapped[DateTime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False

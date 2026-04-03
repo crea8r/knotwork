@@ -1,13 +1,12 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from './client'
 import { useAuthStore } from '@/store/auth'
-import type { ChannelMessage } from '@/types'
 
 function useWorkspaceId() {
   return useAuthStore((s) => s.workspaceId) ?? import.meta.env.VITE_DEV_WORKSPACE_ID ?? 'dev-workspace'
 }
 
-export type Provider = 'anthropic' | 'openai' | 'openclaw'
+export type Provider = 'anthropic' | 'openai'
 export type AgentStatus = 'inactive' | 'active' | 'archived'
 
 export interface RegisteredAgent {
@@ -27,8 +26,6 @@ export interface RegisteredAgent {
   capability_refreshed_at: string | null
   capability_freshness: 'fresh' | 'stale' | 'needs_refresh'
   last_used_at: string | null
-  openclaw_integration_id: string | null
-  openclaw_remote_agent_id: string | null
   created_at: string
   updated_at: string
 }
@@ -120,100 +117,7 @@ export interface DebugLinkItem {
   created_at: string
 }
 
-export interface AgentMainChatAskResponse {
-  task_id: string
-  status: 'completed' | 'escalated' | 'failed' | 'timeout'
-  reply: string | null
-  question: string | null
-}
 
-export interface AgentMainChatEnsureResponse {
-  ready: boolean
-  status: 'already_ready' | 'initialized' | 'initializing' | 'timeout'
-  task_id: string | null
-  session_name: string
-  message?: string | null
-}
-
-export interface OpenClawHandshakeToken {
-  workspace_id: string
-  token: string
-  expires_at: string
-}
-
-export interface OpenClawIntegration {
-  id: string
-  workspace_id: string
-  plugin_instance_id: string
-  openclaw_workspace_id: string | null
-  plugin_version: string | null
-  status: string
-  connected_at: string
-  last_seen_at: string
-  created_at: string
-  updated_at: string
-}
-
-export interface OpenClawIntegrationDeleteResult {
-  integration_id: string
-  plugin_instance_id: string
-  archived_registered_agent_count: number
-}
-
-export interface OpenClawRemoteAgent {
-  id: string
-  workspace_id: string
-  integration_id: string
-  remote_agent_id: string
-  slug: string
-  display_name: string
-  description?: string | null
-  tools: Array<Record<string, unknown>>
-  constraints: Record<string, unknown>
-  is_active: boolean
-  last_synced_at: string
-}
-
-export interface OpenClawIntegrationDebugState {
-  integration_id: string
-  plugin_instance_id: string
-  status: string
-  connected_at: string
-  last_seen_at: string
-  tasks_running: number | null
-  slots_available: number | null
-  pending_count: number
-  claimed_count: number
-  completed_count: number
-  failed_count: number
-  escalated_count: number
-  latest_task_created_at: string | null
-  oldest_pending_task_at: string | null
-}
-
-export interface OpenClawTaskDebugItem {
-  task_id: string
-  integration_id: string
-  status: string
-  node_id: string
-  run_id: string | null
-  agent_ref: string
-  created_at: string
-  claimed_at: string | null
-  completed_at: string | null
-  failed_at: string | null
-  updated_at: string
-  error_message: string | null
-  event_count: number
-  latest_event_at: string | null
-}
-
-export interface OpenClawDebugState {
-  workspace_id: string
-  now_utc: string
-  integrations: OpenClawIntegrationDebugState[]
-  recent_tasks: OpenClawTaskDebugItem[]
-}
 
 function invalidateAgentQueries(qc: ReturnType<typeof useQueryClient>, agentId?: string) {
   const workspaceId = useAuthStore.getState().workspaceId ?? import.meta.env.VITE_DEV_WORKSPACE_ID ?? 'dev-workspace'
@@ -411,130 +315,4 @@ export function useDeleteAgent() {
   })
 }
 
-export function useAgentMainChatMessages(agentId: string) {
-  const workspaceId = useWorkspaceId()
-  return useQuery<ChannelMessage[]>({
-    queryKey: ['agent-main-chat-messages', workspaceId, agentId],
-    queryFn: async () => {
-      const { data } = await api.get(`/workspaces/${workspaceId}/agents/${agentId}/main-chat/messages`)
-      return data
-    },
-    enabled: !!agentId,
-    refetchInterval: 4_000,
-  })
-}
 
-export interface ChatAttachmentRef {
-  key: string
-  url: string
-  filename: string
-  mime_type: string
-  size: number
-}
-
-export function useAskAgentMainChat(agentId: string) {
-  const workspaceId = useWorkspaceId()
-  const qc = useQueryClient()
-  return useMutation({
-    mutationFn: async (payload: { message: string; attachments?: ChatAttachmentRef[] }) => {
-      const { data } = await api.post(`/workspaces/${workspaceId}/agents/${agentId}/main-chat/ask`, payload)
-      return data as AgentMainChatAskResponse
-    },
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['agent-main-chat-messages', workspaceId, agentId] })
-      invalidateAgentQueries(qc, agentId)
-    },
-  })
-}
-
-export function useEnsureAgentMainChat(agentId: string) {
-  const workspaceId = useWorkspaceId()
-  const qc = useQueryClient()
-  return useMutation({
-    mutationFn: async () => {
-      const { data } = await api.post(`/workspaces/${workspaceId}/agents/${agentId}/main-chat/ensure`)
-      return data as AgentMainChatEnsureResponse
-    },
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['agent-main-chat-messages', workspaceId, agentId] })
-    },
-  })
-}
-
-export function useCreateOpenClawHandshakeToken() {
-  const workspaceId = useWorkspaceId()
-  return useMutation({
-    mutationFn: async (payload?: { ttl_minutes?: number }) => {
-      const body = payload?.ttl_minutes ? { ttl_minutes: payload.ttl_minutes } : {}
-      const { data } = await api.post(`/workspaces/${workspaceId}/openclaw/handshake-token`, body)
-      return data as OpenClawHandshakeToken
-    },
-  })
-}
-
-export function useOpenClawIntegrations() {
-  const workspaceId = useWorkspaceId()
-  return useQuery<OpenClawIntegration[]>({
-    queryKey: ['openclaw-integrations', workspaceId],
-    queryFn: async () => {
-      const { data } = await api.get(`/workspaces/${workspaceId}/openclaw/integrations`)
-      return data
-    },
-  })
-}
-
-export function useDeleteOpenClawIntegration() {
-  const workspaceId = useWorkspaceId()
-  const qc = useQueryClient()
-  return useMutation({
-    mutationFn: async (integrationId: string) => {
-      const { data } = await api.delete(`/workspaces/${workspaceId}/openclaw/integrations/${integrationId}`)
-      return data as OpenClawIntegrationDeleteResult
-    },
-    onSuccess: (_, integrationId) => {
-      invalidateAgentQueries(qc)
-      qc.invalidateQueries({ queryKey: ['openclaw-integrations', workspaceId] })
-      qc.invalidateQueries({ queryKey: ['openclaw-debug-state', workspaceId] })
-      qc.invalidateQueries({ queryKey: ['openclaw-remote-agents', workspaceId, integrationId] })
-    },
-  })
-}
-
-export function useOpenClawDebugState() {
-  const workspaceId = useWorkspaceId()
-  return useQuery<OpenClawDebugState>({
-    queryKey: ['openclaw-debug-state', workspaceId],
-    queryFn: async () => {
-      const { data } = await api.get(`/workspaces/${workspaceId}/openclaw/debug-state`)
-      return data
-    },
-    refetchInterval: 5_000,
-  })
-}
-
-export function useOpenClawRemoteAgents(integrationId: string) {
-  const workspaceId = useWorkspaceId()
-  return useQuery<OpenClawRemoteAgent[]>({
-    queryKey: ['openclaw-remote-agents', workspaceId, integrationId],
-    queryFn: async () => {
-      const { data } = await api.get(`/workspaces/${workspaceId}/openclaw/integrations/${integrationId}/agents`)
-      return data
-    },
-    enabled: !!integrationId,
-  })
-}
-
-export function useRegisterOpenClawRemoteAgent() {
-  const workspaceId = useWorkspaceId()
-  const qc = useQueryClient()
-  return useMutation({
-    mutationFn: async (payload: { integration_id: string; remote_agent_id: string; display_name?: string }) => {
-      const { data } = await api.post(`/workspaces/${workspaceId}/openclaw/register-agent`, payload)
-      return data as { registered_agent_id: string; display_name: string; agent_ref: string; provider: 'openclaw' }
-    },
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['agents', workspaceId] })
-      qc.invalidateQueries({ queryKey: ['openclaw-integrations', workspaceId] })
-    },
-  })
-}

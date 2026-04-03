@@ -44,11 +44,8 @@ class Settings(BaseSettings):
     # Frontend URL used in magic link / invite emails and public pages.
     frontend_url: str = "http://localhost:3000"
     # Canonical externally reachable backend URL for backend-only absolute URLs
-    # such as OpenClaw install links and attachment downloads.
+    # such as attachment downloads.
     backend_url: str = "http://localhost:8000"
-    # Externally hosted OpenClaw plugin artifact URL. Knotwork advertises this
-    # in the install bundle but does not build or serve the plugin package.
-    openclaw_plugin_package_url: str = "https://lab.crea8r.xyz/kw-plugin/latest"
     # Dev-only: if set, all requests authenticate as this user UUID without JWT.
     # Leave empty in production.
     auth_dev_bypass_user_id: str = ""
@@ -56,11 +53,6 @@ class Settings(BaseSettings):
     # Knowledge health thresholds (workspace defaults)
     token_count_min: int = 300
     token_count_max: int = 6000
-
-    # Plugin compatibility — minimum versions required by this backend release.
-    # The /health endpoint exposes these so operators and update scripts can verify
-    # that installed plugins are compatible before going live.
-    min_openclaw_version: str = "1.0.0"
 
     # Run defaults
     confidence_threshold_default: float = 0.70

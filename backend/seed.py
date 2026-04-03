@@ -543,6 +543,7 @@ async def main() -> None:
     from sqlalchemy import select
     from knotwork.database import AsyncSessionLocal
     from knotwork.workspaces.models import Workspace
+    from knotwork.workspaces.guide import DEFAULT_GUIDE_MD
     from knotwork.graphs.models import Graph, GraphVersion
     from knotwork.utils.namegen import generate_name
 
@@ -551,7 +552,7 @@ async def main() -> None:
         result = await db.execute(select(Workspace).limit(1))
         ws = result.scalar_one_or_none()
         if ws is None:
-            ws = Workspace(name="Dev Workspace", slug="dev")
+            ws = Workspace(name="Dev Workspace", slug="dev", guide_md=DEFAULT_GUIDE_MD)
             db.add(ws)
             await db.commit()
             await db.refresh(ws)

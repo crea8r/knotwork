@@ -1,21 +1,21 @@
 # Core Concepts — Workspace Representatives
 
-Phased introduction: human representatives in S12 (human-first baseline), agent representatives (including Agent Zero) in S12.2. Representatives are how Knotwork models accountability for external interactions while keeping a clean boundary between Knotwork-managed internal delivery and representative-managed external communication.
+Phased introduction: human representatives in S12 (human-first baseline), agent representatives (including Agent Zero) in S12.3. S12.1 unifies the participant model (human + agent in one table), S12.2 builds the bridge layer agents use to connect, and S12.3 adds representatives on top. Representatives are how Knotwork models accountability for external interactions while keeping a clean boundary between Knotwork-managed internal delivery and representative-managed external communication.
 
 ---
 
 ## The Model
 
-A **Representative** is a WorkspaceMember or RegisteredAgent designated as in charge of the workspace's external interactions. Multiple representatives are supported.
+A **Representative** is a `WorkspaceMember` (human or agent) designated as in charge of the workspace's external interactions. Multiple representatives are supported.
 
 ```
 Workspace
   └─ Representatives[]
        ├─ Sarah Chen  (WorkspaceMember, human)                             is_primary: true
-       └─ Agent Zero  (RegisteredAgent, role: orchestrator, via OpenClaw)  is_primary: true  [S12.2]
+       └─ Agent Zero  (WorkspaceMember kind=agent, role: orchestrator, via bridge)  is_primary: true  [S12.3]
 ```
 
-In S12 (human-first baseline), only human representatives are supported. Agent representatives, including **Agent Zero** — the workspace's optional orchestrator agent — are introduced in S12.2 after the plugin boundary is defined. See [concepts/agent-zero.md](./agent-zero.md).
+In S12 (human-first baseline), only human representatives are supported. Agent representatives, including **Agent Zero** — the workspace's optional orchestrator agent — are introduced in S12.3 after the bridge layer (S12.2) is built. See [concepts/agent-zero.md](./agent-zero.md).
 
 Representatives are a workspace-level designation — not tied to a specific channel, project, or workflow. They are the people and agents the workspace puts in charge.
 
@@ -27,7 +27,7 @@ Representatives are a workspace-level designation — not tied to a specific cha
 2. **Surfaces task completions** to representatives rather than broadcasting to all workspace members
 3. **Does not manage** how representatives communicate externally — that remains entirely their concern
 
-Knotwork's delivery system can send internal events or assignments through configured means such as app, email, or OpenClaw plugin. This is separate from the representative's own external tools.
+Knotwork's delivery system can send internal events or assignments through configured means such as app, email, or push. This is separate from the representative's own external tools.
 
 ---
 
@@ -67,7 +67,7 @@ These extend the existing MCP toolset (S7 graph/run tools remain available).
 Both humans and agents can be representatives. The designation is what matters — not what's behind it.
 
 - **Human representative**: a WorkspaceMember who receives Knotwork events over app/email, checks their own external tools, and calls the MCP/API when work needs running
-- **Agent representative**: a RegisteredAgent (e.g., connected via OpenClaw) that can receive Knotwork task delivery over plugin, use its own external tools, decide when to trigger Knotwork tasks, and handle outputs or replies
+- **Agent representative**: a WorkspaceMember (kind=agent, connected via the bridge) that can receive Knotwork task delivery over push, use its own external tools, decide when to trigger Knotwork tasks, and handle outputs or replies
 
 From the workspace's perspective, both are representatives. From external parties' perspective, they interact with whoever the representative is — a person, an agent, or a human supervised by an agent. The distinction is internal.
 
@@ -75,14 +75,14 @@ From the workspace's perspective, both are representatives. From external partie
 
 ## S12 Separation of Concerns
 
-S10 introduces participant-specific event delivery and treats OpenClaw plugin as one Knotwork-managed communication mean for internal routing.
+S10 introduces participant-specific event delivery with three delivery means: `app` (in-app inbox), `email`, and `push` (bridge/client-side polling).
 
 S12 makes the boundary explicit:
 
-- **OpenClaw plugin**: Knotwork -> agent delivery path
-- **MCP**: agent -> Knotwork interaction surface
+- **Push delivery** (`delivery_mean=push`): Knotwork records the intent; the client bridge (or any future push client) polls and picks it up
+- **MCP**: participant -> Knotwork interaction surface
 
-This separation avoids overloading the plugin with long-term application semantics while preserving compatibility with the delivery model introduced earlier.
+All three delivery means apply equally to humans and agents — kind is a UI hint, not a capability gate. A human with a push client gets push delivery; an agent with an email gets email delivery.
 
 ---
 

@@ -120,23 +120,21 @@ async def get_participant_preference(
 
 
 def default_preference_state(participant_id: str, event_type: str) -> dict[str, bool]:
-    kind = participant_kind(participant_id)
-    human_app_defaults = {
+    app_enabled_defaults = {
         "escalation_created",
         "mentioned_message",
+        "message_posted",
         "run_failed",
         "run_completed",
         "task_assigned",
     }
-    app_enabled = kind == "human" and event_type in human_app_defaults
+    app_enabled = event_type in app_enabled_defaults
     email_enabled = False
-    plugin_enabled = kind == "agent" and event_type == "task_assigned"
-    if kind == "agent" and event_type != "task_assigned":
-        plugin_enabled = False
+    push_enabled = event_type in SUPPORTED_EVENT_TYPES
     return {
         "app_enabled": app_enabled,
         "email_enabled": email_enabled,
-        "plugin_enabled": plugin_enabled,
+        "push_enabled": push_enabled,
     }
 
 
@@ -175,7 +173,7 @@ async def get_or_build_participant_preferences(
                 "event_type": event_type,
                 "app_enabled": pref.app_enabled if pref else defaults["app_enabled"],
                 "email_enabled": pref.email_enabled if pref else defaults["email_enabled"],
-                "plugin_enabled": pref.plugin_enabled if pref else defaults["plugin_enabled"],
+                "push_enabled": pref.push_enabled if pref else defaults["push_enabled"],
                 "email_address": pref.email_address if pref else None,
             }
         )
@@ -190,7 +188,7 @@ async def update_participant_preference(
     *,
     app_enabled: bool | None = None,
     email_enabled: bool | None = None,
-    plugin_enabled: bool | None = None,
+    push_enabled: bool | None = None,
     email_address: str | None = None,
 ) -> ParticipantDeliveryPreference:
     pref = await get_participant_preference(db, workspace_id, participant_id, event_type)
@@ -202,7 +200,7 @@ async def update_participant_preference(
             event_type=event_type,
             app_enabled=defaults["app_enabled"],
             email_enabled=defaults["email_enabled"],
-            plugin_enabled=defaults["plugin_enabled"],
+            push_enabled=defaults["push_enabled"],
         )
         db.add(pref)
         await db.flush()
@@ -211,8 +209,8 @@ async def update_participant_preference(
         pref.app_enabled = app_enabled
     if email_enabled is not None:
         pref.email_enabled = email_enabled
-    if plugin_enabled is not None:
-        pref.plugin_enabled = plugin_enabled
+    if push_enabled is not None:
+        pref.push_enabled = push_enabled
     if email_address is not None:
         pref.email_address = email_address.strip() or None
 
@@ -229,9 +227,15 @@ async def resolve_email_address(
     if explicit_email:
         return explicit_email.strip() or None
     kind, raw_id = parse_participant_id(participant_id)
-    if kind != "human":
-        return None
-    user = await db.get(User, UUID(raw_id))
+    user: User | None = None
+    if kind == "human":
+        user = await db.get(User, UUID(raw_id))
+    elif kind == "agent":
+        from knotwork.workspaces.models import WorkspaceMember
+
+        member = await db.get(WorkspaceMember, UUID(raw_id))
+        if member is not None:
+            user = await db.get(User, member.user_id)
     if not user:
         return None
     return (user.email or "").strip() or None
@@ -244,7 +248,6 @@ async def resolve_delivery_means(
     event_type: str,
 ) -> dict:
     pref = await get_participant_preference(db, workspace_id, participant_id, event_type)
-    kind = participant_kind(participant_id)
 
     means: list[str] = []
     email_address: str | None = None
@@ -255,8 +258,8 @@ async def resolve_delivery_means(
         if pref.email_enabled:
             means.append("email")
             email_address = await resolve_email_address(db, participant_id, pref.email_address)
-        if pref.plugin_enabled:
-            means.append("plugin")
+        if pref.push_enabled:
+            means.append("push")
         return {"means": means, "email_address": email_address}
 
     defaults = default_preference_state(participant_id, event_type)
@@ -264,8 +267,8 @@ async def resolve_delivery_means(
         means.append("app")
     if defaults["email_enabled"]:
         means.append("email")
-    if defaults["plugin_enabled"]:
-        means.append("plugin")
+    if defaults["push_enabled"]:
+        means.append("push")
 
     return {"means": means, "email_address": None}
 
@@ -511,16 +514,16 @@ async def deliver_event_to_participant(
                 )
             continue
 
-        if mean == "plugin":
+        if mean == "push":
             deliveries.append(
                 await create_delivery(
                     db,
                     workspace_id=event.workspace_id,
                     event_id=event.id,
                     participant_id=participant_id,
-                    delivery_mean="plugin",
+                    delivery_mean="push",
                     status="skipped",
-                    detail="Plugin delivery remains handled outside the S10 notification core",
+                    detail="Push transport is client-side; Knotwork records the preference and delivery row but does not dispatch push traffic itself",
                 )
             )
 

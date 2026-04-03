@@ -225,7 +225,7 @@ def test_input_sources_config_ignored():
         "id": "node-test",
         "type": "agent",
         "name": "Test Node",
-        "agent_ref": "openclaw",
+        "agent_ref": "human",
         "config": {
             "input_sources": ["run_input", "node-prev"],  # legacy field — must be silently ignored
             "system_prompt": "Do something.",

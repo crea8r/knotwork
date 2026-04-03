@@ -21,8 +21,6 @@ import knotwork.audit.models       # noqa: F401
 import knotwork.notifications.models  # noqa: F401
 import knotwork.channels.models    # noqa: F401
 import knotwork.public_workflows.models  # noqa: F401
-import knotwork.registered_agents.models  # noqa: F401
-import knotwork.openclaw_integrations.models  # noqa: F401
 
 config = context.config
 if config.config_file_name is not None:

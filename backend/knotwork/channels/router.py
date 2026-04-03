@@ -34,7 +34,12 @@ from knotwork.channels.schemas import (
 )
 from knotwork.database import get_db
 from knotwork.notifications import service as notification_service
-from knotwork.participants import human_participant_id, list_workspace_participants, participant_kind
+from knotwork.participants import list_workspace_participants, member_participant_id, participant_kind
+
+
+def _caller_participant_id(user: User, member: WorkspaceMember) -> str:
+    """Return the participant_id for the calling workspace member."""
+    return member_participant_id(member, user.id)
 from knotwork.workspaces.models import WorkspaceMember
 
 
@@ -85,6 +90,30 @@ async def get_channel(
     ch = await service.get_channel(db, workspace_id, channel_ref)
     if not ch:
         raise HTTPException(404, "Channel not found")
+    return ChannelOut.model_validate(ch)
+
+
+@router.get("/{workspace_id}/channels/asset-chat/resolve", response_model=ChannelOut)
+async def get_asset_chat_channel(
+    workspace_id: UUID,
+    asset_type: str = Query(...),
+    path: str | None = Query(None),
+    asset_id: str | None = Query(None),
+    project_id: UUID | None = Query(None),
+    _member: WorkspaceMember = Depends(get_workspace_member),
+    db: AsyncSession = Depends(get_db),
+):
+    try:
+        ch = await service.get_or_create_asset_chat_channel(
+            db,
+            workspace_id,
+            asset_type=asset_type,
+            path=path,
+            asset_id=asset_id,
+            project_id=project_id,
+        )
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
     return ChannelOut.model_validate(ch)
 
 
@@ -184,7 +213,7 @@ async def create_message(
     channel_ref: str,
     data: ChannelMessageCreate,
     user: User = Depends(get_current_user),
-    _member: WorkspaceMember = Depends(get_workspace_member),
+    member: WorkspaceMember = Depends(get_workspace_member),
     db: AsyncSession = Depends(get_db),
 ):
     ch = await service.get_channel(db, workspace_id, channel_ref)
@@ -197,7 +226,7 @@ async def create_message(
                 "author_name": user.name,
                 "metadata": {
                     **(data.metadata or {}),
-                    "author_participant_id": human_participant_id(user.id),
+                    "author_participant_id": _caller_participant_id(user, member),
                 },
             }
         )
@@ -243,7 +272,7 @@ async def ask_handbook_chat(
     channel_ref: str,
     body: HandbookChatAskRequest,
     user: User = Depends(get_current_user),
-    _member: WorkspaceMember = Depends(get_workspace_member),
+    member: WorkspaceMember = Depends(get_workspace_member),
     db: AsyncSession = Depends(get_db),
 ):
     from knotwork.channels.handbook_agent import ask_handbook_agent
@@ -269,7 +298,7 @@ async def ask_handbook_chat(
             content=user_text,
             metadata={
                 "intent": "handbook_edit_request",
-                "author_participant_id": human_participant_id(user.id),
+                "author_participant_id": _caller_participant_id(user, member),
             },
         ),
     )
@@ -298,7 +327,7 @@ async def ask_handbook_chat(
             workspace_id,
             ch.id,
             DecisionEventCreate(
-                decision_type="handbook_proposal",
+                decision_type="knowledge_change",
                 actor_type="agent",
                 actor_name="Knotwork Agent",
                 payload=proposal,
@@ -321,7 +350,26 @@ async def ask_handbook_chat(
 
 
 @router.post("/{workspace_id}/channels/{channel_ref}/handbook/proposals/{proposal_id}/resolve")
-async def resolve_handbook_proposal(
+async def resolve_handbook_knowledge_change_legacy(
+    workspace_id: UUID,
+    channel_ref: str,
+    proposal_id: str,
+    body: HandbookProposalResolveRequest,
+    _member: WorkspaceMember = Depends(get_workspace_member),
+    db: AsyncSession = Depends(get_db),
+):
+    return await resolve_knowledge_change(
+        workspace_id=workspace_id,
+        channel_ref=channel_ref,
+        proposal_id=proposal_id,
+        body=body,
+        _member=_member,
+        db=db,
+    )
+
+
+@router.post("/{workspace_id}/channels/{channel_ref}/knowledge/changes/{proposal_id}/resolve")
+async def resolve_knowledge_change(
     workspace_id: UUID,
     channel_ref: str,
     proposal_id: str,
@@ -343,7 +391,7 @@ async def resolve_handbook_proposal(
         .where(
             DecisionEvent.workspace_id == workspace_id,
             DecisionEvent.channel_id == ch.id,
-            DecisionEvent.decision_type == "handbook_proposal",
+            DecisionEvent.decision_type == "knowledge_change",
         )
         .order_by(DecisionEvent.created_at.desc())
     )
@@ -423,10 +471,11 @@ async def get_inbox(
     workspace_id: UUID,
     archived: bool = Query(False),
     user: User = Depends(get_current_user),
-    _member: WorkspaceMember = Depends(get_workspace_member),
+    member: WorkspaceMember = Depends(get_workspace_member),
     db: AsyncSession = Depends(get_db),
 ):
-    rows = await service.inbox_items(db, workspace_id, human_participant_id(user.id), archived=archived)
+    participant_id = _caller_participant_id(user, member)
+    rows = await service.inbox_items(db, workspace_id, participant_id, archived=archived)
     return [InboxItem.model_validate(r) for r in rows]
 
 
@@ -434,10 +483,10 @@ async def get_inbox(
 async def get_inbox_summary(
     workspace_id: UUID,
     user: User = Depends(get_current_user),
-    _member: WorkspaceMember = Depends(get_workspace_member),
+    member: WorkspaceMember = Depends(get_workspace_member),
     db: AsyncSession = Depends(get_db),
 ):
-    summary = await service.inbox_summary(db, workspace_id, human_participant_id(user.id))
+    summary = await service.inbox_summary(db, workspace_id, _caller_participant_id(user, member))
     return InboxSummary.model_validate(summary)
 
 
@@ -445,10 +494,10 @@ async def get_inbox_summary(
 async def mark_inbox_read_all(
     workspace_id: UUID,
     user: User = Depends(get_current_user),
-    _member: WorkspaceMember = Depends(get_workspace_member),
+    member: WorkspaceMember = Depends(get_workspace_member),
     db: AsyncSession = Depends(get_db),
 ):
-    participant_id = human_participant_id(user.id)
+    participant_id = _caller_participant_id(user, member)
     await notification_service.mark_all_app_deliveries_read(
         db,
         workspace_id=workspace_id,
@@ -464,10 +513,10 @@ async def update_inbox_delivery_state(
     delivery_id: UUID,
     data: InboxStateUpdate,
     user: User = Depends(get_current_user),
-    _member: WorkspaceMember = Depends(get_workspace_member),
+    member: WorkspaceMember = Depends(get_workspace_member),
     db: AsyncSession = Depends(get_db),
 ):
-    participant_id = human_participant_id(user.id)
+    participant_id = _caller_participant_id(user, member)
     delivery = await notification_service.update_delivery_state(
         db,
         workspace_id=workspace_id,
@@ -494,10 +543,10 @@ async def update_inbox_delivery_state(
 async def get_my_channel_subscriptions(
     workspace_id: UUID,
     user: User = Depends(get_current_user),
-    _member: WorkspaceMember = Depends(get_workspace_member),
+    member: WorkspaceMember = Depends(get_workspace_member),
     db: AsyncSession = Depends(get_db),
 ):
-    rows = await service.list_channel_subscriptions(db, workspace_id, human_participant_id(user.id))
+    rows = await service.list_channel_subscriptions(db, workspace_id, _caller_participant_id(user, member))
     return [
         ChannelSubscriptionOut(
             channel_id=row.channel_id,
@@ -516,7 +565,7 @@ async def update_my_channel_subscription(
     channel_ref: str,
     data: ChannelSubscriptionUpdate,
     user: User = Depends(get_current_user),
-    _member: WorkspaceMember = Depends(get_workspace_member),
+    member: WorkspaceMember = Depends(get_workspace_member),
     db: AsyncSession = Depends(get_db),
 ):
     ch = await service.get_channel(db, workspace_id, channel_ref)
@@ -527,7 +576,7 @@ async def update_my_channel_subscription(
             db,
             workspace_id,
             ch.id,
-            human_participant_id(user.id),
+            _caller_participant_id(user, member),
             subscribed=data.subscribed,
         )
     except ValueError as exc:
@@ -549,7 +598,7 @@ async def get_participant_delivery_preferences(
     member: WorkspaceMember = Depends(get_workspace_member),
     db: AsyncSession = Depends(get_db),
 ):
-    current_participant_id = human_participant_id(user.id)
+    current_participant_id = _caller_participant_id(user, member)
     if member.role != "owner" and participant_id != current_participant_id:
         raise HTTPException(status_code=403, detail="Only owners can inspect other participants")
     participants = await list_workspace_participants(db, workspace_id)
@@ -575,7 +624,7 @@ async def update_participant_delivery_preference(
     member: WorkspaceMember = Depends(get_workspace_member),
     db: AsyncSession = Depends(get_db),
 ):
-    current_participant_id = human_participant_id(user.id)
+    current_participant_id = _caller_participant_id(user, member)
     if member.role != "owner" and participant_id != current_participant_id:
         raise HTTPException(status_code=403, detail="Only owners can update other participants")
     pref = await notification_service.update_participant_preference(
@@ -585,7 +634,7 @@ async def update_participant_delivery_preference(
         event_type=event_type,
         app_enabled=data.app_enabled,
         email_enabled=data.email_enabled,
-        plugin_enabled=data.plugin_enabled,
+        push_enabled=data.push_enabled,
         email_address=data.email_address,
     )
     return ParticipantDeliveryPreferenceOut.model_validate(pref)

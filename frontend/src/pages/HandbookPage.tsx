@@ -8,11 +8,14 @@ import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useKnowledgeFiles, useSearchKnowledgeFiles, useUploadFile, useUploadRawFile, useRenameKnowledgeFile, useDeleteKnowledgeFile, useCreateKnowledgeFile } from '@/api/knowledge'
 import { useDeleteGraph, useGraphs, useUpdateGraph } from '@/api/graphs'
 import { useKnowledgeFolders, useDeleteFolder, useRenameFolder } from '@/api/folders'
-import { useChannels, useCreateChannel } from '@/api/channels'
+import { useAssetChatChannel, usePostChannelMessage } from '@/api/channels'
 import { useAuthStore } from '@/store/auth'
+import { ChannelShell, ChannelTimeline } from '@/components/channel/ChannelFrame'
+import WorkflowSlashComposer from '@/components/channel/WorkflowSlashComposer'
+import { useChannelTimeline } from '@/components/channel/useChannelTimeline'
+import { useMentionDetection } from '@/components/channel/useMentionDetection'
 import { useFileBrowserState } from '@/components/file-browser/useFileBrowserState'
 import FileBrowserShell from '@/components/file-browser/FileBrowserShell'
-import HandbookChatPanel from '@/components/handbook/HandbookChatPanel'
 import FileEditor from '@/components/handbook/FileEditor'
 import NewFilePanel from '@/components/handbook/NewFilePanel'
 import NewFolderPanel from '@/components/handbook/NewFolderPanel'
@@ -42,8 +45,6 @@ export default function HandbookPage() {
   const { data: files = [], isLoading, error, refetch } = useKnowledgeFiles()
   const { data: graphs = [] } = useGraphs(workspaceId)
   const { data: folders = [] } = useKnowledgeFolders()
-  const { data: channels = [] } = useChannels(workspaceId)
-  const createChannel = useCreateChannel(workspaceId)
   const deleteFolder = useDeleteFolder()
   const renameFolder = useRenameFolder()
   const updateGraph = useUpdateGraph(workspaceId)
@@ -57,14 +58,25 @@ export default function HandbookPage() {
   const [fileQuery, setFileQuery] = useState('')
   const { data: knowledgeSearchResults = [], isFetching: searching } = useSearchKnowledgeFiles(fileQuery)
   const uploadInputRef = useRef<HTMLInputElement>(null)
-  const [convertPrompt, setConvertPrompt] = useState<{ file: File; folder: string } | null>(null)
-  const [deleteTarget, setDeleteTarget] = useState<DeleteTarget | null>(null)
+  const handbookChatInputRef = useRef<HTMLTextAreaElement | null>(null)
+  const [handbookChatDraft, setHandbookChatDraft] = useState('')
   const urlFilePath = searchParams.get('path')
   const urlFolder = searchParams.get('folder') ?? ''
   const urlNew = searchParams.get('new')
+  const activeChatTarget = useMemo(
+    () => (urlFilePath
+      ? { assetType: 'file' as const, path: urlFilePath }
+      : { assetType: 'folder' as const, path: urlFolder }),
+    [urlFilePath, urlFolder],
+  )
+  const { data: handbookChannel = null } = useAssetChatChannel(workspaceId, activeChatTarget.assetType, { path: activeChatTarget.path })
+  const { items: handbookTimeline } = useChannelTimeline(workspaceId, handbookChannel?.id ?? '')
+  const postHandbookMessage = usePostChannelMessage(workspaceId, handbookChannel?.id ?? '')
+  const { mentionMenuNode: handbookMentionMenu } = useMentionDetection(workspaceId, handbookChatDraft, setHandbookChatDraft, handbookChatInputRef)
+  const [convertPrompt, setConvertPrompt] = useState<{ file: File; folder: string } | null>(null)
+  const [deleteTarget, setDeleteTarget] = useState<DeleteTarget | null>(null)
 
   const state = useFileBrowserState({ initialFolder: urlFolder, initialFilePath: urlFilePath })
-  const handbookChannel = useMemo(() => channels.find(c => c.channel_type === 'handbook') ?? null, [channels])
   const workflowEntries = useMemo<BrowserFile[]>(
     () => graphs.map((graph) => ({
       id: `workflow-${graph.id}`,
@@ -320,14 +332,24 @@ export default function HandbookPage() {
           />
         )}
         sidePanel={
-          <HandbookChatPanel
-            workspaceId={workspaceId}
-            channelId={handbookChannel?.id ?? null}
-            onCreateChannel={() => createChannel.mutate({ name: 'handbook-chat', channel_type: 'handbook' })}
-            onOpenFile={openFilePath}
-            currentFolder={state.currentFolder}
-            currentFilePath={state.rightPanel.kind === 'file' ? state.rightPanel.path : null}
-          />
+          <ChannelShell title="Handbook Chat" parentLabel="Knowledge channel">
+            <ChannelTimeline items={handbookTimeline} emptyState="No messages yet. Ask agents to help with handbook content." />
+            <WorkflowSlashComposer
+              workspaceId={workspaceId}
+              workflows={graphs}
+              channelId={handbookChannel?.id ?? null}
+              draft={handbookChatDraft}
+              setDraft={setHandbookChatDraft}
+              onSend={() => postHandbookMessage.mutate(
+                { content: handbookChatDraft.trim(), role: 'user', author_type: 'human', author_name: 'You' },
+                { onSuccess: () => setHandbookChatDraft('') },
+              )}
+              pending={postHandbookMessage.isPending}
+              placeholder="Ask agents to help with handbook content, tag with @…"
+              inputRef={handbookChatInputRef}
+              beforeInput={handbookMentionMenu}
+            />
+          </ChannelShell>
         }
       />
 

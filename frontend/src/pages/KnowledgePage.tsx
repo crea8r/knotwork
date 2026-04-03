@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { useHandbookProposals } from '@/api/knowledge'
+import { useKnowledgeChanges } from '@/api/knowledge'
 import HandbookPage from './HandbookPage'
 import ReviewQueue from '@/components/knowledge/ReviewQueue'
 
@@ -8,7 +8,7 @@ type KnowledgeTab = 'review' | 'assets'
 
 export default function KnowledgePage() {
   const [searchParams] = useSearchParams()
-  const { data: proposals = [] } = useHandbookProposals('pending')
+  const { data: proposals = [] } = useKnowledgeChanges('pending')
   const pendingCount = proposals.length
 
   const [tab, setTab] = useState<KnowledgeTab>(() => {

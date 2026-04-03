@@ -1,7 +1,7 @@
 """
 Generic agent node — delegates execution to a pluggable AgentAdapter.
 
-agent_ref values: "human" | "openclaw"
+agent_ref values: "human" | <bridge-agent-ref> (S12.2)
 Specific agent identified by registered_agent_id on node_def (DB lookup).
 trust_level: float 0.0–1.0 (0=always ask human, 1=fully autonomous).
 outgoing_targets: passed from engine at compile time for multi-branch routing hint.
@@ -20,11 +20,16 @@ MAX_NODE_VISITS_PER_RUN = 5
 
 
 def _resolve_agent_ref(node_def: dict) -> str:
-    """Return 'human' or 'openclaw' for the unified agent node."""
+    """Return the agent_ref for this node.
+
+    Returns 'human' for human-review nodes. For all other values the raw
+    agent_ref is returned as-is — the bridge adapter (S12.2) will handle
+    dispatch. An empty or missing agent_ref defaults to 'human'.
+    """
     ref = (node_def.get("agent_ref") or "").strip()
-    if ref == "human":
+    if not ref or ref == "human":
         return "human"
-    return "openclaw"
+    return ref
 
 
 def _trust_level_to_float(node_def: dict) -> float:
@@ -135,7 +140,7 @@ def make_agent_node(node_def: dict, outgoing_edges: list[dict] | None = None):
         from knotwork.runtime.adapters import get_adapter
         from knotwork.runtime.events import publish_event
         from knotwork.runtime.knowledge_loader import KnowledgeTree, load_knowledge_tree
-        from knotwork.runs.models import OpenAICallLog, RunHandbookProposal, RunNodeState, RunWorklogEntry
+        from knotwork.runs.models import OpenAICallLog, RunNodeState, RunWorklogEntry
 
         run_id = str(state["run_id"])
         workspace_id = state["workspace_id"]
@@ -171,21 +176,12 @@ def make_agent_node(node_def: dict, outgoing_edges: list[dict] | None = None):
                 f"(visit {current_visit} exceeds max {MAX_NODE_VISITS_PER_RUN})"
             )
 
-        # Fetch registered agent credentials
+        # Fetch agent member credentials.
+        # registered_agent_id now points to WorkspaceMember.id (migrated in 0024).
+        # OpenClaw agents: no api_key — integration binding lives in agent_config
+        # and is resolved inside OpenClawAdapter.
         api_key: str | None = None
         registered_agent_id = node_def.get("registered_agent_id")
-        if registered_agent_id and agent_ref == "openclaw":
-            from knotwork.registered_agents.models import RegisteredAgent
-            async with AsyncSessionLocal() as db:
-                ra = await db.get(RegisteredAgent, UUID(str(registered_agent_id)))
-                is_active = False
-                if ra:
-                    if getattr(ra, "status", None):
-                        is_active = ra.status == "active"
-                    else:
-                        is_active = bool(getattr(ra, "is_active", False))
-                if ra and is_active:
-                    api_key = ra.api_key
 
         tree = (
             await load_knowledge_tree(knowledge_files, workspace_id)
@@ -360,12 +356,18 @@ def make_agent_node(node_def: dict, outgoing_edges: list[dict] | None = None):
                 elif event.type == "proposal":
                     p = event.payload
                     async with AsyncSessionLocal() as db:
-                        db.add(RunHandbookProposal(
-                            id=uuid4(), run_id=run_id, node_id=node_id, agent_ref=agent_ref,
-                            path=p["path"], proposed_content=p["proposed_content"],
-                            reason=p["reason"], status="pending",
-                        ))
-                        await db.commit()
+                        from knotwork.knowledge.change_service import create_knowledge_change
+
+                        await create_knowledge_change(
+                            db,
+                            workspace_id=UUID(workspace_id),
+                            path=p["path"],
+                            proposed_content=p["proposed_content"],
+                            reason=p["reason"],
+                            run_id=run_id,
+                            node_id=node_id,
+                            agent_ref=agent_ref,
+                        )
 
                 elif event.type == "escalation":
                     # Collect — do NOT interrupt here; all escalations will be

@@ -25,7 +25,7 @@ class ChannelOut(BaseModel):
 
 class ChannelCreate(BaseModel):
     name: str
-    channel_type: Literal["normal", "bulletin", "workflow", "handbook", "run", "agent_main", "project", "objective"] = "normal"
+    channel_type: Literal["normal", "bulletin", "workflow", "handbook", "run", "project", "objective"] = "normal"
     graph_id: UUID | None = None
     project_id: UUID | None = None
     objective_id: UUID | None = None
@@ -88,7 +88,7 @@ class DecisionEventCreate(BaseModel):
 
 class InboxItem(BaseModel):
     id: str
-    item_type: Literal["escalation", "handbook_proposal", "mentioned_message", "task_assigned", "run_event"]
+    item_type: Literal["escalation", "knowledge_change", "mentioned_message", "message_posted", "task_assigned", "run_event"]
     delivery_id: str | None = None
     title: str
     subtitle: str | None = None
@@ -119,7 +119,7 @@ class ParticipantDeliveryPreferenceOut(BaseModel):
     event_type: str
     app_enabled: bool
     email_enabled: bool
-    plugin_enabled: bool
+    push_enabled: bool
     email_address: str | None = None
 
     model_config = {"from_attributes": True}
@@ -128,7 +128,7 @@ class ParticipantDeliveryPreferenceOut(BaseModel):
 class ParticipantDeliveryPreferenceUpdate(BaseModel):
     app_enabled: bool | None = None
     email_enabled: bool | None = None
-    plugin_enabled: bool | None = None
+    push_enabled: bool | None = None
     email_address: str | None = None
 
 
@@ -156,7 +156,7 @@ class ChannelSubscriptionUpdate(BaseModel):
 class ChannelAssetBindingOut(BaseModel):
     id: str
     channel_id: UUID
-    asset_type: Literal["workflow", "run", "file"]
+    asset_type: Literal["workflow", "run", "file", "folder"]
     asset_id: str
     display_name: str
     path: str | None = None
@@ -165,7 +165,7 @@ class ChannelAssetBindingOut(BaseModel):
 
 
 class ChannelAssetBindingCreate(BaseModel):
-    asset_type: Literal["workflow", "run", "file"]
+    asset_type: Literal["workflow", "run", "file", "folder"]
     asset_id: str
 
 

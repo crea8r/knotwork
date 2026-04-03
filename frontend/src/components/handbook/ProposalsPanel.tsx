@@ -1,11 +1,11 @@
 /**
- * ProposalsPanel — shows agent-proposed handbook changes for human review.
- * Left: filterable proposal list. Right: current vs proposed diff + approve/reject.
+ * ProposalsPanel — shows knowledge changes for human review.
+ * Left: filterable change list. Right: current vs proposed diff + approve/reject.
  */
 import { useState } from 'react'
 import {
-  useHandbookProposals, useApproveProposal, useRejectProposal,
-  useKnowledgeFile, type HandbookProposal,
+  useKnowledgeChanges, useApproveKnowledgeChange, useRejectKnowledgeChange,
+  useKnowledgeFile, type KnowledgeChange,
 } from '@/api/knowledge'
 
 type StatusFilter = 'pending' | 'all'
@@ -16,16 +16,16 @@ const STATUS_COLORS: Record<string, string> = {
   rejected: 'bg-red-100 text-red-700',
 }
 
-function ProposalDetail({ proposal }: { proposal: HandbookProposal }) {
-  const { data: current } = useKnowledgeFile(proposal.path)
-  const approveMut = useApproveProposal()
-  const rejectMut = useRejectProposal()
+function ProposalDetail({ proposal }: { proposal: KnowledgeChange }) {
+  const { data: current } = useKnowledgeFile(proposal.target_type === 'file' ? proposal.target_path : null)
+  const approveMut = useApproveKnowledgeChange()
+  const rejectMut = useRejectKnowledgeChange()
   const isPending = proposal.status === 'pending'
 
   return (
     <div className="h-full flex flex-col p-4 overflow-hidden">
       <div className="mb-3 flex-shrink-0">
-        <p className="text-xs font-mono text-gray-500">{proposal.path}</p>
+        <p className="text-xs font-mono text-gray-500">{proposal.target_path}</p>
         <p className="text-xs text-gray-400 mt-0.5">
           {proposal.agent_ref} · {new Date(proposal.created_at).toLocaleString()}
         </p>
@@ -42,7 +42,7 @@ function ProposalDetail({ proposal }: { proposal: HandbookProposal }) {
         <div className="flex flex-col min-h-0">
           <p className="text-xs font-semibold text-blue-600 mb-1 flex-shrink-0">Proposed</p>
           <div className="flex-1 overflow-y-auto bg-blue-50 rounded border border-blue-200 p-2 text-xs font-mono whitespace-pre-wrap">
-            {proposal.proposed_content}
+            {proposal.proposed_content ?? JSON.stringify(proposal.payload, null, 2)}
           </div>
         </div>
       </div>
@@ -72,7 +72,7 @@ function ProposalDetail({ proposal }: { proposal: HandbookProposal }) {
 export default function ProposalsPanel() {
   const [filter, setFilter] = useState<StatusFilter>('pending')
   const [selectedId, setSelectedId] = useState<string | null>(null)
-  const { data: proposals = [], isLoading } = useHandbookProposals(filter === 'all' ? undefined : filter)
+  const { data: proposals = [], isLoading } = useKnowledgeChanges(filter === 'all' ? undefined : filter)
   const selected = proposals.find(p => p.id === selectedId) ?? null
 
   return (
@@ -102,7 +102,7 @@ export default function ProposalsPanel() {
               className={`w-full text-left px-3 py-2.5 border-b border-gray-100 hover:bg-gray-50 ${selectedId === p.id ? 'bg-brand-50' : ''}`}
             >
               <div className="flex items-center justify-between mb-0.5">
-                <span className="text-xs font-mono text-gray-600 truncate max-w-[120px]">{p.path}</span>
+                <span className="text-xs font-mono text-gray-600 truncate max-w-[120px]">{p.target_path}</span>
                 <span className={`text-[10px] px-1.5 py-0.5 rounded-full ml-1 ${STATUS_COLORS[p.status]}`}>{p.status}</span>
               </div>
               <p className="text-xs text-gray-500 truncate">{p.reason}</p>
@@ -118,7 +118,7 @@ export default function ProposalsPanel() {
           <ProposalDetail proposal={selected} />
         ) : (
           <div className="flex items-center justify-center h-full text-xs text-gray-400">
-            Select a proposal to review.
+            Select a knowledge change to review.
           </div>
         )}
       </div>

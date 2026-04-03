@@ -1,6 +1,7 @@
 import { useMemo, useRef, useState } from 'react'
 import { useNavigate, useOutletContext } from 'react-router-dom'
 import { FolderPlus } from 'lucide-react'
+import { useAssetChatChannel, usePostChannelMessage } from '@/api/channels'
 import { useDeleteGraph, useGraphs, useUpdateGraph } from '@/api/graphs'
 import { useKnowledgeFiles } from '@/api/knowledge'
 import {
@@ -14,6 +15,10 @@ import {
   useRenameProjectFolder,
   useUploadProjectFile,
 } from '@/api/projects'
+import { ChannelShell, ChannelTimeline } from '@/components/channel/ChannelFrame'
+import WorkflowSlashComposer from '@/components/channel/WorkflowSlashComposer'
+import { useChannelTimeline } from '@/components/channel/useChannelTimeline'
+import { useMentionDetection } from '@/components/channel/useMentionDetection'
 import FileBrowserShell from '@/components/file-browser/FileBrowserShell'
 import type { BrowserFile } from '@/components/file-browser/types'
 import { useFileBrowserState } from '@/components/file-browser/useFileBrowserState'
@@ -200,9 +205,11 @@ export default function ProjectAssetsPage() {
   const { data: knowledgeFiles = [] } = useKnowledgeFiles()
   const browserState = useFileBrowserState()
   const uploadInputRef = useRef<HTMLInputElement>(null)
+  const chatInputRef = useRef<HTMLTextAreaElement | null>(null)
 
   const [fileQuery, setFileQuery] = useState('')
   const [deleteTarget, setDeleteTarget] = useState<ProjectDeleteTarget | null>(null)
+  const [chatDraft, setChatDraft] = useState('')
 
   const createProjectDocument = useCreateProjectDocument(workspaceId, projectSlug)
   const createProjectFolder = useCreateProjectFolder(workspaceId, projectSlug)
@@ -274,6 +281,45 @@ export default function ProjectAssetsPage() {
     return [...allEntries, ...knowledgeSearchEntries].filter((entry) =>
       [entry.title, entry.description, entry.path].filter(Boolean).join(' ').toLowerCase().includes(query))
   }, [allEntries, fileQuery, knowledgeSearchEntries])
+
+  const activeAssetChat = useMemo(() => {
+    if (browserState.rightPanel.kind === 'file') {
+      const projectDoc = docs.find((doc) => doc.path === browserState.rightPanel.path)
+      return {
+        assetType: 'file' as const,
+        asset_id: projectDoc?.id ?? null,
+        path: browserState.rightPanel.path,
+        project_id: projectId,
+        label: browserState.rightPanel.path,
+      }
+    }
+    if (browserState.rightPanel.kind === 'knowledge-file') {
+      const knowledgeFile = knowledgeFiles.find((file) => file.path === browserState.rightPanel.path)
+      return {
+        assetType: 'file' as const,
+        asset_id: knowledgeFile?.id ?? null,
+        path: browserState.rightPanel.path,
+        project_id: null,
+        label: browserState.rightPanel.path,
+      }
+    }
+    const currentProjectFolder = projectFolders.find((folder) => folder.path === browserState.currentFolder)
+    return {
+      assetType: 'folder' as const,
+      asset_id: currentProjectFolder?.id ?? null,
+      path: browserState.currentFolder,
+      project_id: projectId,
+      label: browserState.currentFolder || 'Project Assets',
+    }
+  }, [browserState.currentFolder, browserState.rightPanel, docs, knowledgeFiles, projectFolders, projectId])
+  const { data: assetChatChannel = null } = useAssetChatChannel(workspaceId, activeAssetChat.assetType, {
+    path: activeAssetChat.path,
+    asset_id: activeAssetChat.asset_id,
+    project_id: activeAssetChat.project_id,
+  })
+  const { items: assetTimeline } = useChannelTimeline(workspaceId, assetChatChannel?.id ?? '')
+  const postAssetMessage = usePostChannelMessage(workspaceId, assetChatChannel?.id ?? '')
+  const { mentionMenuNode } = useMentionDetection(workspaceId, chatDraft, setChatDraft, chatInputRef)
 
   function openProjectFilePath(path: string) {
     browserState.setCurrentFolder(path.split('/').slice(0, -1).join('/'))
@@ -459,6 +505,29 @@ export default function ProjectAssetsPage() {
           allowFolderRename
           allowFolderMove={false}
           allowFolderDelete
+          sidePanel={(
+            <ChannelShell
+              title={activeAssetChat.label}
+              parentLabel={projectSlug}
+            >
+              <ChannelTimeline items={assetTimeline} emptyState="No messages yet. Start a discussion about this asset." />
+              <WorkflowSlashComposer
+                workspaceId={workspaceId}
+                workflows={workflows}
+                channelId={assetChatChannel?.id ?? null}
+                draft={chatDraft}
+                setDraft={setChatDraft}
+                onSend={() => postAssetMessage.mutate(
+                  { content: chatDraft.trim(), role: 'user', author_type: 'human', author_name: 'You' },
+                  { onSuccess: () => setChatDraft('') },
+                )}
+                pending={postAssetMessage.isPending}
+                placeholder="Discuss this asset in context…"
+                inputRef={chatInputRef}
+                beforeInput={mentionMenuNode}
+              />
+            </ChannelShell>
+          )}
         />
       </div>
 

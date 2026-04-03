@@ -246,7 +246,7 @@ Implementation tasks:
 - define explicit subscription representation for run, workflow, handbook, and agent-main channels
 - define explicit asset-binding representation for free chat channels
 - migrate workspace-wide notification tables toward participant-scoped delivery configuration/logging
-- keep agent/plugin delivery behavior outside the new S10 participant fanout path
+- historical note, superseded by S12.1/S12.2: at S10 planning time agent/plugin delivery was kept outside the participant fanout path; current architecture treats members uniformly in Knotwork and keeps plugin transport entirely agent-side
 
 Recommended output:
 
@@ -492,10 +492,10 @@ These implementation decisions are resolved for S10:
 - `participant_id` may be implemented as either a first-class table or a typed synthetic id; S10 does not require a dedicated participants table if typed ids keep the implementation smaller.
 - `channel_events` should be a first-class table in S10 so inbox and delivery logic do not rely on ad hoc derivation from multiple source records.
 - Subscriptions are explicit per channel for in-scope channel-backed contexts.
-- App delivery is implicit/default for human participants.
+- historical note, superseded by S12.1+: app/plugin defaults are no longer modeled as human-vs-agent product behavior
 - Run-completed delivery is workflow opt-in plus participant preference.
 - `mentioned_message` is fully in scope for S10.
-- Agent-targeted plugin delivery, agent subscription management, and exact participant-targeted escalation workflow all move out of S10.
+- historical note, superseded by S12.1/S12.2: exact participant targeting is now part of the unified member model, while plugin transport remains agent-side rather than a Knotwork-side subsystem
 
 ---
 

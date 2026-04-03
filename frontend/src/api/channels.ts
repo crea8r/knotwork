@@ -77,6 +77,29 @@ export function useChannel(workspaceId: string, channelId: string) {
   })
 }
 
+export function useAssetChatChannel(
+  workspaceId: string,
+  assetType: 'file' | 'folder' | 'workflow',
+  params: { path?: string | null; asset_id?: string | null; project_id?: string | null },
+) {
+  const path = params.path ?? undefined
+  const assetId = params.asset_id ?? undefined
+  const projectId = params.project_id ?? undefined
+  return useQuery({
+    queryKey: ['asset-chat-channel', workspaceId, assetType, path ?? null, assetId ?? null, projectId ?? null],
+    queryFn: () =>
+      api.get<Channel>(`/workspaces/${workspaceId}/channels/asset-chat/resolve`, {
+        params: {
+          asset_type: assetType,
+          path,
+          asset_id: assetId,
+          project_id: projectId,
+        },
+      }).then((r) => r.data),
+    enabled: !!workspaceId && (assetType === 'folder' || !!path || !!assetId),
+  })
+}
+
 export function useChannelParticipants(workspaceId: string) {
   return useQuery({
     queryKey: ['channel-participants', workspaceId],
@@ -133,7 +156,7 @@ export function useUpdateParticipantDeliveryPreference(workspaceId: string, part
       eventType: string
       app_enabled?: boolean
       email_enabled?: boolean
-      plugin_enabled?: boolean
+      push_enabled?: boolean
       email_address?: string | null
     }) =>
       api
@@ -190,7 +213,7 @@ export function useChannelAssets(workspaceId: string, channelId: string) {
 export function useAttachChannelAsset(workspaceId: string, channelId: string) {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (payload: { asset_type: 'workflow' | 'run' | 'file'; asset_id: string }) =>
+    mutationFn: (payload: { asset_type: 'workflow' | 'run' | 'file' | 'folder'; asset_id: string }) =>
       api
         .post<ChannelAssetBinding>(`/workspaces/${workspaceId}/channels/${channelId}/assets`, payload)
         .then((r) => r.data),
@@ -271,21 +294,6 @@ export function useCreateChannelDecision(workspaceId: string, channelId: string)
   })
 }
 
-export function useAskHandbookChat(workspaceId: string, channelId: string) {
-  const qc = useQueryClient()
-  return useMutation({
-    mutationFn: (payload: { message: string }) =>
-      api.post<{ reply: string; proposal_id: string | null }>(
-        `/workspaces/${workspaceId}/channels/${channelId}/handbook/ask`,
-        payload,
-      ).then((r) => r.data),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['channel-messages', workspaceId, channelId] })
-      qc.invalidateQueries({ queryKey: ['channel-decisions', workspaceId, channelId] })
-      qc.invalidateQueries({ queryKey: ['knowledge', import.meta.env.VITE_DEV_WORKSPACE_ID ?? 'dev-workspace'] })
-    },
-  })
-}
 
 export function useResolveHandbookProposal(workspaceId: string, channelId: string) {
   const qc = useQueryClient()

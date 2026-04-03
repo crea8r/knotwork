@@ -76,6 +76,24 @@ def build_server(client: KnotworkAPIClient | None = None) -> FastMCP:
     async def inbox_summary_resource() -> str:
         return _json_text(await get_inbox_summary())
 
+    @mcp.resource(
+        "knotwork://workspace/skills",
+        name="workspace_skills",
+        title="Agent Skills",
+        description=(
+            "Behavioral context for this workspace — how to authenticate, "
+            "available MCP tools, handbook overview, and active channels. "
+            "Fetch this on startup to bootstrap workspace context."
+        ),
+        mime_type="text/markdown",
+    )
+    async def workspace_skills_resource() -> str:
+        result = await _request("GET", api.workspace_path("/skills"))
+        # Client returns {"text": "..."} for non-JSON responses
+        if isinstance(result, dict) and "text" in result:
+            return result["text"]
+        return str(result)
+
     @mcp.tool()
     async def get_workspace_overview() -> dict[str, Any]:
         runs = await _request("GET", api.workspace_path("/runs"))
@@ -86,7 +104,7 @@ def build_server(client: KnotworkAPIClient | None = None) -> FastMCP:
         )
         inbox_summary = await _request("GET", api.workspace_path("/inbox/summary"))
         participants = await _request("GET", api.workspace_path("/participants"))
-        agents = await _request("GET", api.workspace_path("/agents"))
+        agents = await _request("GET", api.workspace_path("/members"), params={"kind": "agent"})
         health = await _request("GET", "/health")
 
         active_runs = [
@@ -99,7 +117,7 @@ def build_server(client: KnotworkAPIClient | None = None) -> FastMCP:
             "open_escalations": escalations,
             "inbox_summary": inbox_summary,
             "participants": participants,
-            "registered_agents": agents,
+            "agent_members": agents,
         }
 
     @mcp.tool()
@@ -373,13 +391,60 @@ def build_server(client: KnotworkAPIClient | None = None) -> FastMCP:
         )
 
     @mcp.tool()
-    async def list_handbook_proposals(status: str | None = None) -> Any:
+    async def list_knowledge_changes(status: str | None = None) -> Any:
         params = {"status": status} if status else None
         return await _request(
             "GET",
-            api.workspace_path("/handbook/proposals"),
+            api.workspace_path("/knowledge/changes"),
             params=params,
         )
+
+    @mcp.tool()
+    async def create_knowledge_change(
+        path: str,
+        proposed_content: str,
+        reason: str,
+        run_id: str = "manual",
+        node_id: str = "knowledge-review",
+        agent_ref: str | None = None,
+        source_channel_id: str | None = None,
+    ) -> Any:
+        return await _request(
+            "POST",
+            api.workspace_path("/knowledge/changes"),
+            body={
+                "path": path,
+                "proposed_content": proposed_content,
+                "reason": reason,
+                "run_id": run_id,
+                "node_id": node_id,
+                "agent_ref": agent_ref,
+                "source_channel_id": source_channel_id,
+            },
+        )
+
+    @mcp.tool()
+    async def approve_knowledge_change(
+        proposal_id: str,
+        final_content: str | None = None,
+    ) -> Any:
+        return await _request(
+            "POST",
+            api.workspace_path(f"/knowledge/changes/{proposal_id}/approve"),
+            body={"final_content": final_content},
+        )
+
+    @mcp.tool()
+    async def reject_knowledge_change(proposal_id: str) -> Any:
+        return await _request(
+            "POST",
+            api.workspace_path(f"/knowledge/changes/{proposal_id}/reject"),
+            body={},
+        )
+
+    @mcp.tool()
+    async def list_handbook_proposals(status: str | None = None) -> Any:
+        return await list_knowledge_changes(status=status)
 
     @mcp.tool()
     async def list_participants() -> Any:
@@ -501,68 +566,17 @@ def build_server(client: KnotworkAPIClient | None = None) -> FastMCP:
         )
 
     @mcp.tool()
-    async def list_registered_agents(
-        q: str | None = None,
-        provider: str | None = None,
-        status_filter: str | None = None,
-    ) -> Any:
-        params: dict[str, Any] = {}
+    async def list_agent_members(q: str | None = None) -> Any:
+        """List workspace members with kind='agent'."""
+        params: dict[str, Any] = {"kind": "agent"}
         if q:
             params["q"] = q
-        if provider:
-            params["provider"] = provider
-        if status_filter:
-            params["status"] = status_filter
-        return await _request("GET", api.workspace_path("/agents"), params=params or None)
+        return await _request("GET", api.workspace_path("/members"), params=params)
 
     @mcp.tool()
-    async def create_registered_agent(
-        display_name: str,
-        provider: str,
-        agent_ref: str,
-        api_key: str | None = None,
-        endpoint: str | None = None,
-        avatar_url: str | None = None,
-        activate_after_preflight: bool = False,
-    ) -> Any:
-        body = {
-            "display_name": display_name,
-            "provider": provider,
-            "agent_ref": agent_ref,
-            "api_key": api_key,
-            "endpoint": endpoint,
-            "avatar_url": avatar_url,
-            "activate_after_preflight": activate_after_preflight,
-        }
-        return await _request("POST", api.workspace_path("/agents"), body=body)
-
-    @mcp.tool()
-    async def get_registered_agent(agent_id: str) -> Any:
-        return await _request("GET", api.workspace_path(f"/agents/{agent_id}"))
-
-    @mcp.tool()
-    async def update_registered_agent(agent_id: str, updates: dict[str, Any]) -> Any:
-        return await _request(
-            "PATCH",
-            api.workspace_path(f"/agents/{agent_id}"),
-            body=updates,
-        )
-
-    @mcp.tool()
-    async def activate_registered_agent(agent_id: str) -> Any:
-        return await _request(
-            "POST",
-            api.workspace_path(f"/agents/{agent_id}/activate"),
-            body={},
-        )
-
-    @mcp.tool()
-    async def deactivate_registered_agent(agent_id: str, reason: str | None = None) -> Any:
-        return await _request(
-            "POST",
-            api.workspace_path(f"/agents/{agent_id}/deactivate"),
-            body={"reason": reason},
-        )
+    async def get_member(member_id: str) -> Any:
+        """Get a workspace member (human or agent) by ID."""
+        return await _request("GET", api.workspace_path(f"/members/{member_id}"))
 
     return mcp
 

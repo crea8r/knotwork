@@ -60,9 +60,12 @@ async def test_get_workspace_overview_aggregates_operational_state():
             ("GET", "/api/v1/workspaces/ws-test/participants"): [
                 {"participant_id": "human:1", "display_name": "Hieu"}
             ],
-            ("GET", "/api/v1/workspaces/ws-test/agents"): [
-                {"id": "agent-1", "display_name": "Wed"}
-            ],
+            ("GET", "/api/v1/workspaces/ws-test/members"): {
+                "items": [{"id": "agent-1", "name": "Wed", "kind": "agent"}],
+                "total": 1,
+                "page": 1,
+                "page_size": 20,
+            },
             ("GET", "/health"): {"status": "ok"},
         }
     )

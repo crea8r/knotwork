@@ -5,7 +5,7 @@ import logging
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -20,6 +20,21 @@ from knotwork.notifications.channels.email import send as send_email
 from knotwork.workspaces.models import Workspace, WorkspaceMember
 
 router = APIRouter(prefix="/auth", tags=["auth"])
+
+
+class AgentChallengeRequest(BaseModel):
+    public_key: str = Field(..., description="Agent's ed25519 public key (base64url)")
+
+
+class AgentChallengeResponse(BaseModel):
+    nonce: str
+    expires_at: str
+
+
+class AgentTokenRequest(BaseModel):
+    public_key: str
+    nonce: str
+    signature: str = Field(..., description="base64url(ed25519_sign(private_key, nonce.encode()))")
 
 
 class MagicLinkRequest(BaseModel):
@@ -60,6 +75,33 @@ class LocalhostSwitchUserResponse(BaseModel):
 
 def _workspace_email_from(workspace: Workspace) -> str:
     return (workspace.email_from or settings.email_from).strip() or settings.email_from
+
+
+@router.post("/agent-challenge", response_model=AgentChallengeResponse, status_code=201)
+async def request_agent_challenge(
+    req: AgentChallengeRequest,
+    db: AsyncSession = Depends(get_db),
+) -> AgentChallengeResponse:
+    """Step 1 of agent auth: request a nonce to sign with the agent's ed25519 private key."""
+    user = await service.get_user_by_public_key(db, req.public_key)
+    if user is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No agent account for this public key")
+    nonce, expires_at = await service.create_agent_challenge(db, req.public_key)
+    await db.commit()
+    return AgentChallengeResponse(nonce=nonce, expires_at=expires_at.isoformat())
+
+
+@router.post("/agent-token", response_model=TokenResponse)
+async def verify_agent_token(
+    req: AgentTokenRequest,
+    db: AsyncSession = Depends(get_db),
+) -> TokenResponse:
+    """Step 2 of agent auth: submit signed nonce, receive a JWT bearer token."""
+    user = await service.verify_agent_challenge(db, req.public_key, req.nonce, req.signature)
+    if user is None:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid challenge response")
+    await db.commit()
+    return TokenResponse(access_token=service.create_access_token(user.id))
 
 
 @router.post("/magic-link-request", status_code=202)

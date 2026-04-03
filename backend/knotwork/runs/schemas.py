@@ -76,11 +76,17 @@ class RunWorklogEntryOut(BaseModel):
 
 class RunHandbookProposalOut(BaseModel):
     id: UUID
+    workspace_id: UUID
+    project_id: UUID | None = None
     run_id: str
     node_id: str
     agent_ref: str | None = None
-    path: str
-    proposed_content: str
+    channel_id: UUID
+    action_type: str = "update_content"
+    target_type: str = "file"
+    target_path: str
+    proposed_content: str | None = None
+    payload: dict = {}
     reason: str
     status: str
     reviewed_by: UUID | None = None

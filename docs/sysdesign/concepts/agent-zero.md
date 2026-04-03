@@ -1,12 +1,12 @@
 # Core Concepts — Agent Zero
 
-Planned for S12.2. S12 establishes the human-only baseline; Agent Zero is introduced after the plugin boundary (S12.1) is defined. Agent Zero is the optional but recommended first step in workspace setup — the orchestrator, advisor, and primary representative for the workspace.
+Planned for S12.3. S12 establishes the human-only baseline, S12.1 defines the unified participant model + agent bridge spec, S12.2 builds the bridge layer, and S12.3 introduces Agent Zero on top of that foundation. Agent Zero is the optional but recommended first step in workspace setup — the orchestrator, advisor, and primary representative for the workspace.
 
 ---
 
 ## What Agent Zero Is
 
-**Agent Zero** is a RegisteredAgent with a special role: `orchestrator`. It is not a specialist agent for a specific workflow — it is the generalist intelligence that knows the workspace as a whole.
+**Agent Zero** is a `WorkspaceMember` with `kind='agent'` and `agent_config.role = 'orchestrator'`. It is not a specialist agent for a specific workflow — it is the generalist intelligence that knows the workspace as a whole.
 
 Agent Zero is:
 - The **primary representative** (first `is_primary` entry in `WorkspaceRepresentative`)
@@ -78,7 +78,7 @@ Agent Zero advises on workspace strategy:
 When Agent Zero identifies a need for a new specialized agent, it proposes one:
 
 1. Describes what the agent would do and which workflows it would handle
-2. Drafts the `RegisteredAgent` config (display name, provider recommendation, agent_ref)
+2. Drafts the new agent config (display name, ed25519 key registration, provider recommendation)
 3. Drafts starter Handbook entries for the new agent's domain
 4. Proposes: human reviews and approves; the new agent is registered
 
@@ -89,10 +89,12 @@ Agent Zero never creates agents autonomously. All proposals require human approv
 ## Data Model
 
 ```
-RegisteredAgent
-  ...existing fields...
-  role    enum  [specialist, orchestrator]  -- default: specialist
-                                            -- orchestrator = Agent Zero semantics
+WorkspaceMember
+  kind          = 'agent'
+  agent_config  = {
+    "role": "orchestrator"   -- vs. "specialist" for regular agents (default)
+    ...provider metadata...
+  }
 ```
 
 Only one agent per workspace should have `role: "orchestrator"`. The UI enforces this during setup and prevents accidental duplication.
@@ -123,13 +125,14 @@ As the workspace grows (more projects, more agents, more workflows), Agent Zero'
 
 ---
 
-## Main Session Chat
+## Command Interface
 
-Agent Zero's main session (established in S8) becomes the primary command interface for the workspace. The human can:
+Agent Zero participates via shared workspace channels — the same channels humans use. There are no DM-style `agent_main` channels (removed in S12.1). The human-in-charge mentions Agent Zero in a channel or assigns an escalation to it.
 
-- Ask for workspace status ("What's in flight? What's blocked?")
-- Delegate work ("Create a task in Project X for the Acme contract review")
-- Get recommendations ("Should we update the onboarding handbook?")
+The human can:
+- Ask for workspace status ("@agent-zero what's in flight? what's blocked?")
+- Delegate work ("@agent-zero create a task in Project X for the Acme contract review")
+- Get recommendations ("@agent-zero should we update the onboarding handbook?")
 - Review Agent Zero's proposals (new agents, objective updates, handbook changes)
 
-This is not a separate UI surface — it is Agent Zero's existing main session chat, elevated to workspace command center.
+Agent Zero posts its responses and proposals in the same channel thread.
