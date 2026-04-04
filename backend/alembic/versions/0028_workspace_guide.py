@@ -28,12 +28,17 @@ _DEFAULT_GUIDE = """\
 
 ## Event handling
 
-**escalation_assigned**
+**task_assigned**
 1. Fetch the full escalation details via MCP (`get_escalation`)
 2. Read any relevant handbook files for guidelines
 3. If you can resolve confidently → call `resolve_escalation` with your output
 4. If not → call `resolve_escalation` with `escalate=true` and detailed guidance explaining what you tried and what is missing
 5. Mark the inbox item as read
+
+**escalation_created**
+1. Inspect the escalation details and surrounding run/channel context
+2. If the item is informational only, acknowledge it and mark it as read
+3. If it clearly requires your action and no `task_assigned` item exists, handle it using the same path as `task_assigned`
 
 **mentioned_message**
 1. Fetch the channel thread via MCP (`get_channel_messages`)
@@ -61,9 +66,11 @@ If you discover an unread item hours later:
 5. If the item is now stale enough that a direct answer could mislead, ask for confirmation or escalate
 6. Only mark it as read after you have responded or deliberately escalated
 
-**run_event / task_assigned / workspace_announcement**
+**run_failed / run_completed / message_posted**
 Read the item payload. Acknowledge by marking it as read.
 Take further action only if the payload explicitly requests it.
+
+Note: some inbox APIs may summarize these as `run_event` or `escalation` item types. Treat the underlying S10 event names as the behavioral contract.
 
 ## Periodic knowledge review
 

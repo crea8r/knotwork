@@ -6,12 +6,14 @@
  *   - Add an agent member by ed25519 public key (creates account immediately)
  */
 import { useState } from 'react'
+import { Ban, Undo2 } from 'lucide-react'
 import { useAuthStore } from '@/store/auth'
 import { BACKEND_BASE_URL } from '@/api/client'
 import {
   useWorkspaceInvitations,
   useCreateInvitation,
   useAddAgentMember,
+  useUpdateWorkspaceMember,
   useWorkspaceEmailConfig,
   useWorkspaceMembers,
 } from '@/api/auth'
@@ -20,6 +22,7 @@ import Card from '@/components/shared/Card'
 import Spinner from '@/components/shared/Spinner'
 
 type KindFilter = 'all' | 'human' | 'agent'
+type AccessFilter = 'active' | 'disabled'
 type InviteMode = 'email' | 'pubkey'
 
 function DiscoveryPrompt({ workspaceId }: { workspaceId: string }) {
@@ -64,11 +67,15 @@ export default function MembersTab() {
   // Members list
   const [membersPage, setMembersPage] = useState(1)
   const [kindFilter, setKindFilter] = useState<KindFilter>('all')
+  const [accessFilter, setAccessFilter] = useState<AccessFilter>('active')
+  const currentUser = useAuthStore((s) => s.user)
   const { data: membersData, isLoading: loadingMembers } = useWorkspaceMembers(
     workspaceId,
     membersPage,
     kindFilter === 'all' ? undefined : kindFilter,
+    accessFilter === 'disabled',
   )
+  const updateMember = useUpdateWorkspaceMember(workspaceId)
 
   // Invitations
   const { data: invitations, isLoading: loadingInv, refetch } = useWorkspaceInvitations(workspaceId)
@@ -158,6 +165,19 @@ export default function MembersTab() {
 
           {/* Kind filter */}
           <div className="flex gap-1 text-xs">
+            {(['active', 'disabled'] as AccessFilter[]).map((filter) => (
+              <button
+                key={filter}
+                onClick={() => { setAccessFilter(filter); setMembersPage(1) }}
+                className={`px-2.5 py-1 rounded-full capitalize transition-colors ${
+                  accessFilter === filter
+                    ? 'bg-stone-900 text-white font-medium'
+                    : 'text-gray-500 hover:bg-gray-100'
+                }`}
+              >
+                {filter}
+              </button>
+            ))}
             {(['all', 'human', 'agent'] as KindFilter[]).map((k) => (
               <button
                 key={k}
@@ -188,7 +208,9 @@ export default function MembersTab() {
                   <th className="text-left px-4 py-3">Member</th>
                   <th className="text-left px-4 py-3">Kind</th>
                   <th className="text-left px-4 py-3">Role</th>
+                  <th className="text-left px-4 py-3">Access</th>
                   <th className="text-left px-4 py-3">Joined</th>
+                  {isOwner ? <th className="text-left px-4 py-3">Actions</th> : null}
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
@@ -226,9 +248,37 @@ export default function MembersTab() {
                     <td className="px-4 py-3">
                       <Badge variant={m.role === 'owner' ? 'blue' : 'gray'}>{m.role}</Badge>
                     </td>
+                    <td className="px-4 py-3">
+                      <Badge variant={m.access_disabled_at ? 'red' : 'green'}>
+                        {m.access_disabled_at ? 'disabled' : 'active'}
+                      </Badge>
+                    </td>
                     <td className="px-4 py-3 text-gray-400 text-xs">
                       {new Date(m.joined_at).toLocaleDateString()}
                     </td>
+                    {isOwner ? (
+                      <td className="px-4 py-3">
+                        {m.user_id === currentUser?.id ? (
+                          <span className="text-xs text-gray-400">Current user</span>
+                        ) : (
+                          <button
+                            onClick={() => updateMember.mutate({ memberId: m.id, access_disabled: !m.access_disabled_at })}
+                            disabled={updateMember.isPending}
+                            className={`rounded-lg border px-2.5 py-1 text-xs transition-colors ${
+                              m.access_disabled_at
+                                ? 'border-emerald-200 text-emerald-700 hover:bg-emerald-50'
+                                : 'border-red-200 text-red-700 hover:bg-red-50'
+                            } disabled:opacity-50`}
+                            title={m.access_disabled_at ? 'Enable' : 'Disable'}
+                          >
+                            <span className="inline-flex items-center gap-1">
+                              {m.access_disabled_at ? <Undo2 size={12} /> : <Ban size={12} />}
+                              <span className="hidden sm:inline">{m.access_disabled_at ? 'Enable' : 'Disable'}</span>
+                            </span>
+                          </button>
+                        )}
+                      </td>
+                    ) : null}
                   </tr>
                 ))}
               </tbody>

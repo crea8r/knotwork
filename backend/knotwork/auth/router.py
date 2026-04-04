@@ -77,6 +77,18 @@ def _workspace_email_from(workspace: Workspace) -> str:
     return (workspace.email_from or settings.email_from).strip() or settings.email_from
 
 
+async def _has_active_workspace_membership(db: AsyncSession, user_id: UUID) -> bool:
+    result = await db.execute(
+        select(WorkspaceMember.id)
+        .where(
+            WorkspaceMember.user_id == user_id,
+            WorkspaceMember.access_disabled_at.is_(None),
+        )
+        .limit(1)
+    )
+    return result.scalar_one_or_none() is not None
+
+
 @router.post("/agent-challenge", response_model=AgentChallengeResponse, status_code=201)
 async def request_agent_challenge(
     req: AgentChallengeRequest,
@@ -86,6 +98,8 @@ async def request_agent_challenge(
     user = await service.get_user_by_public_key(db, req.public_key)
     if user is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No agent account for this public key")
+    if not await _has_active_workspace_membership(db, user.id):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access disabled")
     nonce, expires_at = await service.create_agent_challenge(db, req.public_key)
     await db.commit()
     return AgentChallengeResponse(nonce=nonce, expires_at=expires_at.isoformat())
@@ -100,6 +114,8 @@ async def verify_agent_token(
     user = await service.verify_agent_challenge(db, req.public_key, req.nonce, req.signature)
     if user is None:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid challenge response")
+    if not await _has_active_workspace_membership(db, user.id):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access disabled")
     await db.commit()
     return TokenResponse(access_token=service.create_access_token(user.id))
 
@@ -119,6 +135,11 @@ async def request_magic_link(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="No account found for this email. Ask your workspace owner for an invitation.",
+        )
+    if not await _has_active_workspace_membership(db, user.id):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Access disabled. Ask your workspace owner to re-enable your membership.",
         )
 
     token_str = await service.create_magic_link_token(db, user)
@@ -154,6 +175,11 @@ async def verify_magic_link(
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Magic link is invalid or has expired",
+        )
+    if not await _has_active_workspace_membership(db, user.id):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Access disabled. Ask your workspace owner to re-enable your membership.",
         )
     await db.commit()
     return TokenResponse(access_token=service.create_access_token(user.id))
@@ -225,7 +251,10 @@ async def request_localhost_switch_user(
         )
 
     member_count = await db.scalar(
-        select(func.count()).where(WorkspaceMember.workspace_id == workspace_uuid)
+        select(func.count()).where(
+            WorkspaceMember.workspace_id == workspace_uuid,
+            WorkspaceMember.access_disabled_at.is_(None),
+        )
     )
     if (member_count or 0) < 2:
         raise HTTPException(
@@ -238,6 +267,7 @@ async def request_localhost_switch_user(
         .join(WorkspaceMember, WorkspaceMember.user_id == User.id)
         .where(
             WorkspaceMember.workspace_id == workspace_uuid,
+            WorkspaceMember.access_disabled_at.is_(None),
             User.id == target_user_id,
         )
         .limit(1)

@@ -15,7 +15,7 @@ export type RpcCtx = {
   rememberError: (err: unknown) => string
   runAuth: () => Promise<void>
   pollAndRun: () => Promise<void>
-  runClaimedTask: (task: ExecutionTask) => Promise<void>
+  runClaimedTask: (task: ExecutionTask) => Promise<unknown>
   resetAuth: () => Promise<void>
   /** Absolute path where runtime.lock will be written — derived from __dirname in plugin.ts */
   computedLockPath: string
@@ -150,7 +150,7 @@ export function registerRpcMethods(ctx: RpcCtx): void {
         if (hasSubprocessCreds) {
           const sp = payload as unknown as SubprocessParams
           const taskLogPath = typeof sp.taskLogPath === 'string' ? sp.taskLogPath : undefined
-          const taskLog = createTaskLogger(taskLogPath ?? join(__dirname, 'tasks.log'))
+          const taskLog = createTaskLogger(taskLogPath ?? join(__dirname, '..', 'tasks.log'))
           taskLog('execute_task:start', String(preClaimedTask.task_id ?? 'unknown'), {
             hasTask: 'true',
             subagentKeys: subagentKeys || 'none',

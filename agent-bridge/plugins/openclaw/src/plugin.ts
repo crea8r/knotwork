@@ -2,7 +2,6 @@
 // Debug: openclaw gateway call knotwork.status | knotwork.logs | knotwork.auth | knotwork.execute_task
 // All log lines also written to stdout → `docker logs <container> | grep knotwork-bridge`
 
-/* eslint-disable no-console */
 import { mkdir, writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -20,13 +19,12 @@ import type { ExecutionTask, OpenClawApi, PluginState } from './types'
 const PLUGIN_ID = 'knotwork-bridge'
 const STATE_FILE = 'knotwork-bridge-state.json'
 const RUNTIME_LOCK_FILE = 'runtime.lock'
-const RUNTIME_INIT_KEY = '__knotwork_bridge_runtime_initialized__'
-const RPC_REGISTERED_KEY = '__knotwork_bridge_rpc_registered__'
+const TASK_LOG_FILE = 'tasks.log'
 
 export function activate(api: OpenClawApi): void {
   const activationContext = detectActivationContext()
   const pid = process?.pid ?? null
-  const startupTaskLog = createTaskLogger(join(__dirname, 'tasks.log'))
+  const startupTaskLog = createTaskLogger(join(__dirname, '..', TASK_LOG_FILE))
   const apiKeys = Object.keys((api ?? {}) as object).join(',')
   const hasRegisterGatewayMethod = typeof api?.registerGatewayMethod === 'function'
   const hasSubagentRun = typeof (api as any)?.runtime?.subagent?.run === 'function'
@@ -38,7 +36,7 @@ export function activate(api: OpenClawApi): void {
       pid: String(pid ?? 'unknown'),
       hasRegisterGatewayMethod: String(hasRegisterGatewayMethod),
       hasSubagentRun: String(hasSubagentRun),
-      apiKeys,
+      // apiKeys,
       argv: argv.join(' '),
       ...(extra ?? {}),
     })
@@ -107,7 +105,8 @@ export function activate(api: OpenClawApi): void {
   function getHomeDir(): string { try { return homedir() } catch { return process?.env?.HOME || '.' } }
   function getStateFilePath(): string { return join(getHomeDir(), '.openclaw', STATE_FILE) }
   function getRuntimeLockPath(): string { return join(__dirname, RUNTIME_LOCK_FILE) }
-  const taskLogPath = join(__dirname, 'tasks.log')
+  function getTaskLogPath(): string { return join(__dirname, '..', TASK_LOG_FILE) }
+  const taskLogPath = getTaskLogPath()
   const taskLog = createTaskLogger(taskLogPath)
 
   function log(msg: string): void {
@@ -156,28 +155,17 @@ export function activate(api: OpenClawApi): void {
   const recoverAuth = (reason: string) => _recoverAuth(hCtx, timerRef, reason)
   const wCtx = { state, api, log, rememberError, persistSnapshot, resetAuth, recoverAuth, taskLog }
 
-  const rpcState = globalThis as typeof globalThis & { [RPC_REGISTERED_KEY]?: boolean }
-  if (!rpcState[RPC_REGISTERED_KEY]) {
-    if (hasRegisterGatewayMethod) {
-      registerRpcMethods({
-        api, state, log, rememberError,
-        runAuth: () => runAuth(hCtx),
-        pollAndRun: () => _pollAndRun(wCtx),
-        runClaimedTask: (task: ExecutionTask) => _runClaimedTask(wCtx, task),
-        resetAuth,
-        computedLockPath: getRuntimeLockPath(),
-      })
-      rpcState[RPC_REGISTERED_KEY] = true
-      log(`rpc:registered context=${activationContext}`)
-      startupLog('rpc-registered')
-    } else {
-      log('rpc:register-deferred hasRegisterGatewayMethod=false')
-      startupLog('rpc-deferred', { reason: 'registerGatewayMethod_missing' })
-    }
-  } else {
-    log('rpc:already-registered')
-    startupLog('rpc-skip', { reason: 'already_registered' })
-  }
+  registerRpcMethods({
+    api, state, log, rememberError,
+    runAuth: () => runAuth(hCtx),
+    pollAndRun: () => _pollAndRun(wCtx),
+    runClaimedTask: (task: ExecutionTask) => _runClaimedTask(wCtx, task),
+    resetAuth,
+    computedLockPath: getRuntimeLockPath(),
+  })
+      
+  log(`rpc:registered context=${activationContext}`)
+  startupLog('rpc-registered')
 
   if (activationContext !== 'runtime') {
     log(`startup:background-disabled context=${activationContext}`)
@@ -190,14 +178,6 @@ export function activate(api: OpenClawApi): void {
     startupLog('background-disabled', { reason: 'subagent_missing' })
     return
   }
-
-  const runtimeState = globalThis as typeof globalThis & { [RUNTIME_INIT_KEY]?: { pid: number | null } }
-  if (runtimeState[RUNTIME_INIT_KEY]) {
-    console.log(`[${PLUGIN_ID}] activate() runtime pid=${pid ?? 'unknown'} — already initialized in this process, skipping duplicate timer setup`)
-    startupLog('runtime-skip', { reason: 'already_initialized' })
-    return
-  }
-  runtimeState[RUNTIME_INIT_KEY] = { pid }
 
   const cfg = getConfig(api)
   const { port, token } = getGatewayConfig(api)

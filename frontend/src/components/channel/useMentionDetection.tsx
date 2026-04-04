@@ -1,4 +1,4 @@
-import { useMemo, type RefObject, type ReactNode } from 'react'
+import { useEffect, useMemo, useState, type RefObject, type ReactNode } from 'react'
 import { useChannelParticipants } from '@/api/channels'
 
 interface MentionDetection {
@@ -13,6 +13,7 @@ export function useMentionDetection(
   inputRef: RefObject<HTMLTextAreaElement | null>,
 ): MentionDetection {
   const { data: participants = [] } = useChannelParticipants(workspaceId)
+  const [menuSuppressed, setMenuSuppressed] = useState(false)
 
   const activeMention = useMemo(() => {
     const cursor = inputRef.current?.selectionStart ?? draft.length
@@ -24,8 +25,14 @@ export function useMentionDetection(
     return { query: query.toLowerCase(), start, end: cursor }
   }, [draft, inputRef])
 
+  useEffect(() => {
+    if (!activeMention) {
+      setMenuSuppressed(false)
+    }
+  }, [activeMention])
+
   const mentionSuggestions = useMemo(() => {
-    if (!activeMention) return []
+    if (!activeMention || menuSuppressed) return []
     return participants
       .filter((p) => p.mention_handle)
       .filter((p) => {
@@ -34,10 +41,11 @@ export function useMentionDetection(
         return !activeMention.query || handle.includes(activeMention.query) || name.includes(activeMention.query)
       })
       .slice(0, 6)
-  }, [activeMention, participants])
+  }, [activeMention, menuSuppressed, participants])
 
   function insertMention(handle: string) {
     if (!activeMention) return
+    setMenuSuppressed(true)
     const next = `${draft.slice(0, activeMention.start)}@${handle} ${draft.slice(activeMention.end)}`
     setDraft(next)
     requestAnimationFrame(() => {

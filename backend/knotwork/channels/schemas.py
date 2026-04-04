@@ -97,6 +97,7 @@ class InboxItem(BaseModel):
     channel_id: str | None = None
     escalation_id: UUID | None = None
     proposal_id: UUID | None = None
+    message_id: str | None = None
     due_at: datetime | None = None
     created_at: datetime
     unread: bool = False

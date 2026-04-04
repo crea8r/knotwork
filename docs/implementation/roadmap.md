@@ -80,6 +80,7 @@ Estimated session timestamps below are educated guesses from git/document histor
 - **External clients / run-scoped guest participants** — clients can be invited into a bounded run context with explicit scoping and permissions
 - Telegram and WhatsApp delivery means
 - Browser/mobile push notifications
+- Ephemeral chat signals across all conversational surfaces — typing, progress, and presence via transient realtime events (non-persistent)
 - Scheduled / cron run triggers
 - Advanced roles (beyond owner / operator)
 - Per-node conversation threads

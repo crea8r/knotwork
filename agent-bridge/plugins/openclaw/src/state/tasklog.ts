@@ -1,4 +1,4 @@
-// tasklog.ts — Persistent task lifecycle log written to extensions/knotwork-bridge/tasks.log
+// tasklog.ts — Persistent task lifecycle log written to the plugin root at tasks.log
 // Each line: ISO-timestamp event task=<id> [key=value ...]
 
 import { appendFile, mkdir } from 'node:fs/promises'

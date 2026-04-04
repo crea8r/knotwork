@@ -16,7 +16,7 @@ The MCP server runs alongside the API. It exposes tools and resources.
 Transport: SSE (Server-Sent Events) for web clients
            stdio for local clients (Claude Desktop, Cursor)
 Base URL:  https://app.knotwork.io/mcp
-Auth:      API key passed in MCP client configuration
+Auth:      Bearer token from Knotwork agent auth (ed25519 challenge-response → JWT)
 ```
 
 ---

@@ -15,6 +15,10 @@ function toErrorMessage(error: unknown): string {
 
 // Session key: scoped as agent:<id>:<knotworkKey> so it stays in the agent's namespace.
 function buildSessionKey(task: ExecutionTask): string {
+  if (typeof task.channel_id === 'string' && task.channel_id.trim()) {
+    const agentId = String(task.remote_agent_id ?? task.agent_id ?? 'main')
+    return `agent:${agentId}:channel:${task.channel_id.trim()}`
+  }
   const knotworkKey =
     typeof task.session_name === 'string' && task.session_name.trim()
       ? task.session_name.trim()
@@ -59,6 +63,10 @@ function latestAssistantMessage(messages: unknown[]): string {
   return ''
 }
 
+export type RawTaskResult =
+  | { type: 'completed'; output: string }
+  | { type: 'failed'; error: string }
+
 // Parse the agent's structured ```json-decision block from the end of its final message.
 // Returns a TaskResult if the block is present and valid; null if absent
 // (treated as a confident completion by the caller).
@@ -97,7 +105,7 @@ function parseDecisionBlock(text: string): TaskResult | null {
 }
 
 
-export async function executeTask(api: OpenClawApi, task: ExecutionTask): Promise<TaskResult> {
+export async function executeTaskRaw(api: OpenClawApi, task: ExecutionTask): Promise<RawTaskResult> {
   const taskId = String(task.task_id ?? '')
   if (!taskId) throw new Error('task missing task_id')
 
@@ -132,17 +140,23 @@ export async function executeTask(api: OpenClawApi, task: ExecutionTask): Promis
 
   if (status === 'ok') {
     const lastMsg = await fetchLastMsg()
-    return parseDecisionBlock(lastMsg) ?? { type: 'completed', output: lastMsg, next_branch: null }
+    return { type: 'completed', output: lastMsg }
   }
   if (status === 'error') return { type: 'failed', error: `agent error: ${String(waited.error ?? 'unknown')} [runId: ${runId}] [sessionKey: ${sKey}]` }
   if (status === 'timeout') {
     try {
       const lastMsg = await fetchLastMsg()
-      if (lastMsg) return parseDecisionBlock(lastMsg) ?? { type: 'completed', output: lastMsg, next_branch: null }
+      if (lastMsg) return { type: 'completed', output: lastMsg }
     } catch { /* ignore fallback errors */ }
     return { type: 'failed', error: `agent timed out after ${Math.floor(AGENT_WAIT_TIMEOUT_MS / 1000)}s [runId: ${runId}] [sessionKey: ${sKey}]` }
   }
   return { type: 'failed', error: `unexpected wait status: ${status} [runId: ${runId}] [sessionKey: ${sKey}]` }
+}
+
+export async function executeTask(api: OpenClawApi, task: ExecutionTask): Promise<TaskResult> {
+  const raw = await executeTaskRaw(api, task)
+  if (raw.type === 'failed') return raw
+  return parseDecisionBlock(raw.output) ?? { type: 'completed', output: raw.output, next_branch: null }
 }
 
 export async function verifyGatewayOperatorScopes(api: OpenClawApi): Promise<void> {

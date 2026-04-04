@@ -332,7 +332,7 @@ export default function HandbookPage() {
           />
         )}
         sidePanel={
-          <ChannelShell title="Handbook Chat" parentLabel="Knowledge channel">
+          <ChannelShell title="Handbook Chat" parentLabel="Knowledge channel" shellClassName="rounded-none border-0">
             <ChannelTimeline items={handbookTimeline} emptyState="No messages yet. Ask agents to help with handbook content." />
             <WorkflowSlashComposer
               workspaceId={workspaceId}

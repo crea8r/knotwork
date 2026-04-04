@@ -88,7 +88,7 @@ export function useFileBrowserState(options: UseFileBrowserStateOptions = {}): F
     document.body.style.userSelect = 'none'
     function onMouseMove(ev: MouseEvent) {
       if (!isDraggingRef.current) return
-      setPanelWidth(Math.max(MIN_PANEL_W, Math.min(MAX_PANEL_W, startWidthRef.current + ev.clientX - startXRef.current)))
+      setPanelWidth(Math.max(MIN_PANEL_W, Math.min(MAX_PANEL_W, startWidthRef.current - (ev.clientX - startXRef.current))))
     }
     function onMouseUp() {
       isDraggingRef.current = false

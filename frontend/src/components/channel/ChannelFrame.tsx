@@ -1,6 +1,7 @@
-import { useState, type ReactNode, type Ref } from 'react'
+import { useEffect, useRef, useState, type ReactNode, type Ref } from 'react'
 import { Edit2, Loader2, Send } from 'lucide-react'
 import Btn from '@/components/shared/Btn'
+import MarkdownViewer from '@/components/shared/MarkdownViewer'
 
 export type ChannelTimelineItem =
   | {
@@ -9,7 +10,8 @@ export type ChannelTimelineItem =
       authorLabel: string
       tone?: 'human' | 'agent' | 'system'
       mine?: boolean
-      content: ReactNode
+      content: ReactNode | string
+      markdown?: boolean
     }
   | {
       id: string
@@ -35,6 +37,7 @@ export function ChannelShell({
   topPanel,
   onRenameTitle,
   renamePending,
+  shellClassName,
   children,
 }: {
   eyebrow?: ReactNode
@@ -48,6 +51,7 @@ export function ChannelShell({
   topPanel?: ReactNode
   onRenameTitle?: (value: string) => void | Promise<void>
   renamePending?: boolean
+  shellClassName?: string
   children: ReactNode
 }) {
   const [editingTitle, setEditingTitle] = useState(false)
@@ -65,7 +69,7 @@ export function ChannelShell({
   }
 
   return (
-    <div className="flex h-full min-h-0 flex-col overflow-hidden rounded-[28px] border border-stone-200 bg-white">
+    <div className={`flex h-full min-h-0 flex-col overflow-hidden rounded-[28px] border border-stone-200 bg-white ${shellClassName ?? ''}`}>
       <div className="border-b border-stone-200 bg-white px-4 py-3">
         <div className="flex items-start justify-between gap-4">
           <div className="min-w-0">
@@ -147,16 +151,34 @@ export function ChannelContextPill({ children }: { children: ReactNode }) {
 export function ChannelTimeline({
   items,
   emptyState = 'No messages yet.',
+  highlightedItemId,
 }: {
   items: ChannelTimelineItem[]
   emptyState?: string
+  highlightedItemId?: string | null
 }) {
+  const itemRefs = useRef(new Map<string, HTMLDivElement>())
+
+  useEffect(() => {
+    if (!highlightedItemId) return
+    const node = itemRefs.current.get(highlightedItemId)
+    if (!node) return
+    node.scrollIntoView({ block: 'center', behavior: 'smooth' })
+  }, [highlightedItemId, items])
+
   return (
     <div className="flex-1 overflow-y-auto bg-[#faf7f1] p-4 space-y-3">
       {items.length === 0 ? <p className="text-sm text-stone-500">{emptyState}</p> : items.map((item) => {
         if (item.kind === 'message') {
           return (
-            <div key={item.id} className={`max-w-[92%] ${item.mine ? 'ml-auto' : 'mr-auto'}`}>
+            <div
+              key={item.id}
+              ref={(node) => {
+                if (node) itemRefs.current.set(item.id, node)
+                else itemRefs.current.delete(item.id)
+              }}
+              className={`max-w-[92%] ${item.mine ? 'ml-auto' : 'mr-auto'}`}
+            >
               <p className="mb-1 text-[10px] uppercase tracking-wide text-stone-400">{item.authorLabel}</p>
               <div className={`rounded-2xl border px-4 py-2.5 text-sm ${
                 item.mine
@@ -164,8 +186,12 @@ export function ChannelTimeline({
                   : item.tone === 'system'
                     ? 'border-stone-200 bg-stone-100 text-stone-800'
                     : 'border-stone-200 bg-white text-stone-800'
-              }`}>
-                {item.content}
+              } ${highlightedItemId === item.id ? 'ring-2 ring-brand-400 ring-offset-2 ring-offset-[#faf7f1]' : ''}`}>
+                {item.markdown && typeof item.content === 'string' ? (
+                  <MarkdownViewer content={item.content} compact theme={item.mine ? 'inverse' : 'default'} />
+                ) : (
+                  typeof item.content === 'string' ? <span className="whitespace-pre-wrap">{item.content}</span> : item.content
+                )}
               </div>
             </div>
           )

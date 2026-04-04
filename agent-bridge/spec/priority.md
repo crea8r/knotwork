@@ -47,11 +47,12 @@ Base score for each event type, independent of time.
 
 | Event type | Weight | Rationale |
 |---|---|---|
-| `escalation_assigned` | 80 | Blocks a live run. Someone is waiting. |
-| `channel_mention` | 60 | Direct address — a participant expects a reply. |
-| `workspace_announcement` | 30 | Workspace-wide; may change operating context. |
-| `run_status_changed` | 20 | Informational but may require follow-up. |
-| `channel_message` | 10 | Ambient; no reply expected unless it's a mention. |
+| `task_assigned` | 80 | Directly assigned work. Someone is waiting. |
+| `mentioned_message` | 60 | Direct address — a participant expects a reply. |
+| `escalation_created` | 50 | High-signal escalation context that may require triage. |
+| `run_failed` | 20 | Informational but may require follow-up. |
+| `run_completed` | 10 | Informational; usually no reply required. |
+| `message_posted` | 10 | Ambient; no reply expected unless it's a mention. |
 
 ---
 
@@ -86,7 +87,7 @@ Escalations with `timeout_hours` set have a hard deadline. Maximum urgency when 
 
 ### Synthetic deadline — channel rhythm
 
-For `channel_mention` and obligation-eligible `channel_message` events, the deadline is inferred from **how fast that channel actually moves**.
+For `mentioned_message` and obligation-eligible `message_posted` events, the deadline is inferred from **how fast that channel actually moves**.
 
 ```
 channel_rhythm(channel_id) =
@@ -122,7 +123,7 @@ deadline_score =
 
 ## Obligation — when a channel message becomes actionable
 
-A `channel_message` (no mention) starts with nature_weight=10 — ambient, no response expected. It becomes **obligation-eligible** when all of the following are true:
+A `message_posted` (no mention) starts with nature_weight=10 — ambient, no response expected. It becomes **obligation-eligible** when all of the following are true:
 
 1. **Unanswered question** — message ends with `?`, and no reply has been posted since
 2. **In your domain** — message topic overlaps with your stated capabilities in `skills.md`
@@ -140,7 +141,7 @@ obligation_score(msg) =
     deadline      = none
 ```
 
-**Why not 60?** A direct mention (`channel_mention`) scores 60 because the sender explicitly addressed you. Obligation is inferred — give it a one-point handicap to break ties in favour of explicit requests.
+**Why not 60?** A direct mention (`mentioned_message`) scores 60 because the sender explicitly addressed you. Obligation is inferred — give it a one-point handicap to break ties in favour of explicit requests.
 
 **Domain matching** is intentionally loose: check for keyword overlap between the message and your `skills.md` capability description. A false positive (you reply when you shouldn't) is less bad than a false negative (you stay silent when you should have replied). When in doubt, lean toward responding.
 
@@ -166,12 +167,12 @@ Scenario: agent picks up after finishing a task. Channel rhythm for #ops-alerts 
 
 | Task | Nature | Age | Deadline | Context | **Total** |
 |---|---|---|---|---|---|
-| Escalation assigned, 2h timeout remaining, 5 min old | 80 | 22 | 25 | 0 | **127** |
+| Task assigned, 2h timeout remaining, 5 min old | 80 | 22 | 25 | 0 | **127** |
 | Mention in #ops-alerts, 6 min old (rhythm=8min, 2min left) | 60 | 18 | 50 | 5 | **133** |
-| Escalation assigned, no timeout, just arrived | 80 | 0 | 0 | 0 | **80** |
+| Escalation created, no timeout, just arrived | 50 | 0 | 0 | 0 | **50** |
 | Obligation: unanswered question in domain, gap just elapsed | 55 | 22 | 50 | 5 | **132** |
-| Run status changed (failed), 1h old | 20 | 40 | 0 | 10 | **70** |
-| Channel message, no obligation signal, 2h old | 10 | 40 | 0 | 0 | **50** |
+| Run failed, 1h old | 20 | 40 | 0 | 10 | **70** |
+| Message posted, no obligation signal, 2h old | 10 | 40 | 0 | 0 | **50** |
 
 The mention in the fast-moving #ops-alerts channel (6 of 8 minutes elapsed) overtakes the escalation because the deadline is almost gone. The obligation case scores nearly the same — proximity to deadline is the dominant signal in both.
 
@@ -189,7 +190,7 @@ The mention in the fast-moving #ops-alerts channel (6 of 8 minutes elapsed) over
 
 **Rhythm recalculation**: recompute channel rhythm at each scoring cycle, not once per session. A channel that was slow yesterday may be fast today.
 
-**Discarding stale informational events**: `channel_message` (no obligation) and `run_status_changed` events older than 24 hours may be marked read without action — their information value has decayed. Apply only to `nature_weight ≤ 20` after obligation promotion.
+**Discarding stale informational events**: `message_posted` (no obligation), `run_failed`, and `run_completed` events older than 24 hours may be marked read without action — their information value has decayed. Apply only to `nature_weight ≤ 20` after obligation promotion.
 
 ---
 

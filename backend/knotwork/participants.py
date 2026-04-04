@@ -90,6 +90,7 @@ async def list_workspace_human_participants(
         .where(
             WorkspaceMember.workspace_id == workspace_id,
             WorkspaceMember.kind == "human",
+            WorkspaceMember.access_disabled_at.is_(None),
         )
     )
     out: list[dict] = []
@@ -123,6 +124,7 @@ async def list_workspace_agent_participants(
         .where(
             WorkspaceMember.workspace_id == workspace_id,
             WorkspaceMember.kind == "agent",
+            WorkspaceMember.access_disabled_at.is_(None),
         )
     )
     out: list[dict] = []
@@ -171,7 +173,10 @@ async def list_workspace_participants(
     rows = await db.execute(
         select(WorkspaceMember, User)
         .join(User, User.id == WorkspaceMember.user_id)
-        .where(WorkspaceMember.workspace_id == workspace_id)
+        .where(
+            WorkspaceMember.workspace_id == workspace_id,
+            WorkspaceMember.access_disabled_at.is_(None),
+        )
     )
     participants: list[dict] = []
     for member, user in rows.all():

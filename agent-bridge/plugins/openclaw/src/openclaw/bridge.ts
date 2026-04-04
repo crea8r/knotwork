@@ -2,13 +2,22 @@
 // Three responsibilities: config resolution, agent discovery, Knotwork HTTP calls.
 
 import type {
+  ChannelAssetBinding,
+  ChannelInfo,
+  ChannelMessage,
+  ChannelSubscription,
+  EscalationInfo,
   InboxEvent,
   JsonObject,
+  KnowledgeFileSummary,
+  KnowledgeFileWithContent,
   LooseRecord,
   OpenClawApi,
   PluginConfig,
   RemoteAgent,
   RemoteTool,
+  RunInfo,
+  RunNodeStateInfo,
 } from '../types'
 import { readFileSync } from 'node:fs'
 
@@ -62,6 +71,14 @@ export function getConfig(api: OpenClawApi): PluginConfig {
       typeof merged.taskPollIntervalMs === 'number'
         ? merged.taskPollIntervalMs
         : parseInt(env('KNOTWORK_TASK_POLL_INTERVAL_MS') ?? '30000', 10),
+    semanticActionProtocolEnabled:
+      typeof merged.semanticActionProtocolEnabled === 'boolean'
+        ? merged.semanticActionProtocolEnabled
+        : (env('KNOTWORK_SEMANTIC_ACTION_PROTOCOL_ENABLED') ?? 'false') === 'true',
+    semanticActionStrictMode:
+      typeof merged.semanticActionStrictMode === 'boolean'
+        ? merged.semanticActionStrictMode
+        : (env('KNOTWORK_SEMANTIC_ACTION_STRICT_MODE') ?? 'false') === 'true',
   }
 }
 
@@ -208,11 +225,144 @@ export async function fetchGuide(baseUrl: string, workspaceId: string, jwt: stri
   return httpGet(`${baseUrl}/api/v1/workspaces/${workspaceId}/guide`, jwt)
 }
 
+export async function fetchChannel(baseUrl: string, workspaceId: string, jwt: string, channelRef: string): Promise<ChannelInfo> {
+  return httpGet(`${baseUrl}/api/v1/workspaces/${workspaceId}/channels/${channelRef}`, jwt)
+}
+
+export async function fetchChannelMessages(baseUrl: string, workspaceId: string, jwt: string, channelRef: string): Promise<ChannelMessage[]> {
+  return httpGet(`${baseUrl}/api/v1/workspaces/${workspaceId}/channels/${channelRef}/messages`, jwt)
+}
+
+export async function fetchChannelAssets(baseUrl: string, workspaceId: string, jwt: string, channelRef: string): Promise<ChannelAssetBinding[]> {
+  return httpGet(`${baseUrl}/api/v1/workspaces/${workspaceId}/channels/${channelRef}/assets`, jwt)
+}
+
+export async function fetchMyChannelSubscriptions(baseUrl: string, workspaceId: string, jwt: string): Promise<ChannelSubscription[]> {
+  return httpGet(`${baseUrl}/api/v1/workspaces/${workspaceId}/channels/subscriptions/me`, jwt)
+}
+
+export async function postChannelMessage(
+  baseUrl: string,
+  workspaceId: string,
+  jwt: string,
+  channelRef: string,
+  content: string,
+  authorName: string,
+  runId?: string,
+): Promise<ChannelMessage> {
+  return httpPost(
+    `${baseUrl}/api/v1/workspaces/${workspaceId}/channels/${channelRef}/messages`,
+    {
+      role: 'assistant',
+      author_type: 'agent',
+      author_name: authorName,
+      content,
+      run_id: runId ?? null,
+    },
+    jwt,
+  )
+}
+
+export async function fetchRun(baseUrl: string, workspaceId: string, jwt: string, runId: string): Promise<RunInfo> {
+  return httpGet(`${baseUrl}/api/v1/workspaces/${workspaceId}/runs/${runId}`, jwt)
+}
+
+export async function fetchRunNodes(baseUrl: string, workspaceId: string, jwt: string, runId: string): Promise<RunNodeStateInfo[]> {
+  return httpGet(`${baseUrl}/api/v1/workspaces/${workspaceId}/runs/${runId}/nodes`, jwt)
+}
+
+export async function fetchEscalation(baseUrl: string, workspaceId: string, jwt: string, escalationId: string): Promise<EscalationInfo> {
+  return httpGet(`${baseUrl}/api/v1/workspaces/${workspaceId}/escalations/${escalationId}`, jwt)
+}
+
+export async function resolveEscalation(
+  baseUrl: string,
+  workspaceId: string,
+  jwt: string,
+  escalationId: string,
+  body: {
+    resolution: string
+    actor_name: string
+    guidance?: string
+    override_output?: Record<string, unknown> | null
+    next_branch?: string | null
+    answers?: string[] | null
+    channel_id?: string | null
+  },
+): Promise<LooseRecord> {
+  return httpPost(
+    `${baseUrl}/api/v1/workspaces/${workspaceId}/escalations/${escalationId}/resolve`,
+    {
+      resolution: body.resolution,
+      actor_name: body.actor_name,
+      guidance: body.guidance ?? null,
+      override_output: body.override_output ?? null,
+      next_branch: body.next_branch ?? null,
+      answers: body.answers ?? null,
+      channel_id: body.channel_id ?? null,
+    },
+    jwt,
+  )
+}
+
+export async function listKnowledgeFiles(baseUrl: string, workspaceId: string, jwt: string): Promise<KnowledgeFileSummary[]> {
+  return httpGet(`${baseUrl}/api/v1/workspaces/${workspaceId}/knowledge`, jwt)
+}
+
+export async function fetchKnowledgeFile(baseUrl: string, workspaceId: string, jwt: string, path: string): Promise<KnowledgeFileWithContent> {
+  const encodedPath = encodeURIComponent(path)
+  return httpGet(`${baseUrl}/api/v1/workspaces/${workspaceId}/knowledge/file?path=${encodedPath}`, jwt)
+}
+
+export async function createKnowledgeChange(
+  baseUrl: string,
+  workspaceId: string,
+  jwt: string,
+  body: {
+    path: string
+    proposed_content: string
+    reason: string
+    run_id?: string | null
+    node_id?: string | null
+    agent_ref?: string | null
+    source_channel_id?: string | null
+    action_type?: string
+    target_type?: string
+    payload?: Record<string, unknown>
+  },
+): Promise<LooseRecord> {
+  return httpPost(
+    `${baseUrl}/api/v1/workspaces/${workspaceId}/knowledge/changes`,
+    {
+      path: body.path,
+      proposed_content: body.proposed_content,
+      reason: body.reason,
+      run_id: body.run_id ?? null,
+      node_id: body.node_id ?? null,
+      agent_ref: body.agent_ref ?? null,
+      source_channel_id: body.source_channel_id ?? null,
+      action_type: body.action_type ?? 'update_content',
+      target_type: body.target_type ?? 'file',
+      payload: body.payload ?? {},
+    },
+    jwt,
+  )
+}
+
 /** Mark a single inbox delivery as read via its delivery_id. */
 export async function ackInboxDelivery(baseUrl: string, workspaceId: string, jwt: string, deliveryId: string): Promise<void> {
   await httpPatch(
     `${baseUrl}/api/v1/workspaces/${workspaceId}/inbox/deliveries/${deliveryId}`,
     { read: true },
+    jwt,
+  )
+}
+
+/** Archive a handled inbox delivery so it no longer appears in the active inbox. */
+export async function archiveInboxDelivery(baseUrl: string, workspaceId: string, jwt: string, deliveryId: string): Promise<void> {
+  await httpPatch(
+    `${baseUrl}/api/v1/workspaces/${workspaceId}/inbox/deliveries/${deliveryId}`,
+    { read: true, archived: true },
     jwt,
   )
 }

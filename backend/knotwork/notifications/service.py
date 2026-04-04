@@ -19,7 +19,7 @@ from knotwork.notifications.models import (
 )
 from knotwork.notifications.schemas import NotificationPreferenceUpdate
 from knotwork.participants import parse_participant_id, participant_kind
-from knotwork.workspaces.models import Workspace
+from knotwork.workspaces.models import Workspace, WorkspaceMember
 
 
 SUPPORTED_EVENT_TYPES = (
@@ -241,12 +241,42 @@ async def resolve_email_address(
     return (user.email or "").strip() or None
 
 
+async def participant_has_active_access(
+    db: AsyncSession,
+    workspace_id: UUID,
+    participant_id: str,
+) -> bool:
+    kind, raw_id = parse_participant_id(participant_id)
+    if kind == "agent":
+        member = await db.get(WorkspaceMember, UUID(raw_id))
+        return bool(
+            member
+            and member.workspace_id == workspace_id
+            and member.access_disabled_at is None
+        )
+
+    if kind == "human":
+        member = await db.scalar(
+            select(WorkspaceMember).where(
+                WorkspaceMember.workspace_id == workspace_id,
+                WorkspaceMember.user_id == UUID(raw_id),
+                WorkspaceMember.access_disabled_at.is_(None),
+            ).limit(1)
+        )
+        return member is not None
+
+    return False
+
+
 async def resolve_delivery_means(
     db: AsyncSession,
     workspace_id: UUID,
     participant_id: str,
     event_type: str,
 ) -> dict:
+    if not await participant_has_active_access(db, workspace_id, participant_id):
+        return {"means": [], "email_address": None}
+
     pref = await get_participant_preference(db, workspace_id, participant_id, event_type)
 
     means: list[str] = []

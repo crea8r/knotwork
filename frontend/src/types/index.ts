@@ -401,6 +401,7 @@ export interface InboxItem {
   channel_id: string | null
   escalation_id: string | null
   proposal_id: string | null
+  message_id: string | null
   due_at: string | null
   created_at: string
   unread: boolean

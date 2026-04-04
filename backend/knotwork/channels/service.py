@@ -300,7 +300,7 @@ async def publish_event_to_channel_subscribers(
             ChannelSubscription.unsubscribed_at.is_(None),
         )
     )
-    recipient_ids = [row[0] for row in subscriber_rows.all()]
+    recipient_ids = [row[0] for row in subscriber_rows.all() if row[0] != actor_id]
     return await publish_channel_event(
         db,
         workspace_id=workspace_id,
@@ -829,8 +829,13 @@ async def create_message(
     channel.updated_at = datetime.now(timezone.utc)
 
     metadata = dict(data.metadata or {})
+    author_participant_id = metadata.get("author_participant_id")
     mentioned = await resolve_mentioned_participants(db, workspace_id, data.content)
-    mentioned_ids = [participant["participant_id"] for participant in mentioned]
+    mentioned_ids = [
+        participant["participant_id"]
+        for participant in mentioned
+        if participant["participant_id"] != author_participant_id
+    ]
     if mentioned_ids:
         metadata["mentioned_participant_ids"] = mentioned_ids
 
@@ -997,6 +1002,7 @@ async def inbox_items(
                     "channel_id": str(event.channel_id),
                     "escalation_id": None,
                     "proposal_id": None,
+                    "message_id": str(payload.get("message_id") or "") or None,
                     "due_at": None,
                     "created_at": delivery.sent_at,
                     "unread": delivery.read_at is None,
@@ -1018,6 +1024,7 @@ async def inbox_items(
                     "channel_id": str(event.channel_id),
                     "escalation_id": None,
                     "proposal_id": None,
+                    "message_id": str(payload.get("message_id") or "") or None,
                     "due_at": None,
                     "created_at": delivery.sent_at,
                     "unread": delivery.read_at is None,
@@ -1039,6 +1046,7 @@ async def inbox_items(
                     "channel_id": str(event.channel_id),
                     "escalation_id": None,
                     "proposal_id": None,
+                    "message_id": None,
                     "due_at": None,
                     "created_at": delivery.sent_at,
                     "unread": delivery.read_at is None,
@@ -1060,6 +1068,7 @@ async def inbox_items(
                     "channel_id": str(event.channel_id),
                     "escalation_id": None,
                     "proposal_id": None,
+                    "message_id": None,
                     "due_at": None,
                     "created_at": delivery.sent_at,
                     "unread": delivery.read_at is None,
@@ -1090,6 +1099,7 @@ async def inbox_items(
                     "channel_id": str(p.channel_id),
                     "escalation_id": None,
                     "proposal_id": p.id,
+                    "message_id": None,
                     "due_at": None,
                     "created_at": p.created_at,
                     "unread": False,

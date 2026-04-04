@@ -1,5 +1,5 @@
-import { useState } from 'react'
-import { Link } from 'react-router-dom'
+import { useEffect, useRef, useState } from 'react'
+import { Link, useNavigate } from 'react-router-dom'
 import { AlertCircle, Archive, ArchiveRestore, AtSign, CheckCheck, Clock3, FilePenLine, PlayCircle } from 'lucide-react'
 import { useInbox, useInboxSummary, useMarkAllInboxRead, useUpdateInboxDelivery } from '@/api/channels'
 import { useAuthStore } from '@/store/auth'
@@ -10,11 +10,40 @@ const DEV_WORKSPACE = import.meta.env.VITE_DEV_WORKSPACE_ID ?? 'dev-workspace'
 
 export default function InboxPage() {
   const workspaceId = useAuthStore((s) => s.workspaceId) ?? DEV_WORKSPACE
+  const navigate = useNavigate()
   const [archived, setArchived] = useState(false)
   const { data: items = [], isLoading } = useInbox(workspaceId, archived)
   const { data: summary } = useInboxSummary(workspaceId)
   const updateDelivery = useUpdateInboxDelivery(workspaceId)
   const markAllRead = useMarkAllInboxRead(workspaceId)
+  const itemRefs = useRef(new Map<string, HTMLAnchorElement>())
+  const seenDeliveryIdsRef = useRef(new Set<string>())
+
+  useEffect(() => {
+    if (archived || items.length === 0) return
+    const observer = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          if (!entry.isIntersecting) continue
+          const deliveryId = entry.target.getAttribute('data-delivery-id')
+          if (!deliveryId || seenDeliveryIdsRef.current.has(deliveryId)) continue
+          seenDeliveryIdsRef.current.add(deliveryId)
+          updateDelivery.mutate({ deliveryId, read: true })
+          observer.unobserve(entry.target)
+        }
+      },
+      { threshold: 0.6 },
+    )
+
+    for (const item of items) {
+      if (!item.unread || !item.delivery_id) continue
+      if (seenDeliveryIdsRef.current.has(item.delivery_id)) continue
+      const node = itemRefs.current.get(item.id)
+      if (node) observer.observe(node)
+    }
+
+    return () => observer.disconnect()
+  }, [archived, items, updateDelivery])
 
   return (
     <div className="p-6 md:p-8 max-w-4xl mx-auto space-y-4">
@@ -62,16 +91,44 @@ export default function InboxPage() {
               ? `/runs/${item.run_id}`
               : item.item_type === 'mentioned_message' || item.item_type === 'task_assigned' || item.item_type === 'message_posted' || item.item_type === 'knowledge_change'
                 ? item.channel_id
-                  ? `/channels/${item.channel_id}`
+                  ? `/channels/${item.channel_id}${item.message_id ? `?message=${encodeURIComponent(item.message_id)}` : ''}`
                   : item.run_id
                     ? `/runs/${item.run_id}`
                     : '/channels'
                 : '/runs'
 
+            async function openItem(event: React.MouseEvent<HTMLAnchorElement>) {
+              if (
+                event.defaultPrevented ||
+                event.button !== 0 ||
+                event.metaKey ||
+                event.ctrlKey ||
+                event.shiftKey ||
+                event.altKey
+              ) {
+                return
+              }
+              event.preventDefault()
+              if (item.delivery_id) {
+                await updateDelivery.mutateAsync({
+                  deliveryId: item.delivery_id,
+                  read: true,
+                  archived: true,
+                })
+              }
+              navigate(target)
+            }
+
             return (
               <Link
                 key={item.id}
                 to={target}
+                onClick={(event) => { void openItem(event) }}
+                ref={(node) => {
+                  if (node) itemRefs.current.set(item.id, node)
+                  else itemRefs.current.delete(item.id)
+                }}
+                data-delivery-id={item.delivery_id ?? undefined}
                 className={`block bg-white border rounded-xl p-4 hover:border-brand-300 hover:shadow-sm transition ${item.unread ? 'border-brand-200 shadow-sm' : 'border-gray-200'}`}
               >
                 <div className="flex items-start justify-between gap-3">

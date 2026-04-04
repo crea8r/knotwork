@@ -52,6 +52,7 @@ export interface MemberOut {
   avatar_url: string | null
   bio: string | null
   joined_at: string
+  access_disabled_at: string | null
 }
 
 export interface MembersPage {
@@ -144,16 +145,30 @@ export function useWorkspaceMembers(
   workspaceId: string | null,
   page = 1,
   kind?: 'human' | 'agent',
+  disabled?: boolean,
 ) {
   return useQuery<MembersPage>({
-    queryKey: ['workspaces', workspaceId, 'members', page, kind ?? 'all'],
+    queryKey: ['workspaces', workspaceId, 'members', page, kind ?? 'all', disabled == null ? 'all' : disabled ? 'disabled' : 'active'],
     queryFn: () =>
       api
         .get(`/workspaces/${workspaceId}/members`, {
-          params: { page, page_size: 20, ...(kind ? { kind } : {}) },
+          params: { page, page_size: 20, ...(kind ? { kind } : {}), ...(disabled == null ? {} : { disabled }) },
         })
         .then((r) => r.data),
     enabled: !!workspaceId,
+  })
+}
+
+export function useUpdateWorkspaceMember(workspaceId: string | null) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (data: { memberId: string; access_disabled: boolean }) =>
+      api.patch<MemberOut>(`/workspaces/${workspaceId}/members/${data.memberId}`, {
+        access_disabled: data.access_disabled,
+      }).then((r) => r.data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['workspaces', workspaceId, 'members'] })
+    },
   })
 }
 

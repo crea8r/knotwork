@@ -215,7 +215,7 @@ Still UI-only in S12:
 Build MCP from the OpenAPI baseline in this order:
 
 1. **Workspace-scoped transport**
-   - MCP server authenticates with `KNOTWORK_API_URL`, `KNOTWORK_API_TOKEN`, and `KNOTWORK_WORKSPACE_ID`
+   - MCP server authenticates with `KNOTWORK_API_URL`, `KNOTWORK_BEARER_TOKEN`, and `KNOTWORK_WORKSPACE_ID`
    - MCP talks to Knotwork through the HTTP API, not through a second private backend contract
 2. **Read-first operational coverage**
    - workspace overview

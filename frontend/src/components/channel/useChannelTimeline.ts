@@ -59,6 +59,7 @@ export function useChannelTimeline(workspaceId: string, channelId: string): UseC
           mine: m.role === 'user',
           tone: (m.author_type === 'system' ? 'system' : m.author_type === 'human' ? 'human' : 'agent') as 'human' | 'agent' | 'system',
           content: m.content,
+          markdown: true,
         }
       }
       const d = entry.item

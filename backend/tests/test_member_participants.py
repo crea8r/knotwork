@@ -141,3 +141,30 @@ async def test_delivery_defaults_and_email_lookup_are_member_based(db, workspace
         "push_enabled": True,
     }
     assert await resolve_email_address(db, f"agent:{agent_member.id}") == agent_user.email
+
+
+@pytest.mark.asyncio
+async def test_disabled_members_are_hidden_from_participants_and_mentions(db, workspace):
+    active_user, _ = await _create_member(
+        db,
+        workspace,
+        name="Active Human",
+        kind="human",
+        email="active@example.com",
+    )
+    _, disabled_member = await _create_member(
+        db,
+        workspace,
+        name="Disabled Agent",
+        kind="agent",
+        email="disabled-agent@example.com",
+        public_key="disabled-public-key",
+    )
+    disabled_member.access_disabled_at = workspace.created_at
+    await db.commit()
+
+    participants = await list_workspace_participants(db, workspace.id)
+    mentioned = await resolve_mentioned_participants(db, workspace.id, "@disabled")
+
+    assert [row["participant_id"] for row in participants] == [f"human:{active_user.id}"]
+    assert mentioned == []

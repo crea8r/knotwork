@@ -1,4 +1,5 @@
 import base64
+from datetime import datetime, timezone
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -32,6 +33,7 @@ class MemberOut(BaseModel):
     avatar_url: str | None
     bio: str | None
     joined_at: str
+    access_disabled_at: str | None = None
 
 
 class AddAgentMemberIn(BaseModel):
@@ -45,6 +47,10 @@ class MembersPage(BaseModel):
     total: int
     page: int
     page_size: int
+
+
+class UpdateMemberAccessIn(BaseModel):
+    access_disabled: bool
 
 
 class WorkspaceEmailConfigOut(BaseModel):
@@ -77,7 +83,10 @@ async def list_workspaces(
     result = await db.execute(
         select(Workspace, WorkspaceMember.role)
         .join(WorkspaceMember, WorkspaceMember.workspace_id == Workspace.id)
-        .where(WorkspaceMember.user_id == user.id)
+        .where(
+            WorkspaceMember.user_id == user.id,
+            WorkspaceMember.access_disabled_at.is_(None),
+        )
         .order_by(Workspace.created_at)
     )
     return [
@@ -92,6 +101,7 @@ async def list_workspace_members(
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
     kind: str | None = Query(None, description="Filter by 'human' or 'agent'"),
+    disabled: bool | None = Query(None, description="Filter by disabled state"),
     _member: WorkspaceMember = Depends(get_workspace_member),
     db: AsyncSession = Depends(get_db),
 ) -> MembersPage:
@@ -99,6 +109,12 @@ async def list_workspace_members(
     base = select(WorkspaceMember).where(WorkspaceMember.workspace_id == workspace_id)
     if kind:
         base = base.where(WorkspaceMember.kind == kind)
+    if disabled is not None:
+        base = base.where(
+            WorkspaceMember.access_disabled_at.is_not(None)
+            if disabled
+            else WorkspaceMember.access_disabled_at.is_(None)
+        )
 
     total_result = await db.execute(select(func.count()).select_from(base.subquery()))
     total = total_result.scalar_one()
@@ -113,6 +129,12 @@ async def list_workspace_members(
     )
     if kind:
         member_query = member_query.where(WorkspaceMember.kind == kind)
+    if disabled is not None:
+        member_query = member_query.where(
+            WorkspaceMember.access_disabled_at.is_not(None)
+            if disabled
+            else WorkspaceMember.access_disabled_at.is_(None)
+        )
     rows = await db.execute(member_query)
     items = [
         MemberOut(
@@ -125,10 +147,45 @@ async def list_workspace_members(
             avatar_url=u.avatar_url,
             bio=u.bio,
             joined_at=m.created_at.isoformat(),
+            access_disabled_at=m.access_disabled_at.isoformat() if m.access_disabled_at else None,
         )
         for m, u in rows.all()
     ]
     return MembersPage(items=items, total=total, page=page, page_size=page_size)
+
+
+@router.patch("/{workspace_id}/members/{member_id}", response_model=MemberOut)
+async def update_workspace_member_access(
+    workspace_id: UUID,
+    member_id: UUID,
+    data: UpdateMemberAccessIn,
+    owner_member: WorkspaceMember = Depends(require_owner),
+    db: AsyncSession = Depends(get_db),
+) -> MemberOut:
+    member = await db.get(WorkspaceMember, member_id)
+    if member is None or member.workspace_id != workspace_id:
+        raise HTTPException(status_code=404, detail="Member not found")
+    if member.user_id == owner_member.user_id:
+        raise HTTPException(status_code=400, detail="Owners cannot disable their own access")
+
+    member.access_disabled_at = datetime.now(timezone.utc) if data.access_disabled else None
+    await db.commit()
+    user = await db.get(User, member.user_id)
+    if user is None:
+        raise HTTPException(status_code=404, detail="User not found")
+    await db.refresh(member)
+    return MemberOut(
+        id=str(member.id),
+        user_id=str(user.id),
+        name=user.name,
+        email=user.email,
+        role=member.role,
+        kind=member.kind,
+        avatar_url=user.avatar_url,
+        bio=user.bio,
+        joined_at=member.created_at.isoformat(),
+        access_disabled_at=member.access_disabled_at.isoformat() if member.access_disabled_at else None,
+    )
 
 
 @router.post("")
@@ -250,6 +307,7 @@ async def add_workspace_member(
         avatar_url=user.avatar_url,
         bio=user.bio,
         joined_at=member.created_at.isoformat(),
+        access_disabled_at=None,
     )
 
 

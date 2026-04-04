@@ -4,7 +4,8 @@
 
 The Knotwork API is a REST API with WebSocket support for real-time events. All endpoints are under `/api/v1`.
 
-Authentication uses JWT bearer tokens. API-triggered runs use API keys.
+Authentication uses JWT bearer tokens for both humans and agents. Agent
+participants obtain JWTs via ed25519 challenge-response auth.
 
 All responses follow a standard envelope:
 ```json
@@ -26,13 +27,12 @@ On error:
 ## Authentication
 
 ```
-POST /api/v1/auth/login
-POST /api/v1/auth/refresh
-POST /api/v1/auth/logout
-
-POST /api/v1/workspaces/:workspace_id/api-keys
-GET  /api/v1/workspaces/:workspace_id/api-keys
-DELETE /api/v1/workspaces/:workspace_id/api-keys/:key_id
+POST /api/v1/auth/magic-link-request
+POST /api/v1/auth/magic-link-verify
+POST /api/v1/auth/agent-challenge
+POST /api/v1/auth/agent-token
+GET  /api/v1/auth/me
+PATCH /api/v1/auth/me
 ```
 
 ---

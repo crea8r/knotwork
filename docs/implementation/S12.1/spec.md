@@ -99,7 +99,7 @@ Returns `text/markdown` — personalised to the calling participant (name + role
 agent-bridge/spec/
   README.md             — overview + folder map
   participant.md        — shared contract: channels, escalations, inbox, handbook, runs
-  events.md             — 5 event types, payload schemas, ACK semantics
+  events.md             — 6 event types, payload schemas, ACK semantics
   priority.md           — non-preemptive task queue + dynamic scoring formula
   skills-template.md    — workspace context template
   human/
@@ -115,11 +115,11 @@ agent-bridge/spec/
 **Priority system** (`priority.md`) — the same scoring logic governs both the human UI and the agent bridge:
 - Non-preemptive: current task runs to completion; full re-score before picking next
 - `score = nature_weight + age_score + deadline_score + context_boost`
-- `nature_weight`: escalation_assigned=80, channel_mention=60, workspace_announcement=30, run_status_changed=20, channel_message=10
+- `nature_weight`: task_assigned=80, mentioned_message=60, escalation_created=50, run_failed=20, run_completed=10, message_posted=10
 - `age_score`: `min(40, 10 × log₂(age_minutes + 1))` — plateaus at 64 min to prevent stale events burying fresh ones
 - `deadline_score` (0–60): explicit timeout or synthetic deadline from **channel rhythm** (median inter-message gap, clamped [5 min, 4 h]; empty channel = 15 min)
 - `context_boost`: in-memory run +10, open channel session +5, workspace owner sender +5
-- **Obligation promotion**: a `channel_message` (weight=10) promotes to weight=55 when all three hold: unanswered question + in-domain + response gap elapsed since channel rhythm window opened
+- **Obligation promotion**: a `message_posted` (weight=10) promotes to weight=55 when all three hold: unanswered question + in-domain + response gap elapsed since channel rhythm window opened
 
 ### 6. Credential lifecycle
 
@@ -136,15 +136,16 @@ Key rotation = admin removes old `User.public_key` and re-registers agent with n
 
 ### 7. Notification contract
 
-Five event types defined in `agent-bridge/spec/events.md`:
+Six event types defined in `agent-bridge/spec/events.md`:
 
 | Event type | Nature weight | Delivery semantics |
 |---|---|---|
-| `escalation_assigned` | 80 | ACK required; at-least-once |
-| `channel_mention` | 60 | ACK required; at-least-once |
-| `workspace_announcement` | 30 | Best-effort |
-| `run_status_changed` | 20 | Best-effort |
-| `channel_message` | 10 (or 55 if obligation) | Best-effort |
+| `task_assigned` | 80 | ACK required; at-least-once |
+| `mentioned_message` | 60 | ACK required; at-least-once |
+| `escalation_created` | 50 | Best-effort |
+| `run_failed` | 20 | Best-effort |
+| `run_completed` | 10 | Best-effort |
+| `message_posted` | 10 (or 55 if obligation) | Best-effort |
 
 Delivery: inbox polling (`GET /api/v1/workspaces/{id}/inbox?unread=true`). Mark read via `PATCH /inbox/deliveries/{id}` or bulk `POST /inbox/read-all`.
 
@@ -173,7 +174,7 @@ Settings → Members tab updated:
 3. ✅ `agent_main` channel type is gone. No DM-style channels for any participant.
 4. ✅ `skills.md` generated from live workspace data (knowledge files + channels) and served as both REST endpoint and MCP resource.
 5. ✅ `agent-bridge/spec/` exists with behavioral protocol covering notification rhythm (channel rhythm + obligation model), task priority scoring, session management, event handling, and state management.
-6. ✅ Notification contract specifies 5 event types, payload schemas, delivery semantics, and ACK requirements.
+6. ✅ Notification contract specifies 6 event types, payload schemas, delivery semantics, and ACK requirements.
 7. ✅ Credential lifecycle defined and implemented: registration → ed25519 key → challenge-response → 30-day JWT → renewal. Discovery endpoint gives agents everything they need from just `backend_url + workspace_id`.
 
 ---

@@ -65,6 +65,7 @@ from knotwork.workspaces.invitations.router import public_router as invitations_
 from knotwork.public_workflows.router import router as public_workflows_router
 from knotwork.public_workflows.public_router import public_router as public_workflows_public_router
 from knotwork.projects.router import router as projects_router
+from knotwork.mcp.server import build_server
 from knotwork.database import AsyncSessionLocal
 
 _STARTED_AT = datetime.now(timezone.utc)
@@ -115,11 +116,18 @@ async def lifespan(app: FastAPI):
     global _INSTALLATION_ID, _SCHEMA_VERSION
     _INSTALLATION_ID = _load_or_create_installation_id()
     _SCHEMA_VERSION = await _read_schema_version()
-    yield
+    mcp_server = getattr(app.state, "mcp_server", None)
+    if mcp_server is None:
+        yield
+        return
+    async with mcp_server.session_manager.run():
+        yield
 
 
 def create_app() -> FastAPI:
     app = FastAPI(title="Knotwork API", version="0.1.0", lifespan=lifespan)
+    mcp_server = build_server()
+    app.state.mcp_server = mcp_server
 
     app.add_middleware(
         CORSMiddleware,
@@ -152,6 +160,7 @@ def create_app() -> FastAPI:
     app.include_router(public_workflows_router, prefix=prefix)
     app.include_router(public_workflows_public_router, prefix=prefix)
     app.include_router(agent_api_router)  # no /api/v1 prefix — agents use /agent-api
+    app.mount("/mcp", mcp_server.streamable_http_app())
 
     @app.get("/health")
     async def healthcheck():

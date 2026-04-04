@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { FolderKanban } from 'lucide-react'
 import { Link, useNavigate, useOutletContext } from 'react-router-dom'
 import { usePostChannelMessage } from '@/api/channels'
@@ -6,6 +6,7 @@ import { useGraphs } from '@/api/graphs'
 import { useUpdateProject } from '@/api/projects'
 import { ChannelShell, ChannelTimeline } from '@/components/channel/ChannelFrame'
 import WorkflowSlashComposer from '@/components/channel/WorkflowSlashComposer'
+import { useMentionDetection } from '@/components/channel/useMentionDetection'
 import { useChannelTimeline } from '@/components/channel/useChannelTimeline'
 import ProjectDashboard from '@/components/project/ProjectDashboard'
 import { projectChannelPath, projectObjectivePath, projectPath } from '@/lib/paths'
@@ -15,6 +16,7 @@ export default function ProjectMainContent() {
   const { workspaceId, projectId, project, objectives, recentRuns, projectChannels, onNewObjective, onUpdateStatus } = useOutletContext<ProjectOutletContext>()
   const navigate = useNavigate()
   const [projectChatDraft, setProjectChatDraft] = useState('')
+  const inputRef = useRef<HTMLTextAreaElement | null>(null)
   const [pinnedProjectId, setPinnedProjectId] = useState<string | null>(() => localStorage.getItem('kw-pinned-project'))
 
   const projectChannelId = project.project_channel_id ?? null
@@ -22,6 +24,7 @@ export default function ProjectMainContent() {
   const { items: timelineItems } = useChannelTimeline(workspaceId, projectChannelId ?? '')
   const postProjectMessage = usePostChannelMessage(workspaceId, projectChannelId ?? '')
   const updateProject = useUpdateProject(workspaceId, projectId)
+  const { mentionMenuNode } = useMentionDetection(workspaceId, projectChatDraft, setProjectChatDraft, inputRef)
 
   function togglePinProject() {
     const next = pinnedProjectId === projectId ? null : projectId
@@ -92,7 +95,9 @@ export default function ProjectMainContent() {
             )
           }}
           pending={postProjectMessage.isPending}
-          placeholder="Coordinate project work, delegate, or ask for an update…"
+          placeholder="Coordinate project work, delegate, ask for an update, or use @ to mention participants…"
+          inputRef={inputRef}
+          beforeInput={mentionMenuNode}
         />
       </ChannelShell>
     </div>

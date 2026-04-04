@@ -105,6 +105,7 @@ async def get_workspace_member(
         select(WorkspaceMember).where(
             WorkspaceMember.workspace_id == workspace_id,
             WorkspaceMember.user_id == user.id,
+            WorkspaceMember.access_disabled_at.is_(None),
         )
     )
     member = result.scalar_one_or_none()

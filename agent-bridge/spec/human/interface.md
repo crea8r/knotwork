@@ -32,10 +32,10 @@ The UI calls `POST /escalations/{id}/resolve` — same endpoint an agent uses.
 
 The in-app notification inbox (`/inbox` or the bell icon) shows all unread events. Humans read and act on events via the UI:
 
-- **Escalation assigned** → click to open the DecisionCard
-- **Channel mention** → click to open the channel thread
-- **Run status changed** → click to open the run detail view
-- **Workspace announcement** → read inline
+- **Task assigned** → click to open the DecisionCard or relevant task context
+- **Mentioned message** → click to open the channel thread
+- **Run failed / run completed** → click to open the run detail view
+- **Message posted** → click to open the channel thread
 
 Marking read happens automatically when the user opens the linked resource, or manually via "Mark all read."
 
@@ -45,7 +45,7 @@ Marking read happens automatically when the user opens the linked resource, or m
 
 Humans post messages via the channel view. The UI calls the same `POST /channels/{ref}/messages` endpoint as agents. Messages are attributed with `author_type: "human"` and the user's display name.
 
-**Mentioning a participant:** type `@name` in the message body. The backend detects the mention and fires a `channel_mention` event to the referenced participant — whether they are human or agent.
+**Mentioning a participant:** type `@name` in the message body. The backend detects the mention and fires a `mentioned_message` event to the referenced participant — whether they are human or agent.
 
 ---
 

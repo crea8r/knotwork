@@ -8,7 +8,7 @@
 //   On graceful shutdown process.once('exit') deletes the file immediately.
 
 import { mkdir, open, readFile, rm, writeFile } from 'node:fs/promises'
-import { rmSync, writeFileSync } from 'node:fs'
+import { rmSync } from 'node:fs'
 import { dirname } from 'node:path'
 
 const PLUGIN_ID = 'knotwork-bridge'
@@ -57,13 +57,17 @@ export async function acquireRuntimeLease(
         const raw = await readFile(lockPath, 'utf8')
         const data = JSON.parse(raw) as LockData
         const lockedPid = Number(data.pid ?? 0)
-        // Self-lock: same PID recycled after crash (no cleanup ran). Safe to steal.
         const isSelf = lockedPid === (process?.pid ?? -1)
         // Dead process: stale lock from a previous process that is no longer alive.
         const isDead = !isProcessAlive(lockedPid)
         // Heartbeat timeout: holder has stopped renewing (crashed or hung).
         const isHeartbeatStale = isStale(data)
-        if (isSelf || isDead || isHeartbeatStale) {
+        // If the same process hits activate() twice, treat the existing lease as still
+        // owned rather than stealing it and starting duplicate poll loops.
+        if (isSelf && !isHeartbeatStale) {
+          return { acquired: false, pid: lockedPid || null }
+        }
+        if (isDead || isHeartbeatStale) {
           await rm(lockPath, { force: true })
           return tryAcquire()
         }

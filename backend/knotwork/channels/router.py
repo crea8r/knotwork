@@ -219,17 +219,15 @@ async def create_message(
     ch = await service.get_channel(db, workspace_id, channel_ref)
     if not ch:
         raise HTTPException(404, "Channel not found")
-    payload = data
+    payload_update = {
+        "metadata": {
+            **(data.metadata or {}),
+            "author_participant_id": _caller_participant_id(user, member),
+        },
+    }
     if data.author_type == "human":
-        payload = data.model_copy(
-            update={
-                "author_name": user.name,
-                "metadata": {
-                    **(data.metadata or {}),
-                    "author_participant_id": _caller_participant_id(user, member),
-                },
-            }
-        )
+        payload_update["author_name"] = user.name
+    payload = data.model_copy(update=payload_update)
     msg = await service.create_message(db, workspace_id, ch.id, payload)
     return ChannelMessageOut.model_validate(msg)
 

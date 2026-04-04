@@ -38,4 +38,5 @@ class WorkspaceMember(Base):
     # Agent-specific metadata (provider, agent_ref, last_heartbeat, etc.). Null for humans.
     agent_config: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     notification_prefs: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    access_disabled_at: Mapped[DateTime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[DateTime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)

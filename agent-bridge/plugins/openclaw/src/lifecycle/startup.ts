@@ -1,7 +1,7 @@
 // startup.ts — State hydration from disk and background worker initialization.
 
 import { readPersistedState } from '../state/persist'
-import { acquireRuntimeLease } from '../state/lease'
+import { acquireRuntimeLease, LEASE_RENEW_INTERVAL_MS } from '../state/lease'
 import { runAuth, scheduleAuthRetry } from './auth'
 import { resolveInstanceId } from '../openclaw/bridge'
 import type { TimerRef } from './auth'
@@ -39,6 +39,50 @@ export type StartupDeps = {
 
 export function startHydration(deps: StartupDeps): void {
   const { state, cfg, log, rememberError, persistSnapshot, hCtx, timerRef, stateFilePath, lockPath, lockOwnerRef, onHydrated } = deps
+  let leaseRetryTimer: ReturnType<typeof setInterval> | null = null
+
+  async function enableBackgroundWorker(): Promise<boolean> {
+    if (state.backgroundWorkerEnabled || lockOwnerRef.value) return true
+    state.runtimeLockPath = lockPath
+    const lease = await acquireRuntimeLease(lockPath, () => { void persistSnapshot() })
+    if (!lease.acquired) return false
+    lockOwnerRef.value = true
+    state.runtimeLeaseOwnerPid = lease.pid
+    state.backgroundWorkerEnabled = true
+    log(`startup:background-enabled context=${state.activationContext}`)
+    await persistSnapshot()
+
+    if (!state.jwt && cfg.autoAuthOnStart && cfg.knotworkBackendUrl && cfg.privateKeyPath) {
+      runAuth(hCtx).catch((err: unknown) => {
+        state.lastAuthOk = false
+        state.lastAuthAt = new Date().toISOString()
+        state.lastError = rememberError(err)
+        log(`startup:auth-failed ${state.lastError}`)
+        scheduleAuthRetry(hCtx, timerRef, 'startup_failed')
+      })
+    }
+    return true
+  }
+
+  function ensureLeaseRetry(): void {
+    if (leaseRetryTimer) return
+    leaseRetryTimer = setInterval(() => {
+      if (state.activationContext !== 'runtime' || state.backgroundWorkerEnabled || lockOwnerRef.value) {
+        if (leaseRetryTimer) {
+          clearInterval(leaseRetryTimer)
+          leaseRetryTimer = null
+        }
+        return
+      }
+      void enableBackgroundWorker().then((acquired) => {
+        if (!acquired) return
+        if (leaseRetryTimer) {
+          clearInterval(leaseRetryTimer)
+          leaseRetryTimer = null
+        }
+      })
+    }, LEASE_RENEW_INTERVAL_MS).unref()
+  }
 
   readPersistedState(stateFilePath)
     .then(async (persisted) => {
@@ -66,22 +110,9 @@ export function startHydration(deps: StartupDeps): void {
         log(`startup:background-disabled context=${state.activationContext}`)
         return
       }
-      state.runtimeLockPath = lockPath
-      const lease = await acquireRuntimeLease(lockPath, () => { void persistSnapshot() })
-      if (!lease.acquired) { log('startup:background-disabled runtime_lease=busy'); return }
-      lockOwnerRef.value = true
-      state.runtimeLeaseOwnerPid = lease.pid
-      state.backgroundWorkerEnabled = true
-      log(`startup:background-enabled context=${state.activationContext}`)
-
-      if (!state.jwt && cfg.autoAuthOnStart && cfg.knotworkBackendUrl && cfg.privateKeyPath) {
-        runAuth(hCtx).catch((err: unknown) => {
-          state.lastAuthOk = false
-          state.lastAuthAt = new Date().toISOString()
-          state.lastError = rememberError(err)
-          log(`startup:auth-failed ${state.lastError}`)
-          scheduleAuthRetry(hCtx, timerRef, 'startup_failed')
-        })
+      if (!(await enableBackgroundWorker())) {
+        log('startup:background-disabled runtime_lease=busy')
+        ensureLeaseRetry()
       }
     })
     .catch((err: unknown) => {

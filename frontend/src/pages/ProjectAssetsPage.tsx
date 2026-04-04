@@ -509,6 +509,7 @@ export default function ProjectAssetsPage() {
             <ChannelShell
               title={activeAssetChat.label}
               parentLabel={projectSlug}
+              shellClassName="rounded-none border-0"
             >
               <ChannelTimeline items={assetTimeline} emptyState="No messages yet. Start a discussion about this asset." />
               <WorkflowSlashComposer

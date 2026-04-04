@@ -69,7 +69,7 @@ graph TD
 
 ## Use Case 6: External Agent as Knowledge Worker
 
-**Primary actor:** External Agent (via API key + MCP)
+**Primary actor:** External Agent (via ed25519 auth + JWT + MCP)
 **Goal:** Keep a knowledge fragment up to date autonomously
 
 ```mermaid

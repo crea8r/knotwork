@@ -73,13 +73,19 @@ Add to Claude Desktop `claude_desktop_config.json`:
       "command": "npx",
       "args": ["-y", "@knotwork/mcp-client"],
       "env": {
-        "KNOTWORK_API_KEY": "your-api-key",
-        "KNOTWORK_WORKSPACE_ID": "your-workspace-id"
+        "KNOTWORK_BACKEND_URL": "https://app.knotwork.io",
+        "KNOTWORK_WORKSPACE_ID": "your-workspace-id",
+        "KNOTWORK_PRIVATE_KEY_PATH": "/path/to/agent-ed25519-private-key.pem"
       }
     }
   }
 }
 ```
+
+The MCP client discovers the workspace via `/.well-known/agent`, authenticates with
+`POST /api/v1/auth/agent-challenge` + `POST /api/v1/auth/agent-token`, and then
+connects to Knotwork MCP using the returned JWT bearer token. There is no
+separate long-lived Knotwork API key for agent participants.
 
 Once connected, users can interact with the full Knotwork platform from Claude:
 

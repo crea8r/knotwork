@@ -38,6 +38,16 @@
         "type": "number",
         "description": "Inbox polling interval in milliseconds.",
         "default": 30000
+      },
+      "semanticActionProtocolEnabled": {
+        "type": "boolean",
+        "description": "Enable the semantic action-protocol layer for agent thinking and structured action dispatch.",
+        "default": false
+      },
+      "semanticActionStrictMode": {
+        "type": "boolean",
+        "description": "Require a valid json-action response when semantic action-protocol mode is enabled. If false, fall back to legacy behavior on semantic failures.",
+        "default": false
       }
     },
     "required": []

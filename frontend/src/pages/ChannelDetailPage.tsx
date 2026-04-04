@@ -1,5 +1,5 @@
 import { useMemo, useRef, useState } from 'react'
-import { Link, useNavigate, useParams } from 'react-router-dom'
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { Bot, BookOpen, FileText, GitBranch, MessageSquare, PlayCircle, Plus, Search, X } from 'lucide-react'
 import {
   useAttachChannelAsset,
@@ -60,6 +60,7 @@ function channelTypeIcon(type: string | undefined) {
 
 export default function ChannelDetailPage() {
   const { channelSlug } = useParams<{ channelSlug: string }>()
+  const [searchParams] = useSearchParams()
   const navigate = useNavigate()
   const workspaceId = useAuthStore((s) => s.workspaceId) ?? DEV_WORKSPACE
 
@@ -149,6 +150,10 @@ export default function ChannelDetailPage() {
   }
 
   const { items: timelineItems, isLoading: loading } = useChannelTimeline(workspaceId, channelSlug ?? '')
+  const highlightedItemId = useMemo(() => {
+    const messageId = searchParams.get('message')
+    return messageId ? `m-${messageId}` : null
+  }, [searchParams])
 
   return (
     <div className="p-4 md:p-6 max-w-7xl mx-auto h-full flex flex-col min-h-0 w-full">
@@ -285,7 +290,7 @@ export default function ChannelDetailPage() {
         {loading ? (
           <div className="flex flex-1 items-center justify-center bg-[#faf7f1]"><Spinner size="lg" /></div>
         ) : (
-          <ChannelTimeline items={timelineItems} />
+          <ChannelTimeline items={timelineItems} highlightedItemId={highlightedItemId} />
         )}
 
         <div className="border-t border-gray-200 bg-white p-3 space-y-2">

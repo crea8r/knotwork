@@ -19,6 +19,7 @@ interface Props {
   maxHeight?: string
   className?: string
   compact?: boolean
+  theme?: 'default' | 'inverse'
 }
 
 const PROSE =
@@ -50,14 +51,32 @@ const COMPACT_COMPONENTS: Components = {
   pre: (props) => <pre className="my-1 bg-gray-900 text-gray-100 rounded p-2 text-xs overflow-auto" {...props} />,
 }
 
-function MarkdownBody({ content, compact = false }: { content: string; compact?: boolean }) {
+const INVERSE_COMPACT_COMPONENTS: Components = {
+  h1: (props) => <h1 className="text-base font-semibold text-white my-1" {...props} />,
+  h2: (props) => <h2 className="text-[15px] font-semibold text-white my-1" {...props} />,
+  h3: (props) => <h3 className="text-sm font-semibold text-white my-1" {...props} />,
+  h4: (props) => <h4 className="text-sm font-semibold text-white my-0.5" {...props} />,
+  h5: (props) => <h5 className="text-sm font-semibold text-white my-0.5" {...props} />,
+  h6: (props) => <h6 className="text-sm font-semibold text-white my-0.5" {...props} />,
+  p: (props) => <p className="my-0.5 text-white/95 leading-relaxed" {...props} />,
+  a: (props) => <a className="text-white underline underline-offset-2" {...props} />,
+  ul: (props) => <ul className="my-0.5 pl-4 list-disc text-white/95" {...props} />,
+  ol: (props) => <ol className="my-0.5 pl-4 list-decimal text-white/95" {...props} />,
+  li: (props) => <li className="my-0.5 leading-relaxed" {...props} />,
+  blockquote: (props) => <blockquote className="my-1 pl-3 border-l-2 border-white/40 text-white/80" {...props} />,
+  code: (props) => <code className="bg-white/10 px-1 rounded text-xs font-mono text-white" {...props} />,
+  pre: (props) => <pre className="my-1 bg-black/25 text-white rounded p-2 text-xs overflow-auto" {...props} />,
+}
+
+function MarkdownBody({ content, compact = false, theme = 'default' }: { content: string; compact?: boolean; theme?: 'default' | 'inverse' }) {
   if (compact) {
+    const components = theme === 'inverse' ? INVERSE_COMPACT_COMPONENTS : COMPACT_COMPONENTS
     return (
       <div className="max-w-none text-sm">
         <ReactMarkdown
           remarkPlugins={[remarkGfm]}
           rehypePlugins={[rehypeRaw]}
-          components={COMPACT_COMPONENTS}
+          components={components}
         >
           {content}
         </ReactMarkdown>
@@ -73,7 +92,7 @@ function MarkdownBody({ content, compact = false }: { content: string; compact?:
   )
 }
 
-function FullScreenModal({ content, onClose, compact = false }: { content: string; onClose: () => void; compact?: boolean }) {
+function FullScreenModal({ content, onClose, compact = false, theme = 'default' }: { content: string; onClose: () => void; compact?: boolean; theme?: 'default' | 'inverse' }) {
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
       if (e.key === 'Escape') onClose()
@@ -101,14 +120,14 @@ function FullScreenModal({ content, onClose, compact = false }: { content: strin
       </div>
       {/* Content */}
       <div className="flex-1 overflow-y-auto px-8 py-6 max-w-4xl mx-auto w-full">
-        <MarkdownBody content={content} compact={compact} />
+        <MarkdownBody content={content} compact={compact} theme={theme} />
       </div>
     </div>,
     document.body,
   )
 }
 
-export default function MarkdownViewer({ content, maxHeight = 'none', className = '', compact = false }: Props) {
+export default function MarkdownViewer({ content, maxHeight = 'none', className = '', compact = false, theme = 'default' }: Props) {
   const [fullScreen, setFullScreen] = useState(false)
 
   return (
@@ -130,12 +149,12 @@ export default function MarkdownViewer({ content, maxHeight = 'none', className 
           className="overflow-auto"
           style={{ maxHeight }}
         >
-          <MarkdownBody content={content} compact={compact} />
+          <MarkdownBody content={content} compact={compact} theme={theme} />
         </div>
       </div>
 
       {fullScreen && (
-        <FullScreenModal content={content} compact={compact} onClose={() => setFullScreen(false)} />
+        <FullScreenModal content={content} compact={compact} theme={theme} onClose={() => setFullScreen(false)} />
       )}
     </>
   )

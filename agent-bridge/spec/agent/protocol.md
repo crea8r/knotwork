@@ -68,7 +68,7 @@ ChannelSession:
 
 ## 4. Event handling
 
-### `escalation_assigned`
+### `task_assigned`
 
 Priority: **immediate** (handle within next poll cycle)
 
@@ -85,7 +85,7 @@ If the agent cannot resolve (capability failure, missing context):
 - Set `resolution: "escalate"` with `guidance` explaining why
 - Do NOT loop — one attempt per escalation
 
-### `channel_mention`
+### `mentioned_message`
 
 Priority: **high** (handle within 2 poll cycles)
 
@@ -97,17 +97,37 @@ Priority: **high** (handle within 2 poll cycles)
 5. Update last_read_message_id
 ```
 
-### `run_status_changed`
+### `escalation_created`
+
+Priority: **high signal, inspect before acting**
+
+```
+1. Read escalation details: GET /escalations/{id}
+2. If it is informational only, mark read after review
+3. If it clearly requires your action and no `task_assigned` item exists, handle it using the same path as `task_assigned`
+```
+
+### `run_failed`
 
 Priority: **informational** (batch, no reply required)
 
 ```
 1. Update internal run state
-2. If status=failed and agent was involved: log for review
-3. No response required unless the agent was supervisor
+2. If the failed run is relevant to current work: log for review and inspect details
+3. No response required unless follow-up is explicitly requested
 ```
 
-### `channel_message` (non-mention)
+### `run_completed`
+
+Priority: **informational**
+
+```
+1. Update internal run state
+2. Use it as context for later work if relevant
+3. No response required by default
+```
+
+### `message_posted` (non-mention)
 
 Priority: **low** (catch-up, no response required unless relevant)
 
@@ -115,16 +135,6 @@ Priority: **low** (catch-up, no response required unless relevant)
 1. Update last_read_message_id
 2. If message is relevant to pending work: factor into context
 3. No proactive response — wait to be mentioned or assigned
-```
-
-### `workspace_announcement`
-
-Priority: **informational**
-
-```
-1. Read announcement
-2. If it changes agent's operating parameters (e.g. new handbook policy): reload skills.md
-3. ACK delivery
 ```
 
 ---

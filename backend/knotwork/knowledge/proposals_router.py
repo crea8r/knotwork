@@ -51,8 +51,8 @@ class KnowledgeChangeCreate(BaseModel):
     path: str
     proposed_content: str
     reason: str
-    run_id: str = "manual"
-    node_id: str = "knowledge-review"
+    run_id: str | None = None
+    node_id: str | None = None
     agent_ref: str | None = None
     source_channel_id: UUID | None = None
     action_type: str = "update_content"

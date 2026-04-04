@@ -38,6 +38,8 @@ export type PluginConfig = {
   pluginInstanceId?: string
   autoAuthOnStart?: boolean   // renamed from autoHandshakeOnStart
   taskPollIntervalMs?: number // inbox poll interval (reuses existing config key)
+  semanticActionProtocolEnabled?: boolean
+  semanticActionStrictMode?: boolean
 }
 
 export type RemoteTool = {
@@ -71,17 +73,152 @@ export type InboxEvent = {
   created_at: string
 }
 
+export type ChannelInfo = {
+  id: string
+  name: string
+  slug: string
+  channel_type: string
+}
+
+export type ChannelMessage = {
+  id: string
+  channel_id: string
+  role: string
+  author_type: string
+  author_name: string | null
+  content: string
+  created_at: string
+}
+
+export type ChannelAssetBinding = {
+  id: string
+  channel_id: string
+  asset_type: 'workflow' | 'run' | 'file' | 'folder'
+  asset_id: string
+  display_name: string
+  path: string | null
+  status: string | null
+  created_at: string
+}
+
+export type ChannelSubscription = {
+  channel_id: string
+  participant_id: string
+  subscribed: boolean
+  subscribed_at: string | null
+  unsubscribed_at: string | null
+}
+
+export type KnowledgeFileWithContent = {
+  id: string
+  workspace_id: string
+  path: string
+  title: string
+  raw_token_count: number
+  resolved_token_count: number
+  linked_paths: string[]
+  current_version_id: string | null
+  health_score: number | null
+  health_updated_at: string | null
+  file_type: string
+  is_editable: boolean
+  created_at: string
+  updated_at: string
+  content: string
+  version_id: string
+}
+
+export type KnowledgeFileSummary = {
+  id: string
+  workspace_id: string
+  path: string
+  title: string
+  raw_token_count: number
+  resolved_token_count: number
+  linked_paths: string[]
+  current_version_id: string | null
+  health_score: number | null
+  health_updated_at: string | null
+  file_type: string
+  is_editable: boolean
+  created_at: string
+  updated_at: string
+}
+
+export type RunInfo = {
+  id: string
+  workspace_id: string
+  project_id: string | null
+  objective_id: string | null
+  graph_id: string
+  name: string | null
+  status: string
+  trigger: string
+  input: Record<string, unknown>
+  output: Record<string, unknown> | null
+  eta_seconds: number | null
+  error: string | null
+  started_at: string | null
+  completed_at: string | null
+  created_at: string
+}
+
+export type RunNodeStateInfo = {
+  id: string
+  run_id: string
+  node_id: string
+  node_name: string | null
+  agent_ref: string | null
+  status: string
+  input: Record<string, unknown> | null
+  output: Record<string, unknown> | null
+  next_branch: string | null
+  error: string | null
+  started_at: string | null
+  completed_at: string | null
+}
+
+export type EscalationInfo = {
+  id: string
+  run_id: string
+  run_node_state_id: string
+  workspace_id: string
+  type: string
+  status: string
+  context: Record<string, unknown>
+  assigned_to: unknown[]
+  timeout_at: string | null
+  resolved_by: string | null
+  resolved_at: string | null
+  resolution: string | null
+  resolution_data: Record<string, unknown> | null
+  created_at: string
+}
+
 export type ExecutionTask = {
   task_id: string
   node_id?: string
   run_id?: string
   workspace_id?: string
+  channel_id?: string
   agent_key?: string
   remote_agent_id?: string
   agent_id?: string
   session_name?: string
   system_prompt?: string
   user_prompt?: string
+  trigger?: TaskTrigger
+}
+
+export type TaskTrigger = {
+  type: string
+  delivery_id?: string | null
+  channel_id?: string | null
+  run_id?: string | null
+  escalation_id?: string | null
+  proposal_id?: string | null
+  title?: string | null
+  subtitle?: string | null
 }
 
 export type RecentTask = {
