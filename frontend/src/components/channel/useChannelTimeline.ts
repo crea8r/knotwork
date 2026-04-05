@@ -60,6 +60,7 @@ export function useChannelTimeline(workspaceId: string, channelId: string): UseC
           tone: (m.author_type === 'system' ? 'system' : m.author_type === 'human' ? 'human' : 'agent') as 'human' | 'agent' | 'system',
           content: m.content,
           markdown: true,
+          ts: m.created_at,
         }
       }
       const d = entry.item
@@ -68,6 +69,7 @@ export function useChannelTimeline(workspaceId: string, channelId: string): UseC
         kind: 'decision' as const,
         label: decisionLabel(d.decision_type),
         actorName: d.actor_name,
+        ts: d.created_at,
       }
     })
   }, [messages, decisions])

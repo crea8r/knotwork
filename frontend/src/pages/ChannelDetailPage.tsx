@@ -58,6 +58,19 @@ function channelTypeIcon(type: string | undefined) {
   }
 }
 
+function assetHref(asset: { asset_type: AssetType | 'folder'; asset_id: string; path: string | null }): string | null {
+  switch (asset.asset_type) {
+    case 'workflow':
+      return `/graphs/${asset.asset_id}`
+    case 'run':
+      return `/runs/${asset.asset_id}`
+    case 'file':
+      return asset.path ? `/knowledge?path=${encodeURIComponent(asset.path)}` : null
+    default:
+      return asset.path ? `/knowledge?folder=${encodeURIComponent(asset.path)}` : null
+  }
+}
+
 export default function ChannelDetailPage() {
   const { channelSlug } = useParams<{ channelSlug: string }>()
   const [searchParams] = useSearchParams()
@@ -226,10 +239,23 @@ export default function ChannelDetailPage() {
                     <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-white border border-gray-200 flex-shrink-0">
                       {assetIcon(asset.asset_type)}
                     </span>
-                    <span className="truncate font-medium text-gray-800">{asset.display_name}</span>
+                    {assetHref(asset) ? (
+                      <Link
+                        to={assetHref(asset)!}
+                        className="truncate font-medium text-gray-800 hover:text-brand-700 hover:underline"
+                      >
+                        {asset.display_name}
+                      </Link>
+                    ) : (
+                      <span className="truncate font-medium text-gray-800">{asset.display_name}</span>
+                    )}
                     <button
                       type="button"
-                      onClick={() => detachAsset.mutate(asset.id)}
+                      onClick={(event) => {
+                        event.preventDefault()
+                        event.stopPropagation()
+                        detachAsset.mutate(asset.id)
+                      }}
                       className="rounded-full p-0.5 text-gray-400 hover:text-gray-700 flex-shrink-0"
                       title="Remove asset"
                     >

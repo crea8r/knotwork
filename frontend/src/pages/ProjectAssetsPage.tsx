@@ -203,7 +203,7 @@ export default function ProjectAssetsPage() {
   const { data: workflows = [] } = useGraphs(workspaceId, projectId)
   const { data: workspaceWorkflows = [] } = useGraphs(workspaceId)
   const { data: knowledgeFiles = [] } = useKnowledgeFiles()
-  const browserState = useFileBrowserState()
+  const browserState = useFileBrowserState({ panelWidthStorageKey: 'kw-project-asset-chat-width' })
   const uploadInputRef = useRef<HTMLInputElement>(null)
   const chatInputRef = useRef<HTMLTextAreaElement | null>(null)
 

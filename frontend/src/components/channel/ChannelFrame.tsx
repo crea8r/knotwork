@@ -3,6 +3,24 @@ import { Edit2, Loader2, Send } from 'lucide-react'
 import Btn from '@/components/shared/Btn'
 import MarkdownViewer from '@/components/shared/MarkdownViewer'
 
+function formatRelativeTime(iso: string): string {
+  const diffMs = Date.now() - new Date(iso).getTime()
+  const seconds = Math.max(0, Math.floor(diffMs / 1000))
+  if (seconds < 60) return `${seconds}s ago`
+  const minutes = Math.floor(seconds / 60)
+  if (minutes < 60) return `${minutes}m ago`
+  const hours = Math.floor(minutes / 60)
+  if (hours < 24) return `${hours}h ago`
+  return ''
+}
+
+function formatAbsoluteTime(iso: string): string {
+  return new Intl.DateTimeFormat(undefined, {
+    dateStyle: 'medium',
+    timeStyle: 'medium',
+  }).format(new Date(iso))
+}
+
 export type ChannelTimelineItem =
   | {
       id: string
@@ -12,12 +30,14 @@ export type ChannelTimelineItem =
       mine?: boolean
       content: ReactNode | string
       markdown?: boolean
+      ts?: string | null
     }
   | {
       id: string
       kind: 'decision'
       label: string
       actorName?: string | null
+      ts?: string | null
     }
   | {
       id: string
@@ -170,6 +190,8 @@ export function ChannelTimeline({
     <div className="flex-1 overflow-y-auto bg-[#faf7f1] p-4 space-y-3">
       {items.length === 0 ? <p className="text-sm text-stone-500">{emptyState}</p> : items.map((item) => {
         if (item.kind === 'message') {
+          const relative = item.ts ? formatRelativeTime(item.ts) : ''
+          const absolute = item.ts ? formatAbsoluteTime(item.ts) : ''
           return (
             <div
               key={item.id}
@@ -179,7 +201,14 @@ export function ChannelTimeline({
               }}
               className={`max-w-[92%] ${item.mine ? 'ml-auto' : 'mr-auto'}`}
             >
-              <p className="mb-1 text-[10px] uppercase tracking-wide text-stone-400">{item.authorLabel}</p>
+              <div className="mb-1 flex items-center gap-2 text-[10px] uppercase tracking-wide text-stone-400">
+                <p>{item.authorLabel}</p>
+                {item.ts ? (
+                  <p className="normal-case tracking-normal text-stone-400" title={absolute}>
+                    {relative ? `${relative} · ${absolute}` : absolute}
+                  </p>
+                ) : null}
+              </div>
               <div className={`rounded-2xl border px-4 py-2.5 text-sm ${
                 item.mine
                   ? 'border-stone-900 bg-stone-900 text-white'
@@ -198,11 +227,18 @@ export function ChannelTimeline({
         }
 
         if (item.kind === 'decision') {
+          const relative = item.ts ? formatRelativeTime(item.ts) : ''
+          const absolute = item.ts ? formatAbsoluteTime(item.ts) : ''
           return (
             <div key={item.id} className="max-w-[92%] rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3">
               <p className="text-[10px] uppercase tracking-wide text-amber-700">Decision</p>
               <p className="text-sm text-amber-900">{item.label}</p>
               {item.actorName ? <p className="mt-1 text-[11px] text-amber-700">by {item.actorName}</p> : null}
+              {item.ts ? (
+                <p className="mt-1 text-[11px] text-amber-700/80" title={absolute}>
+                  {relative ? `${relative} · ${absolute}` : absolute}
+                </p>
+              ) : null}
             </div>
           )
         }

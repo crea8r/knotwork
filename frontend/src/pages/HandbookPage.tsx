@@ -76,7 +76,11 @@ export default function HandbookPage() {
   const [convertPrompt, setConvertPrompt] = useState<{ file: File; folder: string } | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<DeleteTarget | null>(null)
 
-  const state = useFileBrowserState({ initialFolder: urlFolder, initialFilePath: urlFilePath })
+  const state = useFileBrowserState({
+    initialFolder: urlFolder,
+    initialFilePath: urlFilePath,
+    panelWidthStorageKey: 'kw-handbook-asset-chat-width',
+  })
   const workflowEntries = useMemo<BrowserFile[]>(
     () => graphs.map((graph) => ({
       id: `workflow-${graph.id}`,

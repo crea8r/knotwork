@@ -2,13 +2,13 @@
  * useFileBrowserState — pure UI state for the file-browser shell.
  * No API calls. Compose with API hooks in the page component.
  */
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { RightPanel } from './types'
 import type { BrowserFile } from './types'
 import type { ContextTarget } from '@/components/handbook/FileContextMenu'
 
 const MIN_PANEL_W = 200
-const MAX_PANEL_W = 520
+const MAX_PANEL_W = 760
 const DEFAULT_PANEL_W = 288
 
 export interface FileBrowserState {
@@ -35,11 +35,13 @@ export interface FileBrowserState {
 interface UseFileBrowserStateOptions {
   initialFolder?: string
   initialFilePath?: string | null
+  panelWidthStorageKey?: string
 }
 
 export function useFileBrowserState(options: UseFileBrowserStateOptions = {}): FileBrowserState {
   const initialFolder = options.initialFolder ?? ''
   const initialFilePath = options.initialFilePath ?? null
+  const panelWidthStorageKey = options.panelWidthStorageKey
   const [rightPanel, setRightPanel] = useState<RightPanel>(
     initialFilePath ? { kind: 'file', path: initialFilePath } : { kind: 'folder' },
   )
@@ -49,11 +51,22 @@ export function useFileBrowserState(options: UseFileBrowserStateOptions = {}): F
   const [multiSelected, setMultiSelected] = useState<Set<string>>(new Set())
   const [movingTarget, setMovingTarget] = useState<ContextTarget | null>(null)
   const [pageDragOver, setPageDragOver] = useState(false)
-  const [panelWidth, setPanelWidth] = useState(DEFAULT_PANEL_W)
+  const [panelWidth, setPanelWidth] = useState(() => {
+    if (!panelWidthStorageKey || typeof window === 'undefined') return DEFAULT_PANEL_W
+    const raw = window.localStorage.getItem(panelWidthStorageKey)
+    const value = raw ? Number.parseInt(raw, 10) : Number.NaN
+    if (Number.isNaN(value)) return DEFAULT_PANEL_W
+    return Math.max(MIN_PANEL_W, Math.min(MAX_PANEL_W, value))
+  })
   const pageRef = useRef<HTMLDivElement>(null)
   const isDraggingRef = useRef(false)
   const startXRef = useRef(0)
   const startWidthRef = useRef(0)
+
+  useEffect(() => {
+    if (!panelWidthStorageKey || typeof window === 'undefined') return
+    window.localStorage.setItem(panelWidthStorageKey, String(panelWidth))
+  }, [panelWidth, panelWidthStorageKey])
 
   function openFile(file: BrowserFile) {
     setCurrentFolder(file.path.split('/').slice(0, -1).join('/'))
