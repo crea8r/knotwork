@@ -31,6 +31,12 @@ def _derive_title(path: str) -> str:
     return stem or filename
 
 
+def _storage_key(workspace_id: UUID, project_id: UUID | None = None) -> str:
+    if project_id is None:
+        return str(workspace_id)
+    return f"{workspace_id}:project:{project_id}"
+
+
 async def list_files(db: AsyncSession, workspace_id: UUID, project_id: UUID | None = None) -> list[KnowledgeFile]:
     result = await db.execute(
         select(KnowledgeFile).where(
@@ -55,7 +61,7 @@ async def search_files(db: AsyncSession, workspace_id: UUID, query: str, project
         if not f.is_editable:
             continue  # skip binary files for content search
         try:
-            fc = await adapter.read(str(workspace_id), f.path)
+            fc = await adapter.read(_storage_key(workspace_id, f.project_id), f.path)
             if q in fc.content.lower():
                 out.append(f)
         except Exception:
@@ -83,7 +89,7 @@ async def create_file(
         raise ValueError(f'File "{path}" already exists')
 
     adapter = get_storage_adapter()
-    version_id = await adapter.write(str(workspace_id), path, content,
+    version_id = await adapter.write(_storage_key(workspace_id, project_id), path, content,
                                      saved_by=created_by, change_summary=change_summary)
     token_count = _count_tokens(content)
     links = _extract_links(content)
@@ -119,7 +125,7 @@ async def update_file(
     if kf is None:
         raise FileNotFoundError(path)
     adapter = get_storage_adapter()
-    version_id = await adapter.write(str(workspace_id), path, content,
+    version_id = await adapter.write(_storage_key(workspace_id, project_id), path, content,
                                      saved_by=updated_by, change_summary=change_summary)
     kf.raw_token_count = _count_tokens(content)
     kf.resolved_token_count = kf.raw_token_count
@@ -145,7 +151,7 @@ async def delete_file(db: AsyncSession, workspace_id: UUID, path: str, deleted_b
     if kf is None:
         raise FileNotFoundError(path)
     adapter = get_storage_adapter()
-    await adapter.delete(str(workspace_id), path)
+    await adapter.delete(_storage_key(workspace_id, project_id), path)
     await db.delete(kf)
     await db.commit()
 
@@ -162,7 +168,7 @@ async def rename_file(
     if existing is not None and existing.id != kf.id:
         raise ValueError(f'File "{new_path}" already exists')
     adapter = get_storage_adapter()
-    new_version_id = await adapter.move(str(workspace_id), old_path, new_path, "system")
+    new_version_id = await adapter.move(_storage_key(workspace_id, project_id), old_path, new_path, "system")
     kf.path = new_path
     kf.current_version_id = new_version_id
     await db.commit()
