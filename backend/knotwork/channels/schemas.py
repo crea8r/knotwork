@@ -98,6 +98,10 @@ class InboxItem(BaseModel):
     escalation_id: UUID | None = None
     proposal_id: UUID | None = None
     message_id: str | None = None
+    asset_type: Literal["workflow", "run", "file", "folder"] | None = None
+    asset_id: str | None = None
+    asset_path: str | None = None
+    asset_project_slug: str | None = None
     due_at: datetime | None = None
     created_at: datetime
     unread: bool = False
@@ -182,6 +186,12 @@ class HandbookChatAskResponse(BaseModel):
 class HandbookProposalResolveRequest(BaseModel):
     resolution: Literal["accept_output", "override_output", "abort_run"]
     final_content: str | None = None
+
+
+class ChannelKnowledgeChangeResolveRequest(BaseModel):
+    resolution: Literal["approve", "request_edit"]
+    final_content: str | None = None
+    comment: str | None = None
 
 
 class ParticipantMentionOption(BaseModel):

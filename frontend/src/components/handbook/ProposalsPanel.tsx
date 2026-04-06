@@ -14,6 +14,7 @@ const STATUS_COLORS: Record<string, string> = {
   pending: 'bg-amber-100 text-amber-700',
   approved: 'bg-green-100 text-green-700',
   rejected: 'bg-red-100 text-red-700',
+  needs_revision: 'bg-stone-200 text-stone-700',
 }
 
 function ProposalDetail({ proposal }: { proposal: KnowledgeChange }) {

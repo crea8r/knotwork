@@ -63,6 +63,8 @@ export default function HandbookPage() {
   const urlFilePath = searchParams.get('path')
   const urlFolder = searchParams.get('folder') ?? ''
   const urlNew = searchParams.get('new')
+  const urlChat = searchParams.get('chat') === '1'
+  const highlightedMessageId = searchParams.get('message') ? `m-${searchParams.get('message')}` : null
   const activeChatTarget = useMemo(
     () => (urlFilePath
       ? { assetType: 'file' as const, path: urlFilePath }
@@ -335,9 +337,16 @@ export default function HandbookPage() {
             isSaving={createFile.isPending}
           />
         )}
+        openSidePanel={urlChat}
+        sidePanelStorageKey="kw-handbook-asset-chat-open"
         sidePanel={
           <ChannelShell title="Handbook Chat" parentLabel="Knowledge channel" shellClassName="rounded-none border-0">
-            <ChannelTimeline items={handbookTimeline} emptyState="No messages yet. Ask agents to help with handbook content." />
+            <ChannelTimeline
+              items={handbookTimeline}
+              emptyState="No messages yet. Ask agents to help with handbook content."
+              highlightedItemId={highlightedMessageId}
+              scrollToLatest
+            />
             <WorkflowSlashComposer
               workspaceId={workspaceId}
               workflows={graphs}

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -16,6 +17,7 @@ from knotwork.channels.schemas import (
     ChannelUpdate,
     ChannelSubscriptionOut,
     ChannelSubscriptionUpdate,
+    ChannelKnowledgeChangeResolveRequest,
     HandbookChatAskRequest,
     HandbookChatAskResponse,
     HandbookProposalResolveRequest,
@@ -464,6 +466,101 @@ async def resolve_knowledge_change(
     return {"status": payload["status"], "proposal_id": proposal_id}
 
 
+@router.post("/{workspace_id}/channels/{channel_ref}/knowledge/changes/{proposal_id}/review")
+async def resolve_inline_knowledge_change(
+    workspace_id: UUID,
+    channel_ref: str,
+    proposal_id: UUID,
+    body: ChannelKnowledgeChangeResolveRequest,
+    user: User = Depends(get_current_user),
+    _member: WorkspaceMember = Depends(get_workspace_member),
+    db: AsyncSession = Depends(get_db),
+):
+    from knotwork.knowledge.change_service import update_inline_proposal_message
+    from knotwork.knowledge.models import KnowledgeChange
+    from knotwork.knowledge.proposals_router import _apply_change
+
+    ch = await service.get_channel(db, workspace_id, channel_ref)
+    if not ch:
+        raise HTTPException(404, "Channel not found")
+
+    change = await db.get(KnowledgeChange, proposal_id)
+    if not change or change.workspace_id != workspace_id or change.channel_id != ch.id:
+        raise HTTPException(404, "Knowledge change not found")
+    if change.status != "pending":
+        raise HTTPException(409, f"Knowledge change is already {change.status}")
+
+    if body.resolution == "approve":
+        await _apply_change(db, workspace_id, change, body.final_content)
+        change.status = "approved"
+        change.reviewed_at = datetime.now(timezone.utc)
+        await update_inline_proposal_message(
+            db,
+            channel_id=ch.id,
+            proposal_id=change.id,
+            updates={
+                "status": "approved",
+                "final_content": body.final_content or change.proposed_content,
+            },
+        )
+        await db.commit()
+        await db.refresh(change)
+        await service.create_message(
+            db,
+            workspace_id,
+            ch.id,
+            ChannelMessageCreate(
+                role="system",
+                author_type="system",
+                author_name="Knotwork",
+                content=f"Approved and applied the knowledge change for `{change.target_path}`.",
+                metadata={
+                    "kind": "knowledge_change_resolved",
+                    "proposal_id": str(change.id),
+                    "status": "approved",
+                },
+            ),
+        )
+        await db.commit()
+        return {"status": "approved", "proposal_id": str(change.id)}
+
+    comment = (body.comment or "").strip()
+    if not comment:
+        raise HTTPException(400, "comment is required when requesting an edit")
+    change.status = "needs_revision"
+    change.reviewed_at = datetime.now(timezone.utc)
+    await update_inline_proposal_message(
+        db,
+        channel_id=ch.id,
+        proposal_id=change.id,
+        updates={
+            "status": "needs_revision",
+            "revision_request_comment": comment,
+            "revision_requested_by": user.name,
+        },
+    )
+    await db.commit()
+    await db.refresh(change)
+    await service.create_message(
+        db,
+        workspace_id,
+        ch.id,
+        ChannelMessageCreate(
+            role="user",
+            author_type="human",
+            author_name=user.name,
+            content=comment,
+            metadata={
+                "kind": "knowledge_change_revision_requested",
+                "proposal_id": str(change.id),
+                "path": change.target_path,
+            },
+        ),
+    )
+    await db.commit()
+    return {"status": "needs_revision", "proposal_id": str(change.id)}
+
+
 @router.get("/{workspace_id}/inbox", response_model=list[InboxItem])
 async def get_inbox(
     workspace_id: UUID,
@@ -525,15 +622,14 @@ async def update_inbox_delivery_state(
     )
     if delivery is None:
         raise HTTPException(status_code=404, detail="Inbox delivery not found")
-    rows = await service.inbox_items(
+    row = await service.inbox_item_by_delivery_id(
         db,
-        workspace_id,
-        participant_id,
-        archived=delivery.archived_at is not None,
+        workspace_id=workspace_id,
+        participant_id=participant_id,
+        delivery_id=delivery.id,
     )
-    for row in rows:
-        if row.get("delivery_id") == str(delivery.id):
-            return InboxItem.model_validate(row)
+    if row is not None:
+        return InboxItem.model_validate(row)
     raise HTTPException(status_code=404, detail="Inbox item not found")
 
 

@@ -314,3 +314,28 @@ export function useResolveHandbookProposal(workspaceId: string, channelId: strin
     },
   })
 }
+
+export function useReviewChannelKnowledgeChange(workspaceId: string, channelId: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (payload: {
+      proposalId: string
+      resolution: 'approve' | 'request_edit'
+      final_content?: string
+      comment?: string
+    }) =>
+      api.post<{ status: string; proposal_id: string }>(
+        `/workspaces/${workspaceId}/channels/${channelId}/knowledge/changes/${payload.proposalId}/review`,
+        {
+          resolution: payload.resolution,
+          final_content: payload.final_content,
+          comment: payload.comment,
+        },
+      ).then((r) => r.data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['channel-messages', workspaceId, channelId] })
+      qc.invalidateQueries({ queryKey: ['channel-decisions', workspaceId, channelId] })
+      qc.invalidateQueries({ queryKey: ['knowledge-changes', workspaceId] })
+    },
+  })
+}

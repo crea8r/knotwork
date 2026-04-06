@@ -1,6 +1,7 @@
-import { useMemo } from 'react'
+import { createElement, useMemo } from 'react'
 import { useChannelMessages, useChannelDecisions } from '@/api/channels'
 import type { ChannelTimelineItem } from './ChannelFrame'
+import InlineKnowledgeChangeCard from './InlineKnowledgeChangeCard'
 
 export function decisionLabel(kind: string): string {
   switch (kind) {
@@ -52,6 +53,19 @@ export function useChannelTimeline(workspaceId: string, channelId: string): UseC
     return merged.map((entry) => {
       if (entry.kind === 'message') {
         const m = entry.item
+        const meta = m.metadata_ as Record<string, unknown>
+        if (meta.kind === 'knowledge_change_created' && meta.inline_review === true) {
+          return {
+            id: entry.id,
+            kind: 'custom' as const,
+            content: createElement(InlineKnowledgeChangeCard, {
+              workspaceId,
+              channelId,
+              createdAt: m.created_at,
+              metadata: meta,
+            }),
+          }
+        }
         return {
           id: entry.id,
           kind: 'message' as const,

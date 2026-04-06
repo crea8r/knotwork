@@ -52,3 +52,4 @@ data/
 
 agent-bridge/plugins/**/artifacts/**
 agent-bridge/plugins/openclaw/sync-to-openclaw.sh
+agent-bridge/**/**.key

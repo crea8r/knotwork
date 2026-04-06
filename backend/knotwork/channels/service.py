@@ -12,6 +12,7 @@ from knotwork.graphs.models import Graph
 from knotwork.knowledge.models import KnowledgeChange, KnowledgeFile, KnowledgeFolder
 from knotwork.notifications import service as notification_service
 from knotwork.notifications.models import EventDelivery
+from knotwork.projects.models import Project
 from knotwork.participants import (
     agent_participant_id,
     list_workspace_agent_participants,
@@ -959,122 +960,9 @@ async def inbox_items(
         .limit(100)
     )
     for delivery, event in delivery_result.all():
-        payload = event.payload or {}
-        if event.event_type == "escalation_created":
-            escalation_id_raw = payload.get("escalation_id")
-            esc = None
-            if escalation_id_raw:
-                try:
-                    esc = await db.get(Escalation, UUID(str(escalation_id_raw)))
-                except ValueError:
-                    esc = None
-            node_id = str(payload.get("node_id") or "node")
-            out.append(
-                {
-                    "id": f"delivery:{delivery.id}",
-                    "item_type": "escalation",
-                    "delivery_id": str(delivery.id),
-                    "title": str(payload.get("title") or f"Escalation: {node_id}"),
-                    "subtitle": str(payload.get("subtitle") or payload.get("reason") or "Needs attention"),
-                    "status": esc.status if esc else ("read" if delivery.read_at else "new"),
-                    "run_id": str(payload.get("run_id") or "") or None,
-                    "channel_id": str(event.channel_id),
-                    "escalation_id": esc.id if esc else None,
-                    "proposal_id": None,
-                    "due_at": esc.timeout_at if esc else None,
-                    "created_at": delivery.sent_at,
-                    "unread": delivery.read_at is None,
-                    "archived_at": delivery.archived_at,
-                }
-            )
-            continue
-
-        if event.event_type == "mentioned_message":
-            out.append(
-                {
-                    "id": f"delivery:{delivery.id}",
-                    "item_type": "mentioned_message",
-                    "delivery_id": str(delivery.id),
-                    "title": str(payload.get("title") or "Mentioned in channel"),
-                    "subtitle": str(payload.get("subtitle") or ""),
-                    "status": "read" if delivery.read_at else "new",
-                    "run_id": None,
-                    "channel_id": str(event.channel_id),
-                    "escalation_id": None,
-                    "proposal_id": None,
-                    "message_id": str(payload.get("message_id") or "") or None,
-                    "due_at": None,
-                    "created_at": delivery.sent_at,
-                    "unread": delivery.read_at is None,
-                    "archived_at": delivery.archived_at,
-                }
-            )
-            continue
-
-        if event.event_type == "message_posted":
-            out.append(
-                {
-                    "id": f"delivery:{delivery.id}",
-                    "item_type": "message_posted",
-                    "delivery_id": str(delivery.id),
-                    "title": str(payload.get("title") or f"New message in {payload.get('channel_name') or 'channel'}"),
-                    "subtitle": str(payload.get("subtitle") or payload.get("message_preview") or ""),
-                    "status": "read" if delivery.read_at else "new",
-                    "run_id": None,
-                    "channel_id": str(event.channel_id),
-                    "escalation_id": None,
-                    "proposal_id": None,
-                    "message_id": str(payload.get("message_id") or "") or None,
-                    "due_at": None,
-                    "created_at": delivery.sent_at,
-                    "unread": delivery.read_at is None,
-                    "archived_at": delivery.archived_at,
-                }
-            )
-            continue
-
-        if event.event_type == "task_assigned":
-            out.append(
-                {
-                    "id": f"delivery:{delivery.id}",
-                    "item_type": "task_assigned",
-                    "delivery_id": str(delivery.id),
-                    "title": str(payload.get("title") or "Task assigned"),
-                    "subtitle": str(payload.get("subtitle") or ""),
-                    "status": "read" if delivery.read_at else "new",
-                    "run_id": str(payload.get("run_id") or "") or None,
-                    "channel_id": str(event.channel_id),
-                    "escalation_id": None,
-                    "proposal_id": None,
-                    "message_id": None,
-                    "due_at": None,
-                    "created_at": delivery.sent_at,
-                    "unread": delivery.read_at is None,
-                    "archived_at": delivery.archived_at,
-                }
-            )
-            continue
-
-        if event.event_type in ("run_failed", "run_completed"):
-            out.append(
-                {
-                    "id": f"delivery:{delivery.id}",
-                    "item_type": "run_event",
-                    "delivery_id": str(delivery.id),
-                    "title": str(payload.get("title") or event.event_type.replace("_", " ")),
-                    "subtitle": str(payload.get("subtitle") or ""),
-                    "status": "read" if delivery.read_at else "new",
-                    "run_id": str(payload.get("run_id") or "") or None,
-                    "channel_id": str(event.channel_id),
-                    "escalation_id": None,
-                    "proposal_id": None,
-                    "message_id": None,
-                    "due_at": None,
-                    "created_at": delivery.sent_at,
-                    "unread": delivery.read_at is None,
-                    "archived_at": delivery.archived_at,
-                }
-            )
+        row = await _inbox_item_from_delivery_event(db, delivery, event)
+        if row is not None:
+            out.append(row)
 
     if not archived:
         proposal_result = await db.execute(
@@ -1087,6 +975,7 @@ async def inbox_items(
             .limit(100)
         )
         for p in proposal_result.scalars():
+            asset_context = await _resolve_channel_asset_target(db, p.channel_id)
             out.append(
                 {
                     "id": f"proposal:{p.id}",
@@ -1100,6 +989,7 @@ async def inbox_items(
                     "escalation_id": None,
                     "proposal_id": p.id,
                     "message_id": None,
+                    **asset_context,
                     "due_at": None,
                     "created_at": p.created_at,
                     "unread": False,
@@ -1109,6 +999,244 @@ async def inbox_items(
 
     out.sort(key=lambda item: item["created_at"], reverse=True)
     return out
+
+
+async def _inbox_item_from_delivery_event(
+    db: AsyncSession,
+    delivery: EventDelivery,
+    event: ChannelEvent,
+) -> dict | None:
+    payload = event.payload or {}
+    asset_context = await _resolve_channel_asset_target(db, event.channel_id)
+
+    if event.event_type == "escalation_created":
+        escalation_id_raw = payload.get("escalation_id")
+        esc = None
+        if escalation_id_raw:
+            try:
+                esc = await db.get(Escalation, UUID(str(escalation_id_raw)))
+            except ValueError:
+                esc = None
+        node_id = str(payload.get("node_id") or "node")
+        return {
+            "id": f"delivery:{delivery.id}",
+            "item_type": "escalation",
+            "delivery_id": str(delivery.id),
+            "title": str(payload.get("title") or f"Escalation: {node_id}"),
+            "subtitle": str(payload.get("subtitle") or payload.get("reason") or "Needs attention"),
+            "status": esc.status if esc else ("read" if delivery.read_at else "new"),
+            "run_id": str(payload.get("run_id") or "") or None,
+            "channel_id": str(event.channel_id),
+            "escalation_id": esc.id if esc else None,
+            "proposal_id": None,
+            "message_id": None,
+            **asset_context,
+            "due_at": esc.timeout_at if esc else None,
+            "created_at": delivery.sent_at,
+            "unread": delivery.read_at is None,
+            "archived_at": delivery.archived_at,
+        }
+
+    if event.event_type == "mentioned_message":
+        return {
+            "id": f"delivery:{delivery.id}",
+            "item_type": "mentioned_message",
+            "delivery_id": str(delivery.id),
+            "title": str(payload.get("title") or "Mentioned in channel"),
+            "subtitle": str(payload.get("subtitle") or ""),
+            "status": "read" if delivery.read_at else "new",
+            "run_id": None,
+            "channel_id": str(event.channel_id),
+            "escalation_id": None,
+            "proposal_id": None,
+            "message_id": str(payload.get("message_id") or "") or None,
+            **asset_context,
+            "due_at": None,
+            "created_at": delivery.sent_at,
+            "unread": delivery.read_at is None,
+            "archived_at": delivery.archived_at,
+        }
+
+    if event.event_type == "message_posted":
+        return {
+            "id": f"delivery:{delivery.id}",
+            "item_type": "message_posted",
+            "delivery_id": str(delivery.id),
+            "title": str(payload.get("title") or f"New message in {payload.get('channel_name') or 'channel'}"),
+            "subtitle": str(payload.get("subtitle") or payload.get("message_preview") or ""),
+            "status": "read" if delivery.read_at else "new",
+            "run_id": None,
+            "channel_id": str(event.channel_id),
+            "escalation_id": None,
+            "proposal_id": None,
+            "message_id": str(payload.get("message_id") or "") or None,
+            **asset_context,
+            "due_at": None,
+            "created_at": delivery.sent_at,
+            "unread": delivery.read_at is None,
+            "archived_at": delivery.archived_at,
+        }
+
+    if event.event_type == "task_assigned":
+        return {
+            "id": f"delivery:{delivery.id}",
+            "item_type": "task_assigned",
+            "delivery_id": str(delivery.id),
+            "title": str(payload.get("title") or "Task assigned"),
+            "subtitle": str(payload.get("subtitle") or ""),
+            "status": "read" if delivery.read_at else "new",
+            "run_id": str(payload.get("run_id") or "") or None,
+            "channel_id": str(event.channel_id),
+            "escalation_id": None,
+            "proposal_id": None,
+            "message_id": None,
+            **asset_context,
+            "due_at": None,
+            "created_at": delivery.sent_at,
+            "unread": delivery.read_at is None,
+            "archived_at": delivery.archived_at,
+        }
+
+    if event.event_type in ("run_failed", "run_completed"):
+        return {
+            "id": f"delivery:{delivery.id}",
+            "item_type": "run_event",
+            "delivery_id": str(delivery.id),
+            "title": str(payload.get("title") or event.event_type.replace("_", " ")),
+            "subtitle": str(payload.get("subtitle") or ""),
+            "status": "read" if delivery.read_at else "new",
+            "run_id": str(payload.get("run_id") or "") or None,
+            "channel_id": str(event.channel_id),
+            "escalation_id": None,
+            "proposal_id": None,
+            "message_id": None,
+            **asset_context,
+            "due_at": None,
+            "created_at": delivery.sent_at,
+            "unread": delivery.read_at is None,
+            "archived_at": delivery.archived_at,
+        }
+
+    return None
+
+
+async def inbox_item_by_delivery_id(
+    db: AsyncSession,
+    workspace_id: UUID,
+    participant_id: str,
+    delivery_id: UUID,
+) -> dict | None:
+    result = await db.execute(
+        select(EventDelivery, ChannelEvent)
+        .join(ChannelEvent, ChannelEvent.id == EventDelivery.event_id)
+        .where(
+            EventDelivery.id == delivery_id,
+            EventDelivery.workspace_id == workspace_id,
+            EventDelivery.participant_id == participant_id,
+            EventDelivery.delivery_mean == "app",
+            EventDelivery.status == "sent",
+        )
+        .limit(1)
+    )
+    row = result.first()
+    if row is None:
+        return None
+    delivery, event = row
+    return await _inbox_item_from_delivery_event(db, delivery, event)
+
+
+async def _resolve_channel_asset_target(db: AsyncSession, channel_id: UUID) -> dict[str, str | None]:
+    channel = await db.get(Channel, channel_id)
+    if channel is None:
+        return {
+            "asset_type": None,
+            "asset_id": None,
+            "asset_path": None,
+            "asset_project_slug": None,
+        }
+
+    if channel.channel_type == "handbook":
+        return {
+            "asset_type": "folder",
+            "asset_id": None,
+            "asset_path": "",
+            "asset_project_slug": None,
+        }
+
+    if channel.channel_type == "normal" and channel.name == "project assets":
+        project_slug = None
+        if channel.project_id is not None:
+            project = await db.get(Project, channel.project_id)
+            if project is not None:
+                project_slug = project.slug
+        return {
+            "asset_type": "folder",
+            "asset_id": None,
+            "asset_path": "",
+            "asset_project_slug": project_slug,
+        }
+
+    binding_result = await db.execute(
+        select(ChannelAssetBinding)
+        .where(
+            ChannelAssetBinding.workspace_id == channel.workspace_id,
+            ChannelAssetBinding.channel_id == channel_id,
+        )
+        .order_by(ChannelAssetBinding.created_at.asc())
+        .limit(1)
+    )
+    binding = binding_result.scalar_one_or_none()
+    if binding is None:
+        return {
+            "asset_type": None,
+            "asset_id": None,
+            "asset_path": None,
+            "asset_project_slug": None,
+        }
+
+    project_id = channel.project_id
+    asset_path: str | None = None
+
+    if binding.asset_type == "workflow":
+        try:
+            graph = await db.get(Graph, UUID(binding.asset_id))
+        except ValueError:
+            graph = None
+        if graph is not None:
+            project_id = graph.project_id or project_id
+    elif binding.asset_type == "run":
+        run = await db.get(Run, binding.asset_id)
+        if run is not None:
+            project_id = run.project_id or project_id
+    elif binding.asset_type == "file":
+        try:
+            file = await db.get(KnowledgeFile, UUID(binding.asset_id))
+        except ValueError:
+            file = None
+        if file is not None:
+            asset_path = file.path
+            project_id = file.project_id or project_id
+    elif binding.asset_type == "folder":
+        try:
+            folder = await db.get(KnowledgeFolder, UUID(binding.asset_id))
+        except ValueError:
+            folder = None
+        if folder is not None:
+            asset_path = folder.path
+            project_id = folder.project_id or project_id
+
+    project_slug = None
+    if project_id is not None:
+        project = await db.get(Project, project_id)
+        if project is not None:
+            project_slug = project.slug
+
+    return {
+        "asset_type": binding.asset_type,
+        "asset_id": binding.asset_id,
+        "asset_path": asset_path,
+        "asset_project_slug": project_slug,
+    }
 
 
 async def inbox_summary(db: AsyncSession, workspace_id: UUID, participant_id: str) -> dict:

@@ -8,6 +8,34 @@ import EmptyState from '@/components/shared/EmptyState'
 
 const DEV_WORKSPACE = import.meta.env.VITE_DEV_WORKSPACE_ID ?? 'dev-workspace'
 
+function inboxTarget(item: import('@/types').InboxItem) {
+  if (item.asset_type === 'workflow' && item.asset_id) {
+    return `/graphs/${item.asset_id}?chat=1${item.message_id ? `&message=${encodeURIComponent(item.message_id)}` : ''}`
+  }
+  if ((item.asset_type === 'file' || item.asset_type === 'folder') && item.asset_path !== null) {
+    const params = new URLSearchParams()
+    if (item.asset_type === 'file') params.set('path', item.asset_path)
+    else if (item.asset_path) params.set('folder', item.asset_path)
+    params.set('chat', '1')
+    if (item.message_id) params.set('message', item.message_id)
+    if (item.asset_project_slug) {
+      return `/projects/${item.asset_project_slug}/assets?${params.toString()}`
+    }
+    return `/knowledge?${params.toString()}`
+  }
+  if (item.item_type === 'escalation' || item.item_type === 'run_event') {
+    return `/runs/${item.run_id}`
+  }
+  if (item.item_type === 'mentioned_message' || item.item_type === 'task_assigned' || item.item_type === 'message_posted' || item.item_type === 'knowledge_change') {
+    if (item.channel_id) {
+      return `/channels/${item.channel_id}${item.message_id ? `?message=${encodeURIComponent(item.message_id)}` : ''}`
+    }
+    if (item.run_id) return `/runs/${item.run_id}`
+    return '/channels'
+  }
+  return '/runs'
+}
+
 export default function InboxPage() {
   const workspaceId = useAuthStore((s) => s.workspaceId) ?? DEV_WORKSPACE
   const navigate = useNavigate()
@@ -87,15 +115,7 @@ export default function InboxPage() {
       ) : (
         <div className="space-y-2">
           {items.map((item) => {
-            const target = item.item_type === 'escalation' || item.item_type === 'run_event'
-              ? `/runs/${item.run_id}`
-              : item.item_type === 'mentioned_message' || item.item_type === 'task_assigned' || item.item_type === 'message_posted' || item.item_type === 'knowledge_change'
-                ? item.channel_id
-                  ? `/channels/${item.channel_id}${item.message_id ? `?message=${encodeURIComponent(item.message_id)}` : ''}`
-                  : item.run_id
-                    ? `/runs/${item.run_id}`
-                    : '/channels'
-                : '/runs'
+            const target = inboxTarget(item)
 
             async function openItem(event: React.MouseEvent<HTMLAnchorElement>) {
               if (

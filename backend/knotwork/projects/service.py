@@ -3,7 +3,7 @@ from __future__ import annotations
 import re
 from uuid import UUID
 
-from sqlalchemy import delete, func, select
+from sqlalchemy import delete, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from knotwork.channels.models import Channel, ChannelAssetBinding
@@ -762,11 +762,18 @@ async def list_project_channels(
     channel_ids: set[UUID] = set()
 
     archive_filter = True if include_archived else Channel.archived_at.is_(None)
+    non_asset_chat_filter = ~or_(
+        Channel.name == "project assets",
+        Channel.name.like("folder: %"),
+        Channel.name.like("file: %"),
+        Channel.name.like("workflow: %"),
+    )
 
     direct_rows = await db.execute(
         select(Channel.id).where(
             Channel.workspace_id == workspace_id,
             archive_filter,
+            non_asset_chat_filter,
             Channel.project_id == project_id,
             Channel.channel_type.in_(("project", "normal", "objective")),
         )
@@ -812,6 +819,7 @@ async def list_project_channels(
         ).where(
             Channel.workspace_id == workspace_id,
             archive_filter,
+            non_asset_chat_filter,
             Channel.channel_type == "normal",
             ChannelAssetBinding.workspace_id == workspace_id,
         )
@@ -848,6 +856,7 @@ async def list_project_channels(
         .where(
             Channel.workspace_id == workspace_id,
             archive_filter,
+            non_asset_chat_filter,
             Channel.id.in_(channel_ids),
         )
         .order_by(Channel.archived_at.is_not(None).asc(), Channel.updated_at.desc(), Channel.created_at.desc())

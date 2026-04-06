@@ -48,6 +48,8 @@ interface Props {
   renderNewFolderPanel: (parentPath: string, onDone: () => void, onCancel: () => void) => React.ReactNode
   renderUploadPanel: (preview: UploadPreview, onSaved: (path: string) => void, onCancel: () => void) => React.ReactNode
   sidePanel?: React.ReactNode
+  openSidePanel?: boolean
+  sidePanelStorageKey?: string
   allowNewFile?: boolean
   allowNewWorkflow?: boolean
   allowNewFolder?: boolean
@@ -65,10 +67,15 @@ export default function FileBrowserShell({
   onUploadClick, onDrop, isBusy = false, busyLabel, renamePending = false,
   onNavigateFolder, onNavigateFile, onNavigateWorkflow, onFileCreated, onWorkflowCreated, onUploadSaved,
   renderFileView, renderKnowledgeFileView, renderWorkflowView, renderNewFilePanel, renderNewWorkflowPanel, renderNewFolderPanel, renderUploadPanel, sidePanel,
+  openSidePanel = false,
+  sidePanelStorageKey,
   allowNewFile = true, allowNewWorkflow = true, allowNewFolder = true, allowUpload = true,
   allowFolderRename = true, allowFolderMove = true, allowFolderDelete = true,
 }: Props) {
-  const [showChat, setShowChat] = useState(false)
+  const [showChat, setShowChat] = useState(() => {
+    if (typeof window === 'undefined' || !sidePanelStorageKey) return false
+    return window.localStorage.getItem(sidePanelStorageKey) === '1'
+  })
   const [newMenuOpen, setNewMenuOpen] = useState(false)
   const { rightPanel, setRightPanel, currentFolder, multiSelected,
     selectedPath, openFileName, ctrlSelectFile,
@@ -86,6 +93,15 @@ export default function FileBrowserShell({
     : currentFolder
 
   const back = () => goFolder(setRightPanel)
+
+  useEffect(() => {
+    if (openSidePanel) setShowChat(true)
+  }, [openSidePanel])
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || !sidePanelStorageKey) return
+    window.localStorage.setItem(sidePanelStorageKey, showChat ? '1' : '0')
+  }, [showChat, sidePanelStorageKey])
 
   useEffect(() => {
     if (!newMenuOpen) return

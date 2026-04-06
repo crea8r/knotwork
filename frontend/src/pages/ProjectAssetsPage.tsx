@@ -1,5 +1,5 @@
-import { useMemo, useRef, useState } from 'react'
-import { useNavigate, useOutletContext } from 'react-router-dom'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { useNavigate, useOutletContext, useSearchParams } from 'react-router-dom'
 import { FolderPlus } from 'lucide-react'
 import { useAssetChatChannel, usePostChannelMessage } from '@/api/channels'
 import { useDeleteGraph, useGraphs, useUpdateGraph } from '@/api/graphs'
@@ -198,12 +198,21 @@ function ProjectNewFolderPanel({
 export default function ProjectAssetsPage() {
   const { workspaceId, projectId, projectSlug } = useOutletContext<ProjectOutletContext>()
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
+  const urlFilePath = searchParams.get('path')
+  const urlFolder = searchParams.get('folder') ?? ''
+  const urlChat = searchParams.get('chat') === '1'
+  const highlightedMessageId = searchParams.get('message') ? `m-${searchParams.get('message')}` : null
   const { data: docs = [] } = useProjectDocuments(workspaceId, projectSlug)
   const { data: projectFolders = [] } = useProjectFolders(workspaceId, projectSlug)
   const { data: workflows = [] } = useGraphs(workspaceId, projectId)
   const { data: workspaceWorkflows = [] } = useGraphs(workspaceId)
   const { data: knowledgeFiles = [] } = useKnowledgeFiles()
-  const browserState = useFileBrowserState({ panelWidthStorageKey: 'kw-project-asset-chat-width' })
+  const browserState = useFileBrowserState({
+    initialFolder: urlFolder,
+    initialFilePath: urlFilePath,
+    panelWidthStorageKey: 'kw-project-asset-chat-width',
+  })
   const uploadInputRef = useRef<HTMLInputElement>(null)
   const chatInputRef = useRef<HTMLTextAreaElement | null>(null)
 
@@ -283,24 +292,25 @@ export default function ProjectAssetsPage() {
   }, [allEntries, fileQuery, knowledgeSearchEntries])
 
   const activeAssetChat = useMemo(() => {
-    if (browserState.rightPanel.kind === 'file') {
-      const projectDoc = docs.find((doc) => doc.path === browserState.rightPanel.path)
+    const panel = browserState.rightPanel
+    if (panel.kind === 'file') {
+      const projectDoc = docs.find((doc) => doc.path === panel.path)
       return {
         assetType: 'file' as const,
         asset_id: projectDoc?.id ?? null,
-        path: browserState.rightPanel.path,
+        path: panel.path,
         project_id: projectId,
-        label: browserState.rightPanel.path,
+        label: panel.path,
       }
     }
-    if (browserState.rightPanel.kind === 'knowledge-file') {
-      const knowledgeFile = knowledgeFiles.find((file) => file.path === browserState.rightPanel.path)
+    if (panel.kind === 'knowledge-file') {
+      const knowledgeFile = knowledgeFiles.find((file) => file.path === panel.path)
       return {
         assetType: 'file' as const,
         asset_id: knowledgeFile?.id ?? null,
-        path: browserState.rightPanel.path,
+        path: panel.path,
         project_id: null,
-        label: browserState.rightPanel.path,
+        label: panel.path,
       }
     }
     const currentProjectFolder = projectFolders.find((folder) => folder.path === browserState.currentFolder)
@@ -320,15 +330,38 @@ export default function ProjectAssetsPage() {
   const { items: assetTimeline } = useChannelTimeline(workspaceId, assetChatChannel?.id ?? '')
   const postAssetMessage = usePostChannelMessage(workspaceId, assetChatChannel?.id ?? '')
   const { mentionMenuNode } = useMentionDetection(workspaceId, chatDraft, setChatDraft, chatInputRef)
+  const { currentFolder, rightPanel, setCurrentFolder, setRightPanel } = browserState
+
+  useEffect(() => {
+    if (urlFilePath) {
+      const folder = urlFilePath.split('/').slice(0, -1).join('/')
+      if (currentFolder !== folder) setCurrentFolder(folder)
+      if (
+        (rightPanel.kind === 'file' || rightPanel.kind === 'folder')
+        && (rightPanel.kind !== 'file' || rightPanel.path !== urlFilePath)
+      ) {
+        setRightPanel({ kind: 'file', path: urlFilePath })
+      }
+      return
+    }
+
+    if (currentFolder !== urlFolder) setCurrentFolder(urlFolder)
+    if (rightPanel.kind === 'file') setRightPanel({ kind: 'folder' })
+  }, [currentFolder, rightPanel, setCurrentFolder, setRightPanel, urlFilePath, urlFolder])
 
   function openProjectFilePath(path: string) {
-    browserState.setCurrentFolder(path.split('/').slice(0, -1).join('/'))
-    browserState.setRightPanel({ kind: 'file', path })
+    const params = new URLSearchParams()
+    params.set('path', path)
+    if (urlChat) params.set('chat', '1')
+    navigate(`/projects/${projectSlug}/assets?${params.toString()}`)
   }
 
   function openProjectFolderPath(path: string) {
-    browserState.setCurrentFolder(path)
-    browserState.setRightPanel({ kind: 'folder' })
+    const params = new URLSearchParams()
+    if (path) params.set('folder', path)
+    if (urlChat) params.set('chat', '1')
+    const query = params.toString()
+    navigate(query ? `/projects/${projectSlug}/assets?${query}` : `/projects/${projectSlug}/assets`)
   }
 
   function handleProjectFolderRename(path: string, newName: string) {
@@ -500,6 +533,8 @@ export default function ProjectAssetsPage() {
               }}
             />
           )}
+          openSidePanel={urlChat}
+          sidePanelStorageKey="kw-project-asset-chat-open"
           allowNewFolder
           allowUpload
           allowFolderRename
@@ -511,7 +546,12 @@ export default function ProjectAssetsPage() {
               parentLabel={projectSlug}
               shellClassName="rounded-none border-0"
             >
-              <ChannelTimeline items={assetTimeline} emptyState="No messages yet. Start a discussion about this asset." />
+              <ChannelTimeline
+                items={assetTimeline}
+                emptyState="No messages yet. Start a discussion about this asset."
+                highlightedItemId={highlightedMessageId}
+                scrollToLatest
+              />
               <WorkflowSlashComposer
                 workspaceId={workspaceId}
                 workflows={workflows}

@@ -172,10 +172,12 @@ export function ChannelTimeline({
   items,
   emptyState = 'No messages yet.',
   highlightedItemId,
+  scrollToLatest = false,
 }: {
   items: ChannelTimelineItem[]
   emptyState?: string
   highlightedItemId?: string | null
+  scrollToLatest?: boolean
 }) {
   const itemRefs = useRef(new Map<string, HTMLDivElement>())
 
@@ -183,8 +185,16 @@ export function ChannelTimeline({
     if (!highlightedItemId) return
     const node = itemRefs.current.get(highlightedItemId)
     if (!node) return
-    node.scrollIntoView({ block: 'center', behavior: 'smooth' })
+    node.scrollIntoView({ block: 'center' })
   }, [highlightedItemId, items])
+
+  useEffect(() => {
+    if (highlightedItemId || !scrollToLatest || items.length === 0) return
+    const lastItem = items[items.length - 1]
+    const node = itemRefs.current.get(lastItem.id)
+    if (!node) return
+    node.scrollIntoView({ block: 'end' })
+  }, [highlightedItemId, items, scrollToLatest])
 
   return (
     <div className="flex-1 overflow-y-auto bg-[#faf7f1] p-4 space-y-3">
@@ -230,7 +240,16 @@ export function ChannelTimeline({
           const relative = item.ts ? formatRelativeTime(item.ts) : ''
           const absolute = item.ts ? formatAbsoluteTime(item.ts) : ''
           return (
-            <div key={item.id} className="max-w-[92%] rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3">
+            <div
+              key={item.id}
+              ref={(node) => {
+                if (node) itemRefs.current.set(item.id, node)
+                else itemRefs.current.delete(item.id)
+              }}
+              className={`max-w-[92%] rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 ${
+                highlightedItemId === item.id ? 'ring-2 ring-brand-400 ring-offset-2 ring-offset-[#faf7f1]' : ''
+              }`}
+            >
               <p className="text-[10px] uppercase tracking-wide text-amber-700">Decision</p>
               <p className="text-sm text-amber-900">{item.label}</p>
               {item.actorName ? <p className="mt-1 text-[11px] text-amber-700">by {item.actorName}</p> : null}

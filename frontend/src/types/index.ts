@@ -402,6 +402,10 @@ export interface InboxItem {
   escalation_id: string | null
   proposal_id: string | null
   message_id: string | null
+  asset_type: 'workflow' | 'run' | 'file' | 'folder' | null
+  asset_id: string | null
+  asset_path: string | null
+  asset_project_slug: string | null
   due_at: string | null
   created_at: string
   unread: boolean

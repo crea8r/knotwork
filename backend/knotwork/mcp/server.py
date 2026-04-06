@@ -525,18 +525,22 @@ def build_server(client: KnotworkAPIClient | None = None) -> FastMCP:
         )
 
     @mcp.tool()
-    async def list_knowledge_files(ctx: Context = None) -> Any:
+    async def list_knowledge_files(project_id: str | None = None, ctx: Context = None) -> Any:
         api = _client_from_context(ctx)
-        return await _request(ctx, "GET", api.workspace_path("/knowledge"))
+        params = {"project_id": project_id} if project_id else None
+        return await _request(ctx, "GET", api.workspace_path("/knowledge"), params=params)
 
     @mcp.tool()
-    async def read_knowledge_file(path: str, ctx: Context = None) -> Any:
+    async def read_knowledge_file(path: str, project_id: str | None = None, ctx: Context = None) -> Any:
         api = _client_from_context(ctx)
+        params = {"path": path}
+        if project_id:
+            params["project_id"] = project_id
         return await _request(
             ctx,
             "GET",
             api.workspace_path("/knowledge/file"),
-            params={"path": path},
+            params=params,
         )
 
     @mcp.tool()
@@ -545,13 +549,16 @@ def build_server(client: KnotworkAPIClient | None = None) -> FastMCP:
         title: str,
         content: str,
         change_summary: str | None = None,
+        project_id: str | None = None,
         ctx: Context = None,
     ) -> Any:
         api = _client_from_context(ctx)
+        params = {"project_id": project_id} if project_id else None
         return await _request(
             ctx,
             "POST",
             api.workspace_path("/knowledge"),
+            params=params,
             body={
                 "path": path,
                 "title": title,
@@ -565,14 +572,18 @@ def build_server(client: KnotworkAPIClient | None = None) -> FastMCP:
         path: str,
         content: str,
         change_summary: str | None = None,
+        project_id: str | None = None,
         ctx: Context = None,
     ) -> Any:
         api = _client_from_context(ctx)
+        params = {"path": path}
+        if project_id:
+            params["project_id"] = project_id
         return await _request(
             ctx,
             "PUT",
             api.workspace_path("/knowledge/file"),
-            params={"path": path},
+            params=params,
             body={"content": content, "change_summary": change_summary},
         )
 

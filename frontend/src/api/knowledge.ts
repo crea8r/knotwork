@@ -237,7 +237,7 @@ export interface KnowledgeChange {
   proposed_content: string | null
   payload: Record<string, unknown>
   reason: string
-  status: 'pending' | 'approved' | 'rejected'
+  status: 'pending' | 'approved' | 'rejected' | 'needs_revision'
   reviewed_by?: string | null
   reviewed_at?: string | null
   final_content?: string | null
