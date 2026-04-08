@@ -189,8 +189,6 @@ write_env_file() {
     printf 'FRONTEND_HOST_PORT=%s\n'          "$FRONTEND_HOST_PORT"
     printf 'BACKEND_DEV_HOST_PORT=%s\n'       "$BACKEND_DEV_HOST_PORT"
     printf 'FRONTEND_DEV_HOST_PORT=%s\n'      "$FRONTEND_DEV_HOST_PORT"
-    printf 'POSTGRES_DEV_HOST_PORT=%s\n'      "$POSTGRES_DEV_HOST_PORT"
-    printf 'REDIS_DEV_HOST_PORT=%s\n'         "$REDIS_DEV_HOST_PORT"
     printf 'VITE_API_URL=%s\n'                "$VITE_API_URL"
   } > "$path"
 }
@@ -490,29 +488,16 @@ fi
 # ── Port selection ─────────────────────────────────────────────────────────────
 DEFAULT_BACKEND_PORT="$(next_free_port 8000)"
 DEFAULT_FRONTEND_PORT="$(next_free_port 3000)"
-DEFAULT_POSTGRES_PORT="$(next_free_port 5432)"
-DEFAULT_REDIS_PORT="$(next_free_port 6379)"
 if [[ "$INSTALL_MODE" == "dev" ]]; then
   # Dev mode uses the *-dev docker-compose services which bind BACKEND_DEV_HOST_PORT
-  # and FRONTEND_DEV_HOST_PORT.  Prod ports default to same values (unused in dev).
+  # and FRONTEND_DEV_HOST_PORT. Prod ports default to same values (unused in dev).
   prompt_with_default BACKEND_DEV_HOST_PORT "Backend dev host port" "$DEFAULT_BACKEND_PORT"
   prompt_with_default FRONTEND_DEV_HOST_PORT "Frontend dev host port" "$DEFAULT_FRONTEND_PORT"
-  prompt_with_default POSTGRES_DEV_HOST_PORT "Postgres dev host port" "$DEFAULT_POSTGRES_PORT"
-  prompt_with_default REDIS_DEV_HOST_PORT "Redis dev host port" "$DEFAULT_REDIS_PORT"
   is_valid_port "$BACKEND_DEV_HOST_PORT" || die "Invalid backend port: $BACKEND_DEV_HOST_PORT"
   is_valid_port "$FRONTEND_DEV_HOST_PORT" || die "Invalid frontend port: $FRONTEND_DEV_HOST_PORT"
-  is_valid_port "$POSTGRES_DEV_HOST_PORT" || die "Invalid Postgres dev host port: $POSTGRES_DEV_HOST_PORT"
-  is_valid_port "$REDIS_DEV_HOST_PORT" || die "Invalid Redis dev host port: $REDIS_DEV_HOST_PORT"
   port_in_use "$BACKEND_DEV_HOST_PORT" && die "Backend dev host port ${BACKEND_DEV_HOST_PORT} is already in use."
   port_in_use "$FRONTEND_DEV_HOST_PORT" && die "Frontend dev host port ${FRONTEND_DEV_HOST_PORT} is already in use."
-  port_in_use "$POSTGRES_DEV_HOST_PORT" && die "Postgres dev host port ${POSTGRES_DEV_HOST_PORT} is already in use."
-  port_in_use "$REDIS_DEV_HOST_PORT" && die "Redis dev host port ${REDIS_DEV_HOST_PORT} is already in use."
   [[ "$BACKEND_DEV_HOST_PORT" == "$FRONTEND_DEV_HOST_PORT" ]] && die "Backend and frontend host ports cannot be the same."
-  [[ "$BACKEND_DEV_HOST_PORT" == "$POSTGRES_DEV_HOST_PORT" ]] && die "Backend and Postgres dev host ports cannot be the same."
-  [[ "$BACKEND_DEV_HOST_PORT" == "$REDIS_DEV_HOST_PORT" ]] && die "Backend and Redis dev host ports cannot be the same."
-  [[ "$FRONTEND_DEV_HOST_PORT" == "$POSTGRES_DEV_HOST_PORT" ]] && die "Frontend and Postgres dev host ports cannot be the same."
-  [[ "$FRONTEND_DEV_HOST_PORT" == "$REDIS_DEV_HOST_PORT" ]] && die "Frontend and Redis dev host ports cannot be the same."
-  [[ "$POSTGRES_DEV_HOST_PORT" == "$REDIS_DEV_HOST_PORT" ]] && die "Postgres and Redis dev host ports cannot be the same."
   BACKEND_HOST_PORT="$BACKEND_DEV_HOST_PORT"
   FRONTEND_HOST_PORT="$FRONTEND_DEV_HOST_PORT"
 else
@@ -525,8 +510,6 @@ else
   [[ "$BACKEND_HOST_PORT" == "$FRONTEND_HOST_PORT" ]] && die "Backend and frontend host ports cannot be the same."
   BACKEND_DEV_HOST_PORT="$BACKEND_HOST_PORT"
   FRONTEND_DEV_HOST_PORT="$FRONTEND_HOST_PORT"
-  POSTGRES_DEV_HOST_PORT=""
-  REDIS_DEV_HOST_PORT=""
 fi
 
 if [[ "$DOMAIN" == "localhost" ]]; then
@@ -580,7 +563,6 @@ docker network create "$KNOTWORK_NETWORK_NAME" 2>/dev/null || true
 COMPOSE_FILES=(-f "$SCRIPT_DIR/docker-compose.yml")
 # Service names and compose profile differ by install mode.
 if [[ "$INSTALL_MODE" == "dev" ]]; then
-  COMPOSE_FILES+=(-f "$SCRIPT_DIR/docker-compose.dev-db-ports.yml")
   COMPOSE_PROFILE="dev"
   BACKEND_SERVICE="backend-dev"
   WORKER_SERVICE="worker-dev"
@@ -651,11 +633,6 @@ echo "Backend URL: $BACKEND_URL"
 if [[ "$INSTALL_MODE" == "dev" ]]; then
   echo "Backend dev port: $BACKEND_DEV_HOST_PORT"
   echo "Frontend dev port (Vite HMR): $FRONTEND_DEV_HOST_PORT"
-  echo "Postgres dev port: $POSTGRES_DEV_HOST_PORT"
-  echo "Redis dev port: $REDIS_DEV_HOST_PORT"
-  echo "Postgres connection: postgresql://knotwork:knotwork@localhost:${POSTGRES_DEV_HOST_PORT}/knotwork"
-  echo "Postgres connection (async): postgresql+asyncpg://knotwork:knotwork@localhost:${POSTGRES_DEV_HOST_PORT}/knotwork"
-  echo "Redis connection: redis://localhost:${REDIS_DEV_HOST_PORT}"
 else
   echo "Backend host port: $BACKEND_HOST_PORT"
   echo "Frontend host port: $FRONTEND_HOST_PORT"
