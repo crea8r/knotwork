@@ -113,53 +113,10 @@ class KnotworkTokenVerifier(TokenVerifier):
 def _json_text(payload: Any) -> str:
     return json.dumps(payload, indent=2, sort_keys=True)
 
-def _allowed_mcp_hosts() -> list[str]:
-    hosts: list[str] = []
-    seen: set[str] = set()
-
-    def add_host(value: str | None) -> None:
-        if not value:
-            return
-        host = value.strip().lower()
-        if not host or host in seen:
-            return
-        seen.add(host)
-        hosts.append(host)
-
-    backend = urlparse(settings.normalized_backend_url)
-    frontend = urlparse(settings.normalized_frontend_url)
-    backend_port = backend.port
-
-    add_host(backend.netloc)
-    add_host(frontend.netloc)
-
-    if backend_port is not None:
-        for host in ("localhost", "127.0.0.1", "host.docker.internal"):
-            add_host(f"{host}:{backend_port}")
-
-    return hosts
-
-
-def _allowed_mcp_origins() -> list[str]:
-    origins: list[str] = []
-    seen: set[str] = set()
-
-    def add_origin(value: str | None) -> None:
-        if not value:
-            return
-        origin = value.rstrip("/")
-        if not origin or origin in seen:
-            return
-        seen.add(origin)
-        origins.append(origin)
-
-    add_origin(settings.normalized_backend_url)
-    add_origin(settings.normalized_frontend_url)
-    return origins
-
 
 def _mcp_transport_security_settings() -> TransportSecuritySettings:
     backend = urlparse(settings.normalized_backend_url)
+    frontend = urlparse(settings.normalized_frontend_url)
     allowed_hosts = {
         "127.0.0.1:*",
         "localhost:*",
@@ -176,9 +133,12 @@ def _mcp_transport_security_settings() -> TransportSecuritySettings:
         "http://host.docker.internal:*",
         "http://knotwork-local-backend-dev-1:*",
     }
-    if backend.netloc:
-        allowed_hosts.add(backend.netloc)
-        allowed_origins.add(f"{backend.scheme}://{backend.netloc}")
+
+    for parsed in (backend, frontend):
+        if parsed.netloc:
+            allowed_hosts.add(parsed.netloc)
+            allowed_origins.add(f"{parsed.scheme}://{parsed.netloc}")
+
     return TransportSecuritySettings(
         enable_dns_rebinding_protection=True,
         allowed_hosts=sorted(allowed_hosts),
@@ -206,11 +166,7 @@ def build_server(client: KnotworkAPIClient | None = None) -> FastMCP:
             required_scopes=[],
         ),
         token_verifier=KnotworkTokenVerifier(),
-        transport_security=TransportSecuritySettings(
-            enable_dns_rebinding_protection=True,
-            allowed_hosts=_allowed_mcp_hosts(),
-            allowed_origins=_allowed_mcp_origins(),
-        ),
+        transport_security=_mcp_transport_security_settings(),
     )
 
     def _client_from_context(ctx: Context | None) -> KnotworkAPIClient:
