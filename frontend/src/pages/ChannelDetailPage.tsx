@@ -27,8 +27,9 @@ import Spinner from '@/components/shared/Spinner'
 const DEV_WORKSPACE = import.meta.env.VITE_DEV_WORKSPACE_ID ?? 'dev-workspace'
 
 type AssetType = 'workflow' | 'run' | 'file'
+type ChannelAssetType = AssetType | 'folder'
 
-function assetIcon(type: AssetType) {
+function assetIcon(type: ChannelAssetType) {
   switch (type) {
     case 'workflow':
       return <GitBranch size={14} className="text-brand-600" />
