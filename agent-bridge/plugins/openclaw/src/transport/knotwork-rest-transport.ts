@@ -88,13 +88,16 @@ export class KnotworkRestTransport implements KnotworkTransport {
 
     const fileBindings = channelAssets.filter((binding) => binding.asset_type === 'file' && binding.path)
     const folderBindings = channelAssets.filter((binding) => binding.asset_type === 'folder' && binding.path)
+    const projectId = typeof channel.project_id === 'string' && channel.project_id.trim()
+      ? channel.project_id.trim()
+      : null
     const knowledgeFiles = await Promise.all(
       fileBindings
         .slice(0, 3)
-        .map((binding) => fetchKnowledgeFile(this.params.baseUrl, this.params.workspaceId, this.params.jwt, String(binding.path)).catch(() => null)),
+        .map((binding) => fetchKnowledgeFile(this.params.baseUrl, this.params.workspaceId, this.params.jwt, String(binding.path), projectId).catch(() => null)),
     )
     const allKnowledgeFiles = folderBindings.length > 0
-      ? await listKnowledgeFiles(this.params.baseUrl, this.params.workspaceId, this.params.jwt).catch(() => [])
+      ? await listKnowledgeFiles(this.params.baseUrl, this.params.workspaceId, this.params.jwt, projectId).catch(() => [])
       : []
     const folderFiles = folderBindings.slice(0, 3).map((binding) => {
       const basePath = String(binding.path ?? '').replace(/\/+$/, '')

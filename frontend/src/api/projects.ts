@@ -216,7 +216,7 @@ export function useProjectDocumentSuggestions(workspaceId: string, projectId: st
 export function useCreateProjectDocument(workspaceId: string, projectId: string) {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (payload: { path: string; title?: string; content: string; change_summary?: string }) =>
+    mutationFn: (payload: { path: string; title?: string; content: string }) =>
       api.post<ProjectDocument>(`/workspaces/${workspaceId}/projects/${projectId}/documents`, payload).then((r) => r.data),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['project-documents', workspaceId, projectId] }),
   })
@@ -279,7 +279,7 @@ export function useUploadProjectFile(workspaceId: string, projectId: string) {
 export function useUpdateProjectDocument(workspaceId: string, projectId: string, path: string) {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (payload: { content: string; change_summary?: string }) =>
+    mutationFn: (payload: { content: string }) =>
       api.put<ProjectDocument>(`/workspaces/${workspaceId}/projects/${projectId}/documents/file`, payload, {
         params: { path },
       }).then((r) => r.data),
@@ -287,15 +287,6 @@ export function useUpdateProjectDocument(workspaceId: string, projectId: string,
       qc.invalidateQueries({ queryKey: ['project-documents', workspaceId, projectId] })
       qc.invalidateQueries({ queryKey: ['project-document', workspaceId, projectId, path] })
     },
-  })
-}
-
-export function useSummarizeProjectDocumentDiff(workspaceId: string, projectId: string, path: string) {
-  return useMutation({
-    mutationFn: (body: { content: string }) =>
-      api.post(`/workspaces/${workspaceId}/projects/${projectId}/documents/summarize-diff`, body, {
-        params: { path },
-      }).then((r) => r.data as { summary: string }),
   })
 }
 

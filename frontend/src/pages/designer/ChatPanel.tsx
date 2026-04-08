@@ -1,5 +1,6 @@
 import { X } from 'lucide-react'
 import DesignerChat from '@/components/designer/DesignerChat'
+import { EditorSidePanel } from '@/components/editor/EditorWorkspace'
 
 export default function ChatPanel({
   graphId,
@@ -15,11 +16,16 @@ export default function ChatPanel({
   return (
     <>
       {/* Desktop side panel */}
-      <div className="hidden md:flex border-l border-gray-200 bg-white" style={{ width: 440, flexShrink: 0, flexDirection: 'column', overflow: 'hidden' }}>
+      <EditorSidePanel className="hidden md:flex">
         <div style={{ flex: 1, overflow: 'hidden' }}>
-          <DesignerChat graphId={graphId} sessionId={sessionId} onBeforeApplyDelta={onBeforeApplyDelta} />
+          <DesignerChat
+            graphId={graphId}
+            sessionId={sessionId}
+            onBeforeApplyDelta={onBeforeApplyDelta}
+            shellClassName="rounded-none border-0"
+          />
         </div>
-      </div>
+      </EditorSidePanel>
 
       {/* Mobile bottom sheet */}
       <div className="md:hidden fixed inset-x-0 bottom-0 z-50 flex flex-col bg-white rounded-t-2xl shadow-xl" style={{ height: '65vh' }}>
@@ -31,7 +37,12 @@ export default function ChatPanel({
           </button>
         </div>
         <div className="flex-1 overflow-hidden">
-          <DesignerChat graphId={graphId} sessionId={sessionId} onBeforeApplyDelta={onBeforeApplyDelta} />
+          <DesignerChat
+            graphId={graphId}
+            sessionId={sessionId}
+            onBeforeApplyDelta={onBeforeApplyDelta}
+            shellClassName="rounded-none border-0"
+          />
         </div>
       </div>
     </>

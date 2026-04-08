@@ -24,6 +24,7 @@ interface Props {
   graphId: string
   sessionId: string
   onBeforeApplyDelta?: () => void
+  shellClassName?: string
 }
 
 function relativeTime(iso: string): string {
@@ -36,7 +37,7 @@ function relativeTime(iso: string): string {
   return `${Math.floor(hrs / 24)}d ago`
 }
 
-export default function DesignerChat({ graphId, sessionId, onBeforeApplyDelta }: Props) {
+export default function DesignerChat({ graphId, sessionId, onBeforeApplyDelta, shellClassName }: Props) {
   const workspaceId = useAuthStore((s) => s.workspaceId) ?? DEV_WORKSPACE
   const [messages, setMessages] = useState<Message[]>([])
   const [historyLoaded, setHistoryLoaded] = useState(false)
@@ -144,6 +145,7 @@ export default function DesignerChat({ graphId, sessionId, onBeforeApplyDelta }:
       title={graph?.name ?? 'Workflow chat'}
       description="Discuss workflow changes and apply them directly to the graph."
       parentLabel={`${messages.filter(m => m.role === 'user').length} prompts`}
+      shellClassName={shellClassName}
       actions={(
         <button
           onClick={handleClear}

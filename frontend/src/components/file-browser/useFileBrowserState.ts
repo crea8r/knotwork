@@ -9,7 +9,7 @@ import type { ContextTarget } from '@/components/handbook/FileContextMenu'
 
 const MIN_PANEL_W = 200
 const MAX_PANEL_W = 760
-const DEFAULT_PANEL_W = 288
+const DEFAULT_PANEL_W = 440
 
 export interface FileBrowserState {
   rightPanel: RightPanel

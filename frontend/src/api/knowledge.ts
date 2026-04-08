@@ -35,7 +35,6 @@ export interface FileVersion {
   version_id: string
   saved_at: string
   saved_by: string
-  change_summary: string | null
 }
 
 export interface SuggestionOut {
@@ -124,7 +123,7 @@ export function useCreateKnowledgeFile() {
   const workspaceId = useWorkspaceId()
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (body: { path: string; title?: string; content: string; change_summary?: string }) =>
+    mutationFn: (body: { path: string; title?: string; content: string }) =>
       api.post(`/workspaces/${workspaceId}/knowledge`, body).then(r => r.data),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['knowledge', workspaceId] }),
   })
@@ -134,7 +133,7 @@ export function useUpdateKnowledgeFile(path: string) {
   const workspaceId = useWorkspaceId()
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (body: { content: string; change_summary?: string }) =>
+    mutationFn: (body: { content: string }) =>
       api.put(`/workspaces/${workspaceId}/knowledge/file`, body, { params: { path } }).then(r => r.data),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['knowledge', workspaceId, path] })
@@ -151,15 +150,6 @@ export function useRenameKnowledgeFile() {
     mutationFn: ({ path, new_path }: { path: string; new_path: string }) =>
       api.patch(`/workspaces/${workspaceId}/knowledge/file/rename`, { new_path }, { params: { path } }).then(r => r.data),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['knowledge', workspaceId] }),
-  })
-}
-
-export function useSummarizeKnowledgeDiff(path: string) {
-  const workspaceId = useWorkspaceId()
-  return useMutation({
-    mutationFn: (body: { content: string }) =>
-      api.post(`/workspaces/${workspaceId}/knowledge/summarize-diff`, body, { params: { path } })
-        .then(r => r.data as { summary: string }),
   })
 }
 

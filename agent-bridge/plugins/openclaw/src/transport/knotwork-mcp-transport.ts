@@ -50,6 +50,12 @@ async function mcpResult<T>(promise: Promise<unknown>): Promise<T> {
   return unwrapMcpTextJson<T>(await promise)
 }
 
+async function mcpList<T>(promise: Promise<unknown>): Promise<T[]> {
+  const result = await mcpResult<T[] | T | null>(promise)
+  if (result === null || result === undefined) return []
+  return Array.isArray(result) ? result : [result]
+}
+
 export class KnotworkMcpTransport implements KnotworkTransport {
   private clientPromise: Promise<KnotworkMcpClient> | null = null
 
@@ -74,7 +80,7 @@ export class KnotworkMcpTransport implements KnotworkTransport {
   async getCapabilitySnapshot(trigger: TaskTrigger): Promise<SemanticCapabilitySnapshot> {
     const channelId = typeof trigger.channel_id === 'string' && trigger.channel_id.trim() ? trigger.channel_id.trim() : null
     const client = await this.client()
-    const subscriptions = await mcpResult<ChannelSubscription[]>(client.listMyChannelSubscriptions()).catch(() => [])
+    const subscriptions = await mcpList<ChannelSubscription>(client.listMyChannelSubscriptions()).catch(() => [])
     const activeChannelIds = subscriptions.filter((item) => item.subscribed).map((item) => item.channel_id)
     if (channelId && !activeChannelIds.includes(channelId)) activeChannelIds.push(channelId)
     return {
@@ -105,7 +111,7 @@ export class KnotworkMcpTransport implements KnotworkTransport {
           ? mcpResult<RunInfo>(client.getRun(effectiveRunIdWithoutChannel)).catch(() => null)
           : Promise.resolve(null),
         effectiveRunIdWithoutChannel
-          ? mcpResult<RunNodeStateInfo[]>(client.listRunNodes(effectiveRunIdWithoutChannel)).catch(() => [])
+          ? mcpList<RunNodeStateInfo>(client.listRunNodes(effectiveRunIdWithoutChannel)).catch(() => [])
           : Promise.resolve([]),
         typeof trigger.escalation_id === 'string' && trigger.escalation_id.trim()
           ? mcpResult<EscalationInfo>(client.getEscalation(trigger.escalation_id.trim())).catch(() => null)
@@ -129,19 +135,22 @@ export class KnotworkMcpTransport implements KnotworkTransport {
 
     const [channel, messages, channelAssets] = await Promise.all([
       mcpResult<ChannelInfo>(client.getChannel(channelId)),
-      mcpResult<ChannelMessage[]>(client.listChannelMessages(channelId)),
-      mcpResult<ChannelAssetBinding[]>(client.listChannelAssets(channelId)).catch(() => []),
+      mcpList<ChannelMessage>(client.listChannelMessages(channelId)),
+      mcpList<ChannelAssetBinding>(client.listChannelAssets(channelId)).catch(() => []),
     ])
 
     const fileBindings = channelAssets.filter((binding) => binding.asset_type === 'file' && binding.path)
     const folderBindings = channelAssets.filter((binding) => binding.asset_type === 'folder' && binding.path)
+    const projectId = typeof channel.project_id === 'string' && channel.project_id.trim()
+      ? channel.project_id.trim()
+      : null
     const knowledgeFiles = await Promise.all(
       fileBindings
         .slice(0, 3)
-        .map((binding) => mcpResult<KnowledgeFileWithContent>(client.readKnowledgeFile(String(binding.path))).catch(() => null)),
+        .map((binding) => mcpResult<KnowledgeFileWithContent>(client.readKnowledgeFile(String(binding.path), projectId)).catch(() => null)),
     )
     const allKnowledgeFiles = folderBindings.length > 0
-      ? await mcpResult<KnowledgeFileSummary[]>(client.listKnowledgeFiles()).catch(() => [])
+      ? await mcpList<KnowledgeFileSummary>(client.listKnowledgeFiles(projectId)).catch(() => [])
       : []
     const folderFiles = folderBindings.slice(0, 3).map((binding) => {
       const basePath = String(binding.path ?? '').replace(/\/+$/, '')
@@ -158,7 +167,7 @@ export class KnotworkMcpTransport implements KnotworkTransport {
 
     const [run, runNodes, escalation] = await Promise.all([
       effectiveRunId ? mcpResult<RunInfo>(client.getRun(effectiveRunId)).catch(() => null) : Promise.resolve(null),
-      effectiveRunId ? mcpResult<RunNodeStateInfo[]>(client.listRunNodes(effectiveRunId)).catch(() => []) : Promise.resolve([]),
+      effectiveRunId ? mcpList<RunNodeStateInfo>(client.listRunNodes(effectiveRunId)).catch(() => []) : Promise.resolve([]),
       typeof trigger.escalation_id === 'string' && trigger.escalation_id.trim()
         ? mcpResult<EscalationInfo>(client.getEscalation(trigger.escalation_id.trim())).catch(() => null)
         : Promise.resolve(null),

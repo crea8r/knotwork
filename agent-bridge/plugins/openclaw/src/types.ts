@@ -79,6 +79,7 @@ export type ChannelInfo = {
   name: string
   slug: string
   channel_type: string
+  project_id?: string | null
 }
 
 export type ChannelMessage = {

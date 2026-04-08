@@ -21,8 +21,14 @@ import ChatPanel from './designer/ChatPanel'
 import { useVersionSync } from './designer/useVersionSync'
 import { useVersionActions } from './designer/useVersionActions'
 import type { WorkflowTab } from './designer/graphVersionUtils'
+import { EditorWorkspaceTabs } from '@/components/editor/EditorWorkspace'
 
 const DEV_WORKSPACE = import.meta.env.VITE_DEV_WORKSPACE_ID ?? 'dev-workspace'
+const WORKFLOW_TABS: { id: WorkflowTab; label: string }[] = [
+  { id: 'graph', label: 'Editor' },
+  { id: 'history', label: 'History' },
+  { id: 'usage', label: 'Usage' },
+]
 
 export default function GraphDetailPage() {
   const { graphId } = useParams<{ graphId: string }>()
@@ -94,11 +100,7 @@ export default function GraphDetailPage() {
               onRename={(name) => actions.updateGraph.mutate({ graphId: graph.id, name })}
             />
 
-            <div className="border-b border-gray-200 bg-white px-4 py-1.5 flex items-center gap-4 overflow-x-auto" style={{ flexShrink: 0 }}>
-              {(['graph', 'history', 'usage'] as WorkflowTab[]).map((tab) => (
-                <button key={tab} onClick={() => setActiveTab(tab)} className={`py-1.5 text-sm capitalize transition-colors ${activeTab === tab ? 'border-b-2 border-brand-500 text-brand-600 font-medium' : 'text-gray-500 hover:text-gray-700'}`}>{tab}</button>
-              ))}
-            </div>
+            <EditorWorkspaceTabs tabs={WORKFLOW_TABS} activeTab={activeTab} onTabChange={setActiveTab} />
 
             {activeTab === 'graph' && (
               <GraphTabBar

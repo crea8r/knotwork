@@ -13,6 +13,7 @@ import type { BrowserFile, RightPanel } from './types'
 import type { ContextTarget } from '@/components/handbook/FileContextMenu'
 import Breadcrumb from '@/components/handbook/Breadcrumb'
 import FolderBrowser from '@/components/handbook/FolderBrowser'
+import { EditorSidePanel } from '@/components/editor/EditorWorkspace'
 
 interface Props {
   files: BrowserFile[]
@@ -301,9 +302,7 @@ export default function FileBrowserShell({
           {showChat && sidePanel && (
             <>
               <div onMouseDown={onDividerMouseDown} className="w-1 flex-shrink-0 bg-gray-200 hover:bg-brand-400 active:bg-brand-500 transition-colors cursor-col-resize" />
-              <div style={{ width: panelWidth }} className="flex-shrink-0 bg-white flex flex-col overflow-hidden border-l border-gray-200">
-              {sidePanel}
-              </div>
+              <EditorSidePanel width={panelWidth}>{sidePanel}</EditorSidePanel>
             </>
           )}
         </div>

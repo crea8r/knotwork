@@ -12,11 +12,28 @@ Test method:
 
 ## Summary
 
-Current semantic action handling is live and works for successful `channel.post_message` cases, but there is a real duplication regression. The same visible output is often posted twice because the plugin is handling both `mentioned_message` and `message_posted` deliveries for the same user prompt. File-bound `knowledge.propose_change` handling is also not working yet.
+S12.2 is complete as the bridge-layer delivery. Semantic action handling is live, the OpenClaw plugin is using the bridge/MCP path, and file-bound `knowledge.propose_change` now works after the April 8 MCP transport normalization fix.
+
+Earlier duplication and file-proposal failures are preserved below as validation history. Remaining live-runtime polish, escalation retest setup, duplicate-delivery watch, and prompt/guideline optimization have been promoted to S12.4.
 
 ## Retest Update
 
 Retested `F`, `J`, and `L` later on 2026-04-04 after the OpenClaw gateway restarted. The duplication regression did not reproduce in the fresh `F` and `L` probes. `J1` still failed, `J2` and `J3` passed, and `J4` remained blocked because there was still no open escalation in the workspace.
+
+Retested again on 2026-04-08 after the OpenClaw MCP transport was synced to the live extension.
+
+- Fixed live MCP transport result normalization in the OpenClaw plugin:
+  - raw MCP text-content envelopes are parsed before semantic code consumes them
+  - MCP list tools normalize to arrays even when the server returns exactly one item
+- `J1` now passes. The file-bound channel created a pending `knowledge.propose_change` for `writing/codex-mcp-note.md` with token `RJ1-1775624192548`.
+- `J2` passes. The folder-bound reply cited real attached folder entries including `skills/document-text-extract/` and `skills/paste/`, with no raw `json-action` leak.
+- `J3` passes. The run-bound reply reported the run as completed and no escalation, with no raw `json-action` leak.
+- `J4` remains blocked because there is still no open escalation available for live validation.
+- `F1`, `F2`, and `F3` pass after the MCP transport fix.
+- `F4` did not complete within the harness window. The delivery `ac287166-82f3-4299-878d-06f5886d53e6` reached `task:received` and then emitted task heartbeats instead of completing. This appears to be a separate live OpenClaw thinking/runtime delay, not the MCP result-shape bug.
+- `L` was not rerun in this pass because the `F4` probe left a long-running heartbeat task in the live OpenClaw runtime.
+
+Completion judgment: S12.2 is complete. The MCP/file-bound semantic path is now working. Escalation validation remains blocked and the live `F4` handoff/mention probe exposed a separate hanging-task issue, but those are promoted to S12.4 as follow-up runtime/prompt validation work rather than S12.2 bridge-foundation blockers.
 
 ## Results
 
@@ -207,15 +224,21 @@ Retest on 2026-04-04 23:28 +07:
    - Earlier results showed duplicate handling across `mentioned_message` and `message_posted`.
    - Fresh `F2`, `F4`, and `L1` probes after restart each produced exactly one visible reply.
 
-3. `knowledge.propose_change` is still broken in live use.
-   - File-bound proposal generation did not create a proposal.
+3. `knowledge.propose_change` now works in live use after the 2026-04-08 MCP transport normalization fix.
+   - The fresh file-bound retest created pending proposal `367b6255-b119-433e-90e4-a53b0e837ce4` for `writing/codex-mcp-note.md`.
 
 4. Escalation validation is blocked by backend/runtime setup.
    - Could not generate a fresh escalation because the available graph is currently invalid.
 
+5. A separate live OpenClaw runtime issue remains.
+   - `F4` timed out after delivery `ac287166-82f3-4299-878d-06f5886d53e6` reached `task:received`; the task emitted heartbeats and did not complete within the harness window.
+
 ## Recommended Next Fixes
 
-1. Fix runtime generation/dispatch for `knowledge.propose_change`.
+Promoted to S12.4:
+
+1. Investigate the live OpenClaw long-running task behavior observed in `F4`.
 2. Repair the workflow graph supervisor configuration so escalation tests can run end to end.
-3. Re-run `G` and `J4` after a fresh escalation-producing run is available.
-4. Keep watching for duplicate handling across `mentioned_message` and `message_posted`, since it was real earlier but was not reproducible in the latest retest.
+3. Re-run `G`, `J4`, `F4`, and `L` after the live runtime is clear.
+4. Optimize semantic prompts and workspace guidelines so the agent consistently uses Knotwork/MCP context for attached assets.
+5. Keep watching for duplicate handling across `mentioned_message` and `message_posted`, since it was real earlier and duplicate deliveries still appear during retests.

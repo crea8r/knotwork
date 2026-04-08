@@ -8,7 +8,7 @@ import {
 const workspaceId = '1bc45fc5-74c7-435e-96f9-0881ea49a24f'
 const backendUrl = 'http://127.0.0.1:8000'
 const keyPath =
-  '/Users/hieu/Work/crea8r/knotwork/agent-bridge/packages/mcp-client/codex-knotwork-test.key'
+  '/Users/hieu/Work/crea8r/knotwork/agent-bridge/packages/test-mcp-client/codex-knotwork-test.key'
 
 const CHANNELS = {
   test: 'd7c2e4b0-225e-48fa-b267-3b5c709acbd1',
@@ -235,7 +235,7 @@ async function runJ(client) {
       client,
       before,
       (item) =>
-        String(item.path).includes('writing/codex-mcp-note.md') &&
+        String(item.path ?? item.target_path).includes('writing/codex-mcp-note.md') &&
         JSON.stringify(item).includes(token),
     )
     summary.J1 = {

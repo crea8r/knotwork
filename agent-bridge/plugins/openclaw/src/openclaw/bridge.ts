@@ -309,13 +309,17 @@ export async function resolveEscalation(
   )
 }
 
-export async function listKnowledgeFiles(baseUrl: string, workspaceId: string, jwt: string): Promise<KnowledgeFileSummary[]> {
-  return httpGet(`${baseUrl}/api/v1/workspaces/${workspaceId}/knowledge`, jwt)
+export async function listKnowledgeFiles(baseUrl: string, workspaceId: string, jwt: string, projectId?: string | null): Promise<KnowledgeFileSummary[]> {
+  const params = new URLSearchParams()
+  if (projectId) params.set('project_id', projectId)
+  const query = params.toString()
+  return httpGet(`${baseUrl}/api/v1/workspaces/${workspaceId}/knowledge${query ? `?${query}` : ''}`, jwt)
 }
 
-export async function fetchKnowledgeFile(baseUrl: string, workspaceId: string, jwt: string, path: string): Promise<KnowledgeFileWithContent> {
-  const encodedPath = encodeURIComponent(path)
-  return httpGet(`${baseUrl}/api/v1/workspaces/${workspaceId}/knowledge/file?path=${encodedPath}`, jwt)
+export async function fetchKnowledgeFile(baseUrl: string, workspaceId: string, jwt: string, path: string, projectId?: string | null): Promise<KnowledgeFileWithContent> {
+  const params = new URLSearchParams({ path })
+  if (projectId) params.set('project_id', projectId)
+  return httpGet(`${baseUrl}/api/v1/workspaces/${workspaceId}/knowledge/file?${params.toString()}`, jwt)
 }
 
 export async function createKnowledgeChange(
