@@ -116,6 +116,21 @@ export function useObjectiveAgentZeroConsultation(workspaceId: string, objective
   })
 }
 
+export function useGraphAgentZeroConsultation(workspaceId: string, graphId: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: () =>
+      api
+        .post<Channel>(`/workspaces/${workspaceId}/graphs/${graphId}/agentzero-consultation`)
+        .then((r) => r.data),
+    onSuccess: (channel) => {
+      qc.setQueryData(['channel', workspaceId, channel.id], channel)
+      qc.invalidateQueries({ queryKey: ['channel-messages', workspaceId, channel.id] })
+      qc.invalidateQueries({ queryKey: ['channel-decisions', workspaceId, channel.id] })
+    },
+  })
+}
+
 export function useChannelParticipants(workspaceId: string) {
   return useQuery({
     queryKey: ['channel-participants', workspaceId],

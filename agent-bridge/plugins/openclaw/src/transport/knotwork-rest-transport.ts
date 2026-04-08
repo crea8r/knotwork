@@ -7,6 +7,8 @@ import {
   fetchChannelMessages,
   fetchCurrentMember,
   fetchEscalation,
+  fetchGraph,
+  fetchGraphRootDraft,
   fetchKnowledgeFile,
   fetchMyChannelSubscriptions,
   fetchObjectiveChain,
@@ -16,10 +18,13 @@ import {
   listKnowledgeFiles,
   postChannelMessage,
   resolveEscalation,
+  updateGraphRootDraft,
 } from '../openclaw/bridge'
 import type { KnotworkTransport, SemanticCapabilitySnapshot, SemanticThinkingContext } from './contracts'
 import type {
   ChannelMessage,
+  GraphDraftInfo,
+  GraphInfo,
   MessageResponsePolicy,
   ParticipantInfo,
   TaskTrigger,
@@ -89,6 +94,13 @@ function wasRecentlyInvolved(messages: ChannelMessage[], triggerMessage: Channel
   })
 }
 
+function isTwoMemberDirectChannel(participants: ParticipantInfo[], agentSelf: WorkspaceMemberInfo | null): boolean {
+  const selfId = String(agentSelf?.participant_id ?? '')
+  if (!selfId) return false
+  const activeParticipants = participants.filter((participant) => participant.subscribed !== false)
+  return activeParticipants.length === 2 && activeParticipants.some((participant) => participant.participant_id === selfId)
+}
+
 function buildMessageResponsePolicy(input: {
   trigger: TaskTrigger
   agentSelf: WorkspaceMemberInfo | null
@@ -102,11 +114,15 @@ function buildMessageResponsePolicy(input: {
   const directlyMentionedSelf = Boolean(selfId && mentionedParticipantIds.includes(selfId))
   const mentionedOtherParticipantIds = mentionedParticipantIds.filter((id) => id !== selfId)
   const recentlyInvolved = wasRecentlyInvolved(input.messages, triggerMessage, input.agentSelf)
+  const twoMemberDirectChannel = isTwoMemberDirectChannel(input.participants, input.agentSelf)
   if (directlyMentionedSelf) {
     return { decision: 'must_answer', reason: 'message_posted directly mentions this agent', triggerMessageId: triggerMessage?.id ?? null, directlyMentionedSelf, mentionedOtherParticipantIds, mentionedParticipantIds, recentlyInvolved }
   }
   if (mentionedOtherParticipantIds.length > 0) {
     return { decision: 'must_noop', reason: 'message_posted mentions other participant(s), not this agent', triggerMessageId: triggerMessage?.id ?? null, directlyMentionedSelf, mentionedOtherParticipantIds, mentionedParticipantIds, recentlyInvolved }
+  }
+  if (twoMemberDirectChannel) {
+    return { decision: 'must_answer', reason: 'message_posted is in a two-member channel, so the unmentioned message is directed at this agent', triggerMessageId: triggerMessage?.id ?? null, directlyMentionedSelf, mentionedOtherParticipantIds, mentionedParticipantIds, recentlyInvolved }
   }
   return {
     decision: 'model_decides',
@@ -141,6 +157,8 @@ export class KnotworkRestTransport implements KnotworkTransport {
       agentId: null,
       actions: {
         'channel.post_message': true,
+        'graph.apply_delta': true,
+        'graph.update_root_draft': true,
         'escalation.resolve': true,
         'knowledge.propose_change': true,
         'control.noop': true,
@@ -182,6 +200,8 @@ export class KnotworkRestTransport implements KnotworkTransport {
           folderFiles: [],
           objectiveChain: [],
           projectDashboard: null,
+          graph: null,
+          graphRootDraft: null,
           run,
           runNodes,
           escalation,
@@ -223,13 +243,18 @@ export class KnotworkRestTransport implements KnotworkTransport {
     const effectiveRunId = typeof trigger.run_id === 'string' && trigger.run_id.trim()
       ? trigger.run_id.trim()
       : channelAssets.find((binding) => binding.asset_type === 'run')?.asset_id ?? null
+    const graphId = typeof channel.graph_id === 'string' && channel.graph_id.trim()
+      ? channel.graph_id.trim()
+      : null
     const objectiveId = typeof channel.objective_id === 'string' && channel.objective_id.trim()
       ? channel.objective_id.trim()
       : null
 
-    const [objectiveChain, projectDashboard, run, runNodes, escalation] = await Promise.all([
+    const [objectiveChain, projectDashboard, graph, graphRootDraft, run, runNodes, escalation] = await Promise.all([
       objectiveId ? fetchObjectiveChain(this.params.baseUrl, this.params.workspaceId, this.params.jwt, objectiveId).catch(() => []) : Promise.resolve([]),
       projectId ? fetchProjectDashboard(this.params.baseUrl, this.params.workspaceId, this.params.jwt, projectId).catch(() => null) : Promise.resolve(null),
+      graphId ? fetchGraph(this.params.baseUrl, this.params.workspaceId, this.params.jwt, graphId).catch(() => null) : Promise.resolve(null),
+      graphId ? fetchGraphRootDraft(this.params.baseUrl, this.params.workspaceId, this.params.jwt, graphId).catch(() => null) : Promise.resolve(null),
       effectiveRunId ? fetchRun(this.params.baseUrl, this.params.workspaceId, this.params.jwt, effectiveRunId).catch(() => null) : Promise.resolve(null),
       effectiveRunId ? fetchRunNodes(this.params.baseUrl, this.params.workspaceId, this.params.jwt, effectiveRunId).catch(() => []) : Promise.resolve([]),
       typeof trigger.escalation_id === 'string' && trigger.escalation_id.trim()
@@ -255,6 +280,8 @@ export class KnotworkRestTransport implements KnotworkTransport {
         folderFiles,
         objectiveChain,
         projectDashboard,
+        graph: graph as GraphInfo | null,
+        graphRootDraft: graphRootDraft as GraphDraftInfo | null,
         run,
         runNodes,
         escalation,
@@ -332,6 +359,21 @@ export class KnotworkRestTransport implements KnotworkTransport {
       proposalId: String(result.id ?? ''),
       channelId: typeof result.channel_id === 'string' ? result.channel_id : null,
     }
+  }
+
+  async updateGraphRootDraft(input: {
+    graphId: string
+    definition: Record<string, unknown>
+    note?: string | null
+  }): Promise<{ graphId: string; draftId: string | null }> {
+    const draft = await updateGraphRootDraft(
+      this.params.baseUrl,
+      this.params.workspaceId,
+      this.params.jwt,
+      input.graphId,
+      { definition: input.definition },
+    )
+    return { graphId: input.graphId, draftId: String(draft.id ?? '') || null }
   }
 
   async archiveDelivery(deliveryId: string): Promise<void> {

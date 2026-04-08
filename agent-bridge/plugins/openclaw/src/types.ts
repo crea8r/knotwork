@@ -79,8 +79,39 @@ export type ChannelInfo = {
   name: string
   slug: string
   channel_type: string
+  graph_id?: string | null
   project_id?: string | null
   objective_id?: string | null
+}
+
+export type GraphInfo = {
+  id: string
+  workspace_id: string
+  project_id: string | null
+  name: string
+  path: string
+  description: string | null
+  status: string
+  default_model: string | null
+  production_version_id: string | null
+  slug: string | null
+  run_count: number
+  latest_version: {
+    id: string
+    graph_id: string
+    definition: Record<string, unknown>
+  } | null
+  created_at: string
+  updated_at: string
+}
+
+export type GraphDraftInfo = {
+  id: string
+  graph_id: string
+  definition: Record<string, unknown>
+  note: string | null
+  updated_at: string
+  created_at: string
 }
 
 export type ObjectiveInfo = {

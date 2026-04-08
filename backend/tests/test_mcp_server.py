@@ -238,6 +238,76 @@ async def test_post_channel_message_routes_to_channel_messages():
 
 
 @pytest.mark.asyncio
+async def test_get_graph_root_draft_routes_to_root_draft_endpoint():
+    client = FakeAPIClient(
+        {
+            ("GET", "/api/v1/workspaces/ws-test/graphs/graph-1/root-draft"): {
+                "id": "draft-1",
+                "graph_id": "graph-1",
+                "definition": {"nodes": [{"id": "start", "type": "start", "name": "Start", "config": {}}], "edges": []},
+            }
+        }
+    )
+    server = build_server(client)
+
+    result = await server.call_tool("get_graph_root_draft", {"graph_id": "graph-1"})
+
+    payload = _tool_json(result)
+
+    assert payload["id"] == "draft-1"
+    assert client.calls[-1] == {
+        "method": "GET",
+        "path": "/api/v1/workspaces/ws-test/graphs/graph-1/root-draft",
+        "params": None,
+        "json_body": None,
+    }
+
+
+@pytest.mark.asyncio
+async def test_update_graph_root_draft_routes_to_root_draft_put():
+    definition = {
+        "nodes": [
+            {"id": "start", "type": "start", "name": "Start", "config": {}},
+            {"id": "end", "type": "end", "name": "End", "config": {}},
+        ],
+        "edges": [{"id": "e-start-end", "source": "start", "target": "end", "type": "direct"}],
+    }
+    client = FakeAPIClient(
+        {
+            ("PUT", "/api/v1/workspaces/ws-test/graphs/graph-1/root-draft"): {
+                "id": "draft-1",
+                "graph_id": "graph-1",
+                "definition": definition,
+                "note": "AgentZero update",
+            }
+        }
+    )
+    server = build_server(client)
+
+    result = await server.call_tool(
+        "update_graph_root_draft",
+        {
+            "graph_id": "graph-1",
+            "definition": definition,
+            "note": "AgentZero update",
+        },
+    )
+
+    payload = _tool_json(result)
+
+    assert payload["definition"] == definition
+    assert client.calls[-1] == {
+        "method": "PUT",
+        "path": "/api/v1/workspaces/ws-test/graphs/graph-1/root-draft",
+        "params": None,
+        "json_body": {
+            "definition": definition,
+            "note": "AgentZero update",
+        },
+    }
+
+
+@pytest.mark.asyncio
 async def test_get_objective_chain_returns_root_to_current():
     client = FakeAPIClient(
         {

@@ -1,6 +1,7 @@
 import { useEffect, useId, useState } from 'react'
 import { useParams, useSearchParams } from 'react-router-dom'
 import { Menu } from 'lucide-react'
+import { useWorkspaceMembers } from '@/api/auth'
 import { useGraph } from '@/api/graphs'
 import { useRuns } from '@/api/runs'
 import GraphCanvas from '@/components/canvas/GraphCanvas'
@@ -35,9 +36,12 @@ export default function GraphDetailPage() {
   const [searchParams] = useSearchParams()
   const workspaceId = useAuthStore((s) => s.workspaceId) ?? DEV_WORKSPACE
   const sessionId = useId()
+  const consultationChannelId = searchParams.get('consultation')
 
   const { data: graph, isLoading } = useGraph(workspaceId, graphId!)
+  const { data: agentMembers } = useWorkspaceMembers(workspaceId, 1, 'agent', false)
   const { data: runs = [] } = useRuns(workspaceId)
+  const hasAgentZero = Boolean(agentMembers?.items.some((member) => member.agent_zero_role))
 
   const [activeTab, setActiveTab] = useState<WorkflowTab>('graph')
   const [editorMode, setEditorMode] = useState<'view' | 'edit'>('view')
@@ -95,9 +99,10 @@ export default function GraphDetailPage() {
             <WorkflowHeader
               workspaceId={workspaceId} graph={graph} showChat={showChat}
               defaultVersionIsPublic={!!sync.namedVersions.find((v) => v.id === graph.production_version_id)?.version_slug}
-              onToggleChat={() => setShowChat((v) => !v)}
+              onToggleChat={() => { if (hasAgentZero) setShowChat((v) => !v) }}
               renamePending={actions.updateGraph.isPending}
               onRename={(name) => actions.updateGraph.mutate({ graphId: graph.id, name })}
+              chatAvailable={hasAgentZero}
             />
 
             <EditorWorkspaceTabs tabs={WORKFLOW_TABS} activeTab={activeTab} onTabChange={setActiveTab} />
@@ -163,6 +168,7 @@ export default function GraphDetailPage() {
           {activeTab === 'graph' && showChat && (
             <ChatPanel
               graphId={graphId!} sessionId={sessionId}
+              initialConsultationChannelId={consultationChannelId}
               onClose={() => setShowChat(false)}
               onBeforeApplyDelta={() => { if (!isDirty) sync.setGraph(graphId!, serverDefinition) }}
             />

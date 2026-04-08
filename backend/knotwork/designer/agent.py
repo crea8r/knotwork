@@ -17,7 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 logger = logging.getLogger(__name__)
 
 _SYSTEM = """\
-You are a graph designer assistant for Knotwork, a business process automation platform.
+You are AgentZero, the graph designer assistant for Knotwork, a business process automation platform.
 Help the user build agent workflow graphs by modifying the graph definition via incremental deltas.
 
 ## Node types
@@ -62,7 +62,50 @@ _FALLBACK = {
     "reply": "I couldn't parse the response. Please try rephrasing.",
     "graph_delta": {},
     "questions": [],
+    "author_name": "AgentZero",
 }
+
+
+def _chat_openai_model_name(model_ref: str | None) -> str:
+    if not model_ref:
+        return "gpt-4o"
+    normalized = str(model_ref).strip()
+    if not normalized:
+        return "gpt-4o"
+    if "/" in normalized:
+        provider, model = normalized.split("/", 1)
+        if provider == "openai" and model:
+            return model
+    return normalized if normalized.startswith("gpt-") else "gpt-4o"
+
+
+async def _agentzero_identity(workspace_id: UUID, db: AsyncSession) -> tuple[str, str | None]:
+    from knotwork.auth.models import User
+    from knotwork.workspaces.models import Workspace, WorkspaceMember
+
+    row = (
+        await db.execute(
+            select(User.name, Workspace.default_model)
+            .select_from(WorkspaceMember)
+            .join(User, User.id == WorkspaceMember.user_id)
+            .join(Workspace, Workspace.id == WorkspaceMember.workspace_id)
+            .where(
+                WorkspaceMember.workspace_id == workspace_id,
+                WorkspaceMember.agent_zero_role.is_(True),
+                WorkspaceMember.access_disabled_at.is_(None),
+            )
+            .limit(1)
+        )
+    ).first()
+    if row is not None:
+        return (str(row[0] or "AgentZero"), _chat_openai_model_name(str(row[1]) if row[1] else None))
+
+    workspace_default_model = (
+        await db.execute(
+            select(Workspace.default_model).where(Workspace.id == workspace_id).limit(1)
+        )
+    ).scalar_one_or_none()
+    return ("AgentZero", _chat_openai_model_name(str(workspace_default_model) if workspace_default_model else None))
 
 
 async def _load_history(graph_id: UUID, db: AsyncSession) -> list[dict]:
@@ -87,8 +130,16 @@ async def _load_history(graph_id: UUID, db: AsyncSession) -> list[dict]:
     return [{"role": m.role, "content": m.content} for m in result.scalars()]
 
 
-async def _save_messages(graph_id: UUID, db: AsyncSession, user_msg: str, assistant_msg: str) -> None:
-    from knotwork.channels.models import Channel
+async def _save_messages(
+    graph_id: UUID,
+    db: AsyncSession,
+    user_msg: str,
+    assistant_msg: str,
+    assistant_name: str,
+    requester_participant_id: str | None = None,
+    assistant_participant_id: str | None = None,
+) -> None:
+    from knotwork.channels.models import Channel, ChannelSubscription
     from knotwork.channels.schemas import ChannelMessageCreate
     from knotwork.channels.service import create_message
     from knotwork.graphs.models import Graph
@@ -114,8 +165,35 @@ async def _save_messages(graph_id: UUID, db: AsyncSession, user_msg: str, assist
             project_id=graph.project_id,
         )
         db.add(channel)
-        await db.commit()
-        await db.refresh(channel)
+        await db.flush()
+
+    participant_ids = [
+        participant_id
+        for participant_id in [requester_participant_id, assistant_participant_id]
+        if participant_id
+    ]
+    if len(participant_ids) >= 2:
+        rows = await db.execute(
+            select(ChannelSubscription).where(
+                ChannelSubscription.workspace_id == graph.workspace_id,
+                ChannelSubscription.channel_id == channel.id,
+                ChannelSubscription.participant_id.in_(participant_ids),
+            )
+        )
+        existing = {row.participant_id: row for row in rows.scalars()}
+        for participant_id in participant_ids:
+            subscription = existing.get(participant_id)
+            if subscription is None:
+                db.add(
+                    ChannelSubscription(
+                        workspace_id=graph.workspace_id,
+                        channel_id=channel.id,
+                        participant_id=participant_id,
+                    )
+                )
+            elif subscription.unsubscribed_at is not None:
+                subscription.unsubscribed_at = None
+        await db.flush()
 
     await create_message(
         db,
@@ -135,7 +213,7 @@ async def _save_messages(graph_id: UUID, db: AsyncSession, user_msg: str, assist
         data=ChannelMessageCreate(
             role="assistant",
             author_type="agent",
-            author_name="Knotwork Agent",
+            author_name=assistant_name,
             content=assistant_msg,
         ),
     )
@@ -153,6 +231,7 @@ def _normalize_result(result: dict | None) -> dict:
         "reply": reply if isinstance(reply, str) else "",
         "graph_delta": graph_delta if isinstance(graph_delta, dict) else {},
         "questions": [str(q) for q in questions] if isinstance(questions, list) else [],
+        "author_name": str(result.get("author_name") or "AgentZero"),
     }
 
 
@@ -163,20 +242,30 @@ async def design_graph(
     existing_graph: dict | None,
     db: AsyncSession,
     graph_id: str | None = None,
+    requester_participant_id: str | None = None,
 ) -> dict:
     """
     Process a designer chat message and return graph modifications.
 
-    Returns {reply, graph_delta, questions}.
+    Returns {reply, graph_delta, questions, author_name}.
     graph_id is used to load/save DB history. Falls back to in-memory if None.
     """
     graph_json = json.dumps(existing_graph or {}, indent=2)
     system_content = _SYSTEM + f"\n\nCurrent graph:\n{graph_json}"
+    workspace_uuid = UUID(workspace_id)
+    assistant_name, assistant_model = await _agentzero_identity(workspace_uuid, db)
+    result = {
+        **_FALLBACK,
+        "author_name": assistant_name,
+    }
+    assistant_participant_id = None
 
     try:
         from langchain_openai import ChatOpenAI
         from langchain_core.messages import HumanMessage, AIMessage, SystemMessage
+        from knotwork.auth.models import User
         from knotwork.config import settings
+        from knotwork.workspaces.models import WorkspaceMember
 
         # Load history from DB if graph_id is provided, else use no history.
         # Any failure here should degrade to a safe assistant reply, not a 500.
@@ -191,8 +280,23 @@ async def design_graph(
             messages.append(cls(content=m["content"]))
         messages.append(HumanMessage(content=message))
 
+        agentzero = (
+            await db.execute(
+                select(WorkspaceMember.id, User.id)
+                .join(User, User.id == WorkspaceMember.user_id)
+                .where(
+                    WorkspaceMember.workspace_id == workspace_uuid,
+                    WorkspaceMember.agent_zero_role.is_(True),
+                    WorkspaceMember.access_disabled_at.is_(None),
+                )
+                .limit(1)
+            )
+        ).first()
+        if agentzero is not None:
+            assistant_participant_id = f"agent:{agentzero[0]}"
+
         llm = ChatOpenAI(
-            model="gpt-4o-mini",
+            model=assistant_model or "gpt-4o",
             temperature=0,
             api_key=settings.openai_api_key,
             model_kwargs={"response_format": {"type": "json_object"}},
@@ -204,15 +308,27 @@ async def design_graph(
         raw = re.sub(r'\s*```$', '', raw).strip()
         logger.debug("LLM raw response: %s", raw)
         result = _normalize_result(json.loads(raw))
+        result["author_name"] = assistant_name
 
     except Exception as exc:
         logger.error("design_graph failed: %s", exc, exc_info=True)
-        result = _FALLBACK.copy()
+        result = {
+            **_FALLBACK,
+            "author_name": assistant_name,
+        }
 
     # Persist turn in DB history, but never fail the request because of it.
     if graph_id:
         try:
-            await _save_messages(UUID(graph_id), db, message, result["reply"])
+            await _save_messages(
+                UUID(graph_id),
+                db,
+                message,
+                result["reply"],
+                assistant_name=result["author_name"],
+                requester_participant_id=requester_participant_id,
+                assistant_participant_id=assistant_participant_id,
+            )
         except Exception as exc:
             logger.error("designer history persistence failed: %s", exc, exc_info=True)
             await db.rollback()

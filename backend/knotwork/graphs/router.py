@@ -3,6 +3,8 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from knotwork.auth.deps import get_current_user, get_workspace_member
+from knotwork.auth.models import User
 from knotwork.database import get_db
 from knotwork.graphs import service, version_service
 from knotwork.graphs.schemas import (
@@ -354,9 +356,14 @@ async def get_graph_version(
 
 @router.post("/{workspace_id}/graphs/design/chat", response_model=DesignChatResponse)
 async def design_chat(
-    workspace_id: UUID, body: DesignChatRequest, db: AsyncSession = Depends(get_db)
+    workspace_id: UUID,
+    body: DesignChatRequest,
+    user: User = Depends(get_current_user),
+    member=Depends(get_workspace_member),
+    db: AsyncSession = Depends(get_db),
 ):
     from knotwork.designer.agent import design_graph
+    from knotwork.participants import member_participant_id
     graph = await service.get_graph(db, UUID(body.graph_id))
     if not graph or graph.workspace_id != workspace_id:
         raise HTTPException(404, "Graph not found")
@@ -370,6 +377,7 @@ async def design_chat(
         existing_graph=existing,
         db=db,
         graph_id=str(graph.id),
+        requester_participant_id=member_participant_id(member, user.id),
     )
     return DesignChatResponse(**result)
 
@@ -402,7 +410,12 @@ async def list_designer_messages(
     )
     msgs = result.scalars().all()
     return [
-        {"role": m.role, "content": m.content, "created_at": m.created_at.isoformat()}
+        {
+            "role": m.role,
+            "content": m.content,
+            "created_at": m.created_at.isoformat(),
+            "author_name": m.author_name,
+        }
         for m in msgs
     ]
 

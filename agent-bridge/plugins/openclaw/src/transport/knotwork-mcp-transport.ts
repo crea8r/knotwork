@@ -6,6 +6,8 @@ import type {
   ChannelMessage,
   ChannelSubscription,
   EscalationInfo,
+  GraphDraftInfo,
+  GraphInfo,
   KnowledgeFileSummary,
   KnowledgeFileWithContent,
   MessageResponsePolicy,
@@ -125,6 +127,13 @@ function wasRecentlyInvolved(messages: ChannelMessage[], triggerMessage: Channel
   })
 }
 
+function isTwoMemberDirectChannel(participants: ParticipantInfo[], agentSelf: WorkspaceMemberInfo | null): boolean {
+  const selfId = String(agentSelf?.participant_id ?? '')
+  if (!selfId) return false
+  const activeParticipants = participants.filter((participant) => participant.subscribed !== false)
+  return activeParticipants.length === 2 && activeParticipants.some((participant) => participant.participant_id === selfId)
+}
+
 export function buildMessageResponsePolicy(input: {
   trigger: TaskTrigger
   agentSelf: WorkspaceMemberInfo | null
@@ -138,6 +147,7 @@ export function buildMessageResponsePolicy(input: {
   const directlyMentionedSelf = Boolean(selfId && mentionedParticipantIds.includes(selfId))
   const mentionedOtherParticipantIds = mentionedParticipantIds.filter((id) => id !== selfId)
   const recentlyInvolved = wasRecentlyInvolved(input.messages, triggerMessage, input.agentSelf)
+  const twoMemberDirectChannel = isTwoMemberDirectChannel(input.participants, input.agentSelf)
   if (directlyMentionedSelf) {
     return {
       decision: 'must_answer',
@@ -153,6 +163,17 @@ export function buildMessageResponsePolicy(input: {
     return {
       decision: 'must_noop',
       reason: 'message_posted mentions other participant(s), not this agent',
+      triggerMessageId: triggerMessage?.id ?? null,
+      directlyMentionedSelf,
+      mentionedOtherParticipantIds,
+      mentionedParticipantIds,
+      recentlyInvolved,
+    }
+  }
+  if (twoMemberDirectChannel) {
+    return {
+      decision: 'must_answer',
+      reason: 'message_posted is in a two-member channel, so the unmentioned message is directed at this agent',
       triggerMessageId: triggerMessage?.id ?? null,
       directlyMentionedSelf,
       mentionedOtherParticipantIds,
@@ -205,6 +226,8 @@ export class KnotworkMcpTransport implements KnotworkTransport {
       agentId: null,
       actions: {
         'channel.post_message': true,
+        'graph.apply_delta': true,
+        'graph.update_root_draft': true,
         'escalation.resolve': true,
         'knowledge.propose_change': true,
         'control.noop': true,
@@ -247,6 +270,8 @@ export class KnotworkMcpTransport implements KnotworkTransport {
           folderFiles: [],
           objectiveChain: [],
           projectDashboard: null,
+          graph: null,
+          graphRootDraft: null,
           run,
           runNodes,
           escalation,
@@ -288,13 +313,18 @@ export class KnotworkMcpTransport implements KnotworkTransport {
     const effectiveRunId = typeof trigger.run_id === 'string' && trigger.run_id.trim()
       ? trigger.run_id.trim()
       : channelAssets.find((binding) => binding.asset_type === 'run')?.asset_id ?? null
+    const graphId = typeof channel.graph_id === 'string' && channel.graph_id.trim()
+      ? channel.graph_id.trim()
+      : null
     const objectiveId = typeof channel.objective_id === 'string' && channel.objective_id.trim()
       ? channel.objective_id.trim()
       : null
 
-    const [objectiveChain, projectDashboard, run, runNodes, escalation] = await Promise.all([
+    const [objectiveChain, projectDashboard, graph, graphRootDraft, run, runNodes, escalation] = await Promise.all([
       objectiveId ? mcpList<ObjectiveInfo>(client.getObjectiveChain(objectiveId)).catch(() => []) : Promise.resolve([]),
       projectId ? mcpResult<ProjectDashboardInfo>(client.getProjectDashboard(projectId)).catch(() => null) : Promise.resolve(null),
+      graphId ? mcpResult<GraphInfo>(client.getGraph(graphId)).catch(() => null) : Promise.resolve(null),
+      graphId ? mcpResult<GraphDraftInfo>(client.getGraphRootDraft(graphId)).catch(() => null) : Promise.resolve(null),
       effectiveRunId ? mcpResult<RunInfo>(client.getRun(effectiveRunId)).catch(() => null) : Promise.resolve(null),
       effectiveRunId ? mcpList<RunNodeStateInfo>(client.listRunNodes(effectiveRunId)).catch(() => []) : Promise.resolve([]),
       typeof trigger.escalation_id === 'string' && trigger.escalation_id.trim()
@@ -320,6 +350,8 @@ export class KnotworkMcpTransport implements KnotworkTransport {
         folderFiles,
         objectiveChain,
         projectDashboard,
+        graph: graph as GraphInfo | null,
+        graphRootDraft: graphRootDraft as GraphDraftInfo | null,
         run,
         runNodes,
         escalation,
@@ -393,6 +425,20 @@ export class KnotworkMcpTransport implements KnotworkTransport {
       proposalId: String(result.id ?? ''),
       channelId: typeof result.channel_id === 'string' ? result.channel_id : null,
     }
+  }
+
+  async updateGraphRootDraft(input: {
+    graphId: string
+    definition: Record<string, unknown>
+    note?: string | null
+  }): Promise<{ graphId: string; draftId: string | null }> {
+    const client = await this.client()
+    const draft = await mcpResult<{ id?: string }>(client.updateGraphRootDraft({
+      graphId: input.graphId,
+      definition: input.definition as JsonObject,
+      note: input.note ?? null,
+    }))
+    return { graphId: input.graphId, draftId: String(draft.id ?? '') || null }
   }
 
   async archiveDelivery(deliveryId: string): Promise<void> {

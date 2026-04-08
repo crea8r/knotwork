@@ -22,6 +22,7 @@ export interface DesignChatResponse {
   reply: string
   graph_delta: GraphDelta
   questions: string[]
+  author_name?: string | null
 }
 
 function resolveWorkspaceId(workspaceId?: string) {
@@ -59,6 +60,7 @@ export interface DesignerMessage {
   role: 'user' | 'assistant'
   content: string
   created_at: string
+  author_name?: string | null
 }
 
 export function useDesignerMessages(workspaceId: string, graphId: string) {

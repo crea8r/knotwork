@@ -50,6 +50,7 @@ export class SemanticOrchestrator {
       }
       const dispatch = await dispatchEnvelope(this.transport, envelope, capabilities, {
         defaultAuthorName: options.defaultAuthorName,
+        currentGraphDefinition: context.assetContext.graphRootDraft?.definition ?? context.assetContext.graph?.latest_version?.definition ?? null,
         fallbackRunId: task.runId ?? null,
         fallbackSourceChannelId: task.channelId ?? task.trigger.channel_id ?? null,
       })
@@ -73,6 +74,7 @@ export class SemanticOrchestrator {
     })
     const dispatch = await dispatchEnvelope(this.transport, envelope, capabilities, {
       defaultAuthorName: options.defaultAuthorName,
+      currentGraphDefinition: context.assetContext.graphRootDraft?.definition ?? context.assetContext.graph?.latest_version?.definition ?? null,
       fallbackRunId: task.runId ?? null,
       fallbackSourceChannelId: task.channelId ?? task.trigger.channel_id ?? null,
     })

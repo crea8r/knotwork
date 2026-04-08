@@ -108,6 +108,50 @@ export class KnotworkMcpClient {
     return this.client.callTool<T>('get_project_dashboard', { project_ref: projectRef })
   }
 
+  async listGraphs<T = unknown>(projectId?: string | null): Promise<T> {
+    return this.client.callTool<T>('list_graphs', {
+      ...(projectId ? { project_id: projectId } : {}),
+    })
+  }
+
+  async createGraph<T = unknown>(input: {
+    name: string
+    description?: string | null
+    path?: string | null
+    defaultModel?: string | null
+    projectId?: string | null
+    definition?: JsonObject | null
+  }): Promise<T> {
+    return this.client.callTool<T>('create_graph', {
+      name: input.name,
+      description: input.description ?? null,
+      path: input.path ?? '',
+      default_model: input.defaultModel ?? null,
+      project_id: input.projectId ?? null,
+      definition: input.definition ?? {},
+    })
+  }
+
+  async getGraph<T = unknown>(graphId: string): Promise<T> {
+    return this.client.callTool<T>('get_graph', { graph_id: graphId })
+  }
+
+  async getGraphRootDraft<T = unknown>(graphId: string): Promise<T> {
+    return this.client.callTool<T>('get_graph_root_draft', { graph_id: graphId })
+  }
+
+  async updateGraphRootDraft<T = unknown>(input: {
+    graphId: string
+    definition: JsonObject
+    note?: string | null
+  }): Promise<T> {
+    return this.client.callTool<T>('update_graph_root_draft', {
+      graph_id: input.graphId,
+      definition: input.definition,
+      note: input.note ?? null,
+    })
+  }
+
   async listOpenEscalations<T = unknown>(): Promise<T> {
     return this.client.callTool<T>('list_escalations', { status: 'open' })
   }

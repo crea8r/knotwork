@@ -61,10 +61,30 @@ export type KnowledgeProposeChangeAction = ActionBase<
   }
 >
 
+export type GraphUpdateRootDraftAction = ActionBase<
+  'graph.update_root_draft',
+  { graph_id: string },
+  {
+    definition: Record<string, unknown>
+    note?: string | null
+  }
+>
+
+export type GraphApplyDeltaAction = ActionBase<
+  'graph.apply_delta',
+  { graph_id: string },
+  {
+    delta: Record<string, unknown>
+    note?: string | null
+  }
+>
+
 export type ActionItem =
   | ChannelPostMessageAction
   | EscalationResolveAction
   | KnowledgeProposeChangeAction
+  | GraphUpdateRootDraftAction
+  | GraphApplyDeltaAction
   | ControlNoopAction
   | ControlFailAction
 

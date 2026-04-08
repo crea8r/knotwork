@@ -1,4 +1,5 @@
 import type { KnotworkTransport, SemanticCapabilitySnapshot } from '../transport/contracts'
+import { applyGraphDelta } from './graph-delta'
 import type { ActionEnvelope, ActionItem, ActionResult, DispatchResult } from './types'
 
 function isActionAllowed(action: ActionItem, capabilities: SemanticCapabilitySnapshot): string | null {
@@ -27,9 +28,10 @@ async function dispatchOne(
   transport: KnotworkTransport,
   action: ActionItem,
   defaultAuthorName: string,
+  currentGraphDefinition: Record<string, unknown> | null,
   fallbackRunId?: string | null,
   fallbackSourceChannelId?: string | null,
-): Promise<ActionResult> {
+): Promise<{ result: ActionResult; nextGraphDefinition?: Record<string, unknown> | null }> {
   if (action.type === 'channel.post_message') {
     const posted = await transport.postChannelMessage({
       channelId: action.target.channel_id,
@@ -38,9 +40,11 @@ async function dispatchOne(
       runId: action.payload.run_id ?? fallbackRunId ?? null,
     })
     return {
-      action_id: action.action_id,
-      status: 'applied',
-      effect_ref: { kind: 'channel_message', id: posted.messageId },
+      result: {
+        action_id: action.action_id,
+        status: 'applied',
+        effect_ref: { kind: 'channel_message', id: posted.messageId },
+      },
     }
   }
   if (action.type === 'escalation.resolve') {
@@ -55,9 +59,11 @@ async function dispatchOne(
       channelId: action.payload.channel_id ?? null,
     })
     return {
-      action_id: action.action_id,
-      status: 'applied',
-      reason: `resolved escalation ${resolved.escalationId}`,
+      result: {
+        action_id: action.action_id,
+        status: 'applied',
+        reason: `resolved escalation ${resolved.escalationId}`,
+      },
     }
   }
   if (action.type === 'knowledge.propose_change') {
@@ -74,16 +80,49 @@ async function dispatchOne(
       payload: action.payload.payload ?? {},
     })
     return {
-      action_id: action.action_id,
-      status: 'applied',
-      reason: `created knowledge change ${proposal.proposalId}`,
+      result: {
+        action_id: action.action_id,
+        status: 'applied',
+        reason: `created knowledge change ${proposal.proposalId}`,
+      },
+    }
+  }
+  if (action.type === 'graph.update_root_draft') {
+    const draft = await transport.updateGraphRootDraft({
+      graphId: action.target.graph_id,
+      definition: action.payload.definition,
+      note: action.payload.note ?? null,
+    })
+    return {
+      result: {
+        action_id: action.action_id,
+        status: 'applied',
+        reason: `updated graph root draft ${draft.graphId}`,
+      },
+      nextGraphDefinition: action.payload.definition,
+    }
+  }
+  if (action.type === 'graph.apply_delta') {
+    const nextDefinition = applyGraphDelta(currentGraphDefinition, action.payload.delta)
+    const draft = await transport.updateGraphRootDraft({
+      graphId: action.target.graph_id,
+      definition: nextDefinition,
+      note: action.payload.note ?? null,
+    })
+    return {
+      result: {
+        action_id: action.action_id,
+        status: 'applied',
+        reason: `applied graph delta to ${draft.graphId}`,
+      },
+      nextGraphDefinition: nextDefinition,
     }
   }
   if (action.type === 'control.noop') {
-    return { action_id: action.action_id, status: 'applied', reason: action.payload.reason }
+    return { result: { action_id: action.action_id, status: 'applied', reason: action.payload.reason } }
   }
   if (action.type === 'control.fail') {
-    return { action_id: action.action_id, status: 'failed', reason: action.payload.reason }
+    return { result: { action_id: action.action_id, status: 'failed', reason: action.payload.reason } }
   }
   return assertNever(action)
 }
@@ -92,9 +131,15 @@ export async function dispatchEnvelope(
   transport: KnotworkTransport,
   envelope: ActionEnvelope,
   capabilities: SemanticCapabilitySnapshot,
-  options: { defaultAuthorName: string; fallbackRunId?: string | null; fallbackSourceChannelId?: string | null },
+  options: {
+    defaultAuthorName: string
+    currentGraphDefinition?: Record<string, unknown> | null
+    fallbackRunId?: string | null
+    fallbackSourceChannelId?: string | null
+  },
 ): Promise<DispatchResult> {
   const results: ActionResult[] = []
+  let currentGraphDefinition = options.currentGraphDefinition ?? null
   for (const action of envelope.actions) {
     const notAllowed = isActionAllowed(action, capabilities)
     if (notAllowed) {
@@ -102,13 +147,18 @@ export async function dispatchEnvelope(
       continue
     }
     try {
-      results.push(await dispatchOne(
+      const dispatched = await dispatchOne(
         transport,
         action,
         options.defaultAuthorName,
+        currentGraphDefinition,
         options.fallbackRunId,
         options.fallbackSourceChannelId,
-      ))
+      )
+      results.push(dispatched.result)
+      if (dispatched.nextGraphDefinition !== undefined) {
+        currentGraphDefinition = dispatched.nextGraphDefinition
+      }
     } catch (error) {
       results.push({
         action_id: action.action_id,

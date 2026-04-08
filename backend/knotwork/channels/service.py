@@ -1015,6 +1015,81 @@ async def get_or_create_objective_agentzero_consultation(
     return channel
 
 
+async def get_or_create_graph_agentzero_consultation(
+    db: AsyncSession,
+    workspace_id: UUID,
+    graph_id: UUID,
+    requester_member: WorkspaceMember,
+    requester_user: User,
+) -> Channel:
+    graph = await db.get(Graph, graph_id)
+    if graph is None or graph.workspace_id != workspace_id:
+        raise ValueError("Graph not found")
+
+    agentzero_row = await db.execute(
+        select(WorkspaceMember, User)
+        .join(User, User.id == WorkspaceMember.user_id)
+        .where(
+            WorkspaceMember.workspace_id == workspace_id,
+            WorkspaceMember.agent_zero_role.is_(True),
+            WorkspaceMember.access_disabled_at.is_(None),
+        )
+        .limit(1)
+    )
+    agentzero = agentzero_row.first()
+    if agentzero is None:
+        raise ValueError("AgentZero is not assigned")
+    agentzero_member, agentzero_user = agentzero
+
+    requester_participant_id = member_participant_id(requester_member, requester_user.id)
+    agentzero_participant_id = member_participant_id(agentzero_member, agentzero_user.id)
+    participant_ids = {requester_participant_id, agentzero_participant_id}
+
+    existing_rows = await db.execute(
+        select(Channel)
+        .where(
+            Channel.workspace_id == workspace_id,
+            Channel.channel_type == "consultation",
+            Channel.graph_id == graph_id,
+            Channel.archived_at.is_(None),
+        )
+        .order_by(Channel.created_at.desc())
+    )
+    for channel in existing_rows.scalars():
+        subscription_rows = await db.execute(
+            select(ChannelSubscription.participant_id).where(
+                ChannelSubscription.workspace_id == workspace_id,
+                ChannelSubscription.channel_id == channel.id,
+                ChannelSubscription.unsubscribed_at.is_(None),
+            )
+        )
+        if participant_ids.issubset({row[0] for row in subscription_rows.all()}):
+            return channel
+
+    label = graph.name or "Workflow"
+    channel = Channel(
+        workspace_id=workspace_id,
+        name=f"AgentZero workflow consult: {label}",
+        slug=await _generate_channel_slug(db, f"agentzero workflow consult {label}"),
+        channel_type="consultation",
+        project_id=graph.project_id,
+        graph_id=graph.id,
+    )
+    db.add(channel)
+    await db.flush()
+    for participant_id in participant_ids:
+        db.add(
+            ChannelSubscription(
+                workspace_id=workspace_id,
+                channel_id=channel.id,
+                participant_id=participant_id,
+            )
+        )
+    await db.commit()
+    await db.refresh(channel)
+    return channel
+
+
 async def update_channel(db: AsyncSession, workspace_id: UUID, channel_id: UUID | str, data: ChannelUpdate) -> Channel | None:
     ch = await get_channel(db, workspace_id, channel_id)
     if ch is None:
@@ -1420,6 +1495,23 @@ async def _resolve_channel_asset_target(db: AsyncSession, channel_id: UUID) -> d
             "asset_type": "folder",
             "asset_id": None,
             "asset_path": "",
+            "asset_project_slug": project_slug,
+        }
+
+    if channel.graph_id is not None:
+        project_slug = None
+        project_id = channel.project_id
+        graph = await db.get(Graph, channel.graph_id)
+        if graph is not None:
+            project_id = graph.project_id or project_id
+        if project_id is not None:
+            project = await db.get(Project, project_id)
+            if project is not None:
+                project_slug = project.slug
+        return {
+            "asset_type": "workflow",
+            "asset_id": str(channel.graph_id),
+            "asset_path": None,
             "asset_project_slug": project_slug,
         }
 

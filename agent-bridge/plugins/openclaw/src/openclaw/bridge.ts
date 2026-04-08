@@ -8,6 +8,8 @@ import type {
   ParticipantInfo,
   ChannelSubscription,
   EscalationInfo,
+  GraphDraftInfo,
+  GraphInfo,
   InboxEvent,
   JsonObject,
   KnowledgeFileSummary,
@@ -285,6 +287,28 @@ export async function fetchObjectiveChain(baseUrl: string, workspaceId: string, 
 
 export async function fetchProjectDashboard(baseUrl: string, workspaceId: string, jwt: string, projectRef: string): Promise<ProjectDashboardInfo> {
   return httpGet(`${baseUrl}/api/v1/workspaces/${workspaceId}/projects/${projectRef}/dashboard`, jwt)
+}
+
+export async function fetchGraph(baseUrl: string, workspaceId: string, jwt: string, graphId: string): Promise<GraphInfo> {
+  return httpGet(`${baseUrl}/api/v1/workspaces/${workspaceId}/graphs/${graphId}`, jwt)
+}
+
+export async function fetchGraphRootDraft(baseUrl: string, workspaceId: string, jwt: string, graphId: string): Promise<GraphDraftInfo> {
+  return httpGet(`${baseUrl}/api/v1/workspaces/${workspaceId}/graphs/${graphId}/root-draft`, jwt)
+}
+
+export async function updateGraphRootDraft(
+  baseUrl: string,
+  workspaceId: string,
+  jwt: string,
+  graphId: string,
+  body: { definition: Record<string, unknown> },
+): Promise<GraphDraftInfo> {
+  return httpPost(
+    `${baseUrl}/api/v1/workspaces/${workspaceId}/graphs/${graphId}/root-draft`,
+    body,
+    jwt,
+  )
 }
 
 export async function fetchMyChannelSubscriptions(baseUrl: string, workspaceId: string, jwt: string): Promise<ChannelSubscription[]> {

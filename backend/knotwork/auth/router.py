@@ -52,7 +52,7 @@ class TokenResponse(BaseModel):
 
 class UserOut(BaseModel):
     id: str
-    email: str
+    email: str | None = None
     name: str
     bio: str | None = None
     avatar_url: str | None = None

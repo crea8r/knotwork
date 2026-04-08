@@ -148,6 +148,27 @@ async def get_objective_agentzero_consultation(
     return ChannelOut.model_validate(ch)
 
 
+@router.post("/{workspace_id}/graphs/{graph_id}/agentzero-consultation", response_model=ChannelOut, status_code=201)
+async def get_graph_agentzero_consultation(
+    workspace_id: UUID,
+    graph_id: UUID,
+    user: User = Depends(get_current_user),
+    member: WorkspaceMember = Depends(get_workspace_member),
+    db: AsyncSession = Depends(get_db),
+):
+    try:
+        ch = await service.get_or_create_graph_agentzero_consultation(
+            db,
+            workspace_id,
+            graph_id,
+            requester_member=member,
+            requester_user=user,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    return ChannelOut.model_validate(ch)
+
+
 @router.get("/{workspace_id}/channels/asset-chat/resolve", response_model=ChannelOut)
 async def get_asset_chat_channel(
     workspace_id: UUID,

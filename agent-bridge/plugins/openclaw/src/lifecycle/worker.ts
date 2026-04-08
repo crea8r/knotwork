@@ -6,6 +6,7 @@ import {
   archiveInboxDelivery,
   fetchChannel,
   fetchChannelMessages,
+  fetchCurrentMember,
   fetchObjectiveChain,
   getConfig,
   pollInbox,
@@ -32,6 +33,21 @@ import type {
 
 const MAX_CHANNEL_MESSAGES = 20
 const DEFAULT_AUTHOR_NAME = 'Knotwork Agent'
+
+async function resolveAuthorName(
+  baseUrl: string,
+  workspaceId: string,
+  jwt: string,
+): Promise<string> {
+  try {
+    const member = await fetchCurrentMember(baseUrl, workspaceId, jwt)
+    const name = String(member.name ?? '').trim()
+    if (name) return name
+  } catch {
+    // Fall back to the generic label if member resolution is unavailable.
+  }
+  return DEFAULT_AUTHOR_NAME
+}
 
 export type WorkerCtx = {
   state: PluginState
@@ -242,6 +258,7 @@ export async function runClaimedTask(ctx: WorkerCtx, task: ExecutionTask, creds?
 
     const semanticEnabled = Boolean(cfg.semanticActionProtocolEnabled)
     const semanticStrict = Boolean(cfg.semanticActionStrictMode)
+    const authorName = await resolveAuthorName(baseUrl, workspaceId, jwt)
     let usedSemanticPath = false
     let result: TaskResult
     if (semanticEnabled && task.trigger) {
@@ -252,13 +269,13 @@ export async function runClaimedTask(ctx: WorkerCtx, task: ExecutionTask, creds?
               baseUrl,
               workspaceId,
               jwt,
-              authorName: DEFAULT_AUTHOR_NAME,
+              authorName,
             })
           : new KnotworkRestTransport({
               baseUrl,
               workspaceId,
               jwt,
-              authorName: DEFAULT_AUTHOR_NAME,
+              authorName,
             })
         const semanticRuntime = new OpenClawThinkingRuntime(api)
         const orchestrator = new SemanticOrchestrator(semanticRuntime, semanticTransport)
@@ -271,7 +288,7 @@ export async function runClaimedTask(ctx: WorkerCtx, task: ExecutionTask, creds?
           runId: task.run_id ?? null,
           trigger: task.trigger,
         }, {
-          defaultAuthorName: DEFAULT_AUTHOR_NAME,
+          defaultAuthorName: authorName,
         })
         result = semanticOutcome.dispatch.next_task_status === 'failed'
           ? {
@@ -339,7 +356,7 @@ export async function runClaimedTask(ctx: WorkerCtx, task: ExecutionTask, creds?
             jwt,
             task.channel_id,
             replyText,
-            DEFAULT_AUTHOR_NAME,
+            authorName,
             task.run_id,
           )
           log(`task:posted id=${taskId} channel=${task.channel_id}`)

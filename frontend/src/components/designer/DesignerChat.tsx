@@ -1,28 +1,22 @@
-/**
- * DesignerChat — conversational UI for the designer agent.
- * History is loaded from the DB on mount and persists across server restarts.
- */
-import { useEffect, useRef, useState } from 'react'
-import { GitBranch, Trash2 } from 'lucide-react'
-import axios from 'axios'
-import { useDesignChat, useDesignerMessages, useClearDesignerHistory } from '@/api/designer'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { GitBranch, Lock, Sparkles } from 'lucide-react'
+import { useQueryClient } from '@tanstack/react-query'
+import { useWorkspaceMembers } from '@/api/auth'
+import {
+  useChannelMessages,
+  useGraphAgentZeroConsultation,
+  usePostChannelMessage,
+} from '@/api/channels'
 import { useGraph } from '@/api/graphs'
 import { ChannelComposer, ChannelShell, ChannelTimeline, type ChannelTimelineItem } from '@/components/channel/ChannelFrame'
-import { useCanvasStore, type GraphDelta } from '@/store/canvas'
 import { useAuthStore } from '@/store/auth'
 
 const DEV_WORKSPACE = import.meta.env.VITE_DEV_WORKSPACE_ID ?? 'dev-workspace'
 
-interface Message {
-  role: 'user' | 'assistant'
-  content: string
-  questions?: string[]
-  created_at?: string
-}
-
 interface Props {
   graphId: string
   sessionId: string
+  initialConsultationChannelId?: string | null
   onBeforeApplyDelta?: () => void
   shellClassName?: string
 }
@@ -37,134 +31,202 @@ function relativeTime(iso: string): string {
   return `${Math.floor(hrs / 24)}d ago`
 }
 
-export default function DesignerChat({ graphId, sessionId, onBeforeApplyDelta, shellClassName }: Props) {
+export default function DesignerChat({ graphId, initialConsultationChannelId, shellClassName }: Props) {
   const workspaceId = useAuthStore((s) => s.workspaceId) ?? DEV_WORKSPACE
-  const [messages, setMessages] = useState<Message[]>([])
-  const [historyLoaded, setHistoryLoaded] = useState(false)
+  const qc = useQueryClient()
   const [input, setInput] = useState('')
-  const chat = useDesignChat(workspaceId, graphId)
-  const applyDelta = useCanvasStore(s => s.applyDelta)
+  const [consultChannelId, setConsultChannelId] = useState(initialConsultationChannelId?.trim() ?? '')
+  const [consultationError, setConsultationError] = useState<string | null>(null)
+  const consultationRequestedRef = useRef(false)
   const endRef = useRef<HTMLDivElement>(null)
 
   const { data: graph } = useGraph(workspaceId, graphId)
-  const { data: dbMessages } = useDesignerMessages(workspaceId, graphId)
-  const clearHistory = useClearDesignerHistory(workspaceId, graphId)
+  const { data: agentMembers } = useWorkspaceMembers(workspaceId, 1, 'agent', false)
+  const agentZero = agentMembers?.items.find((member) => member.agent_zero_role) ?? null
+  const agentZeroName = agentZero?.name ?? 'AgentZero'
+  const openConsultation = useGraphAgentZeroConsultation(workspaceId, graphId)
+  const { data: messages = [] } = useChannelMessages(workspaceId, consultChannelId)
+  const postMessage = usePostChannelMessage(workspaceId, consultChannelId)
 
-  // Load DB history once on mount
   useEffect(() => {
-    if (historyLoaded) return
-    if (dbMessages === undefined) return
-    if (dbMessages.length > 0) {
-      setMessages(dbMessages.map(m => ({ role: m.role, content: m.content, created_at: m.created_at })))
-    } else {
-      setMessages([{ role: 'assistant', content: "Hi! Describe the workflow you want to build and I'll set it up for you." }])
-    }
-    setHistoryLoaded(true)
-  }, [dbMessages, historyLoaded])
+    const seededChannelId = initialConsultationChannelId?.trim() ?? ''
+    if (!seededChannelId) return
+    setConsultChannelId((current) => current || seededChannelId)
+    consultationRequestedRef.current = true
+    setConsultationError(null)
+  }, [initialConsultationChannelId])
 
-  // Auto-scroll when messages change
+  useEffect(() => {
+    if (!agentZero || consultChannelId || consultationRequestedRef.current || openConsultation.isPending) {
+      return
+    }
+    setConsultationError(null)
+    consultationRequestedRef.current = true
+    openConsultation.mutate(undefined, {
+      onSuccess: (channel) => {
+        if (!channel?.id) {
+          consultationRequestedRef.current = false
+          setConsultationError('AgentZero consultation opened without a usable channel id.')
+          return
+        }
+        setConsultChannelId(channel.id)
+        setConsultationError(null)
+      },
+      onError: (error: unknown) => {
+        consultationRequestedRef.current = false
+        const detail =
+          typeof error === 'object' && error && 'response' in error
+            ? (error as { response?: { data?: { detail?: string } } }).response?.data?.detail
+            : null
+        const message =
+          detail
+          ?? (error instanceof Error ? error.message : null)
+          ?? 'Unable to open AgentZero consultation.'
+        setConsultationError(message)
+      },
+    })
+  }, [agentZero, consultChannelId, openConsultation.isPending, openConsultation.mutate])
+
+  useEffect(() => {
+    if (consultChannelId) {
+      consultationRequestedRef.current = true
+      return
+    }
+    if (!agentZero) {
+      consultationRequestedRef.current = false
+      setConsultationError(null)
+    }
+  }, [agentZero, consultChannelId])
+
+  function retryConsultation() {
+    consultationRequestedRef.current = false
+    setConsultChannelId('')
+    setConsultationError(null)
+  }
+
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
 
+  const latestAssistantMessageId = useMemo(() => {
+    const latest = [...messages]
+      .reverse()
+      .find((message) => message.author_type === 'agent')
+    return latest?.id ?? null
+  }, [messages])
+
+  useEffect(() => {
+    if (!latestAssistantMessageId) return
+    qc.invalidateQueries({ queryKey: ['graph', graphId] })
+    qc.invalidateQueries({ queryKey: ['graph-versions', graphId] })
+  }, [graphId, latestAssistantMessageId, qc])
+
   async function send() {
     const text = input.trim()
-    if (!text || chat.isPending) return
+    if (!text || !consultChannelId || postMessage.isPending) return
     setInput('')
-    setMessages(prev => [...prev, { role: 'user', content: text }])
-
-    try {
-      const res = await chat.mutateAsync({ session_id: sessionId, message: text })
-      setMessages(prev => [...prev, {
-        role: 'assistant',
-        content: res.reply,
-        questions: res.questions.length ? res.questions : undefined,
-      }])
-      if (res.graph_delta && Object.keys(res.graph_delta).length > 0) {
-        onBeforeApplyDelta?.()
-        applyDelta(res.graph_delta as unknown as GraphDelta)
-      }
-    } catch (error) {
-      const detail = axios.isAxiosError(error)
-        ? error.response?.data?.detail ?? error.message
-        : error instanceof Error
-          ? error.message
-          : null
-      setMessages(prev => [...prev, {
-        role: 'assistant',
-        content: detail ? `Something went wrong: ${detail}` : 'Something went wrong. Please try again.',
-      }])
-    }
+    await postMessage.mutateAsync({
+      content: text,
+      role: 'user',
+      author_type: 'human',
+      author_name: 'You',
+    })
   }
 
-  async function handleClear() {
-    if (!confirm('Clear chat history for this graph?')) return
-    await clearHistory.mutateAsync()
-    setMessages([{ role: 'assistant', content: "History cleared. How can I help you?" }])
-    setHistoryLoaded(false)
+  if (!agentZero) {
+    return (
+      <ChannelShell
+        typeIcon={<GitBranch size={14} />}
+        title={graph?.name ?? 'Workflow chat'}
+        description="Assign an AgentZero member to unlock workflow editor chat."
+        parentLabel="Chat unavailable"
+        shellClassName={shellClassName}
+      >
+        <div className="flex flex-1 items-center justify-center bg-[#faf7f1] p-6">
+          <div className="max-w-md rounded-3xl border border-stone-200 bg-white p-6 text-center shadow-sm">
+            <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-stone-100 text-stone-500">
+              <Lock size={20} />
+            </div>
+            <h3 className="mt-4 text-base font-semibold text-stone-900">AgentZero required</h3>
+            <p className="mt-2 text-sm leading-6 text-stone-600">
+              The workflow editor chat now runs as a real private conversation with AgentZero.
+              Assign an AgentZero member in Settings to unlock it.
+            </p>
+          </div>
+        </div>
+      </ChannelShell>
+    )
   }
 
-  if (!historyLoaded) {
-    return <div className="flex h-full items-center justify-center text-xs text-gray-400">Loading…</div>
-  }
-
-  const timelineItems: ChannelTimelineItem[] = messages.map((m, i) => ({
-    id: `${m.created_at ?? 'draft'}-${i}`,
+  const timelineItems: ChannelTimelineItem[] = messages.map((message) => ({
+    id: message.id,
     kind: 'message',
-    authorLabel: m.role === 'user' ? 'You' : 'Knotwork Agent',
-    mine: m.role === 'user',
-    tone: m.role === 'user' ? 'human' : 'agent',
+    authorLabel: message.author_name?.trim() || (message.author_type === 'agent' ? agentZeroName : 'You'),
+    mine: message.author_type === 'human',
+    tone: message.author_type === 'agent' ? 'agent' : message.author_type === 'system' ? 'system' : 'human',
     content: (
       <div>
-        <p>{m.content}</p>
-        {m.questions && m.questions.length > 0 ? (
-          <ul className="mt-2 space-y-1 text-xs opacity-80">
-            {m.questions.map((q, qi) => (
-              <li key={qi}>• {q}</li>
-            ))}
-          </ul>
-        ) : null}
-        {m.created_at ? <p className="mt-2 text-[10px] opacity-60">{relativeTime(m.created_at)}</p> : null}
+        <p>{message.content}</p>
+        <p className="mt-2 text-[10px] opacity-60">{relativeTime(message.created_at)}</p>
       </div>
     ),
   }))
 
-  if (chat.isPending) {
+  if (postMessage.isPending) {
     timelineItems.push({
-      id: 'designer-thinking',
+      id: 'designer-pending',
       kind: 'message',
-      authorLabel: 'Knotwork Agent',
-      tone: 'agent',
-      content: 'Thinking…',
+      authorLabel: 'You',
+      mine: true,
+      tone: 'human',
+      content: 'Sending…',
     })
   }
 
   return (
     <ChannelShell
-      typeIcon={<GitBranch size={14} />}
-      title={graph?.name ?? 'Workflow chat'}
-      description="Discuss workflow changes and apply them directly to the graph."
-      parentLabel={`${messages.filter(m => m.role === 'user').length} prompts`}
+      typeIcon={<Sparkles size={14} />}
+      title={`${graph?.name ?? 'Workflow chat'} · ${agentZeroName}`}
+      description={`Private workflow editor consultation with ${agentZeroName}. The agent can update the workflow draft through Knotwork MCP tools.`}
+      parentLabel={
+        consultChannelId
+          ? 'Private AgentZero consultation'
+          : consultationError
+            ? 'Consultation unavailable'
+            : 'Opening consultation…'
+      }
       shellClassName={shellClassName}
-      actions={(
-        <button
-          onClick={handleClear}
-          className="inline-flex h-7 w-7 items-center justify-center rounded-md text-stone-400 hover:bg-stone-100 hover:text-red-500"
-          title="Clear history"
-          disabled={clearHistory.isPending}
-        >
-          <Trash2 size={13} />
-        </button>
-      )}
     >
-      <ChannelTimeline items={timelineItems} emptyState="Describe the workflow you want to build." />
+      {!consultChannelId && consultationError ? (
+        <div className="border-b border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+          <p className="font-medium">Could not open AgentZero consultation</p>
+          <p className="mt-1">{consultationError}</p>
+          <button
+            type="button"
+            onClick={retryConsultation}
+            className="mt-2 rounded-lg border border-amber-300 bg-white px-3 py-1.5 text-sm font-medium text-amber-900 hover:bg-amber-100"
+          >
+            Retry
+          </button>
+        </div>
+      ) : null}
+      <ChannelTimeline
+        items={timelineItems}
+        emptyState="Ask AgentZero to inspect or update this workflow draft."
+      />
       <div ref={endRef} />
       <ChannelComposer
         draft={input}
         setDraft={setInput}
         onSend={() => { void send() }}
-        pending={chat.isPending}
-        placeholder="Describe workflow changes for Knotwork Agent…"
+        pending={postMessage.isPending || openConsultation.isPending}
+        placeholder={
+          consultChannelId
+            ? `Ask ${agentZeroName} to inspect or update this workflow…`
+            : consultationError
+              ? 'Retry opening AgentZero consultation…'
+              : 'Opening AgentZero consultation…'
+        }
         rows={4}
       />
     </ChannelShell>

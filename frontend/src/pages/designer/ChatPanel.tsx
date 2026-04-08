@@ -5,11 +5,13 @@ import { EditorSidePanel } from '@/components/editor/EditorWorkspace'
 export default function ChatPanel({
   graphId,
   sessionId,
+  initialConsultationChannelId,
   onClose,
   onBeforeApplyDelta,
 }: {
   graphId: string
   sessionId: string
+  initialConsultationChannelId?: string | null
   onClose: () => void
   onBeforeApplyDelta: () => void
 }) {
@@ -21,6 +23,7 @@ export default function ChatPanel({
           <DesignerChat
             graphId={graphId}
             sessionId={sessionId}
+            initialConsultationChannelId={initialConsultationChannelId}
             onBeforeApplyDelta={onBeforeApplyDelta}
             shellClassName="rounded-none border-0"
           />
@@ -40,6 +43,7 @@ export default function ChatPanel({
           <DesignerChat
             graphId={graphId}
             sessionId={sessionId}
+            initialConsultationChannelId={initialConsultationChannelId}
             onBeforeApplyDelta={onBeforeApplyDelta}
             shellClassName="rounded-none border-0"
           />

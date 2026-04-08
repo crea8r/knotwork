@@ -16,6 +16,9 @@ export function buildSemanticSystemPrompt(input: SemanticPreparedInput): string 
     `Rules:`,
     `- Only emit actions permitted by the capability snapshot.`,
     `- User-facing text is allowed only inside action payloads such as channel.post_message.payload.content.`,
+    `- For workflow consultation channels, use graph.apply_delta when the user is asking you to create or modify the workflow itself.`,
+    `- Only use graph.update_root_draft when you must replace the entire workflow definition explicitly.`,
+    `- After you change a workflow draft, also emit channel.post_message summarizing what changed so the UI refreshes and the user sees the result.`,
     `- For message_posted events, follow the Message Response Policy exactly.`,
     `- If a message mentions another member and not you, emit control.noop.`,
     `- If a message mentions nobody, answer only when you were already involved or when the message clearly matches your role/objective/contribution brief.`,
@@ -42,6 +45,8 @@ export function buildSemanticUserPrompt(input: SemanticPreparedInput): string {
     ``,
     `## Available Semantic Actions`,
     `- channel.post_message`,
+    `- graph.apply_delta`,
+    `- graph.update_root_draft`,
     `- escalation.resolve`,
     `- knowledge.propose_change`,
     `- control.noop`,
@@ -70,6 +75,18 @@ export function buildSemanticUserPrompt(input: SemanticPreparedInput): string {
     input.context.assetContext.objectiveChain.length > 0 ? `` : null,
     input.context.assetContext.projectDashboard ? `## Project Context\n${JSON.stringify(input.context.assetContext.projectDashboard, null, 2)}` : null,
     input.context.assetContext.projectDashboard ? `` : null,
+    input.context.assetContext.graph ? `## Workflow Graph\n${JSON.stringify(input.context.assetContext.graph, null, 2)}` : null,
+    input.context.assetContext.graph ? `` : null,
+    input.context.assetContext.graphRootDraft ? `## Workflow Root Draft\n${JSON.stringify(input.context.assetContext.graphRootDraft, null, 2)}` : null,
+    input.context.assetContext.graphRootDraft ? `` : null,
+    input.context.channel?.graph_id ? `## Workflow Editing Rules
+- Keep Start and End nodes present as literal ids "start" and "end" whenever the workflow has work nodes.
+- Work nodes should usually be type "agent".
+- Use top-level node fields like agent_ref, registered_agent_id, operator_id, supervisor_id when you know them.
+- Put model instructions and prompts inside node.config.
+- If a work node branches to multiple targets, set condition_label on each outgoing edge.
+- When creating or substantially changing a workflow, set_input_schema should describe the case data the workflow needs.` : null,
+    input.context.channel?.graph_id ? `` : null,
     input.context.assetContext.run ? `## Run Context\n${JSON.stringify(input.context.assetContext.run, null, 2)}` : null,
     input.context.assetContext.run ? `` : null,
     input.context.assetContext.runNodes.length > 0 ? `## Run Nodes\n${JSON.stringify(input.context.assetContext.runNodes, null, 2)}` : null,
@@ -82,6 +99,28 @@ export function buildSemanticUserPrompt(input: SemanticPreparedInput): string {
       action: 'channel.post_message',
       channel_id: input.task.channelId ?? input.task.trigger.channel_id ?? 'channel-id',
       payload: { content: 'Visible reply text here.' },
+    }, null, 2),
+    '```',
+    '',
+    '```json-action',
+    JSON.stringify({
+      action: 'graph.apply_delta',
+      graph_id: input.context.assetContext.graph?.id ?? input.context.channel?.graph_id ?? 'graph-id',
+      note: 'Create the requested workflow structure and wiring.',
+      delta: {
+        add_nodes: [
+          { id: 'start', type: 'start', name: 'Start', config: {} },
+          { id: 'draft-brief', type: 'agent', name: 'Draft Brief', config: { system_prompt: 'Draft a brief from the case input.' } },
+          { id: 'end', type: 'end', name: 'End', config: {} },
+        ],
+        add_edges: [
+          { id: 'e-start-draft-brief', source: 'start', target: 'draft-brief', type: 'direct' },
+          { id: 'e-draft-brief-end', source: 'draft-brief', target: 'end', type: 'direct' },
+        ],
+        set_input_schema: [
+          { name: 'topic', label: 'Topic', description: 'What the brief should cover', required: true, type: 'text' },
+        ],
+      },
     }, null, 2),
     '```',
     '',

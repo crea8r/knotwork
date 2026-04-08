@@ -326,6 +326,33 @@ def build_server(client: KnotworkAPIClient | None = None) -> FastMCP:
         return await _request(ctx, "GET", api.workspace_path(f"/graphs/{graph_id}"))
 
     @mcp.tool()
+    async def get_graph_root_draft(graph_id: str, ctx: Context = None) -> Any:
+        api = _client_from_context(ctx)
+        return await _request(
+            ctx,
+            "GET",
+            api.workspace_path(f"/graphs/{graph_id}/root-draft"),
+        )
+
+    @mcp.tool()
+    async def update_graph_root_draft(
+        graph_id: str,
+        definition: dict[str, Any],
+        note: str | None = None,
+        ctx: Context = None,
+    ) -> Any:
+        api = _client_from_context(ctx)
+        return await _request(
+            ctx,
+            "PUT",
+            api.workspace_path(f"/graphs/{graph_id}/root-draft"),
+            body={
+                "definition": definition,
+                "note": note,
+            },
+        )
+
+    @mcp.tool()
     async def list_runs(status: str | None = None, ctx: Context = None) -> Any:
         api = _client_from_context(ctx)
         runs = await _request(ctx, "GET", api.workspace_path("/runs"))

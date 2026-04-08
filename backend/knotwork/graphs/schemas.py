@@ -98,6 +98,7 @@ class DesignChatResponse(BaseModel):
     reply: str
     graph_delta: dict
     questions: list[str]
+    author_name: str | None = None
 
 
 class ImportMdRequest(BaseModel):

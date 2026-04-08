@@ -10,7 +10,11 @@ const DEV_WORKSPACE = import.meta.env.VITE_DEV_WORKSPACE_ID ?? 'dev-workspace'
 
 function inboxTarget(item: import('@/types').InboxItem) {
   if (item.asset_type === 'workflow' && item.asset_id) {
-    return `/graphs/${item.asset_id}?chat=1${item.message_id ? `&message=${encodeURIComponent(item.message_id)}` : ''}`
+    const params = new URLSearchParams()
+    params.set('chat', '1')
+    if (item.channel_id) params.set('consultation', item.channel_id)
+    if (item.message_id) params.set('message', item.message_id)
+    return `/graphs/${item.asset_id}?${params.toString()}`
   }
   if ((item.asset_type === 'file' || item.asset_type === 'folder') && item.asset_path !== null) {
     const params = new URLSearchParams()

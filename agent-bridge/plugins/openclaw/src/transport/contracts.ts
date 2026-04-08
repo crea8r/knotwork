@@ -3,6 +3,8 @@ import type {
   ChannelInfo,
   ChannelMessage,
   EscalationInfo,
+  GraphDraftInfo,
+  GraphInfo,
   KnowledgeFileSummary,
   KnowledgeFileWithContent,
   MessageResponsePolicy,
@@ -39,6 +41,8 @@ export type SemanticThinkingContext = {
     folderFiles: Array<{ binding: ChannelAssetBinding; files: KnowledgeFileSummary[] }>
     objectiveChain: ObjectiveInfo[]
     projectDashboard: ProjectDashboardInfo | null
+    graph: GraphInfo | null
+    graphRootDraft: GraphDraftInfo | null
     run: RunInfo | null
     runNodes: RunNodeStateInfo[]
     escalation: EscalationInfo | null
@@ -89,5 +93,10 @@ export interface KnotworkTransport {
     targetType?: string
     payload?: Record<string, unknown>
   }): Promise<{ proposalId: string; channelId?: string | null }>
+  updateGraphRootDraft(input: {
+    graphId: string
+    definition: Record<string, unknown>
+    note?: string | null
+  }): Promise<{ graphId: string; draftId: string | null }>
   archiveDelivery(deliveryId: string): Promise<void>
 }

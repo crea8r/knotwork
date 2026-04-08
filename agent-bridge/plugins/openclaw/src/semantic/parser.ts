@@ -49,6 +49,24 @@ function assertActionItem(value: unknown, index: number): ActionItem {
     if (!path) throw new Error(`action[${index}] knowledge.propose_change missing target.path`)
     if (!proposedContent) throw new Error(`action[${index}] knowledge.propose_change missing payload.proposed_content`)
     if (!reason) throw new Error(`action[${index}] knowledge.propose_change missing payload.reason`)
+  } else if (type === 'graph.update_root_draft') {
+    const target = action.target as Record<string, unknown> | undefined
+    const payload = action.payload as Record<string, unknown> | undefined
+    const graphId = String(target?.graph_id ?? '').trim()
+    const definition = payload?.definition
+    if (!graphId) throw new Error(`action[${index}] graph.update_root_draft missing target.graph_id`)
+    if (!definition || typeof definition !== 'object' || Array.isArray(definition)) {
+      throw new Error(`action[${index}] graph.update_root_draft missing payload.definition`)
+    }
+  } else if (type === 'graph.apply_delta') {
+    const target = action.target as Record<string, unknown> | undefined
+    const payload = action.payload as Record<string, unknown> | undefined
+    const graphId = String(target?.graph_id ?? '').trim()
+    const delta = payload?.delta
+    if (!graphId) throw new Error(`action[${index}] graph.apply_delta missing target.graph_id`)
+    if (!delta || typeof delta !== 'object' || Array.isArray(delta)) {
+      throw new Error(`action[${index}] graph.apply_delta missing payload.delta`)
+    }
   } else if (type === 'control.noop' || type === 'control.fail') {
     const payload = action.payload as Record<string, unknown> | undefined
     const reason = String(payload?.reason ?? '').trim()
@@ -134,6 +152,36 @@ function normalizeShorthandEnvelope(env: Record<string, unknown>, hints?: ParseH
         action_type: typeof env.action_type === 'string' ? env.action_type : undefined,
         target_type: typeof env.target_type === 'string' ? env.target_type : undefined,
         payload: typeof payload === 'object' ? payload : {},
+      },
+    }
+  } else if (actionType === 'graph.update_root_draft') {
+    const graphId = String(env.graph_id ?? '').trim()
+    const definition = env.definition
+    if (!graphId || !definition || typeof definition !== 'object' || Array.isArray(definition)) {
+      throw new Error('shorthand graph.update_root_draft requires graph_id and definition')
+    }
+    action = {
+      action_id: 'action-1',
+      type: 'graph.update_root_draft',
+      target: { graph_id: graphId },
+      payload: {
+        definition: definition as Record<string, unknown>,
+        note: typeof env.note === 'string' ? env.note : null,
+      },
+    }
+  } else if (actionType === 'graph.apply_delta') {
+    const graphId = String(env.graph_id ?? '').trim()
+    const delta = env.delta
+    if (!graphId || !delta || typeof delta !== 'object' || Array.isArray(delta)) {
+      throw new Error('shorthand graph.apply_delta requires graph_id and delta')
+    }
+    action = {
+      action_id: 'action-1',
+      type: 'graph.apply_delta',
+      target: { graph_id: graphId },
+      payload: {
+        delta: delta as Record<string, unknown>,
+        note: typeof env.note === 'string' ? env.note : null,
       },
     }
   } else {

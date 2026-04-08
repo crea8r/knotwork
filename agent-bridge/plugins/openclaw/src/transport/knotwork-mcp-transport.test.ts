@@ -93,7 +93,16 @@ test('unmentioned message lets model decide and records recent involvement', () 
   const policy = buildMessageResponsePolicy({
     trigger: trigger('what is the landing page status?'),
     agentSelf: self,
-    participants,
+    participants: [
+      ...participants,
+      {
+        participant_id: 'human:hieu',
+        display_name: 'Hieu',
+        mention_handle: 'hieu',
+        kind: 'human',
+        contribution_brief: 'Owner.',
+      },
+    ],
     messages: [
       message('m0', 'I can take the landing page.', {
         author_participant_id: 'agent:agent-self',
@@ -105,6 +114,30 @@ test('unmentioned message lets model decide and records recent involvement', () 
   assert.equal(policy?.decision, 'model_decides')
   assert.equal(policy?.recentlyInvolved, true)
   assert.equal(policy?.mentionedParticipantIds.length, 0)
+})
+
+test('two-member channel treats unmentioned message as targeted at the agent', () => {
+  const policy = buildMessageResponsePolicy({
+    trigger: trigger('can you update the workflow?'),
+    agentSelf: self,
+    participants: [
+      participants[0],
+      {
+        participant_id: 'human:hieu',
+        display_name: 'Hieu',
+        mention_handle: 'hieu',
+        kind: 'human',
+        contribution_brief: 'Owner.',
+      },
+    ],
+    messages: [message('m1', 'can you update the workflow?')],
+  })
+
+  assert.equal(policy?.decision, 'must_answer')
+  assert.equal(
+    policy?.reason,
+    'message_posted is in a two-member channel, so the unmentioned message is directed at this agent',
+  )
 })
 
 test('mentioned participant metadata takes precedence over text aliases', () => {

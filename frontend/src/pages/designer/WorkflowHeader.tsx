@@ -5,7 +5,7 @@ import Breadcrumb from '@/components/handbook/Breadcrumb'
 import type { Graph } from '@/types'
 
 export default function WorkflowHeader({
-  workspaceId, graph, defaultVersionIsPublic, showChat, onToggleChat, renamePending, onRename,
+  workspaceId, graph, defaultVersionIsPublic, showChat, onToggleChat, renamePending, onRename, chatAvailable = true,
 }: {
   workspaceId: string
   graph: Graph
@@ -14,6 +14,7 @@ export default function WorkflowHeader({
   onToggleChat: () => void
   renamePending: boolean
   onRename: (name: string) => void
+  chatAvailable?: boolean
 }) {
   void workspaceId
   const navigate = useNavigate()
@@ -68,7 +69,15 @@ export default function WorkflowHeader({
           </div>
           <button
             onClick={onToggleChat}
-            className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-sm transition-colors ${showChat ? 'border-brand-300 bg-brand-50 text-brand-700' : 'border-gray-200 text-gray-600 hover:border-gray-300'}`}
+            disabled={!chatAvailable}
+            title={chatAvailable ? 'Open AgentZero workflow chat' : 'Assign AgentZero to unlock workflow chat'}
+            className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-sm transition-colors ${
+              !chatAvailable
+                ? 'cursor-not-allowed border-gray-200 bg-gray-100 text-gray-400'
+                : showChat
+                  ? 'border-brand-300 bg-brand-50 text-brand-700'
+                  : 'border-gray-200 text-gray-600 hover:border-gray-300'
+            }`}
           >
             <MessageSquare size={14} /><span className="hidden md:inline">Chat</span>
           </button>
