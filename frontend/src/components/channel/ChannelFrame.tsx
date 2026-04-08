@@ -172,7 +172,7 @@ export function ChannelTimeline({
   items,
   emptyState = 'No messages yet.',
   highlightedItemId,
-  scrollToLatest = false,
+  scrollToLatest = true,
 }: {
   items: ChannelTimelineItem[]
   emptyState?: string
@@ -180,20 +180,27 @@ export function ChannelTimeline({
   scrollToLatest?: boolean
 }) {
   const itemRefs = useRef(new Map<string, HTMLDivElement>())
+  const scrolledToLatestRef = useRef(false)
 
   useEffect(() => {
     if (!highlightedItemId) return
     const node = itemRefs.current.get(highlightedItemId)
     if (!node) return
     node.scrollIntoView({ block: 'center' })
+    scrolledToLatestRef.current = true
   }, [highlightedItemId, items])
 
   useEffect(() => {
-    if (highlightedItemId || !scrollToLatest || items.length === 0) return
+    if (items.length === 0) {
+      scrolledToLatestRef.current = false
+      return
+    }
+    if (highlightedItemId || !scrollToLatest || scrolledToLatestRef.current) return
     const lastItem = items[items.length - 1]
     const node = itemRefs.current.get(lastItem.id)
     if (!node) return
     node.scrollIntoView({ block: 'end' })
+    scrolledToLatestRef.current = true
   }, [highlightedItemId, items, scrollToLatest])
 
   return (
@@ -262,7 +269,17 @@ export function ChannelTimeline({
           )
         }
 
-        return <div key={item.id}>{item.content}</div>
+        return (
+          <div
+            key={item.id}
+            ref={(node) => {
+              if (node) itemRefs.current.set(item.id, node)
+              else itemRefs.current.delete(item.id)
+            }}
+          >
+            {item.content}
+          </div>
+        )
       })}
     </div>
   )

@@ -12,6 +12,9 @@
     "openclaw.plugin.json",
     "README.md"
   ],
+  "dependencies": {
+    "@knotwork/mcp-client": "file:../../packages/mcp-client"
+  },
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "package:tarball": "python3 scripts/package_tarball.py",

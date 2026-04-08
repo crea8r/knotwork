@@ -48,6 +48,12 @@
         "type": "boolean",
         "description": "Require a valid json-action response when semantic action-protocol mode is enabled. If false, fall back to legacy behavior on semantic failures.",
         "default": false
+      },
+      "knotworkTransportMode": {
+        "type": "string",
+        "enum": ["rest", "mcp"],
+        "description": "Transport used by semantic action execution. Polling remains on the existing REST transport.",
+        "default": "rest"
       }
     },
     "required": []

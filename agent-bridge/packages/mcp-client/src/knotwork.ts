@@ -92,6 +92,83 @@ export class KnotworkMcpClient {
     return this.client.callTool<T>('list_escalations', { status: 'open' })
   }
 
+  async getInbox<T = unknown>(archived = false): Promise<T> {
+    return this.client.callTool<T>('get_inbox', { archived })
+  }
+
+  async updateInboxDelivery<T = unknown>(input: {
+    deliveryId: string
+    read?: boolean | null
+    archived?: boolean | null
+  }): Promise<T> {
+    return this.client.callTool<T>('update_inbox_delivery', {
+      delivery_id: input.deliveryId,
+      read: input.read ?? null,
+      archived: input.archived ?? null,
+    })
+  }
+
+  async listChannels<T = unknown>(): Promise<T> {
+    return this.client.callTool<T>('list_channels')
+  }
+
+  async getChannel<T = unknown>(channelRef: string): Promise<T> {
+    return this.client.callTool<T>('get_channel', { channel_ref: channelRef })
+  }
+
+  async listChannelMessages<T = unknown>(channelRef: string): Promise<T> {
+    return this.client.callTool<T>('list_channel_messages', { channel_ref: channelRef })
+  }
+
+  async listChannelAssets<T = unknown>(channelRef: string): Promise<T> {
+    return this.client.callTool<T>('list_channel_assets', { channel_ref: channelRef })
+  }
+
+  async listMyChannelSubscriptions<T = unknown>(): Promise<T> {
+    return this.client.callTool<T>('list_my_channel_subscriptions')
+  }
+
+  async getRun<T = unknown>(runId: string): Promise<T> {
+    return this.client.callTool<T>('get_run', { run_id: runId })
+  }
+
+  async listRunNodes<T = unknown>(runId: string): Promise<T> {
+    return this.client.callTool<T>('list_run_nodes', { run_id: runId })
+  }
+
+  async listKnowledgeFiles<T = unknown>(projectId?: string | null): Promise<T> {
+    return this.client.callTool<T>('list_knowledge_files', {
+      ...(projectId ? { project_id: projectId } : {}),
+    })
+  }
+
+  async readKnowledgeFile<T = unknown>(path: string, projectId?: string | null): Promise<T> {
+    return this.client.callTool<T>('read_knowledge_file', {
+      path,
+      ...(projectId ? { project_id: projectId } : {}),
+    })
+  }
+
+  async createKnowledgeChange<T = unknown>(input: {
+    path: string
+    proposedContent: string
+    reason: string
+    runId?: string | null
+    nodeId?: string | null
+    agentRef?: string | null
+    sourceChannelId?: string | null
+  }): Promise<T> {
+    return this.client.callTool<T>('create_knowledge_change', {
+      path: input.path,
+      proposed_content: input.proposedContent,
+      reason: input.reason,
+      run_id: input.runId ?? null,
+      node_id: input.nodeId ?? null,
+      agent_ref: input.agentRef ?? null,
+      source_channel_id: input.sourceChannelId ?? null,
+    })
+  }
+
   async getEscalation<T = unknown>(escalationId: string): Promise<T> {
     return this.client.callTool<T>('get_escalation', { escalation_id: escalationId })
   }

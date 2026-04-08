@@ -12,6 +12,7 @@ import {
 } from '../openclaw/bridge'
 import { executeTask } from '../openclaw/session'
 import { SemanticOrchestrator } from '../semantic/orchestrator'
+import { KnotworkMcpTransport } from '../transport/knotwork-mcp-transport'
 import { KnotworkRestTransport } from '../transport/knotwork-rest-transport'
 import { OpenClawThinkingRuntime } from '../transport/openclaw-thinking-runtime'
 import { isAuthError } from './auth'
@@ -176,6 +177,7 @@ function formatChannelSyncPrompt(
 export async function runClaimedTask(ctx: WorkerCtx, task: ExecutionTask, creds?: TaskCredentials): Promise<RecentTask | null> {
   const { state, api, log, rememberError, persistSnapshot, taskLog } = ctx
   const cfg = getConfig(api)
+  log(`runClaimedTask - api: ${api}`)
   const baseUrl = creds?.knotworkUrl ?? cfg.knotworkBackendUrl
   const workspaceId = creds?.workspaceId ?? cfg.workspaceId
   const instanceId = creds?.pluginInstanceId ?? state.pluginInstanceId
@@ -224,12 +226,19 @@ export async function runClaimedTask(ctx: WorkerCtx, task: ExecutionTask, creds?
     if (semanticEnabled && task.trigger) {
       try {
         usedSemanticPath = true
-        const semanticTransport = new KnotworkRestTransport({
-          baseUrl,
-          workspaceId,
-          jwt,
-          authorName: DEFAULT_AUTHOR_NAME,
-        })
+        const semanticTransport = cfg.knotworkTransportMode === 'mcp'
+          ? new KnotworkMcpTransport({
+              baseUrl,
+              workspaceId,
+              jwt,
+              authorName: DEFAULT_AUTHOR_NAME,
+            })
+          : new KnotworkRestTransport({
+              baseUrl,
+              workspaceId,
+              jwt,
+              authorName: DEFAULT_AUTHOR_NAME,
+            })
         const semanticRuntime = new OpenClawThinkingRuntime(api)
         const orchestrator = new SemanticOrchestrator(semanticRuntime, semanticTransport)
         const semanticOutcome = await orchestrator.run({

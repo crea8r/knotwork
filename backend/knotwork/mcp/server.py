@@ -2,12 +2,14 @@ from __future__ import annotations
 
 import json
 from typing import Any
+from urllib.parse import urlparse
 
 import httpx
 from mcp.server.auth.middleware.auth_context import get_access_token
 from mcp.server.auth.provider import AccessToken, TokenVerifier
 from mcp.server.auth.settings import AuthSettings
 from mcp.server.fastmcp import Context, FastMCP
+from mcp.server.transport_security import TransportSecuritySettings
 
 from knotwork.auth.service import decode_access_token
 from knotwork.config import settings
@@ -112,6 +114,34 @@ def _json_text(payload: Any) -> str:
     return json.dumps(payload, indent=2, sort_keys=True)
 
 
+def _mcp_transport_security_settings() -> TransportSecuritySettings:
+    backend = urlparse(settings.normalized_backend_url)
+    allowed_hosts = {
+        "127.0.0.1:*",
+        "localhost:*",
+        "[::1]:*",
+        # OpenClaw commonly runs in Docker and reaches the host backend through
+        # these names while local Knotwork advertises localhost externally.
+        "host.docker.internal:*",
+        "knotwork-local-backend-dev-1:*",
+    }
+    allowed_origins = {
+        "http://127.0.0.1:*",
+        "http://localhost:*",
+        "http://[::1]:*",
+        "http://host.docker.internal:*",
+        "http://knotwork-local-backend-dev-1:*",
+    }
+    if backend.netloc:
+        allowed_hosts.add(backend.netloc)
+        allowed_origins.add(f"{backend.scheme}://{backend.netloc}")
+    return TransportSecuritySettings(
+        enable_dns_rebinding_protection=True,
+        allowed_hosts=sorted(allowed_hosts),
+        allowed_origins=sorted(allowed_origins),
+    )
+
+
 def build_server(client: KnotworkAPIClient | None = None) -> FastMCP:
 
     mcp = FastMCP(
@@ -130,6 +160,7 @@ def build_server(client: KnotworkAPIClient | None = None) -> FastMCP:
             required_scopes=[],
         ),
         token_verifier=KnotworkTokenVerifier(),
+        transport_security=_mcp_transport_security_settings(),
     )
 
     def _client_from_context(ctx: Context | None) -> KnotworkAPIClient:
@@ -675,6 +706,24 @@ def build_server(client: KnotworkAPIClient | None = None) -> FastMCP:
             ctx,
             "GET",
             api.workspace_path(f"/channels/{channel_ref}/messages"),
+        )
+
+    @mcp.tool()
+    async def list_channel_assets(channel_ref: str, ctx: Context = None) -> Any:
+        api = _client_from_context(ctx)
+        return await _request(
+            ctx,
+            "GET",
+            api.workspace_path(f"/channels/{channel_ref}/assets"),
+        )
+
+    @mcp.tool()
+    async def list_my_channel_subscriptions(ctx: Context = None) -> Any:
+        api = _client_from_context(ctx)
+        return await _request(
+            ctx,
+            "GET",
+            api.workspace_path("/channels/subscriptions/me"),
         )
 
     @mcp.tool()

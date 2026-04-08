@@ -79,6 +79,10 @@ export function getConfig(api: OpenClawApi): PluginConfig {
       typeof merged.semanticActionStrictMode === 'boolean'
         ? merged.semanticActionStrictMode
         : (env('KNOTWORK_SEMANTIC_ACTION_STRICT_MODE') ?? 'false') === 'true',
+    knotworkTransportMode:
+      merged.knotworkTransportMode === 'mcp' || merged.knotworkTransportMode === 'rest'
+        ? merged.knotworkTransportMode
+        : (env('KNOTWORK_TRANSPORT_MODE') === 'mcp' ? 'mcp' : 'rest'),
   }
 }
 

@@ -40,6 +40,7 @@ export type PluginConfig = {
   taskPollIntervalMs?: number // inbox poll interval (reuses existing config key)
   semanticActionProtocolEnabled?: boolean
   semanticActionStrictMode?: boolean
+  knotworkTransportMode?: 'rest' | 'mcp'
 }
 
 export type RemoteTool = {
