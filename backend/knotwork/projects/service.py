@@ -785,6 +785,7 @@ async def list_project_channels(
             select(Channel.id).where(
                 Channel.workspace_id == workspace_id,
                 archive_filter,
+                Channel.channel_type == "objective",
                 Channel.objective_id.in_(objective_ids),
             )
         )

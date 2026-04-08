@@ -4,6 +4,7 @@ import { Link, useNavigate, useOutletContext, useParams } from 'react-router-dom
 import { usePostChannelMessage, useUpdateChannel } from '@/api/channels'
 import { useGraphs } from '@/api/graphs'
 import { ChannelContextPill, ChannelShell, ChannelTimeline } from '@/components/channel/ChannelFrame'
+import ChannelParticipantsPanel from '@/components/channel/ChannelParticipantsPanel'
 import WorkflowSlashComposer from '@/components/channel/WorkflowSlashComposer'
 import { useChannelTimeline } from '@/components/channel/useChannelTimeline'
 import { useMentionDetection } from '@/components/channel/useMentionDetection'
@@ -72,6 +73,7 @@ export default function ProjectChannelPage() {
         )}
         context={(
           <>
+            <ChannelParticipantsPanel workspaceId={workspaceId} channelId={item.channel.id} />
             {item.channel.graph_id ? <ChannelContextPill>Linked workflow</ChannelContextPill> : null}
           </>
         )}

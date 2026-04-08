@@ -16,6 +16,7 @@ import {
   useUploadProjectFile,
 } from '@/api/projects'
 import { ChannelShell, ChannelTimeline } from '@/components/channel/ChannelFrame'
+import ChannelParticipantsPanel from '@/components/channel/ChannelParticipantsPanel'
 import WorkflowSlashComposer from '@/components/channel/WorkflowSlashComposer'
 import { useChannelTimeline } from '@/components/channel/useChannelTimeline'
 import { useMentionDetection } from '@/components/channel/useMentionDetection'
@@ -545,6 +546,7 @@ export default function ProjectAssetsPage() {
               title={activeAssetChat.label}
               parentLabel={projectSlug}
               shellClassName="rounded-none border-0"
+              context={assetChatChannel?.id ? <ChannelParticipantsPanel workspaceId={workspaceId} channelId={assetChatChannel.id} /> : null}
             >
               <ChannelTimeline
                 items={assetTimeline}

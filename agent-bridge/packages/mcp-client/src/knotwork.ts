@@ -8,6 +8,7 @@ import type {
   JsonObject,
   KnotworkAgentDiscovery,
   KnotworkAuthSession,
+  KnotworkObjective,
   KnotworkStdioOptions,
   KnotworkTransportOptions,
   McpInitializeResult,
@@ -88,6 +89,25 @@ export class KnotworkMcpClient {
     return this.client.callTool<T>('get_workspace_overview')
   }
 
+  async listParticipants<T = unknown>(): Promise<T> {
+    return this.client.callTool<T>('list_participants')
+  }
+
+  async getCurrentMember<T = unknown>(): Promise<T> {
+    return this.client.callTool<T>('get_current_member')
+  }
+
+  async listMembers<T = unknown>(input?: { kind?: string | null; disabled?: boolean | null }): Promise<T> {
+    return this.client.callTool<T>('list_members', {
+      ...(input?.kind ? { kind: input.kind } : {}),
+      ...(input?.disabled !== undefined && input.disabled !== null ? { disabled: input.disabled } : {}),
+    })
+  }
+
+  async getProjectDashboard<T = unknown>(projectRef: string): Promise<T> {
+    return this.client.callTool<T>('get_project_dashboard', { project_ref: projectRef })
+  }
+
   async listOpenEscalations<T = unknown>(): Promise<T> {
     return this.client.callTool<T>('list_escalations', { status: 'open' })
   }
@@ -116,8 +136,39 @@ export class KnotworkMcpClient {
     return this.client.callTool<T>('get_channel', { channel_ref: channelRef })
   }
 
+  async getObjective<T = KnotworkObjective>(objectiveRef: string): Promise<T> {
+    return this.client.callTool<T>('get_objective', { objective_ref: objectiveRef })
+  }
+
+  async getObjectiveChain<T = KnotworkObjective[]>(objectiveRef: string): Promise<T> {
+    try {
+      return await this.client.callTool<T>('get_objective_chain', { objective_ref: objectiveRef })
+    } catch (error) {
+      if (!(error instanceof McpProtocolError)) {
+        throw error
+      }
+      const chain: KnotworkObjective[] = []
+      const seen = new Set<string>()
+      let currentRef: string | null = objectiveRef
+      while (currentRef) {
+        if (seen.has(currentRef)) {
+          throw new McpProtocolError(`Objective ancestry cycle detected at ${currentRef}`)
+        }
+        seen.add(currentRef)
+        const objective: KnotworkObjective = await this.getObjective<KnotworkObjective>(currentRef)
+        chain.push(objective)
+        currentRef = objective.parent_objective_id ?? null
+      }
+      return chain.reverse() as T
+    }
+  }
+
   async listChannelMessages<T = unknown>(channelRef: string): Promise<T> {
     return this.client.callTool<T>('list_channel_messages', { channel_ref: channelRef })
+  }
+
+  async listChannelParticipants<T = unknown>(channelRef: string): Promise<T> {
+    return this.client.callTool<T>('list_channel_participants', { channel_ref: channelRef })
   }
 
   async listChannelAssets<T = unknown>(channelRef: string): Promise<T> {

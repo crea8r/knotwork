@@ -1,5 +1,6 @@
 from uuid import uuid4
-from sqlalchemy import String, Integer, JSON, DateTime, ForeignKey, Text, text
+from sqlalchemy import Boolean, String, Integer, JSON, DateTime, ForeignKey, Text, text
+from sqlalchemy.ext.mutable import MutableList
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.sql import func
@@ -37,6 +38,14 @@ class WorkspaceMember(Base):
     kind: Mapped[str] = mapped_column(String(20), nullable=False, server_default=text("'human'"))
     # Agent-specific metadata (provider, agent_ref, last_heartbeat, etc.). Null for humans.
     agent_config: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    agent_zero_role: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("false"), default=False)
+    contribution_brief: Mapped[str | None] = mapped_column(Text, nullable=True)
+    availability_status: Mapped[str] = mapped_column(String(30), nullable=False, server_default=text("'available'"), default="available")
+    capacity_level: Mapped[str] = mapped_column(String(30), nullable=False, server_default=text("'open'"), default="open")
+    status_note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    current_commitments: Mapped[list | None] = mapped_column(MutableList.as_mutable(JSON), nullable=True)
+    recent_work: Mapped[list | None] = mapped_column(MutableList.as_mutable(JSON), nullable=True)
+    status_updated_at: Mapped[DateTime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     notification_prefs: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     access_disabled_at: Mapped[DateTime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[DateTime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)

@@ -18,6 +18,7 @@ import { useRuns } from '@/api/runs'
 import { projectPath } from '@/lib/paths'
 import { useAuthStore } from '@/store/auth'
 import { ChannelContextPill, ChannelShell, ChannelTimeline } from '@/components/channel/ChannelFrame'
+import ChannelParticipantsPanel from '@/components/channel/ChannelParticipantsPanel'
 import WorkflowSlashComposer from '@/components/channel/WorkflowSlashComposer'
 import { useChannelTimeline } from '@/components/channel/useChannelTimeline'
 import { useMentionDetection } from '@/components/channel/useMentionDetection'
@@ -37,6 +38,8 @@ function assetIcon(type: ChannelAssetType) {
       return <PlayCircle size={14} className="text-indigo-600" />
     case 'file':
       return <FileText size={14} className="text-emerald-600" />
+    case 'folder':
+      return <BookOpen size={14} className="text-amber-600" />
   }
 }
 
@@ -59,7 +62,7 @@ function channelTypeIcon(type: string | undefined) {
   }
 }
 
-function assetHref(asset: { asset_type: AssetType | 'folder'; asset_id: string; path: string | null }): string | null {
+function assetHref(asset: { asset_type: ChannelAssetType; asset_id: string; path: string | null }): string | null {
   switch (asset.asset_type) {
     case 'workflow':
       return `/graphs/${asset.asset_id}`
@@ -308,6 +311,7 @@ export default function ChannelDetailPage() {
         ) : null}
         context={(
           <>
+            {channel?.id ? <ChannelParticipantsPanel workspaceId={workspaceId} channelId={channel.id} locked={channel.channel_type === 'run'} /> : null}
             {assets.slice(0, 3).map((asset) => (
               <ChannelContextPill key={asset.id}>{asset.display_name}</ChannelContextPill>
             ))}

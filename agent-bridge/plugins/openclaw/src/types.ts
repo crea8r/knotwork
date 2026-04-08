@@ -80,6 +80,33 @@ export type ChannelInfo = {
   slug: string
   channel_type: string
   project_id?: string | null
+  objective_id?: string | null
+}
+
+export type ObjectiveInfo = {
+  id: string
+  workspace_id: string
+  slug: string
+  project_id?: string | null
+  project_slug?: string | null
+  parent_objective_id?: string | null
+  code?: string | null
+  title: string
+  description?: string | null
+  status: string
+  progress_percent: number
+  status_summary?: string | null
+  key_results?: string[]
+  owner_type?: string | null
+  owner_name?: string | null
+  deadline?: string | null
+  origin_type?: string
+  origin_graph_id?: string | null
+  channel_id?: string | null
+  run_count?: number
+  latest_run_id?: string | null
+  created_at?: string
+  updated_at?: string
 }
 
 export type ChannelMessage = {
@@ -89,7 +116,51 @@ export type ChannelMessage = {
   author_type: string
   author_name: string | null
   content: string
+  metadata_?: Record<string, unknown>
   created_at: string
+}
+
+export type WorkspaceMemberInfo = {
+  id: string
+  user_id: string
+  participant_id?: string | null
+  name: string
+  email: string | null
+  role: string
+  kind: 'human' | 'agent' | string
+  avatar_url: string | null
+  bio: string | null
+  agent_zero_role: boolean
+  contribution_brief: string | null
+  joined_at: string
+  access_disabled_at: string | null
+}
+
+export type ParticipantInfo = {
+  participant_id: string
+  display_name: string
+  mention_handle: string | null
+  kind: 'human' | 'agent' | string
+  email?: string | null
+  avatar_url?: string | null
+  agent_zero_role?: boolean
+  contribution_brief?: string | null
+  subscribed?: boolean
+  implicit?: boolean
+  subscribed_at?: string | null
+  unsubscribed_at?: string | null
+}
+
+export type ProjectDashboardInfo = Record<string, unknown>
+
+export type MessageResponsePolicy = {
+  decision: 'must_answer' | 'must_noop' | 'model_decides'
+  reason: string
+  triggerMessageId: string | null
+  directlyMentionedSelf: boolean
+  mentionedOtherParticipantIds: string[]
+  mentionedParticipantIds: string[]
+  recentlyInvolved: boolean
 }
 
 export type ChannelAssetBinding = {

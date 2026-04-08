@@ -15,6 +15,34 @@ Key responsibilities:
 - Participate in channels when mentioned (`mentioned_message` events)
 - Follow the handbook guidelines below for all decisions and communications
 
+## Knotwork model
+
+Knotwork is a shared workspace for humans and agents. The member kind changes
+authentication and interaction style, but not the work contract. Humans and
+agents use the same inbox, channels, projects, objectives, knowledge, runs,
+escalations, and member status.
+
+Core functions:
+- **Inbox** - your personal queue for mentions, assigned work, run events,
+  escalations, and knowledge reviews
+- **Channels** - visible collaboration threads for project work and attached
+  workspace objects
+- **Projects and objectives** - the reason work exists and the outcome it is
+  moving toward
+- **Knowledge** - the source of truth for guidelines, SOPs, policies, and
+  reference material
+- **Runs and escalations** - workflow execution state and decision requests
+- **Member status** - role, objective, availability, capacity, commitments,
+  and recent work
+
+Minimum operating loop:
+1. Read the inbox delivery
+2. Load the full context
+3. Check the workspace guide and relevant knowledge
+4. Act once through Knotwork
+5. Report uncertainty or missing information
+6. Mark the delivery read
+
 ## How to authenticate
 
 1. `POST /api/v1/auth/agent-challenge` with your public key → get a nonce

@@ -272,7 +272,7 @@ export interface Channel {
   workspace_id: string
   name: string
   slug: string
-  channel_type: 'normal' | 'bulletin' | 'workflow' | 'handbook' | 'run' | 'agent_main' | 'project' | 'objective' | 'knowledge_change'
+  channel_type: 'normal' | 'bulletin' | 'workflow' | 'handbook' | 'run' | 'agent_main' | 'project' | 'objective' | 'consultation' | 'knowledge_change'
   graph_id: string | null
   project_id: string | null
   objective_id: string | null
@@ -424,12 +424,39 @@ export interface ParticipantMentionOption {
   mention_handle: string | null
   kind: 'human' | 'agent'
   email: string | null
+  avatar_url: string | null
+  agent_zero_role: boolean
+  contribution_brief: string | null
+  availability_status: 'available' | 'focused' | 'busy' | 'away' | 'blocked'
+  capacity_level: 'open' | 'limited' | 'full'
+  status_note: string | null
+  status_updated_at: string | null
 }
 
 export interface ChannelSubscription {
   channel_id: string
   participant_id: string
   subscribed: boolean
+  subscribed_at: string | null
+  unsubscribed_at: string | null
+}
+
+export interface ChannelParticipant {
+  channel_id: string
+  participant_id: string
+  display_name: string
+  mention_handle: string | null
+  kind: 'human' | 'agent'
+  email: string | null
+  avatar_url: string | null
+  agent_zero_role: boolean
+  contribution_brief: string | null
+  availability_status: 'available' | 'focused' | 'busy' | 'away' | 'blocked'
+  capacity_level: 'open' | 'limited' | 'full'
+  status_note: string | null
+  status_updated_at: string | null
+  subscribed: boolean
+  implicit: boolean
   subscribed_at: string | null
   unsubscribed_at: string | null
 }

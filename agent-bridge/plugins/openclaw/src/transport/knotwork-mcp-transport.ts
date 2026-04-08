@@ -8,9 +8,14 @@ import type {
   EscalationInfo,
   KnowledgeFileSummary,
   KnowledgeFileWithContent,
+  MessageResponsePolicy,
+  ObjectiveInfo,
+  ParticipantInfo,
+  ProjectDashboardInfo,
   RunInfo,
   RunNodeStateInfo,
   TaskTrigger,
+  WorkspaceMemberInfo,
 } from '../types'
 
 type McpTransportParams = {
@@ -54,6 +59,118 @@ async function mcpList<T>(promise: Promise<unknown>): Promise<T[]> {
   const result = await mcpResult<T[] | T | null>(promise)
   if (result === null || result === undefined) return []
   return Array.isArray(result) ? result : [result]
+}
+
+function mentionTokens(value: string | null | undefined): string[] {
+  return Array.from(String(value ?? '').matchAll(/(?<!\w)@([A-Za-z0-9._-]+)/g)).map((match) => match[1].toLowerCase())
+}
+
+function participantAliases(participant: ParticipantInfo): Set<string> {
+  const aliases = new Set<string>()
+  const add = (value: string | null | undefined) => {
+    const normalized = String(value ?? '').toLowerCase().replace(/[^a-z0-9._-]+/g, '')
+    if (normalized) aliases.add(normalized)
+  }
+  add(participant.mention_handle)
+  add(participant.display_name)
+  for (const part of String(participant.display_name ?? '').split(/[^A-Za-z0-9._-]+/g)) add(part)
+  if (participant.email) add(participant.email.split('@', 1)[0])
+  return aliases
+}
+
+function metadataParticipantIds(message: ChannelMessage | null): string[] {
+  const raw = message?.metadata_?.mentioned_participant_ids
+  return Array.isArray(raw) ? raw.map((item) => String(item)).filter(Boolean) : []
+}
+
+function findTriggerMessage(trigger: TaskTrigger, messages: ChannelMessage[]): ChannelMessage | null {
+  const preview = String(trigger.subtitle ?? '').trim()
+  if (preview) {
+    const match = [...messages].reverse().find((message) => message.content.startsWith(preview))
+    if (match) return match
+  }
+  return messages[messages.length - 1] ?? null
+}
+
+function messageMentionParticipantIds(message: ChannelMessage | null, participants: ParticipantInfo[]): string[] {
+  const fromMetadata = metadataParticipantIds(message)
+  if (fromMetadata.length > 0) return fromMetadata
+  const tokens = new Set(mentionTokens(message?.content))
+  if (tokens.size === 0) return []
+  return participants
+    .filter((participant) => {
+      for (const alias of participantAliases(participant)) {
+        if (tokens.has(alias)) return true
+      }
+      return false
+    })
+    .map((participant) => participant.participant_id)
+}
+
+function authoredBySelf(message: ChannelMessage, agentSelf: WorkspaceMemberInfo | null): boolean {
+  if (!agentSelf) return false
+  const authorParticipantId = message.metadata_?.author_participant_id
+  if (typeof authorParticipantId === 'string' && authorParticipantId === agentSelf.participant_id) return true
+  return Boolean(message.author_name && message.author_name === agentSelf.name && message.author_type === 'agent')
+}
+
+function wasRecentlyInvolved(messages: ChannelMessage[], triggerMessage: ChannelMessage | null, agentSelf: WorkspaceMemberInfo | null): boolean {
+  if (!agentSelf) return false
+  const triggerIndex = triggerMessage ? messages.findIndex((message) => message.id === triggerMessage.id) : messages.length
+  const priorMessages = messages
+    .slice(Math.max(0, (triggerIndex < 0 ? messages.length : triggerIndex) - 8), triggerIndex < 0 ? messages.length : triggerIndex)
+  return priorMessages.some((message) => {
+    if (authoredBySelf(message, agentSelf)) return true
+    return metadataParticipantIds(message).includes(String(agentSelf.participant_id ?? ''))
+  })
+}
+
+export function buildMessageResponsePolicy(input: {
+  trigger: TaskTrigger
+  agentSelf: WorkspaceMemberInfo | null
+  participants: ParticipantInfo[]
+  messages: ChannelMessage[]
+}): MessageResponsePolicy | null {
+  if (input.trigger.type !== 'message_posted') return null
+  const triggerMessage = findTriggerMessage(input.trigger, input.messages)
+  const mentionedParticipantIds = messageMentionParticipantIds(triggerMessage, input.participants)
+  const selfId = String(input.agentSelf?.participant_id ?? '')
+  const directlyMentionedSelf = Boolean(selfId && mentionedParticipantIds.includes(selfId))
+  const mentionedOtherParticipantIds = mentionedParticipantIds.filter((id) => id !== selfId)
+  const recentlyInvolved = wasRecentlyInvolved(input.messages, triggerMessage, input.agentSelf)
+  if (directlyMentionedSelf) {
+    return {
+      decision: 'must_answer',
+      reason: 'message_posted directly mentions this agent',
+      triggerMessageId: triggerMessage?.id ?? null,
+      directlyMentionedSelf,
+      mentionedOtherParticipantIds,
+      mentionedParticipantIds,
+      recentlyInvolved,
+    }
+  }
+  if (mentionedOtherParticipantIds.length > 0) {
+    return {
+      decision: 'must_noop',
+      reason: 'message_posted mentions other participant(s), not this agent',
+      triggerMessageId: triggerMessage?.id ?? null,
+      directlyMentionedSelf,
+      mentionedOtherParticipantIds,
+      mentionedParticipantIds,
+      recentlyInvolved,
+    }
+  }
+  return {
+    decision: 'model_decides',
+    reason: recentlyInvolved
+      ? 'message_posted mentions nobody, but this agent was recently involved in the thread'
+      : 'message_posted mentions nobody; answer only if clearly in scope for this agent role/objective',
+    triggerMessageId: triggerMessage?.id ?? null,
+    directlyMentionedSelf,
+    mentionedOtherParticipantIds,
+    mentionedParticipantIds,
+    recentlyInvolved,
+  }
 }
 
 export class KnotworkMcpTransport implements KnotworkTransport {
@@ -119,12 +236,17 @@ export class KnotworkMcpTransport implements KnotworkTransport {
       ])
       return {
         trigger,
+        agentSelf: await mcpResult<WorkspaceMemberInfo>(client.getCurrentMember()).catch(() => null),
         channel: null,
         messages: [],
+        channelParticipants: [],
         channelAssets: [],
+        messageResponsePolicy: null,
         assetContext: {
           knowledgeFiles: [],
           folderFiles: [],
+          objectiveChain: [],
+          projectDashboard: null,
           run,
           runNodes,
           escalation,
@@ -133,9 +255,11 @@ export class KnotworkMcpTransport implements KnotworkTransport {
       }
     }
 
-    const [channel, messages, channelAssets] = await Promise.all([
+    const [agentSelf, channel, messages, channelParticipants, channelAssets] = await Promise.all([
+      mcpResult<WorkspaceMemberInfo>(client.getCurrentMember()).catch(() => null),
       mcpResult<ChannelInfo>(client.getChannel(channelId)),
       mcpList<ChannelMessage>(client.listChannelMessages(channelId)),
+      mcpList<ParticipantInfo>(client.listChannelParticipants(channelId)).catch(() => []),
       mcpList<ChannelAssetBinding>(client.listChannelAssets(channelId)).catch(() => []),
     ])
 
@@ -164,8 +288,13 @@ export class KnotworkMcpTransport implements KnotworkTransport {
     const effectiveRunId = typeof trigger.run_id === 'string' && trigger.run_id.trim()
       ? trigger.run_id.trim()
       : channelAssets.find((binding) => binding.asset_type === 'run')?.asset_id ?? null
+    const objectiveId = typeof channel.objective_id === 'string' && channel.objective_id.trim()
+      ? channel.objective_id.trim()
+      : null
 
-    const [run, runNodes, escalation] = await Promise.all([
+    const [objectiveChain, projectDashboard, run, runNodes, escalation] = await Promise.all([
+      objectiveId ? mcpList<ObjectiveInfo>(client.getObjectiveChain(objectiveId)).catch(() => []) : Promise.resolve([]),
+      projectId ? mcpResult<ProjectDashboardInfo>(client.getProjectDashboard(projectId)).catch(() => null) : Promise.resolve(null),
       effectiveRunId ? mcpResult<RunInfo>(client.getRun(effectiveRunId)).catch(() => null) : Promise.resolve(null),
       effectiveRunId ? mcpList<RunNodeStateInfo>(client.listRunNodes(effectiveRunId)).catch(() => []) : Promise.resolve([]),
       typeof trigger.escalation_id === 'string' && trigger.escalation_id.trim()
@@ -175,12 +304,22 @@ export class KnotworkMcpTransport implements KnotworkTransport {
 
     return {
       trigger,
+      agentSelf,
       channel,
       messages,
+      channelParticipants,
       channelAssets,
+      messageResponsePolicy: buildMessageResponsePolicy({
+        trigger,
+        agentSelf,
+        participants: channelParticipants,
+        messages,
+      }),
       assetContext: {
         knowledgeFiles: knowledgeFiles.filter(Boolean) as SemanticThinkingContext['assetContext']['knowledgeFiles'],
         folderFiles,
+        objectiveChain,
+        projectDashboard,
         run,
         runNodes,
         escalation,

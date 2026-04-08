@@ -6,6 +6,7 @@ import {
   archiveInboxDelivery,
   fetchChannel,
   fetchChannelMessages,
+  fetchObjectiveChain,
   getConfig,
   pollInbox,
   postChannelMessage,
@@ -22,6 +23,7 @@ import type {
   ExecutionTask,
   InboxEvent,
   OpenClawApi,
+  ObjectiveInfo,
   PluginState,
   RecentTask,
   RunningTaskInfo,
@@ -131,8 +133,9 @@ export function inboxEventToTask(event: InboxEvent, guideContent: string | null)
 
 function formatChannelSyncPrompt(
   event: InboxEvent,
-  channel: { id: string; name: string; slug: string; channel_type: string },
+  channel: { id: string; name: string; slug: string; channel_type: string; objective_id?: string | null },
   messages: Array<{ created_at: string; role: string; author_type: string; author_name: string | null; content: string }>,
+  objectiveChain: ObjectiveInfo[] = [],
 ): string {
   const recentMessages = messages
     .slice(-MAX_CHANNEL_MESSAGES)
@@ -144,6 +147,19 @@ function formatChannelSyncPrompt(
       ].join('\n')
     })
     .join('\n\n')
+  const objectiveContext = objectiveChain
+    .map((objective, index) => {
+      const label = index === objectiveChain.length - 1 ? 'current' : index === 0 ? 'root' : 'parent'
+      return [
+        `- ${label}: ${objective.code ? `${objective.code} ` : ''}${objective.title}`,
+        `  id: ${objective.id}`,
+        `  status: ${objective.status}, progress: ${objective.progress_percent}%`,
+        objective.status_summary ? `  summary: ${objective.status_summary}` : null,
+        objective.description ? `  description: ${objective.description}` : null,
+        objective.key_results?.length ? `  key results: ${objective.key_results.join('; ')}` : null,
+      ].filter((line) => line !== null).join('\n')
+    })
+    .join('\n')
 
   return [
     `## Channel sync`,
@@ -152,6 +168,11 @@ function formatChannelSyncPrompt(
     `Channel name: ${channel.name}`,
     `Channel slug: ${channel.slug}`,
     `Channel type: ${channel.channel_type}`,
+    channel.objective_id ? `Objective ID: ${channel.objective_id}` : null,
+    ``,
+    objectiveChain.length > 0 ? `## Objective chain context` : null,
+    objectiveChain.length > 0 ? `Root objective first; current objective last.` : null,
+    objectiveChain.length > 0 ? objectiveContext : null,
     ``,
     `## Inbox item`,
     `Type: ${event.item_type}`,
@@ -416,11 +437,14 @@ export async function pollAndRun(ctx: WorkerCtx): Promise<void> {
           fetchChannel(baseUrl, workspaceId, jwt, event.channel_id),
           fetchChannelMessages(baseUrl, workspaceId, jwt, event.channel_id),
         ])
+        const objectiveChain = channel.objective_id
+          ? await fetchObjectiveChain(baseUrl, workspaceId, jwt, channel.objective_id).catch(() => [])
+          : []
         task = {
           ...task,
-          user_prompt: formatChannelSyncPrompt(event, channel, messages),
+          user_prompt: formatChannelSyncPrompt(event, channel, messages, objectiveChain),
         }
-        log(`poll:channel-sync channel=${event.channel_id} messages=${messages.length}`)
+        log(`poll:channel-sync channel=${event.channel_id} messages=${messages.length} objectives=${objectiveChain.length}`)
       } catch (channelErr) {
         log(`poll:channel-sync-failed channel=${event.channel_id} error=${rememberError(channelErr)}`)
       }

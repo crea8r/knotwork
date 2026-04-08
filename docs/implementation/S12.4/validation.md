@@ -34,3 +34,9 @@
 1. Confirm the retest harness uses the test MCP private key.
 2. Confirm knowledge-change assertions accept both `path` and `target_path`.
 3. Confirm received-but-not-completed OpenClaw tasks report the delivery id and last observed heartbeat/status.
+
+## F. Shared Onboarding
+
+1. Confirm the agent-facing Markdown primer explains Knotwork, its core functions, and the minimum operating loop.
+2. Confirm Settings includes a human onboarding flow with the same conceptual steps.
+3. Confirm the human flow covers inbox, channels, projects/objectives, knowledge, runs/escalations, and member status without introducing a separate human-only contract.

@@ -11,6 +11,7 @@ import { useKnowledgeFolders, useDeleteFolder, useRenameFolder } from '@/api/fol
 import { useAssetChatChannel, usePostChannelMessage } from '@/api/channels'
 import { useAuthStore } from '@/store/auth'
 import { ChannelShell, ChannelTimeline } from '@/components/channel/ChannelFrame'
+import ChannelParticipantsPanel from '@/components/channel/ChannelParticipantsPanel'
 import WorkflowSlashComposer from '@/components/channel/WorkflowSlashComposer'
 import { useChannelTimeline } from '@/components/channel/useChannelTimeline'
 import { useMentionDetection } from '@/components/channel/useMentionDetection'
@@ -340,7 +341,12 @@ export default function HandbookPage() {
         openSidePanel={urlChat}
         sidePanelStorageKey="kw-handbook-asset-chat-open"
         sidePanel={
-          <ChannelShell title="Handbook Chat" parentLabel="Knowledge channel" shellClassName="rounded-none border-0">
+          <ChannelShell
+            title="Handbook Chat"
+            parentLabel="Knowledge channel"
+            shellClassName="rounded-none border-0"
+            context={handbookChannel?.id ? <ChannelParticipantsPanel workspaceId={workspaceId} channelId={handbookChannel.id} /> : null}
+          >
             <ChannelTimeline
               items={handbookTimeline}
               emptyState="No messages yet. Ask agents to help with handbook content."

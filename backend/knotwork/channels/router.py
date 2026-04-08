@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from knotwork.auth.deps import get_current_user, get_workspace_member
 from knotwork.auth.models import User
 from knotwork.channels import service
+from knotwork.channels.models import Channel, ChannelSubscription
 from knotwork.channels.schemas import (
     ChannelAssetBindingCreate,
     ChannelAssetBindingOut,
@@ -24,6 +25,7 @@ from knotwork.channels.schemas import (
     ChannelMessageCreate,
     ChannelMessageOut,
     ChannelOut,
+    ChannelParticipantOut,
     DecisionEventCreate,
     DecisionEventOut,
     InboxItem,
@@ -37,15 +39,37 @@ from knotwork.channels.schemas import (
 from knotwork.database import get_db
 from knotwork.notifications import service as notification_service
 from knotwork.participants import list_workspace_participants, member_participant_id, participant_kind
+from knotwork.workspaces.models import WorkspaceMember
 
 
 def _caller_participant_id(user: User, member: WorkspaceMember) -> str:
     """Return the participant_id for the calling workspace member."""
     return member_participant_id(member, user.id)
-from knotwork.workspaces.models import WorkspaceMember
 
 
 router = APIRouter(prefix="/workspaces", tags=["channels"])
+
+
+async def _require_consultation_access(
+    db: AsyncSession,
+    workspace_id: UUID,
+    channel: Channel,
+    user: User,
+    member: WorkspaceMember,
+) -> None:
+    if channel.channel_type != "consultation":
+        return
+    participant_id = _caller_participant_id(user, member)
+    row = await db.execute(
+        select(ChannelSubscription.id).where(
+            ChannelSubscription.workspace_id == workspace_id,
+            ChannelSubscription.channel_id == channel.id,
+            ChannelSubscription.participant_id == participant_id,
+            ChannelSubscription.unsubscribed_at.is_(None),
+        )
+    )
+    if row.scalar_one_or_none() is None:
+        raise HTTPException(status_code=404, detail="Channel not found")
 
 
 @router.get("/{workspace_id}/channels", response_model=list[ChannelOut])
@@ -72,11 +96,17 @@ async def list_participants(
 async def create_channel(
     workspace_id: UUID,
     data: ChannelCreate,
-    _member: WorkspaceMember = Depends(get_workspace_member),
+    user: User = Depends(get_current_user),
+    member: WorkspaceMember = Depends(get_workspace_member),
     db: AsyncSession = Depends(get_db),
 ):
     try:
-        ch = await service.create_channel(db, workspace_id, data)
+        ch = await service.create_channel(
+            db,
+            workspace_id,
+            data,
+            initial_participant_id=_caller_participant_id(user, member),
+        )
     except ValueError as e:
         raise HTTPException(400, str(e))
     return ChannelOut.model_validate(ch)
@@ -86,12 +116,35 @@ async def create_channel(
 async def get_channel(
     workspace_id: UUID,
     channel_ref: str,
-    _member: WorkspaceMember = Depends(get_workspace_member),
+    user: User = Depends(get_current_user),
+    member: WorkspaceMember = Depends(get_workspace_member),
     db: AsyncSession = Depends(get_db),
 ):
     ch = await service.get_channel(db, workspace_id, channel_ref)
     if not ch:
         raise HTTPException(404, "Channel not found")
+    await _require_consultation_access(db, workspace_id, ch, user, member)
+    return ChannelOut.model_validate(ch)
+
+
+@router.post("/{workspace_id}/objectives/{objective_id}/agentzero-consultation", response_model=ChannelOut, status_code=201)
+async def get_objective_agentzero_consultation(
+    workspace_id: UUID,
+    objective_id: UUID,
+    user: User = Depends(get_current_user),
+    member: WorkspaceMember = Depends(get_workspace_member),
+    db: AsyncSession = Depends(get_db),
+):
+    try:
+        ch = await service.get_or_create_objective_agentzero_consultation(
+            db,
+            workspace_id,
+            objective_id,
+            requester_member=member,
+            requester_user=user,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
     return ChannelOut.model_validate(ch)
 
 
@@ -199,14 +252,71 @@ async def remove_channel_asset(
 async def list_messages(
     workspace_id: UUID,
     channel_ref: str,
-    _member: WorkspaceMember = Depends(get_workspace_member),
+    user: User = Depends(get_current_user),
+    member: WorkspaceMember = Depends(get_workspace_member),
     db: AsyncSession = Depends(get_db),
 ):
     ch = await service.get_channel(db, workspace_id, channel_ref)
     if not ch:
         raise HTTPException(404, "Channel not found")
+    await _require_consultation_access(db, workspace_id, ch, user, member)
     rows = await service.list_messages(db, workspace_id, ch.id)
     return [ChannelMessageOut.model_validate(r) for r in rows]
+
+
+@router.get("/{workspace_id}/channels/{channel_ref}/participants", response_model=list[ChannelParticipantOut])
+async def list_channel_participants(
+    workspace_id: UUID,
+    channel_ref: str,
+    _member: WorkspaceMember = Depends(get_workspace_member),
+    db: AsyncSession = Depends(get_db),
+):
+    ch = await service.get_channel(db, workspace_id, channel_ref)
+    if not ch:
+        raise HTTPException(status_code=404, detail="Channel not found")
+    try:
+        rows = await service.list_channel_participants(db, workspace_id, ch.id)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    return [ChannelParticipantOut.model_validate(row) for row in rows]
+
+
+@router.patch("/{workspace_id}/channels/{channel_ref}/participants/{participant_id:path}", response_model=ChannelParticipantOut)
+async def update_channel_participant(
+    workspace_id: UUID,
+    channel_ref: str,
+    participant_id: str,
+    data: ChannelSubscriptionUpdate,
+    user: User = Depends(get_current_user),
+    member: WorkspaceMember = Depends(get_workspace_member),
+    db: AsyncSession = Depends(get_db),
+):
+    caller_participant_id = _caller_participant_id(user, member)
+    if participant_id != caller_participant_id and not data.subscribed and member.role != "owner":
+        raise HTTPException(status_code=403, detail="Only owners can remove other channel participants")
+
+    participants = await list_workspace_participants(db, workspace_id)
+    if not any(row["participant_id"] == participant_id for row in participants):
+        raise HTTPException(status_code=404, detail="Participant not found")
+
+    ch = await service.get_channel(db, workspace_id, channel_ref)
+    if not ch:
+        raise HTTPException(status_code=404, detail="Channel not found")
+    try:
+        await service.set_channel_subscription(
+            db,
+            workspace_id,
+            ch.id,
+            participant_id,
+            subscribed=data.subscribed,
+        )
+        rows = await service.list_channel_participants(db, workspace_id, ch.id)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    row = next((item for item in rows if item["participant_id"] == participant_id), None)
+    if row is None:
+        raise HTTPException(status_code=404, detail="Participant not found")
+    return ChannelParticipantOut.model_validate(row)
 
 
 @router.post("/{workspace_id}/channels/{channel_ref}/messages", response_model=ChannelMessageOut, status_code=201)
@@ -221,6 +331,7 @@ async def create_message(
     ch = await service.get_channel(db, workspace_id, channel_ref)
     if not ch:
         raise HTTPException(404, "Channel not found")
+    await _require_consultation_access(db, workspace_id, ch, user, member)
     payload_update = {
         "metadata": {
             **(data.metadata or {}),
@@ -238,12 +349,14 @@ async def create_message(
 async def list_decisions(
     workspace_id: UUID,
     channel_ref: str,
-    _member: WorkspaceMember = Depends(get_workspace_member),
+    user: User = Depends(get_current_user),
+    member: WorkspaceMember = Depends(get_workspace_member),
     db: AsyncSession = Depends(get_db),
 ):
     ch = await service.get_channel(db, workspace_id, channel_ref)
     if not ch:
         raise HTTPException(404, "Channel not found")
+    await _require_consultation_access(db, workspace_id, ch, user, member)
     rows = await service.list_decisions(db, workspace_id, ch.id)
     return [DecisionEventOut.model_validate(r) for r in rows]
 

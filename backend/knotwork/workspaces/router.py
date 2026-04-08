@@ -4,7 +4,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
-from sqlalchemy import select, func
+from sqlalchemy import select, func, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from knotwork.auth.deps import get_current_user, get_workspace_member, require_owner
@@ -32,6 +32,14 @@ class MemberOut(BaseModel):
     kind: str  # 'human' | 'agent'
     avatar_url: str | None
     bio: str | None
+    agent_zero_role: bool = False
+    contribution_brief: str | None = None
+    availability_status: str = "available"
+    capacity_level: str = "open"
+    status_note: str | None = None
+    current_commitments: list[dict] = Field(default_factory=list)
+    recent_work: list[dict] = Field(default_factory=list)
+    status_updated_at: str | None = None
     joined_at: str
     access_disabled_at: str | None = None
 
@@ -50,7 +58,37 @@ class MembersPage(BaseModel):
 
 
 class UpdateMemberAccessIn(BaseModel):
-    access_disabled: bool
+    access_disabled: bool | None = None
+    agent_zero_role: bool | None = None
+    contribution_brief: str | None = Field(default=None, max_length=500)
+    availability_status: str | None = Field(default=None, pattern="^(available|focused|busy|away|blocked)$")
+    capacity_level: str | None = Field(default=None, pattern="^(open|limited|full)$")
+    status_note: str | None = Field(default=None, max_length=500)
+    current_commitments: list[dict] | None = None
+    recent_work: list[dict] | None = None
+
+
+def _member_out(member: WorkspaceMember, user: User) -> MemberOut:
+    return MemberOut(
+        id=str(member.id),
+        user_id=str(user.id),
+        name=user.name,
+        email=user.email,
+        role=member.role,
+        kind=member.kind,
+        avatar_url=user.avatar_url,
+        bio=user.bio,
+        agent_zero_role=bool(member.agent_zero_role),
+        contribution_brief=member.contribution_brief,
+        availability_status=member.availability_status or "available",
+        capacity_level=member.capacity_level or "open",
+        status_note=member.status_note,
+        current_commitments=member.current_commitments or [],
+        recent_work=member.recent_work or [],
+        status_updated_at=member.status_updated_at.isoformat() if member.status_updated_at else None,
+        joined_at=member.created_at.isoformat(),
+        access_disabled_at=member.access_disabled_at.isoformat() if member.access_disabled_at else None,
+    )
 
 
 class WorkspaceEmailConfigOut(BaseModel):
@@ -137,21 +175,26 @@ async def list_workspace_members(
         )
     rows = await db.execute(member_query)
     items = [
-        MemberOut(
-            id=str(m.id),
-            user_id=str(u.id),
-            name=u.name,
-            email=u.email,
-            role=m.role,
-            kind=m.kind,
-            avatar_url=u.avatar_url,
-            bio=u.bio,
-            joined_at=m.created_at.isoformat(),
-            access_disabled_at=m.access_disabled_at.isoformat() if m.access_disabled_at else None,
-        )
+        _member_out(m, u)
         for m, u in rows.all()
     ]
     return MembersPage(items=items, total=total, page=page, page_size=page_size)
+
+
+@router.get("/{workspace_id}/members/{member_id}", response_model=MemberOut)
+async def get_workspace_member_detail(
+    workspace_id: UUID,
+    member_id: UUID,
+    _member: WorkspaceMember = Depends(get_workspace_member),
+    db: AsyncSession = Depends(get_db),
+) -> MemberOut:
+    member = await db.get(WorkspaceMember, member_id)
+    if member is None or member.workspace_id != workspace_id:
+        raise HTTPException(status_code=404, detail="Member not found")
+    user = await db.get(User, member.user_id)
+    if user is None:
+        raise HTTPException(status_code=404, detail="User not found")
+    return _member_out(member, user)
 
 
 @router.patch("/{workspace_id}/members/{member_id}", response_model=MemberOut)
@@ -159,33 +202,74 @@ async def update_workspace_member_access(
     workspace_id: UUID,
     member_id: UUID,
     data: UpdateMemberAccessIn,
-    owner_member: WorkspaceMember = Depends(require_owner),
+    user: User = Depends(get_current_user),
+    caller_member: WorkspaceMember = Depends(get_workspace_member),
     db: AsyncSession = Depends(get_db),
 ) -> MemberOut:
     member = await db.get(WorkspaceMember, member_id)
     if member is None or member.workspace_id != workspace_id:
         raise HTTPException(status_code=404, detail="Member not found")
-    if member.user_id == owner_member.user_id:
+    profile_fields_present = any(
+        value is not None
+        for value in (
+            data.contribution_brief,
+            data.availability_status,
+            data.capacity_level,
+            data.status_note,
+            data.current_commitments,
+            data.recent_work,
+        )
+    )
+    if data.access_disabled is None and data.agent_zero_role is None and not profile_fields_present:
+        raise HTTPException(status_code=400, detail="No member update provided")
+    is_owner = caller_member.role == "owner"
+    if (data.access_disabled is not None or data.agent_zero_role is not None) and not is_owner:
+        raise HTTPException(status_code=403, detail="Only owners can update member access or AgentZero role")
+    if data.access_disabled is True and member.user_id == caller_member.user_id:
         raise HTTPException(status_code=400, detail="Owners cannot disable their own access")
+    if profile_fields_present and member.user_id != user.id and not is_owner:
+        raise HTTPException(status_code=403, detail="Only owners can update another member's profile")
 
-    member.access_disabled_at = datetime.now(timezone.utc) if data.access_disabled else None
+    if data.access_disabled is not None:
+        member.access_disabled_at = datetime.now(timezone.utc) if data.access_disabled else None
+    if data.agent_zero_role is not None:
+        if data.agent_zero_role:
+            await db.execute(
+                update(WorkspaceMember)
+                .where(
+                    WorkspaceMember.workspace_id == workspace_id,
+                    WorkspaceMember.id != member.id,
+                    WorkspaceMember.agent_zero_role.is_(True),
+                )
+                .values(agent_zero_role=False)
+            )
+        member.agent_zero_role = data.agent_zero_role
+    if data.contribution_brief is not None:
+        member.contribution_brief = data.contribution_brief.strip() or None
+    status_changed = False
+    if data.availability_status is not None:
+        member.availability_status = data.availability_status
+        status_changed = True
+    if data.capacity_level is not None:
+        member.capacity_level = data.capacity_level
+        status_changed = True
+    if data.status_note is not None:
+        member.status_note = data.status_note.strip() or None
+        status_changed = True
+    if data.current_commitments is not None:
+        member.current_commitments = data.current_commitments
+        status_changed = True
+    if data.recent_work is not None:
+        member.recent_work = data.recent_work
+        status_changed = True
+    if status_changed:
+        member.status_updated_at = datetime.now(timezone.utc)
     await db.commit()
     user = await db.get(User, member.user_id)
     if user is None:
         raise HTTPException(status_code=404, detail="User not found")
     await db.refresh(member)
-    return MemberOut(
-        id=str(member.id),
-        user_id=str(user.id),
-        name=user.name,
-        email=user.email,
-        role=member.role,
-        kind=member.kind,
-        avatar_url=user.avatar_url,
-        bio=user.bio,
-        joined_at=member.created_at.isoformat(),
-        access_disabled_at=member.access_disabled_at.isoformat() if member.access_disabled_at else None,
-    )
+    return _member_out(member, user)
 
 
 @router.post("")
@@ -297,18 +381,7 @@ async def add_workspace_member(
     await db.commit()
     await db.refresh(member)
 
-    return MemberOut(
-        id=str(member.id),
-        user_id=str(user.id),
-        name=user.name,
-        email=None,
-        role=member.role,
-        kind=member.kind,
-        avatar_url=user.avatar_url,
-        bio=user.bio,
-        joined_at=member.created_at.isoformat(),
-        access_disabled_at=None,
-    )
+    return _member_out(member, user)
 
 
 @router.get("/{workspace_id}/guide", response_model=WorkspaceGuideOut)

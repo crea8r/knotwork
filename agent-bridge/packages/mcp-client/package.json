@@ -1,6 +1,6 @@
 {
   "name": "@knotwork/mcp-client",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Reusable TypeScript MCP client for connecting agents to Knotwork",
   "private": false,
   "type": "module",

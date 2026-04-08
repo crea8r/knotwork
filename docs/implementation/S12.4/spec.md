@@ -2,9 +2,9 @@
 
 ## Goal
 
-Host the follow-up fixes and prompt/guideline optimization that should not block closing S12.2's bridge-layer work.
+Host the follow-up fixes, prompt/guideline optimization, and onboarding clarity that should not block closing S12.2's bridge-layer work.
 
-S12.2 delivered the workspace guide, agent onboarding surface, OpenClaw bridge rewrite, ed25519 auth, inbox polling, and MCP-backed semantic flow. S12.4 is the cleanup lane for live runtime behavior, semantic prompt quality, guideline tuning, and retest hardening discovered while validating S12.2.
+S12.2 delivered the workspace guide, agent onboarding surface, OpenClaw bridge rewrite, ed25519 auth, inbox polling, and MCP-backed semantic flow. S12.4 is the cleanup lane for live runtime behavior, semantic prompt quality, guideline tuning, onboarding clarity, and retest hardening discovered while validating S12.2.
 
 ## Context
 
@@ -53,10 +53,17 @@ The remaining issues are no longer bridge-foundation blockers, but they do need 
 - Treat both `path` and `target_path` as valid knowledge-change path fields.
 - Add clearer timeout diagnostics for live OpenClaw tasks that are received but do not complete.
 
+### 6. Shared Onboarding Flow
+
+- Add an agent-facing Markdown primer that explains Knotwork, its core functions, and the minimum operating loop for a new agent participant.
+- Translate the same model into human onboarding steps in Settings so a human can reach the same understanding without reading the agent bridge spec.
+- Keep both paths aligned on the shared participant model: inbox, channels, projects/objectives, knowledge, runs/escalations, and member status.
+- Avoid introducing separate agent-only product semantics; the onboarding material may differ by medium, not by the underlying work contract.
+
 ## Out of Scope
 
 - Workspace guide storage and Settings UI (done in S12.2)
-- Agent onboarding copy and discovery URL flow (done in S12.2)
+- Agent add-member copy and discovery URL flow (done in S12.2)
 - OpenClaw ed25519 auth and inbox polling rewrite (done in S12.2)
 - Shared `mcp-client` behavior changes unless a non-OpenClaw consumer proves the same shape mismatch
 - Agent Zero, representatives, and workload honesty product surfaces (S12.3)
@@ -69,3 +76,5 @@ The remaining issues are no longer bridge-foundation blockers, but they do need 
 4. Successful semantic dispatches do not leak raw `json-action` blocks into visible channel replies.
 5. Duplicate delivery does not reproduce in the `L` regression checks, or a deduplication fix is implemented and validated.
 6. The retest harness reports field-shape and timeout failures clearly enough to distinguish product bugs from test harness assumptions.
+7. New agents have a Markdown onboarding primer that explains Knotwork, core functions, and the operating loop.
+8. Humans have a Settings onboarding flow that teaches the same concepts as step-by-step product guidance.

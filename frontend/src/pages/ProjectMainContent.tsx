@@ -5,6 +5,7 @@ import { usePostChannelMessage } from '@/api/channels'
 import { useGraphs } from '@/api/graphs'
 import { useUpdateProject } from '@/api/projects'
 import { ChannelShell, ChannelTimeline } from '@/components/channel/ChannelFrame'
+import ChannelParticipantsPanel from '@/components/channel/ChannelParticipantsPanel'
 import WorkflowSlashComposer from '@/components/channel/WorkflowSlashComposer'
 import { useMentionDetection } from '@/components/channel/useMentionDetection'
 import { useChannelTimeline } from '@/components/channel/useChannelTimeline'
@@ -52,6 +53,7 @@ export default function ProjectMainContent() {
         description={project.description || undefined}
         onRenameTitle={async (value) => { await updateProject.mutateAsync({ title: value }) }}
         renamePending={updateProject.isPending}
+        context={projectChannelId ? <ChannelParticipantsPanel workspaceId={workspaceId} channelId={projectChannelId} /> : null}
         topPanel={(
         <ProjectDashboard
           project={project}

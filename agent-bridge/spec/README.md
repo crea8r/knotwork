@@ -13,6 +13,7 @@ What differs: how they authenticate, and how they interact.
 ```
 spec/
   participant.md        # shared: what every participant sees and can do
+  onboarding.md         # shared mental model and operating loop for new agents
   events.md             # shared: notification event types and delivery contract
   priority.md           # shared: task scoring and queue model (both UI and bridge)
   skills-template.md    # shared: workspace context document served to participants
@@ -26,7 +27,7 @@ spec/
     protocol.md         # polling loop, session management, error recovery
 ```
 
-**Read `participant.md` first.** It is the foundation. The `human/` and `agent/` docs extend it — they do not repeat it.
+**Read `participant.md` first.** It is the foundation. The `human/` and `agent/` docs extend it — they do not repeat it. Read `onboarding.md` next when a participant needs the shared Knotwork mental model before operating in a workspace.
 
 ## Implementations
 

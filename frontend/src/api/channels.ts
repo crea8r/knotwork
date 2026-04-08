@@ -3,6 +3,7 @@ import type {
   Channel,
   ChannelAssetBinding,
   ChannelMessage,
+  ChannelParticipant,
   ChannelSubscription,
   DecisionEvent,
   InboxItem,
@@ -100,6 +101,21 @@ export function useAssetChatChannel(
   })
 }
 
+export function useObjectiveAgentZeroConsultation(workspaceId: string, objectiveId: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: () =>
+      api
+        .post<Channel>(`/workspaces/${workspaceId}/objectives/${objectiveId}/agentzero-consultation`)
+        .then((r) => r.data),
+    onSuccess: (channel) => {
+      qc.setQueryData(['channel', workspaceId, channel.id], channel)
+      qc.invalidateQueries({ queryKey: ['channel-messages', workspaceId, channel.id] })
+      qc.invalidateQueries({ queryKey: ['channel-decisions', workspaceId, channel.id] })
+    },
+  })
+}
+
 export function useChannelParticipants(workspaceId: string) {
   return useQuery({
     queryKey: ['channel-participants', workspaceId],
@@ -132,6 +148,36 @@ export function useUpdateMyChannelSubscription(workspaceId: string) {
         .then((r) => r.data),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['channel-subscriptions', workspaceId] })
+      qc.invalidateQueries({ queryKey: ['channel-participant-list', workspaceId] })
+    },
+  })
+}
+
+export function useChannelParticipantList(workspaceId: string, channelId: string) {
+  return useQuery({
+    queryKey: ['channel-participant-list', workspaceId, channelId],
+    queryFn: () =>
+      api
+        .get<ChannelParticipant[]>(`/workspaces/${workspaceId}/channels/${channelId}/participants`)
+        .then((r) => r.data),
+    enabled: !!workspaceId && !!channelId,
+  })
+}
+
+export function useUpdateChannelParticipant(workspaceId: string, channelId: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (payload: { participantId: string; subscribed: boolean }) =>
+      api
+        .patch<ChannelParticipant>(
+          `/workspaces/${workspaceId}/channels/${channelId}/participants/${encodeURIComponent(payload.participantId)}`,
+          { subscribed: payload.subscribed },
+        )
+        .then((r) => r.data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['channel-participant-list', workspaceId, channelId] })
+      qc.invalidateQueries({ queryKey: ['channel-subscriptions', workspaceId] })
+      qc.invalidateQueries({ queryKey: ['inbox-summary', workspaceId] })
     },
   })
 }
@@ -174,7 +220,7 @@ export function useUpdateParticipantDeliveryPreference(workspaceId: string, part
 export function useCreateChannel(workspaceId: string) {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (payload: { name: string; channel_type?: 'normal' | 'workflow' | 'handbook'; graph_id?: string; project_id?: string; objective_id?: string }) =>
+    mutationFn: (payload: { name: string; channel_type?: 'normal' | 'workflow' | 'handbook' | 'project' | 'objective' | 'consultation'; graph_id?: string; project_id?: string; objective_id?: string }) =>
       api.post<Channel>(`/workspaces/${workspaceId}/channels`, payload).then((r) => r.data),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['channels', workspaceId] })

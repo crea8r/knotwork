@@ -5,6 +5,7 @@ import type {
   ChannelAssetBinding,
   ChannelInfo,
   ChannelMessage,
+  ParticipantInfo,
   ChannelSubscription,
   EscalationInfo,
   InboxEvent,
@@ -12,12 +13,15 @@ import type {
   KnowledgeFileSummary,
   KnowledgeFileWithContent,
   LooseRecord,
+  ObjectiveInfo,
   OpenClawApi,
   PluginConfig,
+  ProjectDashboardInfo,
   RemoteAgent,
   RemoteTool,
   RunInfo,
   RunNodeStateInfo,
+  WorkspaceMemberInfo,
 } from '../types'
 import { readFileSync } from 'node:fs'
 
@@ -237,8 +241,50 @@ export async function fetchChannelMessages(baseUrl: string, workspaceId: string,
   return httpGet(`${baseUrl}/api/v1/workspaces/${workspaceId}/channels/${channelRef}/messages`, jwt)
 }
 
+export async function fetchChannelParticipants(baseUrl: string, workspaceId: string, jwt: string, channelRef: string): Promise<ParticipantInfo[]> {
+  return httpGet(`${baseUrl}/api/v1/workspaces/${workspaceId}/channels/${channelRef}/participants`, jwt)
+}
+
 export async function fetchChannelAssets(baseUrl: string, workspaceId: string, jwt: string, channelRef: string): Promise<ChannelAssetBinding[]> {
   return httpGet(`${baseUrl}/api/v1/workspaces/${workspaceId}/channels/${channelRef}/assets`, jwt)
+}
+
+export async function fetchCurrentMember(baseUrl: string, workspaceId: string, jwt: string): Promise<WorkspaceMemberInfo> {
+  const user = await httpGet<{ id: string }>(`${baseUrl}/api/v1/auth/me`, jwt)
+  const page = await httpGet<{ items?: WorkspaceMemberInfo[] }>(
+    `${baseUrl}/api/v1/workspaces/${workspaceId}/members?page_size=100`,
+    jwt,
+  )
+  const member = (page.items ?? []).find((item) => item.user_id === user.id)
+  if (!member) throw new Error('Current user is not a member of this workspace')
+  return {
+    ...member,
+    participant_id: `${member.kind}:${member.id}`,
+  }
+}
+
+export async function fetchObjective(baseUrl: string, workspaceId: string, jwt: string, objectiveRef: string): Promise<ObjectiveInfo> {
+  return httpGet(`${baseUrl}/api/v1/workspaces/${workspaceId}/objectives/${objectiveRef}`, jwt)
+}
+
+export async function fetchObjectiveChain(baseUrl: string, workspaceId: string, jwt: string, objectiveRef: string): Promise<ObjectiveInfo[]> {
+  const chain: ObjectiveInfo[] = []
+  const seen = new Set<string>()
+  let currentRef: string | null = objectiveRef
+
+  while (currentRef) {
+    if (seen.has(currentRef)) throw new Error(`Objective ancestry cycle detected at ${currentRef}`)
+    seen.add(currentRef)
+    const objective = await fetchObjective(baseUrl, workspaceId, jwt, currentRef)
+    chain.push(objective)
+    currentRef = objective.parent_objective_id ?? null
+  }
+
+  return chain.reverse()
+}
+
+export async function fetchProjectDashboard(baseUrl: string, workspaceId: string, jwt: string, projectRef: string): Promise<ProjectDashboardInfo> {
+  return httpGet(`${baseUrl}/api/v1/workspaces/${workspaceId}/projects/${projectRef}/dashboard`, jwt)
 }
 
 export async function fetchMyChannelSubscriptions(baseUrl: string, workspaceId: string, jwt: string): Promise<ChannelSubscription[]> {

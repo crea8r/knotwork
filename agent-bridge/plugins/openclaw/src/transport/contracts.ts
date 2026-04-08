@@ -5,9 +5,14 @@ import type {
   EscalationInfo,
   KnowledgeFileSummary,
   KnowledgeFileWithContent,
+  MessageResponsePolicy,
+  ObjectiveInfo,
+  ParticipantInfo,
+  ProjectDashboardInfo,
   RunInfo,
   RunNodeStateInfo,
   TaskTrigger,
+  WorkspaceMemberInfo,
 } from '../types'
 
 export type SemanticCapabilitySnapshot = {
@@ -23,12 +28,17 @@ export type SemanticCapabilitySnapshot = {
 
 export type SemanticThinkingContext = {
   trigger: TaskTrigger
+  agentSelf: WorkspaceMemberInfo | null
   channel: ChannelInfo | null
   messages: ChannelMessage[]
+  channelParticipants: ParticipantInfo[]
   channelAssets: ChannelAssetBinding[]
+  messageResponsePolicy: MessageResponsePolicy | null
   assetContext: {
     knowledgeFiles: KnowledgeFileWithContent[]
     folderFiles: Array<{ binding: ChannelAssetBinding; files: KnowledgeFileSummary[] }>
+    objectiveChain: ObjectiveInfo[]
+    projectDashboard: ProjectDashboardInfo | null
     run: RunInfo | null
     runNodes: RunNodeStateInfo[]
     escalation: EscalationInfo | null

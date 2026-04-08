@@ -51,6 +51,14 @@ export interface MemberOut {
   kind: string          // 'human' | 'agent'
   avatar_url: string | null
   bio: string | null
+  agent_zero_role: boolean
+  contribution_brief: string | null
+  availability_status: 'available' | 'focused' | 'busy' | 'away' | 'blocked'
+  capacity_level: 'open' | 'limited' | 'full'
+  status_note: string | null
+  current_commitments: Array<Record<string, unknown>>
+  recent_work: Array<Record<string, unknown>>
+  status_updated_at: string | null
   joined_at: string
   access_disabled_at: string | null
 }
@@ -162,12 +170,31 @@ export function useWorkspaceMembers(
 export function useUpdateWorkspaceMember(workspaceId: string | null) {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (data: { memberId: string; access_disabled: boolean }) =>
+    mutationFn: (data: {
+      memberId: string
+      access_disabled?: boolean
+      agent_zero_role?: boolean
+      contribution_brief?: string
+      availability_status?: MemberOut['availability_status']
+      capacity_level?: MemberOut['capacity_level']
+      status_note?: string
+      current_commitments?: Array<Record<string, unknown>>
+      recent_work?: Array<Record<string, unknown>>
+    }) =>
       api.patch<MemberOut>(`/workspaces/${workspaceId}/members/${data.memberId}`, {
-        access_disabled: data.access_disabled,
+        ...(data.access_disabled === undefined ? {} : { access_disabled: data.access_disabled }),
+        ...(data.agent_zero_role === undefined ? {} : { agent_zero_role: data.agent_zero_role }),
+        ...(data.contribution_brief === undefined ? {} : { contribution_brief: data.contribution_brief }),
+        ...(data.availability_status === undefined ? {} : { availability_status: data.availability_status }),
+        ...(data.capacity_level === undefined ? {} : { capacity_level: data.capacity_level }),
+        ...(data.status_note === undefined ? {} : { status_note: data.status_note }),
+        ...(data.current_commitments === undefined ? {} : { current_commitments: data.current_commitments }),
+        ...(data.recent_work === undefined ? {} : { recent_work: data.recent_work }),
       }).then((r) => r.data),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['workspaces', workspaceId, 'members'] })
+      qc.invalidateQueries({ queryKey: ['channel-participants', workspaceId] })
+      qc.invalidateQueries({ queryKey: ['channel-participant-list', workspaceId] })
     },
   })
 }

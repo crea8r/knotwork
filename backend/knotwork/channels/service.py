@@ -1,27 +1,31 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from types import SimpleNamespace
 from uuid import UUID
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from knotwork.auth.models import User
 from knotwork.channels.models import Channel, ChannelAssetBinding, ChannelEvent, ChannelMessage, ChannelSubscription, DecisionEvent
 from knotwork.channels.schemas import ChannelCreate, ChannelMessageCreate, ChannelUpdate, DecisionEventCreate
 from knotwork.graphs.models import Graph
 from knotwork.knowledge.models import KnowledgeChange, KnowledgeFile, KnowledgeFolder
 from knotwork.notifications import service as notification_service
 from knotwork.notifications.models import EventDelivery
-from knotwork.projects.models import Project
+from knotwork.projects.models import Objective, Project
 from knotwork.participants import (
     agent_participant_id,
     list_workspace_agent_participants,
     list_workspace_human_participants,
+    member_participant_id,
     resolve_mentioned_participants,
 )
 from knotwork.runs.models import Run
 from knotwork.escalations.models import Escalation
 from knotwork.utils.slugs import make_slug_candidate, parse_uuid_ref
+from knotwork.workspaces.models import WorkspaceMember
 
 
 async def _generate_channel_slug(db: AsyncSession, name: str) -> str:
@@ -163,12 +167,13 @@ async def ensure_default_channel_subscriptions(
         )
     )
     existing = {(row[0], row[1]) for row in existing_rows.all()}
+    channels_with_explicit_rows = {row[0] for row in existing}
 
     created = False
     for target_channel_id in channel_ids:
+        if target_channel_id in channels_with_explicit_rows:
+            continue
         for participant_id in participant_ids:
-            if (target_channel_id, participant_id) in existing:
-                continue
             db.add(
                 ChannelSubscription(
                     workspace_id=workspace_id,
@@ -180,6 +185,125 @@ async def ensure_default_channel_subscriptions(
 
     if created:
         await db.commit()
+
+
+async def _active_channel_participant_ids(
+    db: AsyncSession,
+    workspace_id: UUID,
+    channel_id: UUID,
+) -> set[str]:
+    rows = await db.execute(
+        select(ChannelSubscription.participant_id, ChannelSubscription.unsubscribed_at).where(
+            ChannelSubscription.workspace_id == workspace_id,
+            ChannelSubscription.channel_id == channel_id,
+        )
+    )
+    subscriptions = list(rows.all())
+    if not subscriptions:
+        participants = await list_workspace_human_participants(db, workspace_id)
+        participants.extend(await list_workspace_agent_participants(db, workspace_id))
+        return {participant["participant_id"] for participant in participants}
+    return {participant_id for participant_id, unsubscribed_at in subscriptions if unsubscribed_at is None}
+
+
+async def list_channel_participants(
+    db: AsyncSession,
+    workspace_id: UUID,
+    channel_id: UUID,
+) -> list[dict]:
+    channel = await db.get(Channel, channel_id)
+    if channel is None or channel.workspace_id != workspace_id or channel.archived_at is not None:
+        raise ValueError("Channel not found")
+
+    participants = await list_workspace_human_participants(db, workspace_id)
+    participants.extend(await list_workspace_agent_participants(db, workspace_id))
+    participants_by_id = {participant["participant_id"]: participant for participant in participants}
+
+    rows = await db.execute(
+        select(ChannelSubscription).where(
+            ChannelSubscription.workspace_id == workspace_id,
+            ChannelSubscription.channel_id == channel_id,
+        )
+    )
+    subscriptions = list(rows.scalars())
+    if not subscriptions:
+        return [
+            {
+                "channel_id": channel_id,
+                "participant_id": participant["participant_id"],
+                "display_name": participant["display_name"],
+                "mention_handle": participant.get("mention_handle"),
+                "kind": participant["kind"],
+                "email": participant.get("email"),
+                "avatar_url": participant.get("avatar_url"),
+                "agent_zero_role": bool(participant.get("agent_zero_role")),
+                "contribution_brief": participant.get("contribution_brief"),
+                "availability_status": participant.get("availability_status") or "available",
+                "capacity_level": participant.get("capacity_level") or "open",
+                "status_note": participant.get("status_note"),
+                "status_updated_at": participant.get("status_updated_at"),
+                "subscribed": True,
+                "implicit": True,
+                "subscribed_at": None,
+                "unsubscribed_at": None,
+            }
+            for participant in participants
+        ]
+
+    out: list[dict] = []
+    seen: set[str] = set()
+    for subscription in subscriptions:
+        participant = participants_by_id.get(subscription.participant_id)
+        if participant is None:
+            continue
+        seen.add(subscription.participant_id)
+        out.append(
+            {
+                "channel_id": channel_id,
+                "participant_id": subscription.participant_id,
+                "display_name": participant["display_name"],
+                "mention_handle": participant.get("mention_handle"),
+                "kind": participant["kind"],
+                "email": participant.get("email"),
+                "avatar_url": participant.get("avatar_url"),
+                "agent_zero_role": bool(participant.get("agent_zero_role")),
+                "contribution_brief": participant.get("contribution_brief"),
+                "availability_status": participant.get("availability_status") or "available",
+                "capacity_level": participant.get("capacity_level") or "open",
+                "status_note": participant.get("status_note"),
+                "status_updated_at": participant.get("status_updated_at"),
+                "subscribed": subscription.unsubscribed_at is None,
+                "implicit": False,
+                "subscribed_at": subscription.subscribed_at,
+                "unsubscribed_at": subscription.unsubscribed_at,
+            }
+        )
+    for participant in participants:
+        if participant["participant_id"] in seen:
+            continue
+        out.append(
+            {
+                "channel_id": channel_id,
+                "participant_id": participant["participant_id"],
+                "display_name": participant["display_name"],
+                "mention_handle": participant.get("mention_handle"),
+                "kind": participant["kind"],
+                "email": participant.get("email"),
+                "avatar_url": participant.get("avatar_url"),
+                "agent_zero_role": bool(participant.get("agent_zero_role")),
+                "contribution_brief": participant.get("contribution_brief"),
+                "availability_status": participant.get("availability_status") or "available",
+                "capacity_level": participant.get("capacity_level") or "open",
+                "status_note": participant.get("status_note"),
+                "status_updated_at": participant.get("status_updated_at"),
+                "subscribed": False,
+                "implicit": False,
+                "subscribed_at": None,
+                "unsubscribed_at": None,
+            }
+        )
+    out.sort(key=lambda row: (not row["subscribed"], str(row["display_name"]).lower()))
+    return out
 
 
 async def resolve_run_channel_id(
@@ -236,15 +360,7 @@ async def publish_channel_event(
     payload: dict | None = None,
     recipient_participant_ids: list[str] | None = None,
 ) -> ChannelEvent:
-    await ensure_default_channel_subscriptions(db, workspace_id, channel_id=channel_id)
-    subscriber_rows = await db.execute(
-        select(ChannelSubscription.participant_id).where(
-            ChannelSubscription.workspace_id == workspace_id,
-            ChannelSubscription.channel_id == channel_id,
-            ChannelSubscription.unsubscribed_at.is_(None),
-        )
-    )
-    active_subscribers = {row[0] for row in subscriber_rows.all()}
+    active_subscribers = await _active_channel_participant_ids(db, workspace_id, channel_id)
 
     event = ChannelEvent(
         workspace_id=workspace_id,
@@ -293,15 +409,8 @@ async def publish_event_to_channel_subscribers(
     actor_name: str | None = None,
     payload: dict | None = None,
 ) -> ChannelEvent:
-    await ensure_default_channel_subscriptions(db, workspace_id, channel_id=channel_id)
-    subscriber_rows = await db.execute(
-        select(ChannelSubscription.participant_id).where(
-            ChannelSubscription.workspace_id == workspace_id,
-            ChannelSubscription.channel_id == channel_id,
-            ChannelSubscription.unsubscribed_at.is_(None),
-        )
-    )
-    recipient_ids = [row[0] for row in subscriber_rows.all() if row[0] != actor_id]
+    active_subscribers = await _active_channel_participant_ids(db, workspace_id, channel_id)
+    recipient_ids = [participant_id for participant_id in active_subscribers if participant_id != actor_id]
     return await publish_channel_event(
         db,
         workspace_id=workspace_id,
@@ -322,7 +431,6 @@ async def list_channels(db: AsyncSession, workspace_id: UUID) -> list[Channel]:
     await ensure_workflow_channels(db, workspace_id)
     await ensure_handbook_channel(db, workspace_id)
     await ensure_bulletin_channel(db, workspace_id)
-    await ensure_default_channel_subscriptions(db, workspace_id)
     result = await db.execute(
         select(Channel)
         .where(Channel.workspace_id == workspace_id, Channel.archived_at.is_(None))
@@ -337,16 +445,55 @@ async def list_channel_subscriptions(
     workspace_id: UUID,
     participant_id: str,
 ) -> list[ChannelSubscription]:
-    await ensure_default_channel_subscriptions(db, workspace_id)
-    result = await db.execute(
+    channel_rows = await db.execute(
+        select(Channel.id).where(
+            Channel.workspace_id == workspace_id,
+            Channel.archived_at.is_(None),
+        )
+    )
+    channel_ids = [row[0] for row in channel_rows.all()]
+    if not channel_ids:
+        return []
+
+    all_rows = await db.execute(
         select(ChannelSubscription)
         .where(
             ChannelSubscription.workspace_id == workspace_id,
-            ChannelSubscription.participant_id == participant_id,
+            ChannelSubscription.channel_id.in_(channel_ids),
         )
         .order_by(ChannelSubscription.subscribed_at.asc())
     )
-    return list(result.scalars())
+    rows = list(all_rows.scalars())
+    rows_by_channel: dict[UUID, list[ChannelSubscription]] = {}
+    for row in rows:
+        rows_by_channel.setdefault(row.channel_id, []).append(row)
+
+    out: list[ChannelSubscription] = []
+    for channel_id in channel_ids:
+        channel_rows_for_id = rows_by_channel.get(channel_id, [])
+        if not channel_rows_for_id:
+            out.append(
+                SimpleNamespace(
+                    channel_id=channel_id,
+                    participant_id=participant_id,
+                    unsubscribed_at=None,
+                    subscribed_at=None,
+                )
+            )
+            continue
+        matching = next((row for row in channel_rows_for_id if row.participant_id == participant_id), None)
+        if matching is not None:
+            out.append(matching)
+            continue
+        out.append(
+            SimpleNamespace(
+                channel_id=channel_id,
+                participant_id=participant_id,
+                unsubscribed_at=datetime.now(timezone.utc),
+                subscribed_at=None,
+            )
+        )
+    return out
 
 
 async def list_channel_subscriptions_for_channel(
@@ -726,6 +873,8 @@ async def set_channel_subscription(
     channel = await db.get(Channel, channel_id)
     if channel is None or channel.workspace_id != workspace_id:
         raise ValueError("Channel not found")
+    if channel.channel_type == "run" and not subscribed:
+        raise ValueError("Run chat participants cannot leave the channel")
     await ensure_default_channel_subscriptions(db, workspace_id, channel_id=channel_id)
     result = await db.execute(
         select(ChannelSubscription).where(
@@ -751,7 +900,13 @@ async def set_channel_subscription(
     return row
 
 
-async def create_channel(db: AsyncSession, workspace_id: UUID, data: ChannelCreate) -> Channel:
+async def create_channel(
+    db: AsyncSession,
+    workspace_id: UUID,
+    data: ChannelCreate,
+    *,
+    initial_participant_id: str | None = None,
+) -> Channel:
     if data.channel_type == "workflow" and data.graph_id is None:
         raise ValueError("workflow channels require graph_id")
     if data.channel_type != "workflow" and data.graph_id is not None:
@@ -772,8 +927,92 @@ async def create_channel(db: AsyncSession, workspace_id: UUID, data: ChannelCrea
     db.add(ch)
     await db.commit()
     await db.refresh(ch)
-    await ensure_default_channel_subscriptions(db, workspace_id, channel_id=ch.id)
+    if initial_participant_id is not None:
+        db.add(
+            ChannelSubscription(
+                workspace_id=workspace_id,
+                channel_id=ch.id,
+                participant_id=initial_participant_id,
+            )
+        )
+        await db.commit()
+        await db.refresh(ch)
     return ch
+
+
+async def get_or_create_objective_agentzero_consultation(
+    db: AsyncSession,
+    workspace_id: UUID,
+    objective_id: UUID,
+    requester_member: WorkspaceMember,
+    requester_user: User,
+) -> Channel:
+    objective = await db.get(Objective, objective_id)
+    if objective is None or objective.workspace_id != workspace_id:
+        raise ValueError("Objective not found")
+
+    agentzero_row = await db.execute(
+        select(WorkspaceMember, User)
+        .join(User, User.id == WorkspaceMember.user_id)
+        .where(
+            WorkspaceMember.workspace_id == workspace_id,
+            WorkspaceMember.agent_zero_role.is_(True),
+            WorkspaceMember.access_disabled_at.is_(None),
+        )
+        .limit(1)
+    )
+    agentzero = agentzero_row.first()
+    if agentzero is None:
+        raise ValueError("AgentZero is not assigned")
+    agentzero_member, agentzero_user = agentzero
+
+    requester_participant_id = member_participant_id(requester_member, requester_user.id)
+    agentzero_participant_id = member_participant_id(agentzero_member, agentzero_user.id)
+    participant_ids = {requester_participant_id, agentzero_participant_id}
+
+    existing_rows = await db.execute(
+        select(Channel)
+        .where(
+            Channel.workspace_id == workspace_id,
+            Channel.channel_type == "consultation",
+            Channel.objective_id == objective_id,
+            Channel.archived_at.is_(None),
+        )
+        .order_by(Channel.created_at.desc())
+    )
+    for channel in existing_rows.scalars():
+        subscription_rows = await db.execute(
+            select(ChannelSubscription.participant_id).where(
+                ChannelSubscription.workspace_id == workspace_id,
+                ChannelSubscription.channel_id == channel.id,
+                ChannelSubscription.unsubscribed_at.is_(None),
+            )
+        )
+        if participant_ids.issubset({row[0] for row in subscription_rows.all()}):
+            return channel
+
+    label = objective.code or objective.title
+    channel = Channel(
+        workspace_id=workspace_id,
+        name=f"AgentZero consult: {label}",
+        slug=await _generate_channel_slug(db, f"agentzero consult {label}"),
+        channel_type="consultation",
+        project_id=objective.project_id,
+        objective_id=objective.id,
+    )
+    db.add(channel)
+    await db.flush()
+    for participant_id in participant_ids:
+        db.add(
+            ChannelSubscription(
+                workspace_id=workspace_id,
+                channel_id=channel.id,
+                participant_id=participant_id,
+            )
+        )
+    await db.commit()
+    await db.refresh(channel)
+    return channel
 
 
 async def update_channel(db: AsyncSession, workspace_id: UUID, channel_id: UUID | str, data: ChannelUpdate) -> Channel | None:
@@ -839,6 +1078,14 @@ async def create_message(
     ]
     if mentioned_ids:
         metadata["mentioned_participant_ids"] = mentioned_ids
+        for participant_id in mentioned_ids:
+            await set_channel_subscription(
+                db,
+                workspace_id,
+                channel_id,
+                participant_id,
+                subscribed=True,
+            )
 
     msg = ChannelMessage(
         workspace_id=workspace_id,

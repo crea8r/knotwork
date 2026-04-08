@@ -6,7 +6,7 @@
  *   - Add an agent member by ed25519 public key (creates account immediately)
  */
 import { useState } from 'react'
-import { Ban, Undo2 } from 'lucide-react'
+import { Ban, Check, CircleHelp, Pencil, Sparkles, Undo2, X } from 'lucide-react'
 import { useAuthStore } from '@/store/auth'
 import { BACKEND_BASE_URL } from '@/api/client'
 import {
@@ -17,6 +17,7 @@ import {
   useWorkspaceEmailConfig,
   useWorkspaceMembers,
 } from '@/api/auth'
+import type { MemberOut } from '@/api/auth'
 import Badge from '@/components/shared/Badge'
 import Card from '@/components/shared/Card'
 import Spinner from '@/components/shared/Spinner'
@@ -24,6 +25,41 @@ import Spinner from '@/components/shared/Spinner'
 type KindFilter = 'all' | 'human' | 'agent'
 type AccessFilter = 'active' | 'disabled'
 type InviteMode = 'email' | 'pubkey'
+type AvailabilityStatus = MemberOut['availability_status']
+type CapacityLevel = MemberOut['capacity_level']
+
+const AVAILABILITY_OPTIONS: AvailabilityStatus[] = ['available', 'focused', 'busy', 'away', 'blocked']
+const CAPACITY_OPTIONS: CapacityLevel[] = ['open', 'limited', 'full']
+
+function statusVariant(status: AvailabilityStatus): 'blue' | 'green' | 'orange' | 'red' | 'gray' {
+  if (status === 'available') return 'green'
+  if (status === 'focused') return 'blue'
+  if (status === 'busy') return 'orange'
+  if (status === 'blocked') return 'red'
+  return 'gray'
+}
+
+function capacityVariant(level: CapacityLevel): 'green' | 'orange' | 'red' {
+  if (level === 'open') return 'green'
+  if (level === 'limited') return 'orange'
+  return 'red'
+}
+
+function workItemLabel(item: Record<string, unknown>) {
+  const title = item.title ?? item.name ?? item.summary ?? item.objective ?? item.description
+  return typeof title === 'string' && title.trim() ? title.trim() : 'Untitled'
+}
+
+function AgentZeroMark() {
+  return (
+    <span
+      className="absolute -bottom-0.5 -right-0.5 inline-flex h-3.5 w-3.5 items-center justify-center rounded-full border border-white bg-brand-500 text-white shadow-sm"
+      title="AgentZero"
+    >
+      <Sparkles size={8} strokeWidth={2.5} />
+    </span>
+  )
+}
 
 function DiscoveryPrompt({ workspaceId }: { workspaceId: string }) {
   const [copied, setCopied] = useState(false)
@@ -76,6 +112,14 @@ export default function MembersTab() {
     accessFilter === 'disabled',
   )
   const updateMember = useUpdateWorkspaceMember(workspaceId)
+  const [showAgentZeroHelp, setShowAgentZeroHelp] = useState(false)
+  const [editingBriefMemberId, setEditingBriefMemberId] = useState<string | null>(null)
+  const [briefDraft, setBriefDraft] = useState('')
+  const [editingStatusMemberId, setEditingStatusMemberId] = useState<string | null>(null)
+  const [availabilityDraft, setAvailabilityDraft] = useState<AvailabilityStatus>('available')
+  const [capacityDraft, setCapacityDraft] = useState<CapacityLevel>('open')
+  const [statusNoteDraft, setStatusNoteDraft] = useState('')
+  const [selectedMemberId, setSelectedMemberId] = useState<string | null>(null)
 
   // Invitations
   const { data: invitations, isLoading: loadingInv, refetch } = useWorkspaceInvitations(workspaceId)
@@ -107,6 +151,45 @@ export default function MembersTab() {
     setPubkeyError(null)
     setSentEmail(null)
     setAddedAgent(null)
+  }
+
+  const startBriefEdit = (memberId: string, value: string | null) => {
+    setEditingBriefMemberId(memberId)
+    setBriefDraft(value ?? '')
+  }
+
+  const startStatusEdit = (member: MemberOut) => {
+    setEditingStatusMemberId(member.id)
+    setAvailabilityDraft(member.availability_status ?? 'available')
+    setCapacityDraft(member.capacity_level ?? 'open')
+    setStatusNoteDraft(member.status_note ?? '')
+  }
+
+  const clearMemberModalState = () => {
+    setSelectedMemberId(null)
+    setEditingBriefMemberId(null)
+    setEditingStatusMemberId(null)
+    setBriefDraft('')
+    setStatusNoteDraft('')
+  }
+
+  const selectedMember: MemberOut | null = membersData?.items.find((member) => member.id === selectedMemberId) ?? null
+
+  const saveBrief = async (memberId: string) => {
+    await updateMember.mutateAsync({ memberId, contribution_brief: briefDraft })
+    setEditingBriefMemberId(null)
+    setBriefDraft('')
+  }
+
+  const saveStatus = async (memberId: string) => {
+    await updateMember.mutateAsync({
+      memberId,
+      availability_status: availabilityDraft,
+      capacity_level: capacityDraft,
+      status_note: statusNoteDraft,
+    })
+    setEditingStatusMemberId(null)
+    setStatusNoteDraft('')
   }
 
   const submitEmailInvite = (e: React.FormEvent) => {
@@ -153,6 +236,22 @@ export default function MembersTab() {
         <div className="flex items-center justify-between px-4 py-3 border-b">
           <div className="flex items-center gap-2">
             <p className="text-sm font-medium text-gray-700">Team members</p>
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => setShowAgentZeroHelp((open) => !open)}
+                onBlur={() => setShowAgentZeroHelp(false)}
+                className="inline-flex h-6 w-6 items-center justify-center rounded-md text-gray-400 hover:bg-gray-100 hover:text-gray-700"
+                title="AgentZero"
+              >
+                <CircleHelp size={14} />
+              </button>
+              {showAgentZeroHelp ? (
+                <div className="absolute left-0 top-7 z-20 w-64 rounded-md border border-stone-200 bg-white p-2 text-xs leading-5 text-stone-600 shadow-lg">
+                  AgentZero marks the one human or machine with the broadest workspace context to consult.
+                </div>
+              ) : null}
+            </div>
             {membersData && (
               <span className="text-xs text-gray-400">({membersData.total})</span>
             )}
@@ -206,32 +305,41 @@ export default function MembersTab() {
               <thead>
                 <tr className="text-xs text-gray-500 uppercase bg-gray-50 border-b">
                   <th className="text-left px-4 py-3">Member</th>
-                  <th className="text-left px-4 py-3">Kind</th>
-                  <th className="text-left px-4 py-3">Role</th>
                   <th className="text-left px-4 py-3">Access</th>
-                  <th className="text-left px-4 py-3">Joined</th>
-                  {isOwner ? <th className="text-left px-4 py-3">Actions</th> : null}
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
                 {membersData.items.map((m) => (
-                  <tr key={m.id}>
+                  <tr
+                    key={m.id}
+                    onClick={() => {
+                      setSelectedMemberId(m.id)
+                      setEditingBriefMemberId(null)
+                      setEditingStatusMemberId(null)
+                      setBriefDraft('')
+                      setStatusNoteDraft('')
+                    }}
+                    className="cursor-pointer hover:bg-stone-50"
+                  >
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-3">
-                        {m.avatar_url ? (
-                          <img
-                            src={m.avatar_url}
-                            alt={m.name}
-                            className="w-8 h-8 rounded-full object-cover border border-gray-200"
-                            onError={(e) => {
-                              ;(e.target as HTMLImageElement).style.display = 'none'
-                            }}
-                          />
-                        ) : (
-                          <div className="w-8 h-8 rounded-full bg-brand-100 text-brand-600 flex items-center justify-center text-xs font-semibold">
-                            {m.name[0]?.toUpperCase() ?? '?'}
-                          </div>
-                        )}
+                        <div className="relative shrink-0">
+                          {m.avatar_url ? (
+                            <img
+                              src={m.avatar_url}
+                              alt={m.name}
+                              className="w-8 h-8 rounded-full object-cover border border-gray-200"
+                              onError={(e) => {
+                                ;(e.target as HTMLImageElement).style.display = 'none'
+                              }}
+                            />
+                          ) : (
+                            <div className="w-8 h-8 rounded-full bg-brand-100 text-brand-600 flex items-center justify-center text-xs font-semibold">
+                              {m.name[0]?.toUpperCase() ?? '?'}
+                            </div>
+                          )}
+                          {m.agent_zero_role ? <AgentZeroMark /> : null}
+                        </div>
                         <div>
                           <p className="font-medium text-gray-800">{m.name}</p>
                           {m.email ? (
@@ -243,42 +351,17 @@ export default function MembersTab() {
                       </div>
                     </td>
                     <td className="px-4 py-3">
-                      <Badge variant={m.kind === 'agent' ? 'orange' : 'gray'}>{m.kind}</Badge>
+                      <div className="flex items-center justify-end gap-2 sm:justify-start">
+                        {m.agent_zero_role ? (
+                          <span className="inline-flex h-6 w-6 items-center justify-center rounded-md border border-brand-200 bg-brand-50 text-brand-600" title="AgentZero">
+                            <Sparkles size={13} />
+                          </span>
+                        ) : null}
+                        <Badge variant={m.access_disabled_at ? 'red' : 'green'}>
+                          {m.access_disabled_at ? 'disabled' : 'active'}
+                        </Badge>
+                      </div>
                     </td>
-                    <td className="px-4 py-3">
-                      <Badge variant={m.role === 'owner' ? 'blue' : 'gray'}>{m.role}</Badge>
-                    </td>
-                    <td className="px-4 py-3">
-                      <Badge variant={m.access_disabled_at ? 'red' : 'green'}>
-                        {m.access_disabled_at ? 'disabled' : 'active'}
-                      </Badge>
-                    </td>
-                    <td className="px-4 py-3 text-gray-400 text-xs">
-                      {new Date(m.joined_at).toLocaleDateString()}
-                    </td>
-                    {isOwner ? (
-                      <td className="px-4 py-3">
-                        {m.user_id === currentUser?.id ? (
-                          <span className="text-xs text-gray-400">Current user</span>
-                        ) : (
-                          <button
-                            onClick={() => updateMember.mutate({ memberId: m.id, access_disabled: !m.access_disabled_at })}
-                            disabled={updateMember.isPending}
-                            className={`rounded-lg border px-2.5 py-1 text-xs transition-colors ${
-                              m.access_disabled_at
-                                ? 'border-emerald-200 text-emerald-700 hover:bg-emerald-50'
-                                : 'border-red-200 text-red-700 hover:bg-red-50'
-                            } disabled:opacity-50`}
-                            title={m.access_disabled_at ? 'Enable' : 'Disable'}
-                          >
-                            <span className="inline-flex items-center gap-1">
-                              {m.access_disabled_at ? <Undo2 size={12} /> : <Ban size={12} />}
-                              <span className="hidden sm:inline">{m.access_disabled_at ? 'Enable' : 'Disable'}</span>
-                            </span>
-                          </button>
-                        )}
-                      </td>
-                    ) : null}
                   </tr>
                 ))}
               </tbody>
@@ -313,6 +396,312 @@ export default function MembersTab() {
           </>
         )}
       </Card>
+
+      {selectedMember && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 p-4">
+          <div className="flex max-h-[calc(100vh-2rem)] w-full max-w-lg flex-col overflow-hidden rounded-[28px] bg-white shadow-2xl">
+            <div className="flex items-start justify-between gap-3 border-b border-stone-200 px-4 py-3">
+              <div className="flex min-w-0 items-center gap-3">
+                <div className="relative shrink-0">
+                  {selectedMember.avatar_url ? (
+                    <img
+                      src={selectedMember.avatar_url}
+                      alt={selectedMember.name}
+                      className="h-9 w-9 rounded-full border border-gray-200 object-cover"
+                      onError={(event) => {
+                        ;(event.target as HTMLImageElement).style.display = 'none'
+                      }}
+                    />
+                  ) : (
+                    <div className="flex h-9 w-9 items-center justify-center rounded-full bg-brand-100 text-sm font-semibold text-brand-600">
+                      {selectedMember.name[0]?.toUpperCase() ?? '?'}
+                    </div>
+                  )}
+                  {selectedMember.agent_zero_role ? <AgentZeroMark /> : null}
+                </div>
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-semibold text-stone-900">{selectedMember.name}</p>
+                  {selectedMember.email ? (
+                    <p className="truncate text-xs text-stone-400">{selectedMember.email}</p>
+                  ) : (
+                    <p className="text-xs italic text-stone-300">agent account</p>
+                  )}
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={clearMemberModalState}
+                className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-stone-400 hover:bg-stone-100 hover:text-stone-700"
+                aria-label="Close"
+                title="Close"
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            <div className="flex-1 space-y-5 overflow-y-auto px-4 py-4">
+              <div className="grid grid-cols-2 gap-3 text-sm">
+                <div>
+                  <p className="text-[11px] uppercase tracking-wide text-stone-400">Kind</p>
+                  <div className="mt-1">
+                    <Badge variant={selectedMember.kind === 'agent' ? 'orange' : 'gray'}>{selectedMember.kind}</Badge>
+                  </div>
+                </div>
+                <div>
+                  <p className="text-[11px] uppercase tracking-wide text-stone-400">Role</p>
+                  <div className="mt-1">
+                    <Badge variant={selectedMember.role === 'owner' ? 'blue' : 'gray'}>{selectedMember.role}</Badge>
+                  </div>
+                </div>
+                <div>
+                  <p className="text-[11px] uppercase tracking-wide text-stone-400">Access</p>
+                  <div className="mt-1">
+                    <Badge variant={selectedMember.access_disabled_at ? 'red' : 'green'}>
+                      {selectedMember.access_disabled_at ? 'disabled' : 'active'}
+                    </Badge>
+                  </div>
+                </div>
+                <div>
+                  <p className="text-[11px] uppercase tracking-wide text-stone-400">Joined</p>
+                  <p className="mt-1 text-stone-700">{new Date(selectedMember.joined_at).toLocaleDateString()}</p>
+                </div>
+              </div>
+
+              <div>
+                <div className="mb-2 flex items-center justify-between gap-2">
+                  <p className="text-[11px] uppercase tracking-wide text-stone-400">Status</p>
+                  {(isOwner || selectedMember.user_id === currentUser?.id) && editingStatusMemberId !== selectedMember.id ? (
+                    <button
+                      type="button"
+                      onClick={() => startStatusEdit(selectedMember)}
+                      className="inline-flex h-7 w-7 items-center justify-center rounded-md text-stone-400 hover:bg-stone-100 hover:text-stone-700"
+                      title="Edit"
+                    >
+                      <Pencil size={13} />
+                    </button>
+                  ) : null}
+                </div>
+                {editingStatusMemberId === selectedMember.id ? (
+                  <div className="space-y-2 rounded-lg border border-stone-200 bg-white p-3">
+                    <div className="grid grid-cols-2 gap-2">
+                      <label className="block text-xs text-stone-500">
+                        Availability
+                        <select
+                          value={availabilityDraft}
+                          onChange={(event) => setAvailabilityDraft(event.target.value as AvailabilityStatus)}
+                          className="mt-1 w-full rounded-lg border border-stone-300 px-2 py-1.5 text-sm text-stone-800 outline-none focus:ring-2 focus:ring-stone-900"
+                        >
+                          {AVAILABILITY_OPTIONS.map((option) => (
+                            <option key={option} value={option}>{option.replace('_', ' ')}</option>
+                          ))}
+                        </select>
+                      </label>
+                      <label className="block text-xs text-stone-500">
+                        Capacity
+                        <select
+                          value={capacityDraft}
+                          onChange={(event) => setCapacityDraft(event.target.value as CapacityLevel)}
+                          className="mt-1 w-full rounded-lg border border-stone-300 px-2 py-1.5 text-sm text-stone-800 outline-none focus:ring-2 focus:ring-stone-900"
+                        >
+                          {CAPACITY_OPTIONS.map((option) => (
+                            <option key={option} value={option}>{option}</option>
+                          ))}
+                        </select>
+                      </label>
+                    </div>
+                    <textarea
+                      value={statusNoteDraft}
+                      onChange={(event) => setStatusNoteDraft(event.target.value)}
+                      onKeyDown={(event) => {
+                        if (event.key === 'Escape') {
+                          setEditingStatusMemberId(null)
+                          setStatusNoteDraft('')
+                        }
+                        if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) {
+                          event.preventDefault()
+                          void saveStatus(selectedMember.id)
+                        }
+                      }}
+                      maxLength={500}
+                      rows={3}
+                      className="w-full resize-none rounded-lg border border-stone-300 px-3 py-2 text-sm text-stone-800 outline-none focus:ring-2 focus:ring-stone-900"
+                      placeholder="Blocked on customer copy review until Friday."
+                    />
+                    <div className="flex justify-end gap-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setEditingStatusMemberId(null)
+                          setStatusNoteDraft('')
+                        }}
+                        className="inline-flex h-8 items-center gap-1 rounded-md px-2.5 text-xs text-stone-500 hover:bg-stone-100 hover:text-stone-900"
+                      >
+                        <X size={13} />
+                        Cancel
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => { void saveStatus(selectedMember.id) }}
+                        disabled={updateMember.isPending}
+                        className="inline-flex h-8 items-center gap-1 rounded-md bg-stone-900 px-2.5 text-xs text-white disabled:opacity-50"
+                      >
+                        <Check size={13} />
+                        Save
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="rounded-lg border border-stone-200 bg-stone-50 px-3 py-2">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Badge variant={statusVariant(selectedMember.availability_status)}>
+                        {selectedMember.availability_status.replace('_', ' ')}
+                      </Badge>
+                      <Badge variant={capacityVariant(selectedMember.capacity_level)}>
+                        {selectedMember.capacity_level}
+                      </Badge>
+                    </div>
+                    {selectedMember.status_note ? (
+                      <p className="mt-2 whitespace-pre-wrap text-sm text-stone-700">{selectedMember.status_note}</p>
+                    ) : null}
+                    {selectedMember.status_updated_at ? (
+                      <p className="mt-2 text-[11px] text-stone-400">
+                        Updated {new Date(selectedMember.status_updated_at).toLocaleString()}
+                      </p>
+                    ) : null}
+                  </div>
+                )}
+              </div>
+
+              <div>
+                <div className="mb-2 flex items-center justify-between gap-2">
+                  <p className="text-[11px] uppercase tracking-wide text-stone-400">Role and objective</p>
+                  {(isOwner || selectedMember.user_id === currentUser?.id) && editingBriefMemberId !== selectedMember.id ? (
+                    <button
+                      type="button"
+                      onClick={() => startBriefEdit(selectedMember.id, selectedMember.contribution_brief)}
+                      className="inline-flex h-7 w-7 items-center justify-center rounded-md text-stone-400 hover:bg-stone-100 hover:text-stone-700"
+                      title="Edit"
+                    >
+                      <Pencil size={13} />
+                    </button>
+                  ) : null}
+                </div>
+                {editingBriefMemberId === selectedMember.id ? (
+                  <div className="space-y-2">
+                    <textarea
+                      autoFocus
+                      value={briefDraft}
+                      onChange={(event) => setBriefDraft(event.target.value)}
+                      onKeyDown={(event) => {
+                        if (event.key === 'Escape') {
+                          setEditingBriefMemberId(null)
+                          setBriefDraft('')
+                        }
+                        if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) {
+                          event.preventDefault()
+                          void saveBrief(selectedMember.id)
+                        }
+                      }}
+                      maxLength={500}
+                      rows={4}
+                      className="w-full resize-none rounded-lg border border-stone-300 px-3 py-2 text-sm text-stone-800 outline-none focus:ring-2 focus:ring-stone-900"
+                      placeholder="Product: clarify scope and translate user problems into objectives."
+                    />
+                    <div className="flex justify-end gap-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setEditingBriefMemberId(null)
+                          setBriefDraft('')
+                        }}
+                        className="inline-flex h-8 items-center gap-1 rounded-md px-2.5 text-xs text-stone-500 hover:bg-stone-100 hover:text-stone-900"
+                      >
+                        <X size={13} />
+                        Cancel
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => { void saveBrief(selectedMember.id) }}
+                        disabled={updateMember.isPending}
+                        className="inline-flex h-8 items-center gap-1 rounded-md bg-stone-900 px-2.5 text-xs text-white disabled:opacity-50"
+                      >
+                        <Check size={13} />
+                        Save
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <p className="whitespace-pre-wrap rounded-lg border border-stone-200 bg-stone-50 px-3 py-2 text-sm text-stone-700">
+                    {selectedMember.contribution_brief || 'Not set'}
+                  </p>
+                )}
+              </div>
+
+              {(selectedMember.current_commitments.length > 0 || selectedMember.recent_work.length > 0) ? (
+                <div className="grid gap-3 sm:grid-cols-2">
+                  {selectedMember.current_commitments.length > 0 ? (
+                    <div>
+                      <p className="mb-2 text-[11px] uppercase tracking-wide text-stone-400">Commitments</p>
+                      <div className="space-y-1.5">
+                        {selectedMember.current_commitments.slice(0, 5).map((item, index) => (
+                          <div key={index} className="rounded-lg border border-stone-200 bg-stone-50 px-3 py-2 text-sm text-stone-700">
+                            {workItemLabel(item)}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ) : null}
+                  {selectedMember.recent_work.length > 0 ? (
+                    <div>
+                      <p className="mb-2 text-[11px] uppercase tracking-wide text-stone-400">Recent work</p>
+                      <div className="space-y-1.5">
+                        {selectedMember.recent_work.slice(0, 5).map((item, index) => (
+                          <div key={index} className="rounded-lg border border-stone-200 bg-stone-50 px-3 py-2 text-sm text-stone-700">
+                            {workItemLabel(item)}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
+
+              <div className="space-y-2 border-t border-stone-100 pt-4">
+                {isOwner ? (
+                  <button
+                    type="button"
+                    onClick={() => updateMember.mutate({ memberId: selectedMember.id, agent_zero_role: !selectedMember.agent_zero_role })}
+                    disabled={updateMember.isPending || !!selectedMember.access_disabled_at}
+                    className={`inline-flex h-9 w-full items-center justify-center gap-2 rounded-lg border text-sm transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
+                      selectedMember.agent_zero_role
+                        ? 'border-brand-200 bg-brand-50 text-brand-600 hover:bg-brand-100'
+                        : 'border-stone-200 text-stone-700 hover:bg-stone-50'
+                    }`}
+                  >
+                    <Sparkles size={14} />
+                    {selectedMember.agent_zero_role ? 'Remove AgentZero' : 'Set AgentZero'}
+                  </button>
+                ) : null}
+                {isOwner && selectedMember.user_id !== currentUser?.id ? (
+                  <button
+                    type="button"
+                    onClick={() => updateMember.mutate({ memberId: selectedMember.id, access_disabled: !selectedMember.access_disabled_at })}
+                    disabled={updateMember.isPending}
+                    className={`inline-flex h-9 w-full items-center justify-center gap-2 rounded-lg border text-sm transition-colors disabled:opacity-50 ${
+                      selectedMember.access_disabled_at
+                        ? 'border-emerald-200 text-emerald-700 hover:bg-emerald-50'
+                        : 'border-red-200 text-red-700 hover:bg-red-50'
+                    }`}
+                  >
+                    {selectedMember.access_disabled_at ? <Undo2 size={14} /> : <Ban size={14} />}
+                    {selectedMember.access_disabled_at ? 'Enable access' : 'Disable access'}
+                  </button>
+                ) : null}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Pending invitations + add-member forms */}
       <Card className="overflow-hidden">

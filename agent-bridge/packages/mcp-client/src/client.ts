@@ -29,6 +29,26 @@ function unwrapToolCallResult<T>(value: unknown): T {
   if (candidate.structuredContent !== undefined) {
     return candidate.structuredContent as T
   }
+  if (Array.isArray(candidate.content)) {
+    const textItems = candidate.content
+      .map((item) => {
+        if (!item || typeof item !== 'object') return null
+        const entry = item as { type?: unknown; text?: unknown }
+        return entry.type === 'text' && typeof entry.text === 'string' ? entry.text : null
+      })
+      .filter((item): item is string => item !== null)
+
+    if (textItems.length === candidate.content.length && textItems.length > 0) {
+      const parsed = textItems.map((text) => {
+        try {
+          return JSON.parse(text) as unknown
+        } catch {
+          return text
+        }
+      })
+      return (parsed.length === 1 ? parsed[0] : parsed) as T
+    }
+  }
   return value as T
 }
 

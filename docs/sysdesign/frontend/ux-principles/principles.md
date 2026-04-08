@@ -69,6 +69,14 @@ follow-up messages and decision actions.
 
 Every action — including escalation responses — must be fast on a phone.
 
+### 10. Interface copy is earned
+
+Do not add static explanatory text by default. Prefer compact, stateful UI: labels,
+names, icons, controls, and direct status. Add helper copy only when it resolves a
+real ambiguity, risk, or empty state that the interface cannot make clear on its own.
+Avoid counts, descriptions, and instructional blurbs that merely restate what is
+already visible.
+
 ---
 
 ## Technology

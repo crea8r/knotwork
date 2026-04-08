@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Hash, Plus, X } from 'lucide-react'
+import { Hash, MessageCircle, Plus, Sparkles, X } from 'lucide-react'
 import { Link, useOutletContext, useParams } from 'react-router-dom'
-import { useChannel, usePostChannelMessage, useUpdateChannel } from '@/api/channels'
+import { useChannel, useChannelParticipants, useObjectiveAgentZeroConsultation, usePostChannelMessage, useUpdateChannel } from '@/api/channels'
 import { useGraphs } from '@/api/graphs'
 import { useUpdateObjective } from '@/api/projects'
 import { ChannelShell, ChannelTimeline } from '@/components/channel/ChannelFrame'
+import ChannelParticipantsPanel from '@/components/channel/ChannelParticipantsPanel'
 import WorkflowSlashComposer from '@/components/channel/WorkflowSlashComposer'
 import { useChannelTimeline } from '@/components/channel/useChannelTimeline'
 import { useMentionDetection } from '@/components/channel/useMentionDetection'
@@ -28,11 +29,19 @@ export default function ObjectiveDetailPanel() {
   const postMessage = usePostChannelMessage(workspaceId, objective?.channel_id ?? '')
   const updateObjective = useUpdateObjective(workspaceId, objective?.id ?? '')
   const updateChannel = useUpdateChannel(workspaceId, objective?.channel_id ?? '')
+  const consultAgentZero = useObjectiveAgentZeroConsultation(workspaceId, objective?.id ?? '')
+  const { data: workspaceParticipants = [] } = useChannelParticipants(workspaceId)
   const currentProgress = objective?.progress_percent ?? 0
 
   const [draft, setDraft] = useState('')
+  const [consultDraft, setConsultDraft] = useState('')
+  const [consultChannelId, setConsultChannelId] = useState('')
+  const [showConsultation, setShowConsultation] = useState(false)
   const inputRef = useRef<HTMLTextAreaElement | null>(null)
+  const consultInputRef = useRef<HTMLTextAreaElement | null>(null)
   const { items: timelineItems } = useChannelTimeline(workspaceId, objective?.channel_id ?? '')
+  const { items: consultTimelineItems } = useChannelTimeline(workspaceId, consultChannelId)
+  const postConsultMessage = usePostChannelMessage(workspaceId, consultChannelId)
   const { mentionMenuNode } = useMentionDetection(workspaceId, draft, setDraft, inputRef)
   const [progressDraft, setProgressDraft] = useState(String(currentProgress))
   const [keyResultsDraft, setKeyResultsDraft] = useState(objective?.key_results ?? [])
@@ -66,6 +75,46 @@ export default function ObjectiveDetailPanel() {
       if (codeCompare !== 0) return codeCompare
       return a.title.localeCompare(b.title)
     }), [objective?.id, objectives])
+  const agentZeroParticipant = useMemo(
+    () => workspaceParticipants.find((participant) => participant.agent_zero_role) ?? null,
+    [workspaceParticipants],
+  )
+
+  const consultPrompts = useMemo(() => {
+    if (!objective) return []
+    const label = [objective.code, objective.title].filter(Boolean).join(' · ')
+    return [
+      { label: 'Help unblock', text: `Help me unblock ${label}. What is the next useful step?` },
+      { label: 'Who should I ask?', text: `Who should I consult about ${label}, and what should I ask them?` },
+      { label: 'Draft update', text: `Draft a concise objective update for ${label}.` },
+      { label: 'Missing context', text: `What context is missing for ${label}?` },
+    ]
+  }, [objective])
+
+  async function openConsultation() {
+    if (!objective) return
+    const channel = await consultAgentZero.mutateAsync()
+    setConsultChannelId(channel.id)
+    setShowConsultation(true)
+    setTimeout(() => consultInputRef.current?.focus(), 0)
+  }
+
+  async function sendConsultMessage() {
+    const content = consultDraft.trim()
+    if (!content || !consultChannelId) return
+    await postConsultMessage.mutateAsync({
+      content,
+      role: 'user',
+      author_type: 'human',
+      author_name: 'You',
+      metadata: {
+        kind: 'agentzero_consultation',
+        objective_id: objective?.id,
+        project_id: project.id,
+      },
+    })
+    setConsultDraft('')
+  }
 
   async function saveProgress(nextValue: string) {
     const normalized = String(Math.max(0, Math.min(100, Number(nextValue) || 0)))
@@ -147,8 +196,21 @@ export default function ObjectiveDetailPanel() {
         )}
         onRenameTitle={async (value) => { await updateChannel.mutateAsync({ name: value }) }}
         renamePending={updateChannel.isPending}
+        actions={agentZeroParticipant ? (
+          <button
+            type="button"
+            onClick={() => { void openConsultation() }}
+            disabled={consultAgentZero.isPending}
+            className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-brand-200 bg-brand-50 text-brand-600 hover:bg-brand-100 disabled:opacity-50"
+            title={`Consult ${agentZeroParticipant.display_name}`}
+            aria-label={`Consult ${agentZeroParticipant.display_name}`}
+          >
+            <Sparkles size={15} />
+          </button>
+        ) : null}
         context={(
           <>
+            {objective.channel_id ? <ChannelParticipantsPanel workspaceId={workspaceId} channelId={objective.channel_id} /> : null}
             <div className="flex flex-wrap items-center gap-2">
               <span className="text-[11px] font-medium uppercase tracking-wide text-stone-400">Progress</span>
               {editingProgress ? (
@@ -248,6 +310,77 @@ export default function ObjectiveDetailPanel() {
           beforeInput={mentionMenuNode}
         />
       </ChannelShell>
+
+      {showConsultation && (
+        <div className="fixed inset-0 z-50 flex items-stretch justify-end bg-black/35 p-3 sm:p-4">
+          <div className="flex h-full w-full max-w-xl flex-col overflow-hidden rounded-2xl border border-stone-200 bg-white shadow-2xl">
+            <div className="flex items-start justify-between gap-3 border-b border-stone-200 px-4 py-3">
+              <div className="min-w-0">
+                <div className="flex items-center gap-2 text-sm font-semibold text-stone-900">
+                  <span className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-brand-100 text-brand-600">
+                    <Sparkles size={14} />
+                  </span>
+                  <span className="truncate">Consult {agentZeroParticipant?.display_name ?? 'AgentZero'}</span>
+                </div>
+                <p className="mt-1 truncate text-xs text-stone-500">{[objective.code, objective.title].filter(Boolean).join(' · ')}</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowConsultation(false)}
+                className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-stone-400 hover:bg-stone-100 hover:text-stone-700"
+                aria-label="Close consultation"
+                title="Close"
+              >
+                <X size={16} />
+              </button>
+            </div>
+            <ChannelTimeline items={consultTimelineItems} emptyState="Private consultation." />
+            <div className="border-t border-stone-200 bg-white px-3 py-3">
+              <div className="mb-2 flex flex-wrap gap-1.5">
+                {consultPrompts.map((prompt) => (
+                  <button
+                    key={prompt.label}
+                    type="button"
+                    onClick={() => {
+                      setConsultDraft(prompt.text)
+                      consultInputRef.current?.focus()
+                    }}
+                    className="rounded-full border border-stone-200 bg-stone-50 px-2.5 py-1 text-xs text-stone-700 hover:border-stone-300 hover:text-stone-900"
+                  >
+                    {prompt.label}
+                  </button>
+                ))}
+              </div>
+              <div className="flex items-end gap-2">
+                <textarea
+                  ref={consultInputRef}
+                  value={consultDraft}
+                  onChange={(event) => setConsultDraft(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) {
+                      event.preventDefault()
+                      void sendConsultMessage()
+                    }
+                  }}
+                  rows={2}
+                  className="min-h-[44px] flex-1 resize-none rounded-xl border border-stone-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-stone-900"
+                  placeholder="Ask privately about this objective..."
+                />
+                <button
+                  type="button"
+                  onClick={() => { void sendConsultMessage() }}
+                  disabled={!consultDraft.trim() || !consultChannelId || postConsultMessage.isPending}
+                  className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-stone-900 text-white disabled:cursor-not-allowed disabled:opacity-50"
+                  title="Send"
+                  aria-label="Send"
+                >
+                  <MessageCircle size={15} />
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {showKeyResultDialog && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 p-4">

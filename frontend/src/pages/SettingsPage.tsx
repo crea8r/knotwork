@@ -6,13 +6,14 @@ import AccountTab from '@/components/settings/AccountTab'
 import ChannelsTab from '@/components/settings/ChannelsTab'
 import SystemTab from '@/components/settings/SystemTab'
 import GuideTab from '@/components/settings/GuideTab'
+import OnboardingTab from '@/components/settings/OnboardingTab'
 
-type Tab = 'account' | 'members' | 'channels' | 'guide' | 'system'
+type Tab = 'account' | 'members' | 'channels' | 'onboarding' | 'guide' | 'system'
 
 export default function SettingsPage() {
   const [searchParams, setSearchParams] = useSearchParams()
   const tabFromUrl = searchParams.get('tab') as Tab | null
-  const TABS: Tab[] = ['account', 'members', 'channels', 'guide', 'system']
+  const TABS: Tab[] = ['account', 'members', 'channels', 'onboarding', 'guide', 'system']
   const initialTab: Tab = TABS.includes(tabFromUrl as Tab) ? (tabFromUrl as Tab) : 'account'
   const [tab, setTab] = useState<Tab>(initialTab)
 
@@ -21,7 +22,7 @@ export default function SettingsPage() {
   }, [initialTab])
 
   return (
-    <div className="p-8 max-w-3xl mx-auto">
+    <div className="p-8 max-w-4xl mx-auto">
       <PageHeader title="Settings" />
 
       <div className="flex gap-4 border-b mb-6 text-sm">
@@ -48,6 +49,8 @@ export default function SettingsPage() {
       {tab === 'members' && <MembersTab />}
 
       {tab === 'channels' && <ChannelsTab />}
+
+      {tab === 'onboarding' && <OnboardingTab />}
 
       {tab === 'guide' && <GuideTab />}
 

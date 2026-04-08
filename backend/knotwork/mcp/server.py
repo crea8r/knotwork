@@ -194,7 +194,9 @@ def build_server(client: KnotworkAPIClient | None = None) -> FastMCP:
             "Operate a Knotwork workspace through its HTTP API. "
             "Use read tools and resources first for context, then mutate state through the "
             "domain tools for runs, escalations, objectives, channels, inbox, knowledge, "
-            "notifications, and registered agents."
+            "notifications, and workspace members. Read member contribution briefs and status "
+            "signals before routing objective work or deciding who to consult. Keep your own "
+            "member status current when your availability or active commitments change."
         ),
         streamable_http_path="/",
         json_response=True,
@@ -556,6 +558,31 @@ def build_server(client: KnotworkAPIClient | None = None) -> FastMCP:
         return await _request(ctx, "GET", api.workspace_path(f"/objectives/{objective_ref}"))
 
     @mcp.tool()
+    async def get_objective_chain(objective_ref: str, ctx: Context = None) -> Any:
+        """Return objective ancestry from root objective to the requested objective."""
+        api = _client_from_context(ctx)
+        chain: list[dict[str, Any]] = []
+        seen: set[str] = set()
+        current_ref: str | None = objective_ref
+
+        while current_ref:
+            if current_ref in seen:
+                raise KnotworkAPIError(f"Objective ancestry cycle detected at {current_ref}")
+            seen.add(current_ref)
+            objective = await _request(
+                ctx,
+                "GET",
+                api.workspace_path(f"/objectives/{current_ref}"),
+            )
+            if not isinstance(objective, dict):
+                raise KnotworkAPIError(f"Unexpected objective payload for {current_ref}")
+            chain.append(objective)
+            parent_ref = objective.get("parent_objective_id")
+            current_ref = str(parent_ref) if parent_ref else None
+
+        return list(reversed(chain))
+
+    @mcp.tool()
     async def update_objective(
         objective_ref: str,
         updates: dict[str, Any],
@@ -738,6 +765,86 @@ def build_server(client: KnotworkAPIClient | None = None) -> FastMCP:
         return await _request(ctx, "GET", api.workspace_path("/participants"))
 
     @mcp.tool()
+    async def get_current_member(ctx: Context = None) -> Any:
+        """Return the workspace member represented by the current bearer token."""
+        api = _client_from_context(ctx)
+        access_token = get_access_token()
+        if access_token is None:
+            raise KnotworkAPIError("Missing bearer token in MCP request")
+        members = await _request(
+            ctx,
+            "GET",
+            api.workspace_path("/members"),
+            params={"page_size": 100},
+        )
+        items = members.get("items", []) if isinstance(members, dict) else []
+        for member in items:
+            if not isinstance(member, dict):
+                continue
+            if str(member.get("user_id")) != access_token.client_id:
+                continue
+            member_id = str(member.get("id"))
+            user_id = str(member.get("user_id"))
+            kind = str(member.get("kind") or "")
+            participant_id = (
+                f"agent:{member_id}"
+                if kind == "agent"
+                else f"human:{user_id}"
+                if kind == "human"
+                else member_id
+            )
+            return {
+                **member,
+                "participant_id": participant_id,
+            }
+        raise KnotworkAPIError("Current bearer token is not a member of this workspace")
+
+    @mcp.tool()
+    async def list_members(
+        kind: str | None = None,
+        disabled: bool | None = None,
+        ctx: Context = None,
+    ) -> Any:
+        """List workspace members, including their contribution briefs and status signals."""
+        api = _client_from_context(ctx)
+        params: dict[str, Any] = {}
+        if kind:
+            params["kind"] = kind
+        if disabled is not None:
+            params["disabled"] = disabled
+        return await _request(ctx, "GET", api.workspace_path("/members"), params=params or None)
+
+    @mcp.tool()
+    async def update_member_profile(
+        member_id: str,
+        contribution_brief: str | None = None,
+        availability_status: str | None = None,
+        capacity_level: str | None = None,
+        status_note: str | None = None,
+        current_commitments: list[dict[str, Any]] | None = None,
+        recent_work: list[dict[str, Any]] | None = None,
+        ctx: Context = None,
+    ) -> Any:
+        """Update member profile signals. Non-owners may update only their own profile."""
+        api = _client_from_context(ctx)
+        body: dict[str, Any] = {}
+        if contribution_brief is not None:
+            body["contribution_brief"] = contribution_brief
+        if availability_status is not None:
+            body["availability_status"] = availability_status
+        if capacity_level is not None:
+            body["capacity_level"] = capacity_level
+        if status_note is not None:
+            body["status_note"] = status_note
+        if current_commitments is not None:
+            body["current_commitments"] = current_commitments
+        if recent_work is not None:
+            body["recent_work"] = recent_work
+        if not body:
+            raise KnotworkAPIError("No member profile update provided")
+        return await _request(ctx, "PATCH", api.workspace_path(f"/members/{member_id}"), body=body)
+
+    @mcp.tool()
     async def list_channels(ctx: Context = None) -> Any:
         api = _client_from_context(ctx)
         return await _request(ctx, "GET", api.workspace_path("/channels"))
@@ -754,6 +861,15 @@ def build_server(client: KnotworkAPIClient | None = None) -> FastMCP:
             ctx,
             "GET",
             api.workspace_path(f"/channels/{channel_ref}/messages"),
+        )
+
+    @mcp.tool()
+    async def list_channel_participants(channel_ref: str, ctx: Context = None) -> Any:
+        api = _client_from_context(ctx)
+        return await _request(
+            ctx,
+            "GET",
+            api.workspace_path(f"/channels/{channel_ref}/participants"),
         )
 
     @mcp.tool()

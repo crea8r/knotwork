@@ -25,7 +25,7 @@ class ChannelOut(BaseModel):
 
 class ChannelCreate(BaseModel):
     name: str
-    channel_type: Literal["normal", "bulletin", "workflow", "handbook", "run", "project", "objective"] = "normal"
+    channel_type: Literal["normal", "bulletin", "workflow", "handbook", "run", "project", "objective", "consultation"] = "normal"
     graph_id: UUID | None = None
     project_id: UUID | None = None
     objective_id: UUID | None = None
@@ -158,6 +158,26 @@ class ChannelSubscriptionUpdate(BaseModel):
     subscribed: bool
 
 
+class ChannelParticipantOut(BaseModel):
+    channel_id: UUID
+    participant_id: str
+    display_name: str
+    mention_handle: str | None = None
+    kind: Literal["human", "agent"]
+    email: str | None = None
+    avatar_url: str | None = None
+    agent_zero_role: bool = False
+    contribution_brief: str | None = None
+    availability_status: str = "available"
+    capacity_level: str = "open"
+    status_note: str | None = None
+    status_updated_at: datetime | None = None
+    subscribed: bool
+    implicit: bool = False
+    subscribed_at: datetime | None = None
+    unsubscribed_at: datetime | None = None
+
+
 class ChannelAssetBindingOut(BaseModel):
     id: str
     channel_id: UUID
@@ -200,3 +220,10 @@ class ParticipantMentionOption(BaseModel):
     mention_handle: str | None = None
     kind: Literal["human", "agent"]
     email: str | None = None
+    avatar_url: str | None = None
+    agent_zero_role: bool = False
+    contribution_brief: str | None = None
+    availability_status: str = "available"
+    capacity_level: str = "open"
+    status_note: str | None = None
+    status_updated_at: datetime | None = None
