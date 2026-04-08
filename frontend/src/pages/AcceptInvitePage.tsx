@@ -5,7 +5,7 @@
  *
  * On success: stores JWT, fetches current user + workspace, redirects to /inbox.
  */
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useAcceptInvitation, useGetInvitation, useVerifyMagicLink } from '@/api/auth'
 import { useAuthStore } from '@/store/auth'
@@ -18,11 +18,16 @@ export default function AcceptInvitePage() {
   const inviteToken = searchParams.get('token')
   const magicToken = searchParams.get('magic')
   const login = useAuthStore((s) => s.login)
+  const clearAuth = useAuthStore((s) => s.clearAuth)
+  const attemptedMagicTokenRef = useRef<string | null>(null)
 
   // ── Magic link flow ────────────────────────────────────────────────────────
   const verifyMagic = useVerifyMagicLink()
   useEffect(() => {
     if (!magicToken) return
+    if (attemptedMagicTokenRef.current === magicToken) return
+
+    attemptedMagicTokenRef.current = magicToken
     verifyMagic.mutate(magicToken, {
       onSuccess: async (data) => {
         // Temporarily set token to fetch /me
@@ -37,8 +42,11 @@ export default function AcceptInvitePage() {
         }
         navigate('/inbox', { replace: true })
       },
+      onError: () => {
+        clearAuth()
+      },
     })
-  }, [login, magicToken, navigate, verifyMagic])
+  }, [clearAuth, login, magicToken, navigate])
 
   if (magicToken) {
     return (
