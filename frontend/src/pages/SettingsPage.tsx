@@ -1,12 +1,14 @@
 import { useEffect, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import PageHeader from '@/components/shared/PageHeader'
+import Btn from '@/components/shared/Btn'
 import MembersTab from '@/components/settings/MembersTab'
 import AccountTab from '@/components/settings/AccountTab'
 import ChannelsTab from '@/components/settings/ChannelsTab'
 import SystemTab from '@/components/settings/SystemTab'
 import GuideTab from '@/components/settings/GuideTab'
 import OnboardingTab from '@/components/settings/OnboardingTab'
+import { openOnboarding } from '@/lib/onboarding'
 
 type Tab = 'account' | 'members' | 'channels' | 'onboarding' | 'guide' | 'system'
 
@@ -23,7 +25,14 @@ export default function SettingsPage() {
 
   return (
     <div className="p-8 max-w-4xl mx-auto">
-      <PageHeader title="Settings" />
+      <PageHeader
+        title="Settings"
+        actions={(
+          <Btn size="sm" variant="secondary" onClick={() => openOnboarding({ reset: true })}>
+            Replay onboarding
+          </Btn>
+        )}
+      />
 
       <div className="flex gap-4 border-b mb-6 text-sm">
         {TABS.map((t) => (

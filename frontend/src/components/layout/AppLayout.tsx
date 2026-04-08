@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Outlet, useLocation } from 'react-router-dom'
 import { Menu } from 'lucide-react'
 import Sidebar from './Sidebar'
+import OnboardingExperience from '@/components/onboarding/OnboardingExperience'
 import VersionWarningBanner from '@/components/shared/VersionWarningBanner'
 
 /**
@@ -53,6 +54,7 @@ export default function AppLayout() {
       />
       <main className="flex-1 overflow-y-auto relative min-w-0">
         <VersionWarningBanner />
+        <OnboardingExperience />
         <header className="md:hidden sticky top-0 z-20 flex items-center gap-3 border-b border-gray-200 bg-white px-4 py-3">
           <button className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-gray-300 text-gray-700"
             onClick={() => setMobileNavOpen(true)} aria-label="Open navigation">
