@@ -93,6 +93,13 @@ export default function FileBrowserShell({
       ? rightPanel.path.split('/').slice(0, -1).join('/')
     : currentFolder
 
+  function handleFileCreated(path: string) {
+    const nextFolder = path.split('/').slice(0, -1).join('/')
+    state.setCurrentFolder(nextFolder)
+    setRightPanel({ kind: 'file', path })
+    onFileCreated(path)
+  }
+
   const back = () => goFolder(setRightPanel)
 
   useEffect(() => {
@@ -280,7 +287,7 @@ export default function FileBrowserShell({
               ) : rightPanel.kind === 'file' ? renderFileView(rightPanel.path)
                 : rightPanel.kind === 'knowledge-file' ? renderKnowledgeFileView?.(rightPanel.path) ?? null
                 : rightPanel.kind === 'workflow' ? renderWorkflowView(rightPanel.graphId)
-                : rightPanel.kind === 'new' ? renderNewFilePanel(rightPanel.folder, onFileCreated, back)
+                : rightPanel.kind === 'new' ? renderNewFilePanel(rightPanel.folder, handleFileCreated, back)
                 : rightPanel.kind === 'new-workflow' ? renderNewWorkflowPanel(rightPanel.folder, onWorkflowCreated, back)
                 : rightPanel.kind === 'new-folder' ? renderNewFolderPanel(rightPanel.parentPath, back, back)
                 : rightPanel.kind === 'upload' ? renderUploadPanel(rightPanel.preview, onUploadSaved, back)

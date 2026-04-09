@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
-import { ArrowRight, CheckCircle2, Circle, ExternalLink, Sparkles, X } from 'lucide-react'
+import { ArrowRight, CheckCircle2, ChevronDown, ChevronUp, Circle, ExternalLink, Sparkles, X } from 'lucide-react'
 import Btn from '@/components/shared/Btn'
 import {
   ONBOARDING_OPEN_EVENT,
@@ -40,6 +40,19 @@ const PERSONAS: Array<{
   },
 ]
 
+const COACH_COLLAPSED_STORAGE_KEY = 'kw-onboarding-coach-collapsed-v1'
+const COACH_HIDDEN_STORAGE_KEY = 'kw-onboarding-coach-hidden-v1'
+
+function readFlag(key: string, fallback = false) {
+  if (typeof window === 'undefined') return fallback
+  return window.localStorage.getItem(key) === '1'
+}
+
+function writeFlag(key: string, value: boolean) {
+  if (typeof window === 'undefined') return
+  window.localStorage.setItem(key, value ? '1' : '0')
+}
+
 function mergeOnboardingState(updater: (current: OnboardingState) => OnboardingState) {
   const next = updater(readOnboardingState())
   writeOnboardingState(next)
@@ -52,6 +65,8 @@ export default function OnboardingExperience() {
   const workspaceId = useAuthStore((s) => s.workspaceId)
   const [state, setState] = useState<OnboardingState>(() => readOnboardingState())
   const [isOpen, setIsOpen] = useState(() => readOnboardingState().status === 'not_started')
+  const [isCoachCollapsed, setIsCoachCollapsed] = useState(() => readFlag(COACH_COLLAPSED_STORAGE_KEY))
+  const [isCoachHidden, setIsCoachHidden] = useState(() => readFlag(COACH_HIDDEN_STORAGE_KEY))
   const discoveryUrl = workspaceId
     ? `${BACKEND_BASE_URL}/api/v1/workspaces/${workspaceId}/.well-known/agent`
     : null
@@ -63,7 +78,7 @@ export default function OnboardingExperience() {
   )
   const progressPercent = Math.round((completedCount / ONBOARDING_STEPS.length) * 100)
   const hasStarted = state.status !== 'not_started'
-  const showCoachCard = state.status === 'in_progress' && !isOpen && nextStep !== null
+  const showCoachCard = state.status === 'in_progress' && !isOpen && nextStep !== null && !isCoachHidden
 
   useEffect(() => {
     function handleOpen(event: Event) {
@@ -77,7 +92,9 @@ export default function OnboardingExperience() {
       if (detail?.reset) {
         writeOnboardingState(next)
       }
+      writeFlag(COACH_HIDDEN_STORAGE_KEY, false)
       setState(next)
+      setIsCoachHidden(false)
       setIsOpen(true)
     }
 
@@ -148,6 +165,19 @@ export default function OnboardingExperience() {
     if (!step) return
     setIsOpen(false)
     navigate(step.href)
+  }
+
+  function toggleCoachCollapsed() {
+    setIsCoachCollapsed((current) => {
+      const next = !current
+      writeFlag(COACH_COLLAPSED_STORAGE_KEY, next)
+      return next
+    })
+  }
+
+  function hideCoachCard() {
+    writeFlag(COACH_HIDDEN_STORAGE_KEY, true)
+    setIsCoachHidden(true)
   }
 
   function toggleManualStep(stepId: OnboardingStepId) {
@@ -424,46 +454,78 @@ export default function OnboardingExperience() {
 
       {showCoachCard && coachStep && (
         <div className="pointer-events-none fixed bottom-5 right-5 z-40 max-w-sm">
-          <div className="pointer-events-auto rounded-2xl border border-gray-200 bg-white p-4 shadow-lg">
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <p className="text-xs font-medium uppercase tracking-wide text-brand-600">
-                  Onboarding tip
-                </p>
-                <h3 className="mt-1 text-sm font-semibold text-gray-900">{coachStep.title}</h3>
-                <p className="mt-2 text-sm leading-6 text-gray-600">{coachStep.tip}</p>
-                {coachStep.id === 'agent_setup' && (
-                  <a
-                    href={OPENCLAW_PLUGIN_URL}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="mt-2 inline-flex items-center gap-1 text-sm font-medium text-brand-600 hover:text-brand-700"
-                  >
-                    Open plugin package
-                    <ExternalLink size={13} />
-                  </a>
-                )}
-              </div>
+          {isCoachCollapsed ? (
+            <div className="pointer-events-auto flex items-center gap-2 rounded-full border border-gray-200 bg-white px-3 py-2 shadow-lg">
+              <Sparkles size={14} className="text-brand-600" />
+              <button
+                type="button"
+                onClick={toggleCoachCollapsed}
+                className="text-sm font-medium text-gray-800"
+                aria-label="Expand onboarding tip"
+              >
+                Onboarding tip
+              </button>
               <button
                 type="button"
                 onClick={() => setIsOpen(true)}
                 className="rounded-full p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600"
                 aria-label="Open onboarding"
               >
-                <Sparkles size={15} />
+                <ChevronUp size={14} />
               </button>
             </div>
-            <div className="mt-4 flex gap-2">
-              {nextStep && (
-                <Btn size="sm" onClick={() => openStep(nextStep.id)}>
-                  {nextStep.hrefLabel}
+          ) : (
+            <div className="pointer-events-auto rounded-2xl border border-gray-200 bg-white p-4 shadow-lg">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-xs font-medium uppercase tracking-wide text-brand-600">
+                    Onboarding tip
+                  </p>
+                  <h3 className="mt-1 text-sm font-semibold text-gray-900">{coachStep.title}</h3>
+                  <p className="mt-2 text-sm leading-6 text-gray-600">{coachStep.tip}</p>
+                  {coachStep.id === 'agent_setup' && (
+                    <a
+                      href={OPENCLAW_PLUGIN_URL}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="mt-2 inline-flex items-center gap-1 text-sm font-medium text-brand-600 hover:text-brand-700"
+                    >
+                      Open plugin package
+                      <ExternalLink size={13} />
+                    </a>
+                  )}
+                </div>
+                <div className="flex items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={toggleCoachCollapsed}
+                    className="rounded-full p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600"
+                    aria-label="Collapse onboarding tip"
+                  >
+                    <ChevronDown size={15} />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={hideCoachCard}
+                    className="rounded-full p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600"
+                    aria-label="Hide onboarding tip"
+                  >
+                    <X size={15} />
+                  </button>
+                </div>
+              </div>
+              <div className="mt-4 flex gap-2">
+                {nextStep && (
+                  <Btn size="sm" onClick={() => openStep(nextStep.id)}>
+                    {nextStep.hrefLabel}
+                  </Btn>
+                )}
+                <Btn size="sm" variant="ghost" onClick={() => setIsOpen(true)}>
+                  View checklist
                 </Btn>
-              )}
-              <Btn size="sm" variant="ghost" onClick={() => setIsOpen(true)}>
-                View checklist
-              </Btn>
+              </div>
             </div>
-          </div>
+          )}
         </div>
       )}
     </>

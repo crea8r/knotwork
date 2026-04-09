@@ -187,6 +187,51 @@ async def ensure_default_channel_subscriptions(
         await db.commit()
 
 
+async def sync_channel_participants(
+    db: AsyncSession,
+    workspace_id: UUID,
+    channel_id: UUID,
+    participant_ids: set[str],
+) -> None:
+    """Replace channel subscriptions with an explicit participant set."""
+    if not participant_ids:
+        return
+
+    rows = await db.execute(
+        select(ChannelSubscription).where(
+            ChannelSubscription.workspace_id == workspace_id,
+            ChannelSubscription.channel_id == channel_id,
+        )
+    )
+    existing = {row.participant_id: row for row in rows.scalars()}
+    now = datetime.now(timezone.utc)
+    changed = False
+
+    for participant_id, row in existing.items():
+        if participant_id in participant_ids:
+            if row.unsubscribed_at is not None:
+                row.unsubscribed_at = None
+                changed = True
+        elif row.unsubscribed_at is None:
+            row.unsubscribed_at = now
+            changed = True
+
+    for participant_id in participant_ids:
+        if participant_id in existing:
+            continue
+        db.add(
+            ChannelSubscription(
+                workspace_id=workspace_id,
+                channel_id=channel_id,
+                participant_id=participant_id,
+            )
+        )
+        changed = True
+
+    if changed:
+        await db.commit()
+
+
 async def _active_channel_participant_ids(
     db: AsyncSession,
     workspace_id: UUID,
@@ -1635,6 +1680,7 @@ async def get_or_create_run_channel(
     workspace_id: UUID,
     run_id: str,
     graph_id: UUID | None = None,
+    participant_ids: set[str] | None = None,
 ) -> Channel:
     existing = await db.execute(
         select(Channel).where(
@@ -1646,6 +1692,8 @@ async def get_or_create_run_channel(
     )
     row = existing.scalar_one_or_none()
     if row:
+        if participant_ids:
+            await sync_channel_participants(db, workspace_id, row.id, participant_ids)
         return row
 
     row = Channel(
@@ -1660,7 +1708,10 @@ async def get_or_create_run_channel(
     db.add(row)
     await db.commit()
     await db.refresh(row)
-    await ensure_default_channel_subscriptions(db, workspace_id, channel_id=row.id)
+    if participant_ids:
+        await sync_channel_participants(db, workspace_id, row.id, participant_ids)
+    else:
+        await ensure_default_channel_subscriptions(db, workspace_id, channel_id=row.id)
     return row
 
 

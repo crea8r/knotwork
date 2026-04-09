@@ -19,7 +19,6 @@ VALID_MODELS: frozenset[str] = frozenset({
     "claude-opus-4-6", "claude-sonnet-4-6", "claude-haiku-4-5-20251001",
 })
 
-
 def validate_graph(definition: dict) -> list[str]:
     """
     Validate graph topology. Returns a list of error strings.
@@ -93,6 +92,8 @@ def validate_graph(definition: dict) -> list[str]:
             if not supervisor_id:
                 errors.append(f'Node "{name}" is missing a supervisor')
             operator_id = str(node.get("operator_id") or "").strip()
+            if not operator_id:
+                errors.append(f'Node "{name}" is missing an operator')
             registered_agent_id = str(node.get("registered_agent_id") or "").strip()
             operator_agent_id = operator_id or (f"agent:{registered_agent_id}" if registered_agent_id else "")
             if operator_agent_id.startswith("agent:") and supervisor_id == operator_agent_id:

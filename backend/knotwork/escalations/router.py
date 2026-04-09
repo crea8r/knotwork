@@ -201,12 +201,15 @@ async def _record_decision_event(
     )
     from knotwork.channels.schemas import DecisionEventCreate, ChannelMessageCreate
 
+    actor_type = data.actor_type or "human"
     channel_id = data.channel_id
     if channel_id is None:
         channel_id = await find_workflow_channel_for_run(db, esc.run_id)  # type: ignore[attr-defined]
     payload = {
         "guidance": data.guidance,
         "override_output": data.override_output if data.override_output is not None else data.edited_output,
+        "answers": data.answers,
+        "next_branch": data.next_branch,
     }
     await create_decision(
         db,
@@ -214,7 +217,7 @@ async def _record_decision_event(
         channel_id=channel_id,
         data=DecisionEventCreate(
             decision_type=normalized_resolution,
-            actor_type="human",
+            actor_type=actor_type,
             actor_name=data.actor_name,
             run_id=esc.run_id,  # type: ignore[attr-defined]
             escalation_id=esc.id,  # type: ignore[attr-defined]
@@ -222,14 +225,40 @@ async def _record_decision_event(
         ),
     )
 
+    questions = [str(question) for question in ((esc.context or {}).get("questions") or []) if str(question).strip()]
+    answers = [str(answer).strip() for answer in (data.answers or []) if str(answer).strip()]
+    answer_blocks = [
+        f"Q: {question}\nA: {answer}"
+        for question, answer in zip(questions, answers)
+        if answer
+    ]
+
     response_text = ""
-    if normalized_resolution == "request_revision" and data.guidance:
-        response_text = str(data.guidance)
+    if normalized_resolution == "request_revision":
+        if answer_blocks:
+            response_text = "\n\n".join(answer_blocks)
+            if data.guidance:
+                response_text = f"{response_text}\n\nAdditional context:\n{data.guidance}"
+        elif data.guidance:
+            response_text = str(data.guidance)
     elif normalized_resolution == "override_output":
         edited = data.override_output if data.override_output is not None else data.edited_output
-        response_text = str(edited or "")
+        if isinstance(edited, dict):
+            response_text = str(edited.get("text") or "").strip() or str(edited).strip()
+        else:
+            response_text = str(edited or "")
     elif normalized_resolution == "accept_output":
-        response_text = "Accepted output. Continue."
+        edited = data.override_output if data.override_output is not None else data.edited_output
+        if isinstance(edited, dict):
+            response_text = str(edited.get("text") or "").strip() or str(edited).strip()
+        elif edited is not None:
+            response_text = str(edited).strip()
+        elif answer_blocks:
+            response_text = "\n\n".join(answer_blocks)
+        elif data.next_branch:
+            response_text = f"Continue on branch: {data.next_branch}"
+        else:
+            response_text = "Accepted output. Continue."
     elif normalized_resolution == "abort_run":
         response_text = "Abort this run."
 
@@ -245,8 +274,8 @@ async def _record_decision_event(
             workspace_id=workspace_id,
             channel_id=run_channel.id,
             data=ChannelMessageCreate(
-                role="user",
-                author_type="human",
+                role="assistant" if actor_type == "agent" else "user",
+                author_type=actor_type,
                 author_name=data.actor_name or "You",
                 content=response_text,
                 run_id=esc.run_id,  # type: ignore[attr-defined]

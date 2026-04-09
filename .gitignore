@@ -55,3 +55,4 @@ agent-bridge/plugins/openclaw/sync-to-openclaw.sh
 agent-bridge/**/**.key
 
 test-mcp-client
+.VSCodeCounter

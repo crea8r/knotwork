@@ -20,6 +20,26 @@ MAX_RUN_ATTACHMENTS = 10
 MAX_RUN_ATTACHMENT_SIZE_BYTES = 10 * 1024 * 1024
 
 
+async def _collect_run_participant_ids(
+    db: AsyncSession,
+    workspace_id: UUID,
+    definition: dict,
+) -> set[str]:
+    from knotwork.participants import resolve_participant_ids
+
+    candidate_ids: list[str] = []
+    for node in (definition or {}).get("nodes", []):
+        if not isinstance(node, dict) or node.get("type") != "agent":
+            continue
+        operator_id = str(node.get("operator_id") or "").strip()
+        supervisor_id = str(node.get("supervisor_id") or "").strip()
+        if operator_id:
+            candidate_ids.append(operator_id)
+        if supervisor_id:
+            candidate_ids.append(supervisor_id)
+    return set(await resolve_participant_ids(db, workspace_id, candidate_ids))
+
+
 def _normalize_context_files(context_files: list) -> list[dict]:
     normalized: list[dict] = []
     for raw in context_files or []:
@@ -145,11 +165,14 @@ async def create_run(
     from knotwork.channels import service as channel_service
     from knotwork.channels.schemas import ChannelMessageCreate
 
+    run_participant_ids = await _collect_run_participant_ids(db, workspace_id, version.definition)
+
     run_channel = await channel_service.get_or_create_run_channel(
         db,
         workspace_id=workspace_id,
         run_id=run.id,
         graph_id=graph_id,
+        participant_ids=run_participant_ids or None,
     )
     await channel_service.create_message(
         db,

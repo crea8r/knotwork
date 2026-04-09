@@ -27,8 +27,8 @@ export default function NewFilePanel({ folder, onCreate, onCancel }: Props) {
     if (!filename.trim()) return
     setError(null)
     try {
-      await create.mutateAsync({ path: fullPath, content: '' })
-      onCreate(fullPath)
+      const created = await create.mutateAsync({ path: fullPath, content: '' })
+      onCreate(created.path)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to create file.')
     }

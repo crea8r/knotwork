@@ -10,6 +10,7 @@ export interface EscalationResolve {
   next_branch?: string     // routing escalation: human-chosen branch node ID
   channel_id?: string
   actor_name?: string
+  actor_type?: 'human' | 'agent' | 'system'
 }
 
 export function useEscalations(workspaceId: string, status?: string) {

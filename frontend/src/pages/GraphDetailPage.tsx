@@ -180,6 +180,7 @@ export default function GraphDetailPage() {
             graphId={graphId!}
             definition={definition}
             onClose={() => setShowRunModal(false)}
+            defaultGraphVersionId={sync.activeDraft?.id ?? sync.activeParentVersion?.id ?? null}
           />
         )}
         <GraphDialogs

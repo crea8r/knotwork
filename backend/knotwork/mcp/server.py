@@ -421,6 +421,7 @@ def build_server(client: KnotworkAPIClient | None = None) -> FastMCP:
         escalation_id: str,
         resolution: str,
         actor_name: str,
+        actor_type: str | None = None,
         guidance: str | None = None,
         override_output: dict[str, Any] | None = None,
         next_branch: str | None = None,
@@ -432,6 +433,7 @@ def build_server(client: KnotworkAPIClient | None = None) -> FastMCP:
         body = {
             "resolution": resolution,
             "actor_name": actor_name,
+            "actor_type": actor_type,
             "guidance": guidance,
             "override_output": override_output,
             "next_branch": next_branch,

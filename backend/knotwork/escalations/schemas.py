@@ -45,3 +45,4 @@ class EscalationResolve(BaseModel):
     next_branch: str | None = None      # routing escalation: human-chosen branch
     channel_id: UUID | None = None
     actor_name: str | None = None
+    actor_type: Literal["human", "agent", "system"] | None = None

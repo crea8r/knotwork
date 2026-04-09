@@ -233,3 +233,45 @@ async def list_workspace_participants(
         )
     participants.sort(key=lambda participant: str(participant.get("display_name") or "").lower())
     return participants
+
+
+async def resolve_participant_id(
+    db: AsyncSession,
+    workspace_id: UUID,
+    value: str | None,
+) -> str | None:
+    raw = str(value or "").strip()
+    if not raw:
+        return None
+    if ":" in raw:
+        return raw
+
+    try:
+        member_id = UUID(raw)
+    except ValueError:
+        return raw
+
+    member = await db.get(WorkspaceMember, member_id)
+    if member is None or member.workspace_id != workspace_id or member.access_disabled_at is not None:
+        return raw
+
+    user = await db.get(User, member.user_id)
+    if user is None:
+        return raw
+    return member_participant_id(member, user.id)
+
+
+async def resolve_participant_ids(
+    db: AsyncSession,
+    workspace_id: UUID,
+    values: list[str] | set[str] | tuple[str, ...],
+) -> list[str]:
+    resolved: list[str] = []
+    seen: set[str] = set()
+    for value in values:
+        participant_id = await resolve_participant_id(db, workspace_id, value)
+        if not participant_id or participant_id in seen:
+            continue
+        seen.add(participant_id)
+        resolved.append(participant_id)
+    return resolved
