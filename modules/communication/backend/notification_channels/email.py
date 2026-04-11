@@ -14,10 +14,11 @@ async def send(
     to_address: str,
     subject: str,
     body: str,
+    body_html: str | None = None,
     from_address: str = "noreply@knotwork.io",
     api_key: str | None = None,
 ) -> None:
-    """Send a plain-text email via the Resend API.
+    """Send an email via the Resend API.
 
     Reads RESEND_API from settings (env var RESEND_API).
     Raises on non-2xx responses so callers can decide whether to swallow the error.
@@ -54,6 +55,7 @@ async def send(
                     "to": [to_address],
                     "subject": subject,
                     "text": body,
+                    **({"html": body_html} if body_html else {}),
                 },
             )
     except httpx.TimeoutException:

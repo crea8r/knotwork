@@ -1,6 +1,7 @@
 """Auth endpoints: magic link request/verify, current user."""
 from __future__ import annotations
 
+from html import escape
 import logging
 from uuid import UUID
 
@@ -77,6 +78,65 @@ def _workspace_email_from(workspace: Workspace) -> str:
     return (workspace.email_from or settings.email_from).strip() or settings.email_from
 
 
+def _magic_link_email_content(login_url: str) -> tuple[str, str]:
+    safe_url = escape(login_url, quote=True)
+    text_body = (
+        "Sign in to Knotwork\n\n"
+        "Use the link below to securely sign in to your workspace. "
+        "This link expires in 15 minutes.\n\n"
+        f"{login_url}\n\n"
+        "If you did not request this email, you can safely ignore it."
+    )
+    html_body = f"""\
+<!DOCTYPE html>
+<html lang="en">
+  <body style="margin:0;padding:0;background:#f5f7fb;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;color:#172033;">
+    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#f5f7fb;padding:32px 16px;">
+      <tr>
+        <td align="center">
+          <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:560px;background:#ffffff;border:1px solid #e6ebf2;border-radius:18px;overflow:hidden;">
+            <tr>
+              <td style="padding:36px 36px 16px 36px;">
+                <div style="font-size:12px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:#5b6b84;">Knotwork</div>
+                <h1 style="margin:12px 0 12px 0;font-size:28px;line-height:1.2;color:#172033;">Sign in to your workspace</h1>
+                <p style="margin:0 0 24px 0;font-size:15px;line-height:1.6;color:#445066;">
+                  Use the secure sign-in link below to access Knotwork. This link expires in 15 minutes.
+                </p>
+                <table role="presentation" cellspacing="0" cellpadding="0" style="margin:0 0 24px 0;">
+                  <tr>
+                    <td>
+                      <a href="{safe_url}" style="display:inline-block;background:#172033;color:#ffffff;text-decoration:none;font-size:15px;font-weight:600;padding:14px 22px;border-radius:10px;">
+                        Open Knotwork
+                      </a>
+                    </td>
+                  </tr>
+                </table>
+                <p style="margin:0 0 10px 0;font-size:14px;line-height:1.6;color:#667389;">
+                  If the button does not work, copy and paste this link into your browser:
+                </p>
+                <p style="margin:0 0 24px 0;font-size:13px;line-height:1.7;word-break:break-all;color:#445066;">
+                  <a href="{safe_url}" style="color:#335caa;text-decoration:none;">{safe_url}</a>
+                </p>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:0 36px 32px 36px;">
+                <div style="height:1px;background:#e6ebf2;margin-bottom:18px;"></div>
+                <p style="margin:0;font-size:13px;line-height:1.6;color:#7b879b;">
+                  If you did not request this email, you can safely ignore it.
+                </p>
+              </td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+    </table>
+  </body>
+</html>
+"""
+    return text_body, html_body
+
+
 async def _has_active_workspace_membership(db: AsyncSession, user_id: UUID) -> bool:
     result = await db.execute(
         select(WorkspaceMember.id)
@@ -146,16 +206,13 @@ async def request_magic_link(
     await db.commit()
 
     login_url = f"{settings.normalized_frontend_url}/accept-invite?magic={token_str}"
-    body = (
-        f"Click the link below to log in to Knotwork (expires in 15 minutes):\n\n"
-        f"{login_url}\n\n"
-        f"If you didn't request this, you can safely ignore it."
-    )
+    body, body_html = _magic_link_email_content(login_url)
     try:
         await send_email(
             to_address=email,
-            subject="Your Knotwork login link",
+            subject="Sign in to Knotwork",
             body=body,
+            body_html=body_html,
             from_address=settings.email_from,
         )
     except Exception as exc:
