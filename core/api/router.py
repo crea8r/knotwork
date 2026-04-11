@@ -20,6 +20,7 @@ from modules.communication.backend.routers import (
     notifications_router,
 )
 from modules.projects.backend.routers import projects_router
+from modules.marketing.backend.routers import waitlist_router
 from modules.workflows.backend.agent_api.router import router as agent_api_router
 from modules.workflows.backend.routers import (
     graphs_router,
@@ -50,6 +51,7 @@ def mount_routers(app: FastAPI, *, prefix: str = "/api/v1") -> None:
     app.include_router(ws_router, prefix=prefix)
     app.include_router(channels_router, prefix=prefix)
     app.include_router(projects_router, prefix=prefix)
+    app.include_router(waitlist_router, prefix=prefix)
     app.include_router(invitations_router, prefix=prefix)
     app.include_router(invitations_public_router, prefix=prefix)
     app.include_router(public_workflows_router, prefix=prefix)

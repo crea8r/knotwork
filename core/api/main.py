@@ -31,6 +31,7 @@ import modules.workflows.backend.public_workflows_models  # noqa: F401
 import modules.workflows.backend.ratings_models  # noqa: F401
 import modules.workflows.backend.runs_models  # noqa: F401
 import modules.workflows.backend.tools_models  # noqa: F401
+import modules.marketing.backend.waitlist_models  # noqa: F401
 
 from core.api.health import (
     initialize_health_state,

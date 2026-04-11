@@ -30,6 +30,7 @@ import {
   RunDetailPage,
   RunsPage,
 } from '@modules/workflows/frontend/index'
+import { LandingPage } from '@modules/marketing/frontend/index'
 
 export default function App() {
   return (
@@ -40,7 +41,7 @@ export default function App() {
       <Route path="/public/workflows/:token" element={<PublicWorkflowPage />} />
       <Route path="/public/runs/:token" element={<PublicRunPage />} />
 
-      <Route path="/" element={<Navigate to="/inbox" replace />} />
+      <Route path="/" element={<LandingPage />} />
       <Route path="/dashboard" element={<Navigate to="/inbox" replace />} />
       <Route
         path="/graphs/:graphId"
