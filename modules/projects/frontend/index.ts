@@ -1,0 +1,7 @@
+export { default as ObjectiveDetailPage } from '@modules/projects/frontend/pages/ObjectiveDetailPage'
+export { default as ObjectiveDetailPanel } from '@modules/projects/frontend/pages/ObjectiveDetailPanel'
+export { default as ProjectAssetsPage } from '@modules/projects/frontend/pages/ProjectAssetsPage'
+export { default as ProjectChannelPage } from '@modules/projects/frontend/pages/ProjectChannelPage'
+export { default as ProjectDetailPage } from '@modules/projects/frontend/pages/ProjectDetailPage'
+export { default as ProjectMainContent } from '@modules/projects/frontend/pages/ProjectMainContent'
+export { default as ProjectsPage } from '@modules/projects/frontend/pages/ProjectsPage'

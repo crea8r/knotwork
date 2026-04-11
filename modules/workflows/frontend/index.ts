@@ -1,0 +1,6 @@
+export { default as GraphDetailPage } from '@modules/workflows/frontend/pages/GraphDetailPage'
+export { default as GraphsPage } from '@modules/workflows/frontend/pages/GraphsPage'
+export { default as PublicRunPage } from '@modules/workflows/frontend/pages/PublicRunPage'
+export { default as PublicWorkflowPage } from '@modules/workflows/frontend/pages/PublicWorkflowPage'
+export { default as RunDetailPage } from '@modules/workflows/frontend/pages/RunDetailPage'
+export { default as RunsPage } from '@modules/workflows/frontend/pages/RunsPage'

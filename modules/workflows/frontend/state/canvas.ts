@@ -1,0 +1,185 @@
+/**
+ * Canvas store: graph definition + canvas UI state.
+ * `definition` is the source of truth for the graph being edited.
+ * Node positions are NOT stored here — dagre computes them from the definition at render time.
+ * Persisted to the API on save.
+ */
+import { create } from 'zustand'
+import type { GraphDefinition, InputFieldDef, NodeDef, EdgeDef } from '@data-models'
+
+export interface GraphDelta {
+  add_nodes?: NodeDef[]
+  update_nodes?: Array<{ id: string; name?: string; config?: Record<string, unknown> }>
+  remove_nodes?: string[]
+  add_edges?: EdgeDef[]
+  remove_edges?: string[]
+  set_entry_point?: string
+  set_input_schema?: InputFieldDef[]
+}
+
+interface CanvasState {
+  graphId: string | null
+  definition: GraphDefinition
+  selectedNodeId: string | null
+  isDirty: boolean
+
+  setGraph: (graphId: string, definition: GraphDefinition) => void
+  applyDelta: (delta: GraphDelta) => void
+  selectNode: (nodeId: string | null) => void
+  updateNodeConfig: (nodeId: string, config: Record<string, unknown>) => void
+  addNode: (node: NodeDef) => void
+  removeNode: (nodeId: string) => void
+  addEdge: (edge: EdgeDef) => void
+  updateEdge: (edgeId: string, patch: Partial<EdgeDef>) => void
+  removeEdge: (edgeId: string) => void
+  setInputSchema: (fields: InputFieldDef[]) => void
+  markSaved: () => void
+}
+
+const emptyDefinition: GraphDefinition = { nodes: [], edges: [] }
+
+export const useCanvasStore = create<CanvasState>((set) => ({
+  graphId: null,
+  definition: emptyDefinition,
+  selectedNodeId: null,
+  isDirty: false,
+
+  setGraph: (graphId, definition) => {
+    const hasStart = definition.nodes.some(n => n.type === 'start')
+    const hasEnd = definition.nodes.some(n => n.type === 'end')
+
+    if (hasStart && hasEnd) {
+      // Complete graph — no seeding needed
+      set({ graphId, definition, selectedNodeId: null, isDirty: false })
+      return
+    }
+
+    // Seed missing start/end (empty graph OR legacy graph without them).
+    // Prepend so they appear at the top of the dagre layout.
+    const extraNodes: NodeDef[] = []
+    if (!hasStart) extraNodes.push({ id: 'start', type: 'start', name: 'Start', config: {} })
+    if (!hasEnd) extraNodes.push({ id: 'end', type: 'end', name: 'End', config: {} })
+
+    set({
+      graphId,
+      definition: {
+        ...definition,
+        nodes: [...extraNodes, ...definition.nodes],
+      },
+      selectedNodeId: null,
+      isDirty: true,
+    })
+  },
+
+  applyDelta: (delta) =>
+    set((state) => {
+      let { nodes, edges } = state.definition
+      let entry_point = state.definition.entry_point
+
+      if (delta.add_nodes?.length) {
+        // Deduplicate — designer may re-emit start/end that are already seeded
+        const existingIds = new Set(nodes.map(n => n.id))
+        const incoming = delta.add_nodes.filter(n => !existingIds.has(n.id))
+        nodes = [...nodes, ...incoming]
+      }
+      if (delta.update_nodes?.length) {
+        nodes = nodes.map(n => {
+          const u = delta.update_nodes!.find(x => x.id === n.id)
+          if (!u) return n
+          return { ...n, ...(u.name ? { name: u.name } : {}), config: { ...n.config, ...u.config } }
+        })
+      }
+      if (delta.remove_nodes?.length) {
+        const removed = new Set(delta.remove_nodes)
+        nodes = nodes.filter(n => !removed.has(n.id))
+        edges = edges.filter(e => !removed.has(e.source) && !removed.has(e.target))
+      }
+      if (delta.add_edges?.length) {
+        const existingEdgeIds = new Set(edges.map(e => e.id))
+        const incomingEdges = delta.add_edges.filter(e => !existingEdgeIds.has(e.id))
+        edges = [...edges, ...incomingEdges]
+      }
+      if (delta.remove_edges?.length) {
+        const removedEdges = new Set(delta.remove_edges)
+        edges = edges.filter(e => !removedEdges.has(e.id))
+      }
+      if (delta.set_entry_point) {
+        entry_point = delta.set_entry_point
+      }
+      let input_schema = state.definition.input_schema
+      // Only apply designer's schema suggestion if the user has no schema yet
+      if (delta.set_input_schema && !state.definition.input_schema?.length) {
+        input_schema = delta.set_input_schema
+      }
+      return { definition: { nodes, edges, entry_point, input_schema }, isDirty: true }
+    }),
+
+  selectNode: (nodeId) => set({ selectedNodeId: nodeId }),
+
+  updateNodeConfig: (nodeId, patch) =>
+    set((state) => {
+      // _config key → merged into node.config; all other keys → top-level node fields
+      const { _config, ...nodeFields } = patch as { _config?: Record<string, unknown> } & Record<string, unknown>
+      return {
+        definition: {
+          ...state.definition,
+          nodes: state.definition.nodes.map((n) =>
+            n.id === nodeId
+              ? { ...n, ...nodeFields, config: { ...n.config, ...(_config ?? {}) } }
+              : n
+          ),
+        },
+        isDirty: true,
+      }
+    }),
+
+  addNode: (node) =>
+    set((state) => ({
+      definition: { ...state.definition, nodes: [...state.definition.nodes, node] },
+      isDirty: true,
+    })),
+
+  removeNode: (nodeId) =>
+    set((state) => ({
+      definition: {
+        nodes: state.definition.nodes.filter((n) => n.id !== nodeId),
+        edges: state.definition.edges.filter(
+          (e) => e.source !== nodeId && e.target !== nodeId
+        ),
+      },
+      selectedNodeId: state.selectedNodeId === nodeId ? null : state.selectedNodeId,
+      isDirty: true,
+    })),
+
+  addEdge: (edge) =>
+    set((state) => ({
+      definition: { ...state.definition, edges: [...state.definition.edges, edge] },
+      isDirty: true,
+    })),
+
+  updateEdge: (edgeId, patch) =>
+    set((state) => ({
+      definition: {
+        ...state.definition,
+        edges: state.definition.edges.map((e) => e.id === edgeId ? { ...e, ...patch } : e),
+      },
+      isDirty: true,
+    })),
+
+  removeEdge: (edgeId) =>
+    set((state) => ({
+      definition: {
+        ...state.definition,
+        edges: state.definition.edges.filter((e) => e.id !== edgeId),
+      },
+      isDirty: true,
+    })),
+
+  setInputSchema: (fields) =>
+    set((state) => ({
+      definition: { ...state.definition, input_schema: fields },
+      isDirty: true,
+    })),
+
+  markSaved: () => set({ isDirty: false }),
+}))

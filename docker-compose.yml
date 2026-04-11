@@ -40,8 +40,8 @@ services:
   backend:
     image: ${COMPOSE_PROJECT_NAME:-knotwork}-backend:latest
     build:
-      context: ./backend
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: Dockerfile.backend
     env_file: .env
     environment:
       # Docker-internal DB/Redis URLs override .env if set
@@ -59,7 +59,7 @@ services:
       redis:
         condition: service_healthy
     command: >
-      sh -c "python scripts/migrate_or_stamp.py && uvicorn knotwork.main:app --host 0.0.0.0 --port 8000"
+      sh -c "python /app/scripts/migrate_or_stamp.py && uvicorn core.api.main:app --host 0.0.0.0 --port 8000"
     profiles: ["prod"]
     networks:
       knotwork-network:
@@ -71,8 +71,8 @@ services:
   backend-dev:
     image: ${COMPOSE_PROJECT_NAME:-knotwork}-backend-dev:latest
     build:
-      context: ./backend
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: Dockerfile.backend
     env_file: .env
     environment:
       DATABASE_URL: postgresql+asyncpg://knotwork:knotwork@postgres:5432/knotwork
@@ -87,9 +87,9 @@ services:
       redis:
         condition: service_healthy
     volumes:
-      - ./backend:/app
+      - .:/app
     command: >
-      sh -c "python scripts/migrate_or_stamp.py && uvicorn knotwork.main:app --host 0.0.0.0 --port 8000 --reload"
+      sh -c "python /app/scripts/migrate_or_stamp.py && uvicorn core.api.main:app --host 0.0.0.0 --port 8000 --reload"
     profiles: ["dev"]
     networks:
       knotwork-network:
@@ -101,8 +101,8 @@ services:
   worker:
     image: ${COMPOSE_PROJECT_NAME:-knotwork}-worker:latest
     build:
-      context: ./backend
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: Dockerfile.backend
     env_file: .env
     environment:
       DATABASE_URL: postgresql+asyncpg://knotwork:knotwork@postgres:5432/knotwork
@@ -116,7 +116,7 @@ services:
         condition: service_healthy
       backend:
         condition: service_started
-    command: arq knotwork.worker.tasks.WorkerSettings
+    command: arq core.runtime_assembly_tasks.WorkerSettings
     profiles: ["prod"]
     networks:
       - knotwork-network
@@ -124,8 +124,8 @@ services:
   worker-dev:
     image: ${COMPOSE_PROJECT_NAME:-knotwork}-worker-dev:latest
     build:
-      context: ./backend
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: Dockerfile.backend
     env_file: .env
     environment:
       DATABASE_URL: postgresql+asyncpg://knotwork:knotwork@postgres:5432/knotwork
@@ -140,8 +140,8 @@ services:
       backend-dev:
         condition: service_started
     volumes:
-      - ./backend:/app
-    command: arq knotwork.worker.tasks.WorkerSettings
+      - .:/app
+    command: arq core.runtime_assembly_tasks.WorkerSettings
     profiles: ["dev"]
     networks:
       - knotwork-network
@@ -150,14 +150,15 @@ services:
   frontend-dev:
     image: ${COMPOSE_PROJECT_NAME:-knotwork}-frontend-dev:latest
     build:
-      context: ./frontend
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: Dockerfile.frontend
       target: dev
     ports:
       - "${FRONTEND_DEV_HOST_PORT:-3000}:3000"
     volumes:
-      - ./frontend/src:/app/src
-      - ./frontend/public:/app/public
+      - .:/app
+      - ./modules:/app/modules
+      - frontend_node_modules:/app/core/app-shell/node_modules
     environment:
       # Browser-visible env vars — the browser calls the backend directly,
       # no server-side proxy. Must use the host-mapped port (localhost:8000).
@@ -171,8 +172,8 @@ services:
   frontend-prod:
     image: ${COMPOSE_PROJECT_NAME:-knotwork}-frontend-prod:latest
     build:
-      context: ./frontend
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: Dockerfile.frontend
       target: prod
     environment:
       # Passed to docker-entrypoint.sh which substitutes it into env.js at start.
@@ -188,3 +189,4 @@ services:
 
 volumes:
   postgres_data:
+  frontend_node_modules:

@@ -1,0 +1,5 @@
+export { default as ChannelDetailPage } from '@modules/communication/frontend/pages/ChannelDetailPage'
+export { default as ChannelsPage } from '@modules/communication/frontend/pages/ChannelsPage'
+export { default as EscalationsPage } from '@modules/communication/frontend/pages/EscalationsPage'
+export { default as InboxPage } from '@modules/communication/frontend/pages/InboxPage'
+export { communicationRoutes } from '@modules/communication/frontend/routes'
