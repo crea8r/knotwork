@@ -44,7 +44,7 @@ class RunNodeState(Base):
     node_id: Mapped[str] = mapped_column(String, nullable=False)
     # S6.5: display name at time of run (denormalized so it survives graph edits)
     node_name: Mapped[str | None] = mapped_column(String, nullable=True)
-    # S6.5: which agent system handled this node ("claude:claude-3-5-sonnet", "openai:asst_x")
+    # S6.5: which agent system handled this node (currently "human" in this build)
     agent_ref: Mapped[str | None] = mapped_column(String, nullable=True)
     status: Mapped[str] = mapped_column(String, nullable=False, default="pending")
     input: Mapped[dict | None] = mapped_column(JSON, nullable=True)
@@ -99,8 +99,8 @@ class RunHandbookProposal(Base):
     created_at: Mapped[DateTime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
 
-class OpenAICallLog(Base):
-    """Per-call OpenAI debug audit for run execution."""
+class ProviderCallLog(Base):
+    """Per-call provider debug audit for run execution."""
     __tablename__ = "openai_call_logs"
 
     id: Mapped[UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid4)

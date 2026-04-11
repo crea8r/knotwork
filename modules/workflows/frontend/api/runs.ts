@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import type { ChannelMessage, OpenAICallLog, Run, RunNodeState, RunWorklogEntry } from '@data-models'
+import type { ChannelMessage, ProviderCallLog, Run, RunNodeState, RunWorklogEntry } from '@data-models'
 import { api } from '@sdk'
 
 export interface RunAttachmentRef {
@@ -56,16 +56,16 @@ export function useRunNodes(
   })
 }
 
-export function useRunOpenAILogs(
+export function useRunProviderLogs(
   workspaceId: string,
   runId: string,
   options?: { refetchInterval?: number | false },
 ) {
   return useQuery({
-    queryKey: ['run-openai-logs', runId],
+    queryKey: ['run-provider-logs', runId],
     queryFn: () =>
       api
-        .get<OpenAICallLog[]>(`/workspaces/${workspaceId}/runs/${runId}/openai-logs`)
+        .get<ProviderCallLog[]>(`/workspaces/${workspaceId}/runs/${runId}/provider-logs`)
         .then((r) => r.data),
     enabled: !!workspaceId && !!runId,
     ...options,

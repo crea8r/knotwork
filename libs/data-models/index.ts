@@ -77,7 +77,7 @@ export interface NodeDef {
   name: string
   position?: { x: number; y: number }  // optional — dagre computes layout
   note?: string
-  /** S7: which agent handles this node, e.g. "anthropic:claude-3-5-sonnet-20241022" or "human" */
+  /** S7: which agent handles this node, currently "human" in this build */
   agent_ref?: string
   /** S7: how much autonomy the agent has */
   trust_level?: TrustLevel
@@ -186,7 +186,7 @@ export interface RunNodeState {
   completed_at: string | null
 }
 
-export interface OpenAICallLog {
+export interface ProviderCallLog {
   id: string
   workspace_id: string
   workflow_id: string | null

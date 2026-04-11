@@ -68,19 +68,6 @@ _FALLBACK = {
 }
 
 
-def _chat_openai_model_name(model_ref: str | None) -> str:
-    if not model_ref:
-        return "gpt-4o"
-    normalized = str(model_ref).strip()
-    if not normalized:
-        return "gpt-4o"
-    if "/" in normalized:
-        provider, model = normalized.split("/", 1)
-        if provider == "openai" and model:
-            return model
-    return normalized if normalized.startswith("gpt-") else "gpt-4o"
-
-
 async def _agentzero_identity(workspace_id: UUID, db: AsyncSession) -> tuple[str, str | None]:
     from libs.auth.backend.models import User
     from modules.admin.backend.workspaces_models import Workspace, WorkspaceMember
@@ -100,14 +87,14 @@ async def _agentzero_identity(workspace_id: UUID, db: AsyncSession) -> tuple[str
         )
     ).first()
     if row is not None:
-        return (str(row[0] or "AgentZero"), _chat_openai_model_name(str(row[1]) if row[1] else None))
+        return (str(row[0] or "AgentZero"), str(row[1]) if row[1] else None)
 
     workspace_default_model = (
         await db.execute(
             select(Workspace.default_model).where(Workspace.id == workspace_id).limit(1)
         )
     ).scalar_one_or_none()
-    return ("AgentZero", _chat_openai_model_name(str(workspace_default_model) if workspace_default_model else None))
+    return ("AgentZero", str(workspace_default_model) if workspace_default_model else None)
 
 
 async def _load_history(graph_id: UUID, db: AsyncSession) -> list[dict]:
@@ -262,10 +249,7 @@ async def design_graph(
     assistant_participant_id = None
 
     try:
-        from langchain_openai import ChatOpenAI
-        from langchain_core.messages import HumanMessage, AIMessage, SystemMessage
         from libs.auth.backend.models import User
-        from libs.config import settings
         from modules.admin.backend.workspaces_models import WorkspaceMember
 
         # Load history from DB if graph_id is provided, else use no history.
@@ -274,12 +258,6 @@ async def design_graph(
             history = await _load_history(UUID(graph_id), db)
         else:
             history = []
-
-        messages = [SystemMessage(content=system_content)]
-        for m in history:
-            cls = HumanMessage if m["role"] == "user" else AIMessage
-            messages.append(cls(content=m["content"]))
-        messages.append(HumanMessage(content=message))
 
         agentzero = (
             await db.execute(
@@ -296,20 +274,13 @@ async def design_graph(
         if agentzero is not None:
             assistant_participant_id = f"agent:{agentzero[0]}"
 
-        llm = ChatOpenAI(
-            model=assistant_model or "gpt-4o",
-            temperature=0,
-            api_key=settings.openai_api_key,
-            model_kwargs={"response_format": {"type": "json_object"}},
-        )
-        response = await llm.ainvoke(messages)
-        raw = response.content.strip()
-        # Strip optional ```json ... ``` fences
-        raw = re.sub(r'^```(?:json)?\s*', '', raw)
-        raw = re.sub(r'\s*```$', '', raw).strip()
-        logger.debug("LLM raw response: %s", raw)
-        result = _normalize_result(json.loads(raw))
-        result["author_name"] = assistant_name
+        logger.info("designer_agent disabled: returning fallback response")
+        result = {
+            "reply": "Workflow chat is disabled in this build. Edit the graph manually.",
+            "graph_delta": {},
+            "questions": [],
+            "author_name": assistant_name,
+        }
 
     except Exception as exc:
         logger.error("design_graph failed: %s", exc, exc_info=True)

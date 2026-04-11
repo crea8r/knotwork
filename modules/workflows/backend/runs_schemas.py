@@ -97,7 +97,7 @@ class RunHandbookProposalOut(BaseModel):
     model_config = {"from_attributes": True}
 
 
-class OpenAICallLogOut(BaseModel):
+class ProviderCallLogOut(BaseModel):
     id: UUID
     workspace_id: UUID
     workflow_id: UUID | None = None

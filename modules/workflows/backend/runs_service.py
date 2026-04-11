@@ -12,7 +12,7 @@ from modules.assets.backend.knowledge_models import KnowledgeChange
 from modules.communication.backend.channels_models import Channel
 
 from .runs_id import generate_run_id  # noqa: F401 — re-export for callers
-from .runs_models import OpenAICallLog, Run, RunHandbookProposal, RunNodeState, RunWorklogEntry
+from .runs_models import ProviderCallLog, Run, RunHandbookProposal, RunNodeState, RunWorklogEntry
 from .runs_schemas import RunCreate, RunUpdate
 
 # Hard-delete is allowed for non-running runs.
@@ -386,11 +386,11 @@ async def list_proposals(db: AsyncSession, run_id: str) -> list[KnowledgeChange]
     return list(result.scalars())
 
 
-async def list_openai_logs(db: AsyncSession, run_id: str) -> list[OpenAICallLog]:
+async def list_provider_logs(db: AsyncSession, run_id: str) -> list[ProviderCallLog]:
     result = await db.execute(
-        select(OpenAICallLog)
-        .where(OpenAICallLog.run_id == run_id)
-        .order_by(OpenAICallLog.created_at.asc())
+        select(ProviderCallLog)
+        .where(ProviderCallLog.run_id == run_id)
+        .order_by(ProviderCallLog.created_at.asc())
     )
     return list(result.scalars())
 
@@ -469,7 +469,7 @@ async def delete_run(db: AsyncSession, run_id: str) -> None:
             delete(Escalation).where(Escalation.id.in_(escalation_ids))
         )
 
-    await db.execute(delete(OpenAICallLog).where(OpenAICallLog.run_id == run_id))
+    await db.execute(delete(ProviderCallLog).where(ProviderCallLog.run_id == run_id))
     await db.execute(delete(Rating).where(Rating.run_id == run_id))
     await db.execute(delete(RunHandbookProposal).where(RunHandbookProposal.run_id == run_id))
     await db.execute(delete(KnowledgeChange).where(KnowledgeChange.run_id == run_id))

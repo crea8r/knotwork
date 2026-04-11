@@ -1,7 +1,7 @@
 """
 Generate short handbook change summaries from old/new content.
 
-Primary path uses OpenAI via LangChain; falls back to a deterministic summary.
+Uses a deterministic summary only.
 """
 from __future__ import annotations
 
@@ -47,18 +47,5 @@ async def generate_change_summary(path: str, old_content: str, new_content: str)
         old_content=old_content[:3000],
         new_content=new_content[:3000],
     )
-
-    try:
-        from langchain_openai import ChatOpenAI
-
-        from libs.config import settings
-
-        llm = ChatOpenAI(model="gpt-4o-mini", temperature=0, api_key=settings.openai_api_key)
-        response = await llm.ainvoke(prompt)
-        text = str(response.content).strip().replace("\n", " ")
-        if text:
-            return text[:200]
-    except Exception:
-        pass
 
     return _fallback_summary(path, old_content, new_content)

@@ -7,8 +7,8 @@ Entry point: convert_with_vision(filename, content) -> (markdown, format)
   - Documents (pdf/docx): sync conversion + embedded image descriptions appended
   - All other formats: delegates to sync convert_to_markdown()
 
-Requires ANTHROPIC_API_KEY or OPENAI_API_KEY for vision features.
-Falls back gracefully when no key is set.
+Vision extraction is disabled in this project build.
+Falls back gracefully to non-vision conversion.
 """
 from __future__ import annotations
 
@@ -30,45 +30,9 @@ _VISION_PROMPT = (
 
 
 async def _call_vision(image_bytes: bytes, media_type: str, prompt: str) -> str:
-    """Call vision LLM; returns empty string if no API key configured."""
-    from libs.config import settings
-
-    b64 = base64.standard_b64encode(image_bytes).decode()
-
-    if settings.anthropic_api_key:
-        from langchain_anthropic import ChatAnthropic
-        from langchain_core.messages import HumanMessage
-
-        model = ChatAnthropic(
-            model="claude-haiku-4-5-20251001",
-            api_key=settings.anthropic_api_key,
-            max_tokens=1024,
-        )
-        msg = HumanMessage(content=[
-            {"type": "image", "source": {"type": "base64", "media_type": media_type, "data": b64}},
-            {"type": "text", "text": prompt},
-        ])
-        result = await model.ainvoke([msg])
-        return str(result.content).strip()
-
-    if settings.openai_api_key:
-        from langchain_openai import ChatOpenAI
-        from langchain_core.messages import HumanMessage
-
-        model = ChatOpenAI(
-            model="gpt-4o-mini",
-            api_key=settings.openai_api_key,
-            max_tokens=1024,
-        )
-        data_url = f"data:{media_type};base64,{b64}"
-        msg = HumanMessage(content=[
-            {"type": "image_url", "image_url": {"url": data_url}},
-            {"type": "text", "text": prompt},
-        ])
-        result = await model.ainvoke([msg])
-        return str(result.content).strip()
-
-    return "(vision API key required to extract image content)"
+    """Vision is intentionally disabled; return a stable placeholder."""
+    _ = (image_bytes, media_type, prompt, base64.standard_b64encode(b"").decode())
+    return "(vision extraction disabled)"
 
 
 def _media_type_from_ext(suffix: str) -> str:
@@ -98,8 +62,7 @@ async def _describe_embedded_images(
 
 
 def _has_vision_key() -> bool:
-    from libs.config import settings
-    return bool(settings.anthropic_api_key or settings.openai_api_key)
+    return False
 
 
 async def _extract_pdf_images(content: bytes) -> list[tuple[bytes, str]]:

@@ -14,7 +14,7 @@ class Workspace(Base):
     id: Mapped[UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid4)
     name: Mapped[str] = mapped_column(String, nullable=False)
     slug: Mapped[str] = mapped_column(String, unique=True, nullable=False)
-    default_model: Mapped[str] = mapped_column(String, nullable=False, default="openai/gpt-4o")
+    default_model: Mapped[str] = mapped_column(String, nullable=False, default="human")
     resend_api_key: Mapped[str | None] = mapped_column(String, nullable=True)
     email_from: Mapped[str | None] = mapped_column(String, nullable=True)
     token_count_min: Mapped[int] = mapped_column(Integer, nullable=False, default=300)

@@ -47,14 +47,6 @@ FILES_AND_FORBIDDEN_IMPORTS = {
         "from modules.communication.backend import channels_service",
         "from knotwork.",
     ),
-    "modules/workflows/backend/runtime/adapters/openai_adapter.py": (
-        "from modules.projects.backend.projects_service import render_project_context",
-        "from knotwork.",
-    ),
-    "modules/workflows/backend/runtime/adapters/claude.py": (
-        "from modules.projects.backend.projects_service import render_project_context",
-        "from knotwork.",
-    ),
     "modules/workflows/backend/public_workflows_service.py": (
         "from modules.workflows.backend.runs_service import create_run",
         "from knotwork.",

@@ -16,7 +16,7 @@ from modules.communication.backend.channels_schemas import ChannelMessageOut
 
 from . import runs_service as service
 from .runs_schemas import (
-    OpenAICallLogOut, ResumeRun, RunCreate, RunHandbookProposalOut, RunNodeStateOut, RunOut,
+    ProviderCallLogOut, ResumeRun, RunCreate, RunHandbookProposalOut, RunNodeStateOut, RunOut,
     RunAttachmentUploadOut, RunUpdate, RunWorklogEntryOut,
 )
 
@@ -296,15 +296,15 @@ async def get_run_proposals(
     return [RunHandbookProposalOut.model_validate(p) for p in proposals]
 
 
-@router.get("/{workspace_id}/runs/{run_id}/openai-logs", response_model=list[OpenAICallLogOut])
-async def get_run_openai_logs(
+@router.get("/{workspace_id}/runs/{run_id}/provider-logs", response_model=list[ProviderCallLogOut])
+async def get_run_provider_logs(
     workspace_id: UUID, run_id: str = PathParam(..., min_length=8, max_length=36), db: AsyncSession = Depends(get_db)
 ):
     run = await service.get_run(db, run_id)
     if not run or run.workspace_id != workspace_id:
         raise HTTPException(404, "Run not found")
-    logs = await service.list_openai_logs(db, run_id)
-    return [OpenAICallLogOut.model_validate(row) for row in logs]
+    logs = await service.list_provider_logs(db, run_id)
+    return [ProviderCallLogOut.model_validate(row) for row in logs]
 
 
 @router.get("/{workspace_id}/runs/{run_id}/chat-messages", response_model=list[ChannelMessageOut])

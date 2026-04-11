@@ -3,8 +3,6 @@ Adapter registry — resolves agent_ref → AgentAdapter instance.
 
 Supported agent_ref values:
   "human"  → HumanAdapter (any workspace operator resolves the escalation)
-  "openai:*" → OpenAIAdapter
-  "anthropic:*" → ClaudeAdapter
 
 The bridge adapter (S12.2) will handle all non-human agent_refs by routing
 through the participant model's notification + session mechanism. Until then,
@@ -22,24 +20,13 @@ def get_adapter(agent_ref: str, api_key: str | None = None) -> AgentAdapter:
 
     Supported today:
     - 'human'
-    - 'openai:<model>'
-    - 'anthropic:<model>'
-
-    OpenClaw / bridge-routed refs are not yet implemented in the backend
-    runtime and must be blocked before execution.
+    Direct model-backed adapters are disabled in this build.
     """
     if agent_ref == "human":
         from .human import HumanAdapter
         return HumanAdapter()
-    if agent_ref.startswith("openai:"):
-        from .openai_adapter import OpenAIAdapter
-        return OpenAIAdapter(api_key=api_key)
-    if agent_ref.startswith("anthropic:"):
-        from .claude import ClaudeAdapter
-        return ClaudeAdapter(api_key=api_key)
 
     raise NotImplementedError(
         f"No adapter for agent_ref '{agent_ref}'. "
-        "OpenClaw/bridge-backed agent execution is not wired into the backend runtime yet. "
-        "Use a supported direct model ref ('openai:*' or 'anthropic:*') or 'human'."
+        "Direct model-backed agent execution is disabled. Use 'human'."
     )

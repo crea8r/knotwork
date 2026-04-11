@@ -26,10 +26,8 @@ class Settings(BaseSettings):
     s3_bucket: str = ""
     s3_region: str = "ap-southeast-1"
 
-    # LLM providers (at least one required)
-    openai_api_key: str = ""
-    anthropic_api_key: str = ""
-    default_model: str = "openai/gpt-4o"
+    # Workflow defaults
+    default_model: str = "human"
 
     # Auth
     jwt_secret: str

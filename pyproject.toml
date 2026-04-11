@@ -26,10 +26,6 @@ dependencies = [
     "langgraph>=0.2",
     "langgraph-checkpoint-postgres>=2.0",
     "langchain-core>=0.3",
-    "langchain-openai>=0.2",
-    # First-party LLM SDKs (adapters use these directly)
-    "anthropic>=0.40",
-    "openai>=1.50",
     # Queue
     "arq>=0.26",
     "redis>=5.0",

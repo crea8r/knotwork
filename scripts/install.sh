@@ -174,8 +174,6 @@ write_env_file() {
     printf 'REDIS_URL=%s\n'                   "redis://redis:6379"
     printf 'STORAGE_ADAPTER=%s\n'             "$STORAGE_ADAPTER"
     printf 'LOCAL_FS_ROOT=%s\n'               "$LOCAL_FS_ROOT"
-    printf 'OPENAI_API_KEY=%s\n'              "$OPENAI_API_KEY"
-    printf 'ANTHROPIC_API_KEY=%s\n'           "$ANTHROPIC_API_KEY"
     printf 'DEFAULT_MODEL=%s\n'               "$DEFAULT_MODEL"
     printf 'JWT_SECRET=%s\n'                  "$JWT_SECRET"
     printf 'AUTH_DEV_BYPASS_USER_ID=%s\n'     "$AUTH_DEV_BYPASS_USER_ID"
@@ -471,13 +469,7 @@ fi
 
 prompt_with_default STORAGE_ADAPTER "Storage adapter" "local_fs"
 prompt_with_default LOCAL_FS_ROOT "Local handbook storage path inside container" "/app/data/knowledge"
-prompt_with_default DEFAULT_MODEL "Default model id" "openai/gpt-4o"
-
-prompt_with_default OPENAI_API_KEY "OpenAI API key (leave blank if using Anthropic only)" ""
-prompt_with_default ANTHROPIC_API_KEY "Anthropic API key (leave blank if using OpenAI only)" ""
-if [[ -z "$OPENAI_API_KEY" && -z "$ANTHROPIC_API_KEY" ]]; then
-  die "At least one provider API key is required (OpenAI or Anthropic)."
-fi
+prompt_with_default DEFAULT_MODEL "Default model id" "human"
 
 read -r -p "JWT secret (leave blank to auto-generate): " JWT_SECRET
 JWT_SECRET="$(echo "$JWT_SECRET" | sed 's/^ *//;s/ *$//')"

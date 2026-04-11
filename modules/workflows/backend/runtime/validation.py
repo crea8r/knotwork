@@ -10,14 +10,7 @@ All graphs with work nodes must have Start and End nodes wired up.
 from __future__ import annotations
 
 # Keep in sync with frontend src/utils/models.ts
-VALID_MODELS: frozenset[str] = frozenset({
-    # With provider prefix
-    "openai/gpt-4o", "openai/gpt-4o-mini", "openai/gpt-4-turbo", "openai/gpt-3.5-turbo",
-    "anthropic/claude-opus-4-6", "anthropic/claude-sonnet-4-6", "anthropic/claude-haiku-4-5-20251001",
-    # Without prefix
-    "gpt-4o", "gpt-4o-mini", "gpt-4-turbo", "gpt-3.5-turbo",
-    "claude-opus-4-6", "claude-sonnet-4-6", "claude-haiku-4-5-20251001",
-})
+VALID_MODELS: frozenset[str] = frozenset()
 
 def validate_graph(definition: dict) -> list[str]:
     """

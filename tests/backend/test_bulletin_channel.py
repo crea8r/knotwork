@@ -5,8 +5,6 @@ import os
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-os.environ.setdefault("OPENAI_API_KEY", "sk-test-fake")
-os.environ.setdefault("ANTHROPIC_API_KEY", "sk-ant-test-fake")
 os.environ.setdefault("DATABASE_URL", "sqlite+aiosqlite:///:memory:")
 os.environ.setdefault("REDIS_URL", "redis://localhost:6379")
 os.environ.setdefault("JWT_SECRET", "test-secret")
