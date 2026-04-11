@@ -228,6 +228,14 @@ jobs:
           printf 'BACKEND_IMAGE_TAG=%s\nFRONTEND_IMAGE_TAG=%s\n' "$BACKEND_NEW" "$FRONTEND_NEW" > "$DEPLOY_ENV"
           EOF
 
+      - name: Log in server to GHCR
+        shell: bash
+        run: |
+          ssh -i ~/.ssh/dev_server_key "${{ secrets.DEV_SERVER_USER }}@${{ secrets.DEV_SERVER_HOST }}" 'bash -s' <<'EOF'
+          set -euo pipefail
+          printf '%s\n' "${{ secrets.GHCR_READ_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+          EOF
+
       - name: Deploy GHCR images to dev server
         shell: bash
         run: |
