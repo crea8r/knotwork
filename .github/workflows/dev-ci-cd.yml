@@ -5,10 +5,20 @@ on:
     branches:
       - main
     paths:
-      - 'backend/**'
-      - 'frontend/**'
+      - 'core/**'
+      - 'libs/**'
+      - 'modules/**'
+      - 'alembic/**'
+      - 'alembic.ini'
+      - 'pyproject.toml'
+      - 'sitecustomize.py'
+      - 'Dockerfile.backend'
+      - 'Dockerfile.frontend'
+      - 'docker-entrypoint.sh'
       - 'docker-compose.yml'
       - 'docker-compose.deploy.yml'
+      - '.deploy-images.env.example'
+      - '.env.docker.example'
       - 'scripts/**'
       - '.github/workflows/dev-ci-cd.yml'
   workflow_dispatch:
@@ -26,31 +36,41 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          fetch-depth: 2
+          fetch-depth: 0
 
       - name: Determine scope
         id: scope
         shell: bash
         run: |
+          set -euo pipefail
+
           if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
             echo "scope=full" >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
-          CHANGED_FILES="$(git diff --name-only HEAD^ HEAD)"
+          BEFORE="${{ github.event.before }}"
+          AFTER="${{ github.sha }}"
+
+          if [[ -z "$BEFORE" || "$BEFORE" == "0000000000000000000000000000000000000000" ]]; then
+            CHANGED_FILES="$(git diff-tree --no-commit-id --name-only -r "$AFTER")"
+          else
+            CHANGED_FILES="$(git diff --name-only "$BEFORE" "$AFTER")"
+          fi
+
           echo "Changed files:"
           echo "$CHANGED_FILES"
 
           SCOPE="full"
 
-          if echo "$CHANGED_FILES" | grep -Eq '^(frontend/)'; then
-            if ! echo "$CHANGED_FILES" | grep -Eq '^(backend/|docker-compose.yml|docker-compose.deploy.yml|scripts/|\.github/workflows/)'; then
+          if echo "$CHANGED_FILES" | grep -Eq '^core/app-shell/'; then
+            if ! echo "$CHANGED_FILES" | grep -Eq '^(core/api/|core/mcp/|core/runtime-assembly/|core/runtime_assembly_tasks.py|libs/|modules/|alembic/|alembic.ini|pyproject.toml|sitecustomize.py|Dockerfile.backend|Dockerfile.frontend|docker-entrypoint.sh|docker-compose.yml|docker-compose.deploy.yml|\.deploy-images\.env\.example|\.env\.docker\.example|scripts/|\.github/workflows/)'; then
               SCOPE="frontend"
             fi
           fi
 
-          if echo "$CHANGED_FILES" | grep -Eq '^(backend/)'; then
-            if ! echo "$CHANGED_FILES" | grep -Eq '^(frontend/|docker-compose.yml|docker-compose.deploy.yml|scripts/|\.github/workflows/)'; then
+          if echo "$CHANGED_FILES" | grep -Eq '^(core/api/|core/mcp/|core/runtime-assembly/|core/runtime_assembly_tasks.py|alembic/|alembic.ini)'; then
+            if ! echo "$CHANGED_FILES" | grep -Eq '^(core/app-shell/|libs/|modules/|pyproject.toml|sitecustomize.py|Dockerfile.backend|Dockerfile.frontend|docker-entrypoint.sh|docker-compose.yml|docker-compose.deploy.yml|\.deploy-images\.env\.example|\.env\.docker\.example|scripts/|\.github/workflows/)'; then
               SCOPE="backend"
             fi
           fi
@@ -82,8 +102,8 @@ jobs:
       - name: Build and push backend image
         uses: docker/build-push-action@v6
         with:
-          context: ./backend
-          file: ./backend/Dockerfile
+          context: .
+          file: ./Dockerfile.backend
           push: true
           tags: |
             ghcr.io/crea8r/knotwork-backend:${{ github.sha }}
@@ -113,8 +133,8 @@ jobs:
       - name: Build and push frontend image
         uses: docker/build-push-action@v6
         with:
-          context: ./frontend
-          file: ./frontend/Dockerfile
+          context: .
+          file: ./Dockerfile.frontend
           target: prod
           push: true
           tags: |
@@ -153,26 +173,13 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 2
 
       - name: Determine deploy scope
         id: scope
         shell: bash
         run: |
-          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
-            echo "scope=full" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-
-          CHANGED_FILES="$(git diff --name-only HEAD^ HEAD)"
-          echo "Changed files:"
-          echo "$CHANGED_FILES"
-
-          SCOPE="${{ needs.classify.outputs.scope }}"
-
-          echo "scope=$SCOPE" >> "$GITHUB_OUTPUT"
-          echo "Resolved deploy scope: $SCOPE"
+          echo "scope=${{ needs.classify.outputs.scope }}" >> "$GITHUB_OUTPUT"
+          echo "Resolved deploy scope: ${{ needs.classify.outputs.scope }}"
 
       - name: Prepare SSH key
         shell: bash
