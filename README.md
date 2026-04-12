@@ -28,3 +28,37 @@ Visual agent workflow platform for non-technical operators. Design AI-powered bu
 - **Database**: PostgreSQL
 - **Storage**: Local FS (dev) → S3 (prod) via adapter
 - **Queue**: Background worker for async runs
+
+## Development
+
+The repo now supports multiple product distributions on the same codebase.
+
+- `chimera`
+  - full product surface
+- `manticore`
+  - reduced assets + workflows surface
+
+Frontend shell:
+
+```bash
+cd core/app-shell
+npm install
+npm run dev:chimera
+npm run dev:manticore
+```
+
+Docker dev stack:
+
+```bash
+docker compose --profile dev up -d --build
+curl http://127.0.0.1:3000/
+curl http://127.0.0.1:3001/
+curl http://127.0.0.1:8000/health
+```
+
+Notes:
+
+- `:3000` is Chimera
+- `:3001` is Manticore
+- both frontend shells can share one local backend, worker, database, and MCP
+  server during development

@@ -22,6 +22,7 @@ import { api } from '@sdk'
 import { useCreateProject, useProjectChannels, useProjectDashboard, useProjects } from "@modules/projects/frontend/api/projects"
 import { useRuns } from "@modules/workflows/frontend/api/runs"
 import { useAuthStore } from '@auth'
+import { useActiveDistribution } from '@app-shell/distribution'
 import { projectChannelPath, projectObjectivePath, projectPath } from '@app-shell/paths'
 import type { Channel, Run } from '@data-models'
 
@@ -107,6 +108,157 @@ export default function Sidebar({
   onCloseMobile?: () => void
   collapsed?: boolean
   onToggleCollapse?: () => void
+}) {
+  const distribution = useActiveDistribution()
+  const enabledModules = new Set(distribution.enabledModules)
+  const hasCommunication = enabledModules.has('communication')
+  const hasProjects = enabledModules.has('projects')
+  const hasAssets = enabledModules.has('assets')
+  const hasWorkflows = enabledModules.has('workflows')
+  const hasAdmin = enabledModules.has('admin')
+
+  if (!hasCommunication && !hasProjects) {
+    return (
+      <MinimalSidebar
+        mobileOpen={mobileOpen}
+        onCloseMobile={onCloseMobile}
+        collapsed={collapsed}
+        onToggleCollapse={onToggleCollapse}
+        displayName={distribution.displayName}
+        defaultRoute={distribution.defaultRoute}
+        hasAssets={hasAssets}
+        hasWorkflows={hasWorkflows}
+        hasAdmin={hasAdmin}
+      />
+    )
+  }
+
+  return (
+    <WorkspaceSidebar
+      mobileOpen={mobileOpen}
+      onCloseMobile={onCloseMobile}
+      collapsed={collapsed}
+      onToggleCollapse={onToggleCollapse}
+      displayName={distribution.displayName}
+      defaultRoute={distribution.defaultRoute}
+      hasAssets={hasAssets}
+      hasAdmin={hasAdmin}
+    />
+  )
+}
+
+function MinimalSidebar({
+  mobileOpen = false,
+  onCloseMobile,
+  collapsed = false,
+  onToggleCollapse,
+  displayName,
+  defaultRoute,
+  hasAssets,
+  hasWorkflows,
+  hasAdmin,
+}: {
+  mobileOpen?: boolean
+  onCloseMobile?: () => void
+  collapsed?: boolean
+  onToggleCollapse?: () => void
+  displayName: string
+  defaultRoute: string
+  hasAssets: boolean
+  hasWorkflows: boolean
+  hasAdmin: boolean
+}) {
+  const navigate = useNavigate()
+  const iconSize = collapsed ? 18 : 16
+  const Item = collapsed ? IconNavItem : NavItem
+
+  return (
+    <aside className={`fixed md:static inset-y-0 left-0 z-40 flex-shrink-0 bg-white border-r border-gray-200 flex flex-col h-screen transform transition-all duration-200 ${
+      mobileOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'
+    } ${collapsed ? 'w-14' : 'w-72'}`}>
+      <div className={`flex items-center border-b border-gray-100 ${collapsed ? 'justify-center py-[13px]' : 'justify-between'}`}>
+        {collapsed ? (
+          <button
+            onClick={() => navigate(defaultRoute)}
+            className="hover:bg-gray-50 p-1.5 rounded-lg transition-colors"
+            title={displayName}
+          >
+            <img src={knotworkLogo} alt={displayName} className="h-6 w-6" />
+          </button>
+        ) : (
+          <>
+            <button
+              onClick={() => { navigate(defaultRoute); onCloseMobile?.() }}
+              className="flex items-center gap-2 px-4 py-4 hover:bg-gray-50 transition-colors flex-1 text-left"
+            >
+              <img src={knotworkLogo} alt={displayName} className="h-6 w-6 flex-shrink-0" />
+              <span className="font-semibold text-gray-900 text-sm">{displayName}</span>
+            </button>
+            <button onClick={onCloseMobile} className="md:hidden px-3 text-gray-400 hover:text-gray-700" aria-label="Close navigation">
+              <X size={16} />
+            </button>
+          </>
+        )}
+      </div>
+
+      <nav className={`flex-1 overflow-y-auto py-3 space-y-0.5 ${collapsed ? 'px-1 flex flex-col items-center' : 'px-2'}`}>
+        {hasAssets && <Item to="/knowledge" icon={<BookOpen size={iconSize} />} label="Knowledge" onClick={onCloseMobile} />}
+        {hasWorkflows && <Item to="/graphs" icon={<FolderOpen size={iconSize} />} label="Workflows" onClick={onCloseMobile} />}
+        {hasWorkflows && <Item to="/runs" icon={<PlayCircle size={iconSize} />} label="Runs" onClick={onCloseMobile} />}
+      </nav>
+
+      {hasAdmin && (
+        <div className={`border-t border-gray-100 p-2 ${collapsed ? 'flex justify-center' : ''}`}>
+          {!collapsed ? (
+            <NavLink
+              to="/settings"
+              onClick={onCloseMobile}
+              className={({ isActive }) =>
+                `flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm transition-colors ${
+                  isActive ? 'bg-brand-50 text-brand-700 font-semibold' : 'text-gray-600 hover:bg-gray-100'
+                }`
+              }
+            >
+              <Settings size={16} />
+              Settings
+            </NavLink>
+          ) : (
+            <IconNavItem to="/settings" icon={<Settings size={18} />} label="Settings" onClick={onCloseMobile} />
+          )}
+        </div>
+      )}
+
+      <div className={`border-t border-gray-100 p-2 hidden md:flex ${collapsed ? 'justify-center' : 'justify-end'}`}>
+        <button
+          onClick={onToggleCollapse}
+          title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+          className="p-1.5 rounded-lg text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition-colors"
+        >
+          {collapsed ? <ChevronRight size={15} /> : <ChevronLeft size={15} />}
+        </button>
+      </div>
+    </aside>
+  )
+}
+
+function WorkspaceSidebar({
+  mobileOpen = false,
+  onCloseMobile,
+  collapsed = false,
+  onToggleCollapse,
+  displayName,
+  defaultRoute,
+  hasAssets,
+  hasAdmin,
+}: {
+  mobileOpen?: boolean
+  onCloseMobile?: () => void
+  collapsed?: boolean
+  onToggleCollapse?: () => void
+  displayName: string
+  defaultRoute: string
+  hasAssets: boolean
+  hasAdmin: boolean
 }) {
   const navigate = useNavigate()
   const location = useLocation()
@@ -306,20 +458,20 @@ export default function Sidebar({
       <div className={`flex items-center border-b border-gray-100 ${collapsed ? 'justify-center py-[13px]' : 'justify-between'}`}>
         {collapsed ? (
           <button
-            onClick={() => navigate('/inbox')}
+            onClick={() => navigate(defaultRoute)}
             className="hover:bg-gray-50 p-1.5 rounded-lg transition-colors"
-            title="Knotwork"
+            title={displayName}
           >
-            <img src={knotworkLogo} alt="Knotwork" className="h-6 w-6" />
+            <img src={knotworkLogo} alt={displayName} className="h-6 w-6" />
           </button>
         ) : (
           <>
             <button
-              onClick={() => { navigate('/inbox'); onCloseMobile?.() }}
+              onClick={() => { navigate(defaultRoute); onCloseMobile?.() }}
               className="flex items-center gap-2 px-4 py-4 hover:bg-gray-50 transition-colors flex-1 text-left"
             >
-              <img src={knotworkLogo} alt="Knotwork" className="h-6 w-6 flex-shrink-0" />
-              <span className="font-semibold text-gray-900 text-sm">Knotwork</span>
+              <img src={knotworkLogo} alt={displayName} className="h-6 w-6 flex-shrink-0" />
+              <span className="font-semibold text-gray-900 text-sm">{displayName}</span>
             </button>
             <button onClick={onCloseMobile} className="md:hidden px-3 text-gray-400 hover:text-gray-700" aria-label="Close navigation">
               <X size={16} />
@@ -501,28 +653,34 @@ export default function Sidebar({
           </div>
         )}
 
-        <Divider collapsed={collapsed} />
-        <Item to="/knowledge" icon={<BookOpen size={iconSize} />} label="Knowledge" onClick={handleKnowledgeClick} />
+        {hasAssets && (
+          <>
+            <Divider collapsed={collapsed} />
+            <Item to="/knowledge" icon={<BookOpen size={iconSize} />} label="Knowledge" onClick={handleKnowledgeClick} />
+          </>
+        )}
       </nav>
 
-      <div className={`border-t border-gray-100 p-2 ${collapsed ? 'flex justify-center' : ''}`}>
-        {!collapsed ? (
-          <NavLink
-            to="/settings"
-            onClick={onCloseMobile}
-            className={({ isActive }) =>
-              `flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm transition-colors ${
-                isActive ? 'bg-brand-50 text-brand-700 font-semibold' : 'text-gray-600 hover:bg-gray-100'
-              }`
-            }
-          >
-            <Settings size={16} />
-            Settings
-          </NavLink>
-        ) : (
-          <IconNavItem to="/settings" icon={<Settings size={18} />} label="Settings" onClick={onCloseMobile} />
-        )}
-      </div>
+      {hasAdmin && (
+        <div className={`border-t border-gray-100 p-2 ${collapsed ? 'flex justify-center' : ''}`}>
+          {!collapsed ? (
+            <NavLink
+              to="/settings"
+              onClick={onCloseMobile}
+              className={({ isActive }) =>
+                `flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm transition-colors ${
+                  isActive ? 'bg-brand-50 text-brand-700 font-semibold' : 'text-gray-600 hover:bg-gray-100'
+                }`
+              }
+            >
+              <Settings size={16} />
+              Settings
+            </NavLink>
+          ) : (
+            <IconNavItem to="/settings" icon={<Settings size={18} />} label="Settings" onClick={onCloseMobile} />
+          )}
+        </div>
+      )}
 
       <div className={`border-t border-gray-100 p-2 hidden md:flex ${collapsed ? 'justify-center' : 'justify-end'}`}>
         <button

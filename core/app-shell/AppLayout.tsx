@@ -4,6 +4,7 @@ import { Menu } from 'lucide-react'
 import Sidebar from './Sidebar'
 import OnboardingExperience from './OnboardingExperience'
 import VersionWarningBanner from '@ui/components/VersionWarningBanner'
+import { useActiveDistribution } from './distribution'
 
 /**
  * App shell: collapsible sidebar + scrollable main area.
@@ -13,6 +14,13 @@ export default function AppLayout() {
   const [mobileNavOpen, setMobileNavOpen] = useState(false)
   const [navCollapsed, setNavCollapsed] = useState(() => localStorage.getItem('kw-nav-collapsed') === 'true')
   const location = useLocation()
+  const distribution = useActiveDistribution()
+  const enabledModules = new Set(distribution.enabledModules)
+  const hasProjects = enabledModules.has('projects')
+  const hasCommunication = enabledModules.has('communication')
+  const hasWorkflows = enabledModules.has('workflows')
+  const hasAssets = enabledModules.has('assets')
+  const hasAdmin = enabledModules.has('admin')
 
   function toggleNav() {
     setNavCollapsed((v) => {
@@ -30,14 +38,17 @@ export default function AppLayout() {
   }, [mobileNavOpen])
 
   const mobileTitle = (() => {
-    if (location.pathname.startsWith('/inbox')) return 'Now'
-    if (location.pathname.startsWith('/projects')) return 'Work'
+    if (hasCommunication && location.pathname.startsWith('/inbox')) return 'Now'
+    if (hasProjects && location.pathname.startsWith('/projects')) return 'Work'
     if (location.pathname.startsWith('/objectives')) return 'Objective'
-    if (location.pathname.startsWith('/channels')) return 'Channels'
-    if (location.pathname.startsWith('/runs')) return 'Runs'
-    if (location.pathname.startsWith('/knowledge') || location.pathname.startsWith('/handbook') || location.pathname.startsWith('/graphs')) return 'Knowledge'
-    if (location.pathname.startsWith('/settings')) return 'Settings'
-    return 'Knotwork'
+    if (hasCommunication && location.pathname.startsWith('/channels')) return 'Channels'
+    if (hasWorkflows && location.pathname.startsWith('/runs')) return 'Runs'
+    if (hasWorkflows && location.pathname.startsWith('/graphs')) return 'Workflows'
+    if (hasAssets && (location.pathname.startsWith('/knowledge') || location.pathname.startsWith('/handbook'))) {
+      return 'Knowledge'
+    }
+    if (hasAdmin && location.pathname.startsWith('/settings')) return 'Settings'
+    return distribution.displayName
   })()
 
   return (

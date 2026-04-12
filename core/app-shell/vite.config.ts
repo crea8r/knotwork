@@ -9,6 +9,7 @@ export default defineConfig({
     alias: [
       { find: '@app-shell', replacement: path.resolve(__dirname) },
       { find: '@core-api', replacement: path.resolve(__dirname, '../api') },
+      { find: '@distributions', replacement: path.resolve(__dirname, '../../distributions') },
       { find: '@ui', replacement: path.resolve(__dirname, '../../libs/ui') },
       { find: '@sdk', replacement: path.resolve(__dirname, '../../libs/sdk') },
       { find: '@data-models', replacement: path.resolve(__dirname, '../../libs/data-models/index.ts') },

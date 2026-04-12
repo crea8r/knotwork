@@ -15,31 +15,18 @@ if not _kw_logger.handlers:
     _kw_logger.addHandler(_h)
 _kw_logger.propagate = False  # avoid double-printing via root logger
 
-# Register all ORM models with Base.metadata before any DB operations.
-# Without these imports, FK resolution fails at flush time.
-import libs.auth.backend.models  # noqa: F401
-import libs.audit.backend.models  # noqa: F401
-import modules.admin.backend.invitations_models  # noqa: F401
-import modules.admin.backend.workspaces_models  # noqa: F401
-import modules.assets.backend.knowledge_models  # noqa: F401
-import modules.communication.backend.channels_models  # noqa: F401
-import modules.communication.backend.escalations_models  # noqa: F401
-import modules.communication.backend.notifications_models  # noqa: F401
-import modules.projects.backend.projects_models  # noqa: F401
-import modules.workflows.backend.graphs_models  # noqa: F401
-import modules.workflows.backend.public_workflows_models  # noqa: F401
-import modules.workflows.backend.ratings_models  # noqa: F401
-import modules.workflows.backend.runs_models  # noqa: F401
-import modules.workflows.backend.tools_models  # noqa: F401
-
 from core.api.health import (
     initialize_health_state,
     load_or_create_installation_id,
     read_schema_version,
     register_health_route,
 )
+from core.api.distribution import get_active_backend_distribution
 from core.mcp.server import build_server
 from core.api.router import mount_routers
+
+_active_distribution_code, _register_models, _ = get_active_backend_distribution()
+_register_models()
 
 
 @asynccontextmanager
@@ -57,9 +44,10 @@ async def lifespan(app: FastAPI):
 
 
 def create_app() -> FastAPI:
-    app = FastAPI(title="Knotwork API", version="0.1.0", lifespan=lifespan)
+    app = FastAPI(title=f"Knotwork API ({_active_distribution_code})", version="0.1.0", lifespan=lifespan)
     mcp_server = build_server()
     app.state.mcp_server = mcp_server
+    app.state.distribution_code = _active_distribution_code
 
     app.add_middleware(
         CORSMiddleware,

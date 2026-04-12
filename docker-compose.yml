@@ -164,6 +164,27 @@ services:
       # no server-side proxy. Must use the host-mapped port (localhost:8000).
       VITE_API_URL: http://localhost:${BACKEND_DEV_HOST_PORT:-8000}/api/v1
       VITE_DEV_WORKSPACE_ID: ${VITE_DEV_WORKSPACE_ID:-}
+      VITE_KNOTWORK_DISTRIBUTION: chimera
+    profiles: ["dev"]
+    networks:
+      - knotwork-network
+
+  frontend-dev-manticore:
+    image: ${COMPOSE_PROJECT_NAME:-knotwork}-frontend-dev-manticore:latest
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+      target: dev
+    ports:
+      - "${FRONTEND_MANTICORE_DEV_HOST_PORT:-3001}:3000"
+    volumes:
+      - .:/app
+      - ./modules:/app/modules
+      - frontend_node_modules:/app/core/app-shell/node_modules
+    environment:
+      VITE_API_URL: http://localhost:${BACKEND_DEV_HOST_PORT:-8000}/api/v1
+      VITE_DEV_WORKSPACE_ID: ${VITE_DEV_WORKSPACE_ID:-}
+      VITE_KNOTWORK_DISTRIBUTION: manticore
     profiles: ["dev"]
     networks:
       - knotwork-network

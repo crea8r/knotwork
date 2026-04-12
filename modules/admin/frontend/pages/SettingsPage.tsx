@@ -7,15 +7,14 @@ import AccountTab from '@modules/admin/frontend/components/AccountTab'
 import ChannelsTab from '@modules/admin/frontend/components/ChannelsTab'
 import SystemTab from '@modules/admin/frontend/components/SystemTab'
 import GuideTab from '@modules/admin/frontend/components/GuideTab'
-import OnboardingTab from '@modules/admin/frontend/components/OnboardingTab'
 import { openOnboarding } from '@app-shell/onboarding'
 
-type Tab = 'account' | 'members' | 'channels' | 'onboarding' | 'guide' | 'system'
+type Tab = 'account' | 'members' | 'channels' | 'guide' | 'system'
 
 export default function SettingsPage() {
   const [searchParams, setSearchParams] = useSearchParams()
   const tabFromUrl = searchParams.get('tab') as Tab | null
-  const TABS: Tab[] = ['account', 'members', 'channels', 'onboarding', 'guide', 'system']
+  const TABS: Tab[] = ['account', 'members', 'channels', 'guide', 'system']
   const initialTab: Tab = TABS.includes(tabFromUrl as Tab) ? (tabFromUrl as Tab) : 'account'
   const [tab, setTab] = useState<Tab>(initialTab)
 
@@ -58,9 +57,6 @@ export default function SettingsPage() {
       {tab === 'members' && <MembersTab />}
 
       {tab === 'channels' && <ChannelsTab />}
-
-      {tab === 'onboarding' && <OnboardingTab />}
-
       {tab === 'guide' && <GuideTab />}
 
       {tab === 'system' && <SystemTab />}

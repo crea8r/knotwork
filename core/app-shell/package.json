@@ -5,7 +5,11 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:chimera": "VITE_KNOTWORK_DISTRIBUTION=chimera vite",
+    "dev:manticore": "VITE_KNOTWORK_DISTRIBUTION=manticore vite",
     "build": "tsc && vite build",
+    "build:chimera": "VITE_KNOTWORK_DISTRIBUTION=chimera tsc && vite build",
+    "build:manticore": "VITE_KNOTWORK_DISTRIBUTION=manticore tsc && vite build",
     "preview": "vite preview",
     "lint": "eslint . ../../libs ../../modules --ext ts,tsx"
   },
