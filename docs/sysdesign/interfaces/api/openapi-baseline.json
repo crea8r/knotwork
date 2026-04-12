@@ -180,6 +180,27 @@
         "title": "AgentDiscovery",
         "type": "object"
       },
+      "AgentHarnessCatalog": {
+        "properties": {
+          "harnesses": {
+            "items": {
+              "$ref": "#/components/schemas/HarnessInstallOption"
+            },
+            "title": "Harnesses",
+            "type": "array"
+          },
+          "workspace_id": {
+            "title": "Workspace Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "workspace_id",
+          "harnesses"
+        ],
+        "title": "AgentHarnessCatalog",
+        "type": "object"
+      },
       "AgentTokenRequest": {
         "properties": {
           "nonce": {
@@ -2158,6 +2179,58 @@
         "title": "HandbookProposalResolveRequest",
         "type": "object"
       },
+      "HarnessInstallOption": {
+        "properties": {
+          "display_name": {
+            "title": "Display Name",
+            "type": "string"
+          },
+          "install_kind": {
+            "title": "Install Kind",
+            "type": "string"
+          },
+          "key": {
+            "title": "Key",
+            "type": "string"
+          },
+          "mcp_transport": {
+            "title": "Mcp Transport",
+            "type": "string"
+          },
+          "notes": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Notes",
+            "type": "array"
+          },
+          "package_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Package Url"
+          },
+          "supports_workspace_discovery": {
+            "default": true,
+            "title": "Supports Workspace Discovery",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "key",
+          "display_name",
+          "install_kind",
+          "mcp_transport"
+        ],
+        "title": "HarnessInstallOption",
+        "type": "object"
+      },
       "ImportMdRequest": {
         "properties": {
           "content": {
@@ -2830,6 +2903,11 @@
           "content": {
             "default": "",
             "title": "Content",
+            "type": "string"
+          },
+          "file_type": {
+            "default": "md",
+            "title": "File Type",
             "type": "string"
           },
           "path": {
@@ -4152,144 +4230,6 @@
         "title": "ObjectiveUpdate",
         "type": "object"
       },
-      "OpenAICallLogOut": {
-        "properties": {
-          "agent_ref": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Agent Ref"
-          },
-          "created_at": {
-            "format": "date-time",
-            "title": "Created At",
-            "type": "string"
-          },
-          "id": {
-            "format": "uuid",
-            "title": "Id",
-            "type": "string"
-          },
-          "node_id": {
-            "title": "Node Id",
-            "type": "string"
-          },
-          "openai_assistant_id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Openai Assistant Id"
-          },
-          "openai_run_id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Openai Run Id"
-          },
-          "openai_thread_id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Openai Thread Id"
-          },
-          "provider": {
-            "title": "Provider",
-            "type": "string"
-          },
-          "request_payload": {
-            "additionalProperties": true,
-            "default": {},
-            "title": "Request Payload",
-            "type": "object"
-          },
-          "response_payload": {
-            "anyOf": [
-              {
-                "additionalProperties": true,
-                "type": "object"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Response Payload"
-          },
-          "run_id": {
-            "title": "Run Id",
-            "type": "string"
-          },
-          "run_node_state_id": {
-            "anyOf": [
-              {
-                "format": "uuid",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Run Node State Id"
-          },
-          "status": {
-            "title": "Status",
-            "type": "string"
-          },
-          "updated_at": {
-            "format": "date-time",
-            "title": "Updated At",
-            "type": "string"
-          },
-          "workflow_id": {
-            "anyOf": [
-              {
-                "format": "uuid",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Workflow Id"
-          },
-          "workspace_id": {
-            "format": "uuid",
-            "title": "Workspace Id",
-            "type": "string"
-          }
-        },
-        "required": [
-          "id",
-          "workspace_id",
-          "run_id",
-          "node_id",
-          "provider",
-          "status",
-          "created_at",
-          "updated_at"
-        ],
-        "title": "OpenAICallLogOut",
-        "type": "object"
-      },
       "ParticipantDeliveryPreferenceBundle": {
         "properties": {
           "display_name": {
@@ -4627,6 +4567,11 @@
             "title": "Content",
             "type": "string"
           },
+          "file_type": {
+            "default": "md",
+            "title": "File Type",
+            "type": "string"
+          },
           "path": {
             "title": "Path",
             "type": "string"
@@ -4663,6 +4608,10 @@
             ],
             "title": "Current Version Id"
           },
+          "file_type": {
+            "title": "File Type",
+            "type": "string"
+          },
           "health_score": {
             "anyOf": [
               {
@@ -4678,6 +4627,10 @@
             "format": "uuid",
             "title": "Id",
             "type": "string"
+          },
+          "is_editable": {
+            "title": "Is Editable",
+            "type": "boolean"
           },
           "linked_paths": {
             "items": {
@@ -4745,6 +4698,8 @@
           "raw_token_count",
           "resolved_token_count",
           "linked_paths",
+          "file_type",
+          "is_editable",
           "updated_at"
         ],
         "title": "ProjectDocumentOut",
@@ -4804,6 +4759,10 @@
             ],
             "title": "Current Version Id"
           },
+          "file_type": {
+            "title": "File Type",
+            "type": "string"
+          },
           "health_score": {
             "anyOf": [
               {
@@ -4819,6 +4778,10 @@
             "format": "uuid",
             "title": "Id",
             "type": "string"
+          },
+          "is_editable": {
+            "title": "Is Editable",
+            "type": "boolean"
           },
           "linked_paths": {
             "items": {
@@ -4890,6 +4853,8 @@
           "raw_token_count",
           "resolved_token_count",
           "linked_paths",
+          "file_type",
+          "is_editable",
           "updated_at",
           "content",
           "version_id"
@@ -5169,6 +5134,144 @@
           "reason"
         ],
         "title": "ProposeBody",
+        "type": "object"
+      },
+      "ProviderCallLogOut": {
+        "properties": {
+          "agent_ref": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Agent Ref"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "node_id": {
+            "title": "Node Id",
+            "type": "string"
+          },
+          "openai_assistant_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Openai Assistant Id"
+          },
+          "openai_run_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Openai Run Id"
+          },
+          "openai_thread_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Openai Thread Id"
+          },
+          "provider": {
+            "title": "Provider",
+            "type": "string"
+          },
+          "request_payload": {
+            "additionalProperties": true,
+            "default": {},
+            "title": "Request Payload",
+            "type": "object"
+          },
+          "response_payload": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Response Payload"
+          },
+          "run_id": {
+            "title": "Run Id",
+            "type": "string"
+          },
+          "run_node_state_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Run Node State Id"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          },
+          "workflow_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Workflow Id"
+          },
+          "workspace_id": {
+            "format": "uuid",
+            "title": "Workspace Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "workspace_id",
+          "run_id",
+          "node_id",
+          "provider",
+          "status",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "ProviderCallLogOut",
         "type": "object"
       },
       "PublicRunNotifyOut": {
@@ -6916,7 +7019,7 @@
     }
   },
   "info": {
-    "title": "Knotwork API",
+    "title": "Knotwork API (chimera)",
     "version": "0.1.0"
   },
   "openapi": "3.1.0",
@@ -8125,7 +8228,6 @@
     },
     "/api/v1/workspaces/{workspace_id}/.well-known/agent": {
       "get": {
-        "description": "Return authentication and capability discovery for agent participants.\n\nNo authentication required \u2014 this endpoint is intentionally public so an\nagent can learn how to authenticate before it has a JWT.\n\nSequence an agent follows:\n  1. GET  this endpoint  \u2192 learn auth endpoints + skills URL + MCP URL\n  2. POST auth.challenge_endpoint  \u2192 get a nonce\n  3. Sign nonce with ed25519 private key\n  4. POST auth.token_endpoint  \u2192 get a JWT\n  5. GET  skills_endpoint  \u2192 bootstrap workspace context\n  6. Connect to mcp_server_url  \u2192 discover all available tools",
         "operationId": "agent_well_known_api_v1_workspaces__workspace_id___well_known_agent_get",
         "parameters": [
           {
@@ -8163,7 +8265,55 @@
         },
         "summary": "Agent Well Known",
         "tags": [
-          "workspaces"
+          "agents"
+        ]
+      }
+    },
+    "/api/v1/workspaces/{workspace_id}/agent-harnesses": {
+      "get": {
+        "operationId": "list_agent_harnesses_api_v1_workspaces__workspace_id__agent_harnesses_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentHarnessCatalog"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Agent Harnesses",
+        "tags": [
+          "agents"
         ]
       }
     },
@@ -12777,6 +12927,73 @@
         ]
       }
     },
+    "/api/v1/workspaces/{workspace_id}/knowledge/file/export": {
+      "get": {
+        "operationId": "export_knowledge_file_api_v1_workspaces__workspace_id__knowledge_file_export_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "path",
+            "required": true,
+            "schema": {
+              "title": "Path",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "project_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Project Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Export Knowledge File",
+        "tags": [
+          "knowledge"
+        ]
+      }
+    },
     "/api/v1/workspaces/{workspace_id}/knowledge/file/html": {
       "get": {
         "description": "Convert DOCX to HTML using mammoth for browser display.",
@@ -16698,9 +16915,9 @@
         ]
       }
     },
-    "/api/v1/workspaces/{workspace_id}/runs/{run_id}/openai-logs": {
+    "/api/v1/workspaces/{workspace_id}/runs/{run_id}/provider-logs": {
       "get": {
-        "operationId": "get_run_openai_logs_api_v1_workspaces__workspace_id__runs__run_id__openai_logs_get",
+        "operationId": "get_run_provider_logs_api_v1_workspaces__workspace_id__runs__run_id__provider_logs_get",
         "parameters": [
           {
             "in": "path",
@@ -16730,9 +16947,9 @@
               "application/json": {
                 "schema": {
                   "items": {
-                    "$ref": "#/components/schemas/OpenAICallLogOut"
+                    "$ref": "#/components/schemas/ProviderCallLogOut"
                   },
-                  "title": "Response Get Run Openai Logs Api V1 Workspaces  Workspace Id  Runs  Run Id  Openai Logs Get",
+                  "title": "Response Get Run Provider Logs Api V1 Workspaces  Workspace Id  Runs  Run Id  Provider Logs Get",
                   "type": "array"
                 }
               }
@@ -16750,7 +16967,7 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Get Run Openai Logs",
+        "summary": "Get Run Provider Logs",
         "tags": [
           "runs"
         ]

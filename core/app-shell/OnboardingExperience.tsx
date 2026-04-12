@@ -1,44 +1,20 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { ArrowRight, CheckCircle2, ChevronDown, ChevronUp, Circle, ExternalLink, Sparkles, X } from 'lucide-react'
+
 import Btn from '@ui/components/Btn'
+import { BACKEND_BASE_URL } from '@sdk'
+import { useAuthStore } from '@auth'
+import { useActiveDistribution } from '@app-shell/distribution'
 import {
   ONBOARDING_OPEN_EVENT,
-  ONBOARDING_STEPS,
-  OPENCLAW_PLUGIN_URL,
   defaultOnboardingState,
   nextIncompleteOnboardingStep,
   onboardingStepForLocation,
   readOnboardingState,
-  type OnboardingPersona,
   type OnboardingState,
-  type OnboardingStepId,
   writeOnboardingState,
 } from '@app-shell/onboarding'
-import { BACKEND_BASE_URL } from '@sdk'
-import { useAuthStore } from '@auth'
-
-const PERSONAS: Array<{
-  id: OnboardingPersona
-  title: string
-  description: string
-}> = [
-  {
-    id: 'operator',
-    title: 'Coordinate work',
-    description: 'Best for people managing projects, assignments, approvals, and team flow.',
-  },
-  {
-    id: 'builder',
-    title: 'Run workflows',
-    description: 'Best for people focused on execution, runs, escalations, and delivery.',
-  },
-  {
-    id: 'knowledge',
-    title: 'Maintain guidance',
-    description: 'Best for people documenting SOPs, policies, and source-of-truth material.',
-  },
-]
 
 const COACH_COLLAPSED_STORAGE_KEY = 'kw-onboarding-coach-collapsed-v1'
 const COACH_HIDDEN_STORAGE_KEY = 'kw-onboarding-coach-hidden-v1'
@@ -62,6 +38,8 @@ function mergeOnboardingState(updater: (current: OnboardingState) => OnboardingS
 export default function OnboardingExperience() {
   const location = useLocation()
   const navigate = useNavigate()
+  const distribution = useActiveDistribution()
+  const onboarding = distribution.onboarding
   const workspaceId = useAuthStore((s) => s.workspaceId)
   const [state, setState] = useState<OnboardingState>(() => readOnboardingState())
   const [isOpen, setIsOpen] = useState(() => readOnboardingState().status === 'not_started')
@@ -71,12 +49,13 @@ export default function OnboardingExperience() {
     ? `${BACKEND_BASE_URL}/api/v1/workspaces/${workspaceId}/.well-known/agent`
     : null
 
+  const steps = onboarding.steps
   const completedCount = state.completedStepIds.length
   const nextStep = useMemo(
-    () => nextIncompleteOnboardingStep(state.completedStepIds),
-    [state.completedStepIds],
+    () => nextIncompleteOnboardingStep(steps, state.completedStepIds),
+    [state.completedStepIds, steps],
   )
-  const progressPercent = Math.round((completedCount / ONBOARDING_STEPS.length) * 100)
+  const progressPercent = steps.length > 0 ? Math.round((completedCount / steps.length) * 100) : 0
   const hasStarted = state.status !== 'not_started'
   const showCoachCard = state.status === 'in_progress' && !isOpen && nextStep !== null && !isCoachHidden
 
@@ -106,12 +85,12 @@ export default function OnboardingExperience() {
     if (state.status !== 'in_progress' && state.status !== 'completed') {
       return
     }
-    const matchedStep = onboardingStepForLocation(location.pathname, location.search)
+    const matchedStep = onboardingStepForLocation(steps, location.pathname, location.search)
     if (!matchedStep || state.completedStepIds.includes(matchedStep)) {
       return
     }
     const nextCompletedStepIds = [...state.completedStepIds, matchedStep]
-    const nextStatus = nextCompletedStepIds.length === ONBOARDING_STEPS.length ? 'completed' : 'in_progress'
+    const nextStatus = nextCompletedStepIds.length === steps.length ? 'completed' : 'in_progress'
     const nextState: OnboardingState = {
       ...state,
       completedStepIds: nextCompletedStepIds,
@@ -119,7 +98,7 @@ export default function OnboardingExperience() {
     }
     writeOnboardingState(nextState)
     setState(nextState)
-  }, [location.pathname, location.search, state])
+  }, [location.pathname, location.search, state, steps])
 
   function updateState(updater: (current: OnboardingState) => OnboardingState) {
     const next = mergeOnboardingState(updater)
@@ -135,7 +114,7 @@ export default function OnboardingExperience() {
     }))
   }
 
-  function selectPersona(persona: OnboardingPersona) {
+  function selectPersona(persona: string) {
     updateState((current) => ({
       ...current,
       persona,
@@ -160,8 +139,8 @@ export default function OnboardingExperience() {
     setIsOpen(false)
   }
 
-  function openStep(stepId: OnboardingStepId) {
-    const step = ONBOARDING_STEPS.find((item) => item.id === stepId)
+  function openStep(stepId: string) {
+    const step = steps.find((item) => item.id === stepId)
     if (!step) return
     setIsOpen(false)
     navigate(step.href)
@@ -180,14 +159,14 @@ export default function OnboardingExperience() {
     setIsCoachHidden(true)
   }
 
-  function toggleManualStep(stepId: OnboardingStepId) {
+  function toggleManualStep(stepId: string) {
     const nextCompletedStepIds = state.completedStepIds.includes(stepId)
       ? state.completedStepIds.filter((id) => id !== stepId)
       : [...state.completedStepIds, stepId]
     const nextState: OnboardingState = {
       ...state,
       completedStepIds: nextCompletedStepIds,
-      status: nextCompletedStepIds.length === ONBOARDING_STEPS.length ? 'completed' : 'in_progress',
+      status: nextCompletedStepIds.length === steps.length ? 'completed' : 'in_progress',
     }
     writeOnboardingState(nextState)
     setState(nextState)
@@ -213,21 +192,19 @@ export default function OnboardingExperience() {
               <div className="bg-stone-950 px-6 py-8 text-white lg:px-8">
                 <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/10 px-3 py-1 text-xs uppercase tracking-[0.2em] text-white/70">
                   <Sparkles size={12} />
-                  First-run onboarding
+                  {onboarding.welcomeEyebrow}
                 </div>
                 <h2 className="mt-5 max-w-md text-3xl font-semibold tracking-tight">
-                  Learn Knotwork by using the real workspace.
+                  {onboarding.welcomeTitle}
                 </h2>
                 <p className="mt-4 max-w-lg text-sm leading-7 text-white/75">
-                  This walkthrough is short, skippable, and replayable. It focuses on the surfaces
-                  that create the first useful mental model: agent connection, inbox, projects,
-                  channels, knowledge, and member status.
+                  {onboarding.welcomeDescription}
                 </p>
 
                 <div className="mt-8 rounded-2xl border border-white/10 bg-white/5 p-4">
                   <div className="flex items-center justify-between text-xs uppercase tracking-wide text-white/60">
                     <span>Progress</span>
-                    <span>{completedCount}/{ONBOARDING_STEPS.length} complete</span>
+                    <span>{completedCount}/{steps.length} complete</span>
                   </div>
                   <div className="mt-2 h-2 rounded-full bg-white/10">
                     <div
@@ -236,7 +213,7 @@ export default function OnboardingExperience() {
                     />
                   </div>
                   <div className="mt-4 space-y-2 text-sm text-white/85">
-                    {ONBOARDING_STEPS.map((step) => {
+                    {steps.map((step) => {
                       const complete = state.completedStepIds.includes(step.id)
                       return (
                         <div key={step.id} className="flex items-start gap-2">
@@ -266,18 +243,16 @@ export default function OnboardingExperience() {
                       Start with a short guided setup
                     </h3>
                     <p className="mt-3 text-sm leading-7 text-gray-600">
-                      Knotwork works best once you have seen the core surfaces in action. This
-                      walkthrough will take you there directly instead of front-loading a manual.
+                      {onboarding.welcomeDescription}
                     </p>
 
                     <div className="mt-6 space-y-3">
                       <div className="rounded-2xl border border-gray-200 bg-gray-50 p-4">
                         <p className="text-sm font-medium text-gray-900">What you get</p>
                         <ul className="mt-3 space-y-2 text-sm leading-6 text-gray-600">
-                          <li>An explicit agent-first setup path for OpenClaw users.</li>
-                          <li>One clear route to the first useful workspace mental model.</li>
-                          <li>Deep links into live screens instead of passive product copy.</li>
-                          <li>Progress that stays saved and can be replayed later from Settings.</li>
+                          {onboarding.welcomeBenefits.map((benefit) => (
+                            <li key={benefit}>{benefit}</li>
+                          ))}
                         </ul>
                       </div>
                     </div>
@@ -295,18 +270,17 @@ export default function OnboardingExperience() {
                 ) : state.persona === null ? (
                   <>
                     <p className="text-xs font-medium uppercase tracking-wide text-gray-400">
-                      Personalize
+                      {onboarding.personaEyebrow}
                     </p>
                     <h3 className="mt-2 text-2xl font-semibold text-gray-900">
-                      What are you mainly here to do?
+                      {onboarding.personaTitle}
                     </h3>
                     <p className="mt-3 text-sm leading-7 text-gray-600">
-                      This only changes the emphasis of the walkthrough. The underlying work model
-                      stays the same for humans and agents.
+                      {onboarding.personaDescription}
                     </p>
 
                     <div className="mt-6 space-y-3">
-                      {PERSONAS.map((persona) => (
+                      {onboarding.personas.map((persona) => (
                         <button
                           key={persona.id}
                           type="button"
@@ -328,24 +302,23 @@ export default function OnboardingExperience() {
                 ) : (
                   <>
                     <p className="text-xs font-medium uppercase tracking-wide text-gray-400">
-                      Activation checklist
+                      {onboarding.checklistEyebrow}
                     </p>
                     <h3 className="mt-2 text-2xl font-semibold text-gray-900">
-                      {state.status === 'completed' ? 'Onboarding complete' : 'Use the product, step by step'}
+                      {state.status === 'completed' ? onboarding.checklistCompletedTitle : onboarding.checklistTitle}
                     </h3>
                     <p className="mt-3 text-sm leading-7 text-gray-600">
-                      Each step is marked when you visit the relevant surface. You can stop now and
-                      resume later without losing progress. Agent setup includes a manual completion
-                      check because part of the flow happens in OpenClaw outside this app.
+                      {onboarding.checklistDescription}
                     </p>
 
                     <div className="mt-6 space-y-3">
-                      {ONBOARDING_STEPS.map((step) => {
+                      {steps.map((step) => {
                         const complete = state.completedStepIds.includes(step.id)
                         const cardClassName = complete
                           ? 'border-emerald-200 bg-emerald-50/70'
                           : 'border-gray-200 bg-white hover:border-brand-300 hover:bg-brand-50/40'
-                        if (step.id === 'agent_setup') {
+
+                        if (step.id === 'agent_setup' && onboarding.agentSetup) {
                           return (
                             <div
                               key={step.id}
@@ -363,23 +336,25 @@ export default function OnboardingExperience() {
                                   </div>
                                   <p className="mt-2 text-sm leading-6 text-gray-600">{step.description}</p>
                                   <div className="mt-3 rounded-xl border border-blue-100 bg-blue-50 p-3 text-sm leading-6 text-blue-900">
-                                    <p className="font-medium">Agent-first path</p>
+                                    <p className="font-medium">{onboarding.agentSetup.title}</p>
+                                    <p className="mt-2">{onboarding.agentSetup.description}</p>
                                     <ol className="mt-2 space-y-1 text-sm text-blue-900">
-                                      <li>1. Install the OpenClaw plugin from the latest package URL.</li>
-                                      <li>2. Open Settings → Members and copy the discovery URL.</li>
-                                      <li>3. Add the agent by ed25519 public key so it can authenticate.</li>
-                                      <li>4. Let the human and agent work in the same channels, projects, and inbox model.</li>
+                                      {onboarding.agentSetup.steps.map((item, index) => (
+                                        <li key={item}>{index + 1}. {item}</li>
+                                      ))}
                                     </ol>
                                     <div className="mt-3 flex flex-wrap gap-2">
-                                      <a
-                                        href={OPENCLAW_PLUGIN_URL}
-                                        target="_blank"
-                                        rel="noreferrer"
-                                        className="inline-flex items-center gap-1.5 rounded-lg border border-blue-200 bg-white px-3 py-2 text-sm font-medium text-blue-800 transition-colors hover:bg-blue-100"
-                                      >
-                                        Open plugin package
-                                        <ExternalLink size={14} />
-                                      </a>
+                                      {onboarding.agentSetup.externalLinkUrl && onboarding.agentSetup.externalLinkLabel && (
+                                        <a
+                                          href={onboarding.agentSetup.externalLinkUrl}
+                                          target="_blank"
+                                          rel="noreferrer"
+                                          className="inline-flex items-center gap-1.5 rounded-lg border border-blue-200 bg-white px-3 py-2 text-sm font-medium text-blue-800 transition-colors hover:bg-blue-100"
+                                        >
+                                          {onboarding.agentSetup.externalLinkLabel}
+                                          <ExternalLink size={14} />
+                                        </a>
+                                      )}
                                       {discoveryUrl && (
                                         <code className="max-w-full overflow-hidden rounded-lg border border-blue-200 bg-white px-3 py-2 text-xs text-blue-900">
                                           {discoveryUrl}
@@ -394,7 +369,7 @@ export default function OnboardingExperience() {
                               </div>
                               <div className="mt-3 flex flex-wrap gap-2">
                                 <Btn size="sm" variant="secondary" onClick={() => openStep(step.id)}>
-                                  Open members
+                                  {onboarding.agentSetup.actionLabel}
                                 </Btn>
                                 <Btn size="sm" variant={complete ? 'secondary' : 'primary'} onClick={() => toggleManualStep(step.id)}>
                                   {complete ? 'Marked complete' : 'Mark agent step complete'}
@@ -403,6 +378,7 @@ export default function OnboardingExperience() {
                             </div>
                           )
                         }
+
                         return (
                           <button
                             key={step.id}
@@ -463,7 +439,7 @@ export default function OnboardingExperience() {
                 className="text-sm font-medium text-gray-800"
                 aria-label="Expand onboarding tip"
               >
-                Onboarding tip
+                {onboarding.coachLabel}
               </button>
               <button
                 type="button"
@@ -479,18 +455,18 @@ export default function OnboardingExperience() {
               <div className="flex items-start justify-between gap-3">
                 <div>
                   <p className="text-xs font-medium uppercase tracking-wide text-brand-600">
-                    Onboarding tip
+                    {onboarding.coachLabel}
                   </p>
                   <h3 className="mt-1 text-sm font-semibold text-gray-900">{coachStep.title}</h3>
                   <p className="mt-2 text-sm leading-6 text-gray-600">{coachStep.tip}</p>
-                  {coachStep.id === 'agent_setup' && (
+                  {coachStep.id === 'agent_setup' && onboarding.agentSetup?.externalLinkUrl && onboarding.agentSetup.externalLinkLabel && (
                     <a
-                      href={OPENCLAW_PLUGIN_URL}
+                      href={onboarding.agentSetup.externalLinkUrl}
                       target="_blank"
                       rel="noreferrer"
                       className="mt-2 inline-flex items-center gap-1 text-sm font-medium text-brand-600 hover:text-brand-700"
                     >
-                      Open plugin package
+                      {onboarding.agentSetup.externalLinkLabel}
                       <ExternalLink size={13} />
                     </a>
                   )}
@@ -521,7 +497,7 @@ export default function OnboardingExperience() {
                   </Btn>
                 )}
                 <Btn size="sm" variant="ghost" onClick={() => setIsOpen(true)}>
-                  View checklist
+                  Open walkthrough
                 </Btn>
               </div>
             </div>

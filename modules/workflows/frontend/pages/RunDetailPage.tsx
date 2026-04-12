@@ -8,7 +8,7 @@ import {
 } from "@modules/workflows/frontend/api/runs"
 import { useGraphVersion } from "@modules/workflows/frontend/api/graphs"
 import { useEscalations, useResolveEscalationAny } from '@modules/communication/frontend/api/escalations'
-import { useRegisteredAgents } from "@modules/admin/frontend/api/agents"
+import { useRegisteredAgents } from "@modules/agents/frontend/api/agents"
 import GraphCanvas from '@modules/workflows/frontend/components/canvas/GraphCanvas'
 import Spinner from '@ui/components/Spinner'
 import RunInputPanel from '@modules/workflows/frontend/components/operator/RunInputPanel'

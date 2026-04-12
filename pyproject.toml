@@ -71,4 +71,4 @@ target-version = "py312"
 select = ["E", "F", "I", "UP"]
 
 [tool.hatch.build.targets.wheel]
-packages = ["core", "libs", "modules"]
+packages = ["core", "distributions", "libs", "modules"]

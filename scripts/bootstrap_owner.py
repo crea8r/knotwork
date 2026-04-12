@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Create or reuse owner user + workspace membership for installer bootstrap."""
+"""Create or reuse owner user, but always create a fresh workspace for installer bootstrap."""
 
 from __future__ import annotations
 
@@ -11,7 +11,7 @@ import sys
 from pathlib import Path
 from uuid import uuid4
 
-from sqlalchemy import and_, select
+from sqlalchemy import select
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
@@ -75,42 +75,25 @@ async def main() -> None:
         elif not user.name.strip():
             user.name = owner_name
 
-        member_q = await db.execute(
-            select(WorkspaceMember, Workspace)
-            .join(Workspace, Workspace.id == WorkspaceMember.workspace_id)
-            .where(WorkspaceMember.user_id == user.id)
-            .where(WorkspaceMember.role == "owner")
-            .order_by(Workspace.created_at.asc())
-            .limit(1)
+        slug = await _ensure_unique_slug(db, workspace_slug)
+        workspace = Workspace(
+            id=uuid4(),
+            name=workspace_name,
+            slug=slug,
+            guide_md=DEFAULT_GUIDE_MD,
         )
-        row = member_q.first()
-        created_workspace = False
-        created_membership = False
+        db.add(workspace)
+        await db.flush()
 
-        if row is None:
-            slug = await _ensure_unique_slug(db, workspace_slug)
-            workspace = Workspace(
-                id=uuid4(),
-                name=workspace_name,
-                slug=slug,
-                guide_md=DEFAULT_GUIDE_MD,
-            )
-            db.add(workspace)
-            await db.flush()
-
-            member = WorkspaceMember(
-                id=uuid4(),
-                workspace_id=workspace.id,
-                user_id=user.id,
-                role="owner",
-            )
-            db.add(member)
-            created_workspace = True
-            created_membership = True
-        else:
-            member, workspace = row
-            if member.role != "owner":
-                member.role = "owner"
+        member = WorkspaceMember(
+            id=uuid4(),
+            workspace_id=workspace.id,
+            user_id=user.id,
+            role="owner",
+        )
+        db.add(member)
+        created_workspace = True
+        created_membership = True
 
         await db.flush()
         await channel_service.ensure_bulletin_channel(db, workspace.id)

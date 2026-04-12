@@ -1,0 +1,1 @@
+export { ManticoreApp } from './App'

@@ -21,6 +21,8 @@ There are only three places where application code should live:
   - reusable primitives shared across modules
 - `modules/`
   - product behavior, organized by product area
+- `distributions/`
+  - concrete product shells that compose modules into named products
 
 If code does not fit one of those, the default assumption is that the ownership is wrong.
 
@@ -67,7 +69,9 @@ Current areas:
 
 Current modules:
 - `modules/admin`
-  - auth-facing flows, workspaces, invitations, onboarding/guide
+  - auth-facing flows, workspaces, invitations, guide, system/member administration
+- `modules/agents`
+  - registered-agent registry, capability sync, provider onboarding, harness-facing flows
 - `modules/communication`
   - channels, notifications, escalations, inbox-style flows
 - `modules/assets`
@@ -78,6 +82,21 @@ Current modules:
   - graphs, runs, runtime, designer, tools, ratings, public workflows, agent API
 
 Each module may contain both frontend and backend code.
+
+### `distributions/`
+
+`distributions` owns named product composition.
+
+Current distributions:
+- `distributions/chimera`
+  - full Knotwork product
+- `distributions/manticore`
+  - reduced product focused on assets + workflows
+
+Rules:
+- distributions compose modules
+- distributions may configure or hide module surfaces
+- distributions must not become the home of shared domain logic
 
 ## Dependency Rules
 
@@ -107,6 +126,13 @@ Current runtime entrypoints:
   - `core/api/main.py`
 - backend worker entry:
   - `core/runtime_assembly_tasks.py`
+
+Current distribution selection:
+
+- frontend:
+  - `VITE_KNOTWORK_DISTRIBUTION`
+- backend:
+  - `KNOTWORK_DISTRIBUTION`
 
 ## Tech Stack
 
@@ -170,7 +196,8 @@ Minimum expected verification:
 ```bash
 cd core/app-shell
 npm install
-npm run dev
+npm run dev:chimera
+npm run dev:manticore
 npx tsc --noEmit
 ```
 
@@ -188,6 +215,7 @@ docker compose --profile dev up -d --build
 docker compose ps
 curl http://127.0.0.1:8000/health
 curl http://127.0.0.1:3000/
+curl http://127.0.0.1:3001/
 ```
 
 ## OpenClaw Plugin

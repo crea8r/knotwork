@@ -28,6 +28,7 @@ class Settings(BaseSettings):
 
     # Workflow defaults
     default_model: str = "human"
+    knotwork_distribution: str = "chimera"
 
     # Auth
     jwt_secret: str
