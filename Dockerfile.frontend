@@ -6,6 +6,7 @@ RUN npm ci
 COPY core /app/core
 COPY libs /app/libs
 COPY modules /app/modules
+COPY distributions /app/distributions
 # No VITE_API_URL build arg — URL is injected at runtime via window._env.
 # The fallback in client.ts (http://localhost:8000/api/v1) is only used in
 # local npm-run-dev mode; the Docker prod container always has API_URL set.
@@ -34,5 +35,6 @@ RUN npm ci
 COPY core /app/core
 COPY libs /app/libs
 COPY modules /app/modules
+COPY distributions /app/distributions
 EXPOSE 3000
 CMD ["npm", "run", "dev", "--", "--host", "0.0.0.0"]
