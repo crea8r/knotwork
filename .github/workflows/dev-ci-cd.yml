@@ -8,6 +8,7 @@ on:
       - 'core/**'
       - 'libs/**'
       - 'modules/**'
+      - 'distributions/**'
       - 'alembic/**'
       - 'alembic.ini'
       - 'pyproject.toml'
@@ -64,13 +65,13 @@ jobs:
           SCOPE="full"
 
           if echo "$CHANGED_FILES" | grep -Eq '^core/app-shell/'; then
-            if ! echo "$CHANGED_FILES" | grep -Eq '^(core/api/|core/mcp/|core/runtime-assembly/|core/runtime_assembly_tasks.py|libs/|modules/|alembic/|alembic.ini|pyproject.toml|sitecustomize.py|Dockerfile.backend|Dockerfile.frontend|docker-entrypoint.sh|docker-compose.yml|docker-compose.deploy.yml|\.deploy-images\.env\.example|\.env\.docker\.example|scripts/|\.github/workflows/)'; then
+            if ! echo "$CHANGED_FILES" | grep -Eq '^(core/api/|core/mcp/|core/runtime-assembly/|core/runtime_assembly_tasks.py|libs/|modules/|distributions/|alembic/|alembic.ini|pyproject.toml|sitecustomize.py|Dockerfile.backend|Dockerfile.frontend|docker-entrypoint.sh|docker-compose.yml|docker-compose.deploy.yml|\.deploy-images\.env\.example|\.env\.docker\.example|scripts/|\.github/workflows/)'; then
               SCOPE="frontend"
             fi
           fi
 
-          if echo "$CHANGED_FILES" | grep -Eq '^(core/api/|core/mcp/|core/runtime-assembly/|core/runtime_assembly_tasks.py|alembic/|alembic.ini)'; then
-            if ! echo "$CHANGED_FILES" | grep -Eq '^(core/app-shell/|libs/|modules/|pyproject.toml|sitecustomize.py|Dockerfile.backend|Dockerfile.frontend|docker-entrypoint.sh|docker-compose.yml|docker-compose.deploy.yml|\.deploy-images\.env\.example|\.env\.docker\.example|scripts/|\.github/workflows/)'; then
+          if echo "$CHANGED_FILES" | grep -Eq '^(core/api/|core/mcp/|core/runtime-assembly/|core/runtime_assembly_tasks.py|distributions/|alembic/|alembic.ini)'; then
+            if ! echo "$CHANGED_FILES" | grep -Eq '^(core/app-shell/|libs/|modules/|distributions/|pyproject.toml|sitecustomize.py|Dockerfile.backend|Dockerfile.frontend|docker-entrypoint.sh|docker-compose.yml|docker-compose.deploy.yml|\.deploy-images\.env\.example|\.env\.docker\.example|scripts/|\.github/workflows/)'; then
               SCOPE="backend"
             fi
           fi
