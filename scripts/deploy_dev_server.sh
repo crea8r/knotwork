@@ -7,6 +7,7 @@ COMPOSE_FILE="$ROOT_DIR/docker-compose.yml"
 PROJECT_NAME="knotwork-dev-knotwork-space"
 HEALTH_URL="http://127.0.0.1:8000/health"
 DEPLOY_SCOPE="${DEPLOY_SCOPE:-full}"
+DEPLOY_REF="${DEPLOY_REF:-main}"
 
 log() { printf "\n[%s] %s\n" "$(date +'%H:%M:%S')" "$*"; }
 die() { echo "ERROR: $*" >&2; exit 1; }
@@ -23,10 +24,12 @@ case "$DEPLOY_SCOPE" in
     ;;
 esac
 
-log "Updating source..."
+log "Updating source to ref: $DEPLOY_REF"
 git -C "$ROOT_DIR" fetch origin
-git -C "$ROOT_DIR" checkout main
-git -C "$ROOT_DIR" reset --hard origin/main
+git -C "$ROOT_DIR" checkout "$DEPLOY_REF"
+if [[ "$DEPLOY_REF" == "main" ]] || git -C "$ROOT_DIR" show-ref --verify --quiet "refs/remotes/origin/$DEPLOY_REF"; then
+  git -C "$ROOT_DIR" reset --hard "origin/$DEPLOY_REF"
+fi
 
 NET_NAME="$(awk -F= '$1=="KNOTWORK_NETWORK_NAME"{print substr($0,index($0,$2));exit}' "$ENV_FILE")"
 [[ -n "$NET_NAME" ]] || NET_NAME="knotwork-dev-knotwork-space-network"
