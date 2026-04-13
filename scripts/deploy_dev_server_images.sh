@@ -7,7 +7,7 @@ DEPLOY_IMAGE_ENV="$ROOT_DIR/.deploy-images.env"
 BASE_COMPOSE="$ROOT_DIR/docker-compose.yml"
 DEPLOY_COMPOSE="$ROOT_DIR/docker-compose.deploy.yml"
 PROJECT_NAME="knotwork-dev-knotwork-space"
-HEALTH_URL="https://api.dev.knotwork.space/health"
+HEALTH_URL="http://127.0.0.1:8000/health"
 DEPLOY_SCOPE="${DEPLOY_SCOPE:-full}"
 
 log() { printf "\n[%s] %s\n" "$(date +'%H:%M:%S')" "$*"; }
