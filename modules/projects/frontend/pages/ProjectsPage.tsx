@@ -10,8 +10,10 @@ import Badge from '@ui/components/Badge'
 import Spinner from '@ui/components/Spinner'
 import EmptyState from '@ui/components/EmptyState'
 import { projectPath } from '@app-shell/paths'
+import { readNamespacedStorage } from '@storage'
 
 const DEV_WORKSPACE = import.meta.env.VITE_DEV_WORKSPACE_ID ?? 'dev-workspace'
+const LAST_PROJECT_STORAGE_KEY = 'last-project'
 
 function statusVariant(status: string): 'gray' | 'green' | 'orange' | 'red' {
   if (status === 'done') return 'green'
@@ -31,7 +33,10 @@ export default function ProjectsPage() {
   const [description, setDescription] = useState('')
   const showProjectList = searchParams.get('view') === 'list'
 
-  const lastProjectSlug = useMemo(() => localStorage.getItem('kw-last-project'), [])
+  const lastProjectSlug = useMemo(
+    () => readNamespacedStorage(LAST_PROJECT_STORAGE_KEY, ['kw-last-project']),
+    [],
+  )
   const resolvedLastProjectSlug = useMemo(() => {
     if (!lastProjectSlug) return null
     return projects.some((project) => project.slug === lastProjectSlug) ? lastProjectSlug : null

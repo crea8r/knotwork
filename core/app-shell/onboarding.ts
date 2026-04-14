@@ -1,4 +1,6 @@
-export const ONBOARDING_STORAGE_KEY = 'kw-first-run-onboarding-v1'
+import { readNamespacedStorage, writeNamespacedStorage } from '@storage'
+
+export const ONBOARDING_STORAGE_KEY = 'first-run-onboarding.v1'
 export const ONBOARDING_OPEN_EVENT = 'kw:onboarding-open'
 export const OPENCLAW_PLUGIN_URL = 'https://lab.crea8r.xyz/kw-plugin/latest'
 
@@ -76,7 +78,7 @@ export function readOnboardingState(): OnboardingState {
   if (typeof window === 'undefined') {
     return defaultOnboardingState()
   }
-  const raw = window.localStorage.getItem(ONBOARDING_STORAGE_KEY)
+  const raw = readNamespacedStorage(ONBOARDING_STORAGE_KEY, ['kw-first-run-onboarding-v1'])
   if (!raw) {
     return defaultOnboardingState()
   }
@@ -100,7 +102,7 @@ export function writeOnboardingState(state: OnboardingState) {
   if (typeof window === 'undefined') {
     return
   }
-  window.localStorage.setItem(ONBOARDING_STORAGE_KEY, JSON.stringify(state))
+  writeNamespacedStorage(ONBOARDING_STORAGE_KEY, JSON.stringify(state), ['kw-first-run-onboarding-v1'])
 }
 
 export function nextIncompleteOnboardingStep(

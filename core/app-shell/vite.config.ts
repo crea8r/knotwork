@@ -11,6 +11,7 @@ export default defineConfig({
       { find: '@core-api', replacement: path.resolve(__dirname, '../api') },
       { find: '@distributions', replacement: path.resolve(__dirname, '../../distributions') },
       { find: '@ui', replacement: path.resolve(__dirname, '../../libs/ui') },
+      { find: '@storage', replacement: path.resolve(__dirname, '../../libs/browser-storage') },
       { find: '@sdk', replacement: path.resolve(__dirname, '../../libs/sdk') },
       { find: '@data-models', replacement: path.resolve(__dirname, '../../libs/data-models/index.ts') },
       { find: '@auth', replacement: path.resolve(__dirname, '../../libs/auth/index.ts') },

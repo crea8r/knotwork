@@ -83,7 +83,7 @@ export default function HandbookPage() {
   const state = useFileBrowserState({
     initialFolder: urlFolder,
     initialFilePath: urlFilePath,
-    panelWidthStorageKey: 'kw-handbook-asset-chat-width',
+    panelWidthStorageKey: 'handbook-asset-chat-width',
   })
   const workflowEntries = useMemo<BrowserFile[]>(
     () => graphs.map((graph) => ({
@@ -345,7 +345,7 @@ export default function HandbookPage() {
           />
         )}
         openSidePanel={urlChat}
-        sidePanelStorageKey="kw-handbook-asset-chat-open"
+        sidePanelStorageKey="handbook-asset-chat-open"
         sidePanel={
           <ChannelShell
             title="Handbook Chat"

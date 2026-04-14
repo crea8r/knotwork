@@ -1,5 +1,6 @@
 import { create } from 'zustand'
-import { persist } from 'zustand/middleware'
+import { createJSONStorage, persist } from 'zustand/middleware'
+import { namespacedStorageKey } from '@storage'
 
 export interface UserInfo {
   id: string
@@ -21,8 +22,107 @@ interface AuthState {
   setInstallationId: (id: string) => void
 }
 
+type PersistedAuthState = Pick<AuthState, 'token' | 'user' | 'workspaceId' | 'role' | 'installationId'>
+
+const LEGACY_AUTH_STORAGE_KEY = 'knotwork_auth'
+const LEGACY_AUTH_STORAGE_PREFIX = `${LEGACY_AUTH_STORAGE_KEY}::`
+
+type PersistedAuthSnapshot = {
+  state?: {
+    installationId?: string | null
+  }
+}
+
+function authStorageInstallKey(installationId: string): string {
+  return namespacedStorageKey(`auth.install.${installationId}`)
+}
+
+function previousAuthStorageBaseKey(): string {
+  if (typeof window === 'undefined') return `${LEGACY_AUTH_STORAGE_KEY}::server`
+  const runtimeUrl = (window as unknown as { _env?: { API_URL?: string } })._env?.API_URL
+  const raw =
+    runtimeUrl && runtimeUrl !== 'RUNTIME_API_URL'
+      ? runtimeUrl
+      : import.meta.env.VITE_API_URL ?? 'http://localhost:8000/api/v1'
+  return `${LEGACY_AUTH_STORAGE_KEY}::${encodeURIComponent(raw.replace(/\/$/, ''))}`
+}
+
+function parsePersistedSnapshot(value: string): PersistedAuthSnapshot | null {
+  try {
+    return JSON.parse(value) as PersistedAuthSnapshot
+  } catch {
+    return null
+  }
+}
+
+const authStorage = {
+  getItem: (_name: string): string | null => {
+    if (typeof window === 'undefined') return null
+    const baseKey = namespacedStorageKey('auth')
+    const current = window.localStorage.getItem(baseKey)
+    if (current !== null) return current
+
+    const previousBaseKey = previousAuthStorageBaseKey()
+    const legacyCandidates = [LEGACY_AUTH_STORAGE_KEY, previousBaseKey]
+    for (const legacyKey of legacyCandidates) {
+      const legacyValue = window.localStorage.getItem(legacyKey)
+      if (legacyValue !== null) {
+        window.localStorage.setItem(baseKey, legacyValue)
+        window.localStorage.removeItem(legacyKey)
+        return legacyValue
+      }
+    }
+
+    for (let index = 0; index < window.localStorage.length; index += 1) {
+      const key = window.localStorage.key(index)
+      if (!key || !key.startsWith(LEGACY_AUTH_STORAGE_PREFIX)) continue
+      const legacyValue = window.localStorage.getItem(key)
+      if (legacyValue !== null) {
+        window.localStorage.setItem(baseKey, legacyValue)
+        window.localStorage.removeItem(key)
+        return legacyValue
+      }
+    }
+
+    return null
+  },
+  setItem: (_name: string, value: string): void => {
+    if (typeof window === 'undefined') return
+    const baseKey = namespacedStorageKey('auth')
+    window.localStorage.setItem(baseKey, value)
+
+    const parsed = parsePersistedSnapshot(value)
+    const installationId = parsed?.state?.installationId?.trim()
+    if (installationId) {
+      window.localStorage.setItem(authStorageInstallKey(installationId), value)
+    }
+
+    window.localStorage.removeItem(LEGACY_AUTH_STORAGE_KEY)
+    window.localStorage.removeItem(previousAuthStorageBaseKey())
+  },
+  removeItem: (_name: string): void => {
+    if (typeof window === 'undefined') return
+
+    const baseKey = namespacedStorageKey('auth')
+    const installPrefix = namespacedStorageKey('auth.install.')
+    const keysToRemove: string[] = []
+    for (let index = 0; index < window.localStorage.length; index += 1) {
+      const key = window.localStorage.key(index)
+      if (!key) continue
+      if (key === baseKey || key.startsWith(installPrefix) || key.startsWith(LEGACY_AUTH_STORAGE_PREFIX)) {
+        keysToRemove.push(key)
+      }
+    }
+    for (const key of keysToRemove) {
+      window.localStorage.removeItem(key)
+    }
+    window.localStorage.removeItem(LEGACY_AUTH_STORAGE_KEY)
+    window.localStorage.removeItem(previousAuthStorageBaseKey())
+  },
+}
+
 export const useAuthStore = create<AuthState>()(
-  persist(
+  persist<AuthState, [], [], PersistedAuthState>(
     (set) => ({
       token: null,
       user: null,
@@ -37,7 +137,8 @@ export const useAuthStore = create<AuthState>()(
       setInstallationId: (id) => set({ installationId: id }),
     }),
     {
-      name: 'knotwork_auth',
+      name: LEGACY_AUTH_STORAGE_KEY,
+      storage: createJSONStorage(() => authStorage),
       partialize: (state) => ({
         token: state.token,
         user: state.user,

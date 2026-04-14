@@ -3,6 +3,7 @@ import type {
   Channel, Objective, Project, ProjectDashboard, ProjectDocument, ProjectDocumentWithContent, ProjectStatusUpdate,
 } from '@data-models'
 import { api, API_BASE_URL } from '@sdk'
+import { useAuthStore } from '@auth'
 import type { FileVersion, SuggestionOut, UploadPreview } from '@modules/assets/frontend/api/knowledge'
 
 export interface ProjectFolder {
@@ -262,9 +263,9 @@ export function useUploadProjectFile(workspaceId: string, projectId: string) {
       const form = new FormData()
       form.append('file', file)
       const params = folder ? `?folder=${encodeURIComponent(folder)}` : ''
-      const token = localStorage.getItem('knotwork_token')
+      const token = useAuthStore.getState().token
       const headers: HeadersInit = {}
-      if (token) headers.Authorization = `Bearer ${token}`
+      if (token && token !== 'localhost-bypass') headers.Authorization = `Bearer ${token}`
       const res = await fetch(
         `${API_BASE_URL}/workspaces/${workspaceId}/projects/${projectId}/upload${params}`,
         { method: 'POST', body: form, headers },

@@ -22,6 +22,7 @@ import { api } from '@sdk'
 import { useCreateProject, useProjectChannels, useProjectDashboard, useProjects } from "@modules/projects/frontend/api/projects"
 import { useRuns } from "@modules/workflows/frontend/api/runs"
 import { useAuthStore } from '@auth'
+import { readNamespacedStorage, removeNamespacedStorage, writeNamespacedStorage } from '@storage'
 import { useActiveDistribution } from '@app-shell/distribution'
 import { projectChannelPath, projectObjectivePath, projectPath } from '@app-shell/paths'
 import type { Channel, Run } from '@data-models'
@@ -279,7 +280,9 @@ function WorkspaceSidebar({
   const activeProjectId = activeProjectDashboard?.project.id ?? null
 
   const [expandedProjects, setExpandedProjects] = useState<Record<string, boolean>>({})
-  const [pinnedProjectId, setPinnedProjectId] = useState<string | null>(() => localStorage.getItem('kw-pinned-project'))
+  const [pinnedProjectId, setPinnedProjectId] = useState<string | null>(
+    () => readNamespacedStorage(PINNED_PROJECT_STORAGE_KEY, ['kw-pinned-project']),
+  )
   const [showNewChannelDialog, setShowNewChannelDialog] = useState(false)
   const [showNewProjectDialog, setShowNewProjectDialog] = useState(false)
   const [newChannelProjectId, setNewChannelProjectId] = useState('')
@@ -427,9 +430,9 @@ function WorkspaceSidebar({
     const next = pinnedProjectId === projectId ? null : projectId
     setPinnedProjectId(next)
     if (next) {
-      localStorage.setItem('kw-pinned-project', next)
+      writeNamespacedStorage(PINNED_PROJECT_STORAGE_KEY, next, ['kw-pinned-project'])
     } else {
-      localStorage.removeItem('kw-pinned-project')
+      removeNamespacedStorage(PINNED_PROJECT_STORAGE_KEY, ['kw-pinned-project'])
     }
   }
 
@@ -824,3 +827,4 @@ function WorkspaceSidebar({
     </>
   )
 }
+const PINNED_PROJECT_STORAGE_KEY = 'pinned-project'

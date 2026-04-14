@@ -5,6 +5,7 @@ import { ArrowRight, CheckCircle2, ChevronDown, ChevronUp, Circle, ExternalLink,
 import Btn from '@ui/components/Btn'
 import { BACKEND_BASE_URL } from '@sdk'
 import { useAuthStore } from '@auth'
+import { readNamespacedStorage, writeNamespacedStorage } from '@storage'
 import { useActiveDistribution } from '@app-shell/distribution'
 import {
   ONBOARDING_OPEN_EVENT,
@@ -16,17 +17,23 @@ import {
   writeOnboardingState,
 } from '@app-shell/onboarding'
 
-const COACH_COLLAPSED_STORAGE_KEY = 'kw-onboarding-coach-collapsed-v1'
-const COACH_HIDDEN_STORAGE_KEY = 'kw-onboarding-coach-hidden-v1'
+const COACH_COLLAPSED_STORAGE_KEY = 'onboarding-coach-collapsed.v1'
+const COACH_HIDDEN_STORAGE_KEY = 'onboarding-coach-hidden.v1'
 
 function readFlag(key: string, fallback = false) {
   if (typeof window === 'undefined') return fallback
-  return window.localStorage.getItem(key) === '1'
+  return readNamespacedStorage(key, [
+    key === COACH_COLLAPSED_STORAGE_KEY ? 'kw-onboarding-coach-collapsed-v1' : 'kw-onboarding-coach-hidden-v1',
+  ]) === '1'
 }
 
 function writeFlag(key: string, value: boolean) {
   if (typeof window === 'undefined') return
-  window.localStorage.setItem(key, value ? '1' : '0')
+  writeNamespacedStorage(
+    key,
+    value ? '1' : '0',
+    [key === COACH_COLLAPSED_STORAGE_KEY ? 'kw-onboarding-coach-collapsed-v1' : 'kw-onboarding-coach-hidden-v1'],
+  )
 }
 
 function mergeOnboardingState(updater: (current: OnboardingState) => OnboardingState) {

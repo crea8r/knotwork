@@ -14,6 +14,7 @@ import type { ContextTarget } from '@modules/assets/frontend/components/handbook
 import Breadcrumb from '@modules/assets/frontend/components/handbook/Breadcrumb'
 import FolderBrowser from '@modules/assets/frontend/components/handbook/FolderBrowser'
 import { EditorSidePanel } from '@ui/components/EditorWorkspace'
+import { readNamespacedStorage, writeNamespacedStorage } from '@storage'
 
 interface Props {
   files: BrowserFile[]
@@ -76,7 +77,7 @@ export default function FileBrowserShell({
 }: Props) {
   const [showChat, setShowChat] = useState(() => {
     if (typeof window === 'undefined' || !sidePanelStorageKey) return false
-    return window.localStorage.getItem(sidePanelStorageKey) === '1'
+    return readNamespacedStorage(sidePanelStorageKey) === '1'
   })
   const [newMenuOpen, setNewMenuOpen] = useState(false)
   const { rightPanel, setRightPanel, currentFolder, multiSelected,
@@ -109,7 +110,7 @@ export default function FileBrowserShell({
 
   useEffect(() => {
     if (typeof window === 'undefined' || !sidePanelStorageKey) return
-    window.localStorage.setItem(sidePanelStorageKey, showChat ? '1' : '0')
+    writeNamespacedStorage(sidePanelStorageKey, showChat ? '1' : '0')
   }, [showChat, sidePanelStorageKey])
 
   useEffect(() => {

@@ -11,14 +11,19 @@ import { useMentionDetection } from '@modules/communication/frontend/components/
 import { useChannelTimeline } from '@modules/communication/frontend/components/useChannelTimeline'
 import ProjectDashboard from '@modules/projects/frontend/components/ProjectDashboard'
 import { projectChannelPath, projectObjectivePath, projectPath } from '@app-shell/paths'
+import { readNamespacedStorage, removeNamespacedStorage, writeNamespacedStorage } from '@storage'
 import type { ProjectOutletContext } from './ProjectDetailPage'
+
+const PINNED_PROJECT_STORAGE_KEY = 'pinned-project'
 
 export default function ProjectMainContent() {
   const { workspaceId, projectId, project, objectives, recentRuns, projectChannels, onNewObjective, onUpdateStatus } = useOutletContext<ProjectOutletContext>()
   const navigate = useNavigate()
   const [projectChatDraft, setProjectChatDraft] = useState('')
   const inputRef = useRef<HTMLTextAreaElement | null>(null)
-  const [pinnedProjectId, setPinnedProjectId] = useState<string | null>(() => localStorage.getItem('kw-pinned-project'))
+  const [pinnedProjectId, setPinnedProjectId] = useState<string | null>(
+    () => readNamespacedStorage(PINNED_PROJECT_STORAGE_KEY, ['kw-pinned-project']),
+  )
 
   const projectChannelId = project.project_channel_id ?? null
   const { data: workflows = [] } = useGraphs(workspaceId)
@@ -31,9 +36,9 @@ export default function ProjectMainContent() {
     const next = pinnedProjectId === projectId ? null : projectId
     setPinnedProjectId(next)
     if (next) {
-      localStorage.setItem('kw-pinned-project', next)
+      writeNamespacedStorage(PINNED_PROJECT_STORAGE_KEY, next, ['kw-pinned-project'])
     } else {
-      localStorage.removeItem('kw-pinned-project')
+      removeNamespacedStorage(PINNED_PROJECT_STORAGE_KEY, ['kw-pinned-project'])
     }
     window.dispatchEvent(new CustomEvent('kw:pinned-project-changed', { detail: { projectId: next } }))
   }

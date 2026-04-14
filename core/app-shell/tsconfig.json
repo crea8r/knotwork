@@ -22,6 +22,8 @@
       "@core-api/*": ["../api/*"],
       "@distributions/*": ["../../distributions/*"],
       "@ui/*": ["../../libs/ui/*"],
+      "@storage": ["../../libs/browser-storage/index.ts"],
+      "@storage/*": ["../../libs/browser-storage/*"],
       "@sdk": ["../../libs/sdk/index.ts"],
       "@sdk/*": ["../../libs/sdk/*"],
       "@data-models": ["../../libs/data-models/index.ts"],

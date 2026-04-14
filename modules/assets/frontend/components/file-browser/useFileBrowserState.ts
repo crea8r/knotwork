@@ -6,6 +6,7 @@ import { useEffect, useRef, useState } from 'react'
 import type { RightPanel } from './types'
 import type { BrowserFile } from './types'
 import type { ContextTarget } from '@modules/assets/frontend/components/handbook/FileContextMenu'
+import { readNamespacedStorage, writeNamespacedStorage } from '@storage'
 
 const MIN_PANEL_W = 200
 const MAX_PANEL_W = 760
@@ -53,7 +54,7 @@ export function useFileBrowserState(options: UseFileBrowserStateOptions = {}): F
   const [pageDragOver, setPageDragOver] = useState(false)
   const [panelWidth, setPanelWidth] = useState(() => {
     if (!panelWidthStorageKey || typeof window === 'undefined') return DEFAULT_PANEL_W
-    const raw = window.localStorage.getItem(panelWidthStorageKey)
+    const raw = readNamespacedStorage(panelWidthStorageKey)
     const value = raw ? Number.parseInt(raw, 10) : Number.NaN
     if (Number.isNaN(value)) return DEFAULT_PANEL_W
     return Math.max(MIN_PANEL_W, Math.min(MAX_PANEL_W, value))
@@ -65,7 +66,7 @@ export function useFileBrowserState(options: UseFileBrowserStateOptions = {}): F
 
   useEffect(() => {
     if (!panelWidthStorageKey || typeof window === 'undefined') return
-    window.localStorage.setItem(panelWidthStorageKey, String(panelWidth))
+    writeNamespacedStorage(panelWidthStorageKey, String(panelWidth))
   }, [panelWidth, panelWidthStorageKey])
 
   function openFile(file: BrowserFile) {

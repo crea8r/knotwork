@@ -1,6 +1,6 @@
 /**
  * Axios instance for all API calls.
- * Reads JWT from the Zustand auth store (persisted to localStorage under 'knotwork_auth').
+ * Reads JWT from the Zustand auth store (persisted to a server-scoped localStorage key).
  * Handles 401 by redirecting to /login.
  *
  * VITE_API_URL must be an absolute URL (e.g. http://localhost:8000/api/v1).

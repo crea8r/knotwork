@@ -280,7 +280,7 @@ export default function ProjectAssetsPage() {
   const browserState = useFileBrowserState({
     initialFolder: urlFolder,
     initialFilePath: urlFilePath,
-    panelWidthStorageKey: 'kw-project-asset-chat-width',
+    panelWidthStorageKey: 'project-asset-chat-width',
   })
   const uploadInputRef = useRef<HTMLInputElement>(null)
   const chatInputRef = useRef<HTMLTextAreaElement | null>(null)
@@ -614,7 +614,7 @@ export default function ProjectAssetsPage() {
             />
           )}
           openSidePanel={urlChat}
-          sidePanelStorageKey="kw-project-asset-chat-open"
+          sidePanelStorageKey="project-asset-chat-open"
           allowNewFolder
           allowUpload
           allowFolderRename

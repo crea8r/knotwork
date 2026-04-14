@@ -13,8 +13,10 @@ import Btn from '@ui/components/Btn'
 import Spinner from '@ui/components/Spinner'
 import { projectObjectivePath } from '@app-shell/paths'
 import type { Channel, Objective, Project, Run } from '@data-models'
+import { writeNamespacedStorage } from '@storage'
 
 const DEV_WORKSPACE = import.meta.env.VITE_DEV_WORKSPACE_ID ?? 'dev-workspace'
+const LAST_PROJECT_STORAGE_KEY = 'last-project'
 
 export type ProjectActiveItem =
   | { kind: 'home' }
@@ -63,7 +65,7 @@ export default function ProjectDetailPage() {
 
   useEffect(() => {
     if (projectSlug) {
-      localStorage.setItem('kw-last-project', projectSlug)
+      writeNamespacedStorage(LAST_PROJECT_STORAGE_KEY, projectSlug, ['kw-last-project'])
     }
   }, [projectSlug])
 

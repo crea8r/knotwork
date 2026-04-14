@@ -8,13 +8,14 @@ import { useCanvasStore } from '@modules/workflows/frontend/state/canvas'
 import type { Graph, GraphDefinition, GraphVersion } from '@data-models'
 import type { AutosaveState, HistorySelection } from './graphVersionUtils'
 import { compareUpdatedDesc, formatVersionName } from './graphVersionUtils'
+import { readNamespacedStorage, writeNamespacedStorage } from '@storage'
 
-function storageKey(graphId: string) { return `kw:ver-sel:${graphId}` }
+function storageKey(graphId: string) { return `workflow-version-selection.${graphId}` }
 // Stored format:  '__null__'        → root-draft (edit)
 //                 'snap:{uuid}'     → named version, snapshot/read-only
 //                 '{uuid}'          → named version, edit mode (draft open or creating)
 function readStored(graphId: string): { id: string | null; snapshot: boolean } | undefined {
-  const raw = localStorage.getItem(storageKey(graphId))
+  const raw = readNamespacedStorage(storageKey(graphId), [`kw:ver-sel:${graphId}`])
   if (raw === null) return undefined
   if (raw === '__null__') return { id: null, snapshot: false }
   if (raw.startsWith('snap:')) return { id: raw.slice(5), snapshot: true }
@@ -22,7 +23,7 @@ function readStored(graphId: string): { id: string | null; snapshot: boolean } |
 }
 function writeStored(graphId: string, id: string | null, snapshot: boolean) {
   const val = id === null ? '__null__' : snapshot ? `snap:${id}` : id
-  localStorage.setItem(storageKey(graphId), val)
+  writeNamespacedStorage(storageKey(graphId), val, [`kw:ver-sel:${graphId}`])
 }
 
 export function useVersionSync(

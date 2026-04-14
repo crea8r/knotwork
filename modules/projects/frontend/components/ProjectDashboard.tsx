@@ -4,6 +4,7 @@ import Badge from '@ui/components/Badge'
 import Btn from '@ui/components/Btn'
 import type { Run, Objective } from '@data-models'
 import type { ProjectChannelNavItem } from '@modules/projects/frontend/pages/ProjectDetailPage'
+import { readNamespacedStorage, removeNamespacedStorage, writeNamespacedStorage } from '@storage'
 
 interface ProjectSummary {
   id: string
@@ -53,11 +54,11 @@ export default function ProjectDashboard({
   pinned = false,
   onTogglePin,
 }: ProjectDashboardProps) {
-  const storageKey = `kw-dash-collapsed-${project.id}`
-  const seenKey = `kw-dash-seen-${project.id}`
+  const storageKey = `project-dashboard-collapsed.${project.id}`
+  const seenKey = `project-dashboard-seen.${project.id}`
 
   const [collapsed, setCollapsed] = useState(() => {
-    return localStorage.getItem(storageKey) === 'true'
+    return readNamespacedStorage(storageKey, [`kw-dash-collapsed-${project.id}`]) === 'true'
   })
   const [activeFilter, setActiveFilter] = useState<DashboardFilter>('objectives')
   const [pageByFilter, setPageByFilter] = useState<Record<DashboardFilter, number>>({
@@ -87,20 +88,20 @@ export default function ProjectDashboard({
 
   // Auto-expand when there's a new status update since last seen
   useEffect(() => {
-    const lastSeen = localStorage.getItem(seenKey)
+    const lastSeen = readNamespacedStorage(seenKey, [`kw-dash-seen-${project.id}`])
     const latestTs = project.latest_status_update?.created_at
     if (latestTs && (!lastSeen || new Date(latestTs) > new Date(lastSeen))) {
       setCollapsed(false)
-      localStorage.removeItem(storageKey)
+      removeNamespacedStorage(storageKey, [`kw-dash-collapsed-${project.id}`])
     }
-  }, [project.latest_status_update?.created_at, seenKey, storageKey])
+  }, [project.id, project.latest_status_update?.created_at, seenKey, storageKey])
 
   function toggleCollapsed() {
     const next = !collapsed
     setCollapsed(next)
-    localStorage.setItem(storageKey, String(next))
+    writeNamespacedStorage(storageKey, String(next), [`kw-dash-collapsed-${project.id}`])
     if (!next && project.latest_status_update?.created_at) {
-      localStorage.setItem(seenKey, project.latest_status_update.created_at)
+      writeNamespacedStorage(seenKey, project.latest_status_update.created_at, [`kw-dash-seen-${project.id}`])
     }
   }
 

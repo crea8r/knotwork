@@ -5,6 +5,9 @@ import Sidebar from './Sidebar'
 import OnboardingExperience from './OnboardingExperience'
 import VersionWarningBanner from '@ui/components/VersionWarningBanner'
 import { useActiveDistribution } from './distribution'
+import { readNamespacedStorage, writeNamespacedStorage } from '@storage'
+
+const NAV_COLLAPSED_STORAGE_KEY = 'nav-collapsed'
 
 /**
  * App shell: collapsible sidebar + scrollable main area.
@@ -12,7 +15,9 @@ import { useActiveDistribution } from './distribution'
  */
 export default function AppLayout() {
   const [mobileNavOpen, setMobileNavOpen] = useState(false)
-  const [navCollapsed, setNavCollapsed] = useState(() => localStorage.getItem('kw-nav-collapsed') === 'true')
+  const [navCollapsed, setNavCollapsed] = useState(
+    () => readNamespacedStorage(NAV_COLLAPSED_STORAGE_KEY, ['kw-nav-collapsed']) === 'true',
+  )
   const location = useLocation()
   const distribution = useActiveDistribution()
   const enabledModules = new Set(distribution.enabledModules)
@@ -25,7 +30,7 @@ export default function AppLayout() {
   function toggleNav() {
     setNavCollapsed((v) => {
       const next = !v
-      localStorage.setItem('kw-nav-collapsed', String(next))
+      writeNamespacedStorage(NAV_COLLAPSED_STORAGE_KEY, String(next), ['kw-nav-collapsed'])
       return next
     })
   }

@@ -3,8 +3,10 @@ import { useSearchParams } from 'react-router-dom'
 import { useKnowledgeChanges } from "@modules/assets/frontend/api/knowledge"
 import HandbookPage from './HandbookPage'
 import ReviewQueue from '@modules/assets/frontend/components/knowledge/ReviewQueue'
+import { readNamespacedStorage, writeNamespacedStorage } from '@storage'
 
 type KnowledgeTab = 'review' | 'assets'
+const KNOWLEDGE_TAB_STORAGE_KEY = 'knowledge-tab'
 
 export default function KnowledgePage() {
   const [searchParams] = useSearchParams()
@@ -12,13 +14,13 @@ export default function KnowledgePage() {
   const pendingCount = proposals.length
 
   const [tab, setTab] = useState<KnowledgeTab>(() => {
-    const saved = localStorage.getItem('kw-knowledge-tab') as KnowledgeTab | null
+    const saved = readNamespacedStorage(KNOWLEDGE_TAB_STORAGE_KEY, ['kw-knowledge-tab']) as KnowledgeTab | null
     return saved ?? 'review'
   })
 
   // Auto-surface review tab when pending items exist and user hasn't explicitly chosen
   useEffect(() => {
-    if (pendingCount > 0 && !localStorage.getItem('kw-knowledge-tab')) {
+    if (pendingCount > 0 && !readNamespacedStorage(KNOWLEDGE_TAB_STORAGE_KEY, ['kw-knowledge-tab'])) {
       setTab('review')
     }
   }, [pendingCount])
@@ -26,13 +28,13 @@ export default function KnowledgePage() {
   useEffect(() => {
     if (searchParams.get('path') || searchParams.get('folder') || searchParams.get('new')) {
       setTab('assets')
-      localStorage.setItem('kw-knowledge-tab', 'assets')
+      writeNamespacedStorage(KNOWLEDGE_TAB_STORAGE_KEY, 'assets', ['kw-knowledge-tab'])
     }
   }, [searchParams])
 
   function selectTab(next: KnowledgeTab) {
     setTab(next)
-    localStorage.setItem('kw-knowledge-tab', next)
+    writeNamespacedStorage(KNOWLEDGE_TAB_STORAGE_KEY, next, ['kw-knowledge-tab'])
   }
 
   return (

@@ -186,9 +186,9 @@ export function useUploadFile() {
       const form = new FormData()
       form.append('file', file)
       const params = folder ? `?folder=${encodeURIComponent(folder)}` : ''
-      const token = localStorage.getItem('knotwork_token')
+      const token = useAuthStore.getState().token
       const headers: HeadersInit = {}
-      if (token) headers['Authorization'] = `Bearer ${token}`
+      if (token && token !== 'localhost-bypass') headers['Authorization'] = `Bearer ${token}`
       const res = await fetch(`${API_BASE_URL}/workspaces/${workspaceId}/handbook/upload${params}`, {
         method: 'POST', body: form, headers,
       })
@@ -206,9 +206,9 @@ export function useUploadRawFile() {
       const form = new FormData()
       form.append('file', file)
       const params = folder ? `?folder=${encodeURIComponent(folder)}` : ''
-      const token = localStorage.getItem('knotwork_token')
+      const token = useAuthStore.getState().token
       const headers: HeadersInit = {}
-      if (token) headers['Authorization'] = `Bearer ${token}`
+      if (token && token !== 'localhost-bypass') headers['Authorization'] = `Bearer ${token}`
       const res = await fetch(`${API_BASE_URL}/workspaces/${workspaceId}/handbook/upload-raw${params}`, {
         method: 'POST', body: form, headers,
       })
