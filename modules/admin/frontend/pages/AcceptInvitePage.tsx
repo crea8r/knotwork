@@ -85,6 +85,7 @@ function InviteAcceptFlow({ token }: { token: string | null }) {
   const { data: inv, isLoading, isError } = useGetInvitation(token)
   const accept = useAcceptInvitation()
   const [name, setName] = useState('')
+  const [password, setPassword] = useState('')
 
   if (!token) {
     return (
@@ -133,7 +134,7 @@ function InviteAcceptFlow({ token }: { token: string | null }) {
     e.preventDefault()
     if (!token) return
     accept.mutate(
-      { token, name },
+      { token, name, password },
       {
         onSuccess: (data) => {
           login(
@@ -179,12 +180,27 @@ function InviteAcceptFlow({ token }: { token: string | null }) {
               className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-400"
             />
           </div>
+          <div>
+            <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-1">
+              Password
+            </label>
+            <input
+              id="password"
+              type="password"
+              required
+              minLength={4}
+              placeholder="Create a password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-400"
+            />
+          </div>
           {accept.isError && (
             <p className="text-xs text-red-600">Something went wrong. Please try again.</p>
           )}
           <button
             type="submit"
-            disabled={accept.isPending || !name.trim()}
+            disabled={accept.isPending || !name.trim() || !password.trim()}
             className="w-full bg-brand-500 hover:bg-brand-600 text-white text-sm font-medium py-2 rounded-lg transition-colors disabled:opacity-60"
           >
             {accept.isPending ? 'Joining…' : 'Accept invitation'}

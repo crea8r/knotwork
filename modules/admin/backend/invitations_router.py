@@ -65,4 +65,4 @@ async def accept_invitation(
     db: AsyncSession = Depends(get_db),
 ) -> AcceptInvitationOut:
     """Accept an invitation: creates account + workspace member, returns JWT."""
-    return await service.accept_invitation(db, token, req.name)
+    return await service.accept_invitation(db, token, req.name, req.password)

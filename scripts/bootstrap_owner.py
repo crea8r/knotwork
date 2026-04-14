@@ -18,6 +18,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from libs.auth.backend.models import User
+from libs.auth.backend.service import set_user_password
 from libs.database import AsyncSessionLocal
 from modules.admin.backend.workspaces_guide import DEFAULT_GUIDE_MD
 from modules.admin.backend.workspaces_models import Workspace, WorkspaceMember
@@ -44,12 +45,15 @@ async def main() -> None:
     ap = argparse.ArgumentParser(description="Bootstrap owner user/workspace for fresh install.")
     ap.add_argument("--owner-name", required=True)
     ap.add_argument("--owner-email", required=True)
+    ap.add_argument("--owner-password", default="")
     ap.add_argument("--workspace-name", default="")
     ap.add_argument("--workspace-slug", default="")
     args = ap.parse_args()
 
     owner_name = args.owner_name.strip()
     owner_email = args.owner_email.strip().lower()
+    owner_password = args.owner_password.strip() or "admin"
+    uses_default_password = owner_password == "admin"
     workspace_name = (args.workspace_name or f"{owner_name}'s Workspace").strip()
     workspace_slug = (args.workspace_slug or _slugify(workspace_name)).strip()
 
@@ -67,13 +71,15 @@ async def main() -> None:
                 id=uuid4(),
                 email=owner_email,
                 name=owner_name,
-                hashed_password="!no-password",
             )
+            set_user_password(user, owner_password, must_change_password=uses_default_password)
             db.add(user)
             await db.flush()
             created_user = True
-        elif not user.name.strip():
-            user.name = owner_name
+        else:
+            if not user.name.strip():
+                user.name = owner_name
+            set_user_password(user, owner_password, must_change_password=uses_default_password)
 
         slug = await _ensure_unique_slug(db, workspace_slug)
         workspace = Workspace(
@@ -109,6 +115,7 @@ async def main() -> None:
             "created_user": created_user,
             "created_workspace": created_workspace,
             "created_membership": created_membership,
+            "uses_default_password": uses_default_password,
         }))
 
 

@@ -5,6 +5,7 @@ import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuthStore } from '@auth'
 import {
+  useChangePassword,
   useMe,
   useRequestLocalhostSwitchUser,
   useUpdateMe,
@@ -20,6 +21,7 @@ export default function AccountTab() {
   const { clearAuth, login, token, workspaceId, role } = useAuthStore()
   const { data: me, isLoading } = useMe()
   const update = useUpdateMe()
+  const changePassword = useChangePassword()
   const { data: membersData, isLoading: membersLoading } = useWorkspaceMembers(workspaceId, 1)
   const { data: emailConfig } = useWorkspaceEmailConfig(workspaceId)
   const switchUser = useRequestLocalhostSwitchUser(workspaceId)
@@ -31,8 +33,11 @@ export default function AccountTab() {
   const [bio, setBio] = useState('')
   const [avatarUrl, setAvatarUrl] = useState('')
   const [saved, setSaved] = useState(false)
+  const [passwordSaved, setPasswordSaved] = useState(false)
   const [selectedUserId, setSelectedUserId] = useState('')
   const [switchSentTo, setSwitchSentTo] = useState<string | null>(null)
+  const [currentPassword, setCurrentPassword] = useState('')
+  const [newPassword, setNewPassword] = useState('')
 
   useEffect(() => {
     if (me) {
@@ -67,6 +72,24 @@ export default function AccountTab() {
   const handleLogout = () => {
     clearAuth()
     navigate('/login', { replace: true })
+  }
+
+  const handlePasswordChange = (e: React.FormEvent) => {
+    e.preventDefault()
+    setPasswordSaved(false)
+    changePassword.mutate(
+      {
+        current_password: currentPassword.trim() || undefined,
+        new_password: newPassword,
+      },
+      {
+        onSuccess: () => {
+          setPasswordSaved(true)
+          setCurrentPassword('')
+          setNewPassword('')
+        },
+      },
+    )
   }
 
   const switchableMembers = (membersData?.items ?? []).filter(
@@ -173,6 +196,54 @@ export default function AccountTab() {
             {saved && <span className="text-sm text-green-600">✓ Saved</span>}
             {update.isError && (
               <span className="text-sm text-red-600">Failed to save — try again</span>
+            )}
+          </div>
+        </form>
+      </Card>
+
+      <Card className="p-6">
+        <p className="text-sm font-medium text-gray-700 mb-1">Password</p>
+        {me.must_change_password ? (
+          <p className="text-xs text-amber-700 mb-4">
+            This account is still using a temporary default password. Change it now.
+          </p>
+        ) : (
+          <p className="text-xs text-gray-400 mb-4">
+            Set a new password for email sign-in. Magic link sign-in remains available.
+          </p>
+        )}
+
+        <form onSubmit={handlePasswordChange} className="space-y-4">
+          <div>
+            <label className="block text-xs text-gray-500 mb-1">Current password</label>
+            <input
+              type="password"
+              value={currentPassword}
+              onChange={(e) => { setCurrentPassword(e.target.value); setPasswordSaved(false) }}
+              placeholder={me.must_change_password ? 'Current password' : 'Leave blank if this account had no password yet'}
+              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-400"
+            />
+          </div>
+          <div>
+            <label className="block text-xs text-gray-500 mb-1">New password</label>
+            <input
+              type="password"
+              required
+              minLength={4}
+              value={newPassword}
+              onChange={(e) => { setNewPassword(e.target.value); setPasswordSaved(false) }}
+              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-400"
+            />
+          </div>
+          <div className="flex items-center gap-3">
+            <Btn type="submit" variant="primary" loading={changePassword.isPending}>
+              Change password
+            </Btn>
+            {passwordSaved && <span className="text-sm text-green-600">✓ Password updated</span>}
+            {changePassword.isError && (
+              <span className="text-sm text-red-600">
+                {(changePassword.error as { response?: { data?: { detail?: string } } } | undefined)?.response?.data?.detail ?? 'Failed to update password'}
+              </span>
             )}
           </div>
         </form>

@@ -14,7 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from libs.config import settings
 from modules.communication.backend.notification_channels.email import send as send_email
-from libs.auth.backend.service import create_access_token, get_or_create_user
+from libs.auth.backend.service import create_access_token, get_or_create_user, set_user_password
 from .invitations_models import WorkspaceInvitation
 from .invitations_schemas import (
     AcceptInvitationOut,
@@ -151,7 +151,7 @@ async def get_invitation_by_token(
 
 
 async def accept_invitation(
-    db: AsyncSession, token_str: str, name: str
+    db: AsyncSession, token_str: str, name: str, password: str
 ) -> AcceptInvitationOut:
     result = await db.execute(
         select(WorkspaceInvitation).where(WorkspaceInvitation.token == token_str)
@@ -169,6 +169,11 @@ async def accept_invitation(
         raise HTTPException(status_code=410, detail="Invitation has expired")
 
     user, _ = await get_or_create_user(db, inv.email, name)
+    user.name = name.strip()
+    try:
+        set_user_password(user, password)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
 
     # Upsert workspace member
     existing_q = await db.execute(
@@ -196,4 +201,5 @@ async def accept_invitation(
         workspace_id=inv.workspace_id,
         name=user.name,
         email=user.email,
+        role=inv.role,
     )

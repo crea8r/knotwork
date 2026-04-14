@@ -34,12 +34,18 @@ export interface MagicLinkVerifyResult {
   token_type: string
 }
 
+export interface PasswordLoginResult {
+  access_token: string
+  token_type: string
+}
+
 export interface UserMe {
   id: string
   email: string
   name: string
   bio?: string | null
   avatar_url?: string | null
+  must_change_password: boolean
 }
 
 export interface MemberOut {
@@ -92,7 +98,18 @@ export interface LocalhostSwitchUserResult {
   email: string
 }
 
-// ── Magic link ────────────────────────────────────────────────────────────────
+export interface PasswordResetRequestResult {
+  detail: string
+}
+
+// ── Auth flows ────────────────────────────────────────────────────────────────
+
+export function usePasswordLogin() {
+  return useMutation({
+    mutationFn: (data: { email: string; password: string }) =>
+      authApi.post<PasswordLoginResult>('/auth/password-login', data).then((r) => r.data),
+  })
+}
 
 export function useRequestMagicLink() {
   return useMutation({
@@ -110,6 +127,20 @@ export function useVerifyMagicLink() {
   })
 }
 
+export function useRequestPasswordReset() {
+  return useMutation({
+    mutationFn: (email: string) =>
+      authApi.post<PasswordResetRequestResult>('/auth/password-reset-request', { email }).then((r) => r.data),
+  })
+}
+
+export function useConfirmPasswordReset() {
+  return useMutation({
+    mutationFn: (data: { token: string; new_password: string }) =>
+      authApi.post<PasswordLoginResult>('/auth/password-reset-confirm', data).then((r) => r.data),
+  })
+}
+
 // ── Invitation flow ───────────────────────────────────────────────────────────
 
 export function useGetInvitation(token: string | null) {
@@ -123,9 +154,9 @@ export function useGetInvitation(token: string | null) {
 
 export function useAcceptInvitation() {
   return useMutation({
-    mutationFn: ({ token, name }: { token: string; name: string }) =>
+    mutationFn: ({ token, name, password }: { token: string; name: string; password: string }) =>
       authApi
-        .post<AcceptInvitationResult>(`/auth/invitations/${token}/accept`, { name })
+        .post<AcceptInvitationResult>(`/auth/invitations/${token}/accept`, { name, password })
         .then((r) => r.data),
   })
 }
@@ -146,6 +177,17 @@ export function useUpdateMe() {
   return useMutation({
     mutationFn: (data: { name?: string; bio?: string; avatar_url?: string }) =>
       api.patch<UserMe>('/auth/me', data).then((r) => r.data),
+  })
+}
+
+export function useChangePassword() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (data: { current_password?: string; new_password: string }) =>
+      api.post<UserMe>('/auth/change-password', data).then((r) => r.data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['auth', 'me'] })
+    },
   })
 }
 
@@ -195,6 +237,21 @@ export function useUpdateWorkspaceMember(workspaceId: string | null) {
       qc.invalidateQueries({ queryKey: ['workspaces', workspaceId, 'members'] })
       qc.invalidateQueries({ queryKey: ['channel-participants', workspaceId] })
       qc.invalidateQueries({ queryKey: ['channel-participant-list', workspaceId] })
+    },
+  })
+}
+
+export function useResetWorkspaceMemberPassword(workspaceId: string | null) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (data: { memberId: string; new_password: string }) =>
+      api
+        .post<MemberOut>(`/workspaces/${workspaceId}/members/${data.memberId}/reset-password`, {
+          new_password: data.new_password,
+        })
+        .then((r) => r.data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['workspaces', workspaceId, 'members'] })
     },
   })
 }

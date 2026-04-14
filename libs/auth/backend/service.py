@@ -1,4 +1,4 @@
-"""Auth service: JWT creation/verification, magic link, and agent challenge-response."""
+"""Auth service: JWT creation/verification, password login, magic link, and agent auth."""
 from __future__ import annotations
 
 import base64
@@ -8,14 +8,18 @@ from typing import Any
 from uuid import UUID
 
 from jose import JWTError, jwt
+from passlib.context import CryptContext
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from .models import AgentAuthChallenge, User, UserMagicToken
+from .models import AgentAuthChallenge, User, UserMagicToken, UserPasswordResetToken
 from libs.config import settings
 
 _MAGIC_TOKEN_TTL_MINUTES = 15
+_PASSWORD_RESET_TOKEN_TTL_MINUTES = 30
 _SESSION_TOKEN_TTL_DAYS = 30
+_MIN_PASSWORD_LENGTH = 4
+_pwd_context = CryptContext(schemes=["pbkdf2_sha256"], deprecated="auto")
 
 
 def _now() -> datetime:
@@ -55,11 +59,44 @@ async def get_user_by_email(db: AsyncSession, email: str) -> User | None:
     return result.scalar_one_or_none()
 
 
+def _normalize_email(email: str) -> str:
+    return email.lower().strip()
+
+
+def validate_password(password: str) -> str:
+    normalized = password.strip()
+    if len(normalized) < _MIN_PASSWORD_LENGTH:
+        raise ValueError(f"Password must be at least {_MIN_PASSWORD_LENGTH} characters")
+    return normalized
+
+
+def hash_password(password: str) -> str:
+    return _pwd_context.hash(validate_password(password))
+
+
+def password_is_usable(hashed_password: str | None) -> bool:
+    return bool(hashed_password) and not hashed_password.startswith("!")
+
+
+def verify_password(password: str, hashed_password: str) -> bool:
+    if not password_is_usable(hashed_password):
+        return False
+    try:
+        return _pwd_context.verify(password, hashed_password)
+    except Exception:
+        return False
+
+
+def set_user_password(user: User, password: str, *, must_change_password: bool = False) -> None:
+    user.hashed_password = hash_password(password)
+    user.must_change_password = must_change_password
+
+
 async def get_or_create_user(
     db: AsyncSession, email: str, name: str
 ) -> tuple[User, bool]:
     """Return (user, created). Upsert by email — name updated if already exists."""
-    email = email.lower().strip()
+    email = _normalize_email(email)
     user = await get_user_by_email(db, email)
     if user is not None:
         return user, False
@@ -69,10 +106,61 @@ async def get_or_create_user(
     return user, True
 
 
+# ── Password auth ──────────────────────────────────────────────────────────────
+
+async def authenticate_user_by_password(
+    db: AsyncSession,
+    email: str,
+    password: str,
+) -> User | None:
+    user = await get_user_by_email(db, _normalize_email(email))
+    if user is None or not user.email:
+        return None
+    if not verify_password(password, user.hashed_password):
+        return None
+    return user
+
+
+def _new_token() -> str:
+    return secrets.token_urlsafe(32)
+
+
+async def create_password_reset_token(db: AsyncSession, user: User) -> str:
+    token_str = _new_token()
+    row = UserPasswordResetToken(
+        user_id=user.id,
+        token=token_str,
+        expires_at=_now() + timedelta(minutes=_PASSWORD_RESET_TOKEN_TTL_MINUTES),
+        used=False,
+    )
+    db.add(row)
+    await db.flush()
+    return token_str
+
+
+async def consume_password_reset_token(db: AsyncSession, token_str: str) -> User | None:
+    result = await db.execute(
+        select(UserPasswordResetToken).where(UserPasswordResetToken.token == token_str)
+    )
+    row: UserPasswordResetToken | None = result.scalar_one_or_none()
+    if row is None or row.used:
+        return None
+    expires_at = row.expires_at
+    now_dt = _now()
+    if expires_at.tzinfo is None:
+        now_dt = now_dt.replace(tzinfo=None)
+    if expires_at < now_dt:
+        return None
+    row.used = True
+    user = await db.get(User, row.user_id)
+    await db.flush()
+    return user
+
+
 # ── Magic link tokens ──────────────────────────────────────────────────────────
 
 def _new_magic_token() -> str:
-    return secrets.token_urlsafe(32)
+    return _new_token()
 
 
 async def create_magic_link_token(db: AsyncSession, user: User) -> str:

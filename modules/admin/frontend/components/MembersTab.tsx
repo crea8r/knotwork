@@ -13,6 +13,7 @@ import {
   useWorkspaceInvitations,
   useCreateInvitation,
   useAddAgentMember,
+  useResetWorkspaceMemberPassword,
   useUpdateWorkspaceMember,
   useWorkspaceEmailConfig,
   useWorkspaceMembers,
@@ -112,6 +113,7 @@ export default function MembersTab() {
     accessFilter === 'disabled',
   )
   const updateMember = useUpdateWorkspaceMember(workspaceId)
+  const resetMemberPassword = useResetWorkspaceMemberPassword(workspaceId)
   const [showAgentZeroHelp, setShowAgentZeroHelp] = useState(false)
   const [editingBriefMemberId, setEditingBriefMemberId] = useState<string | null>(null)
   const [briefDraft, setBriefDraft] = useState('')
@@ -120,6 +122,8 @@ export default function MembersTab() {
   const [capacityDraft, setCapacityDraft] = useState<CapacityLevel>('open')
   const [statusNoteDraft, setStatusNoteDraft] = useState('')
   const [selectedMemberId, setSelectedMemberId] = useState<string | null>(null)
+  const [memberPasswordDraft, setMemberPasswordDraft] = useState('')
+  const [memberPasswordSaved, setMemberPasswordSaved] = useState<string | null>(null)
 
   // Invitations
   const { data: invitations, isLoading: loadingInv, refetch } = useWorkspaceInvitations(workspaceId)
@@ -171,6 +175,8 @@ export default function MembersTab() {
     setEditingStatusMemberId(null)
     setBriefDraft('')
     setStatusNoteDraft('')
+    setMemberPasswordDraft('')
+    setMemberPasswordSaved(null)
   }
 
   const selectedMember: MemberOut | null = membersData?.items.find((member) => member.id === selectedMemberId) ?? null
@@ -663,6 +669,56 @@ export default function MembersTab() {
                       </div>
                     </div>
                   ) : null}
+                </div>
+              ) : null}
+
+              {isOwner && selectedMember.kind === 'human' && selectedMember.user_id !== currentUser?.id ? (
+                <div>
+                  <p className="mb-2 text-[11px] uppercase tracking-wide text-stone-400">Reset password</p>
+                  <div className="space-y-2 rounded-lg border border-stone-200 bg-stone-50 p-3">
+                    <input
+                      type="password"
+                      minLength={4}
+                      placeholder="Set a temporary password"
+                      value={memberPasswordDraft}
+                      onChange={(event) => {
+                        setMemberPasswordDraft(event.target.value)
+                        setMemberPasswordSaved(null)
+                      }}
+                      className="w-full rounded-lg border border-stone-300 bg-white px-3 py-2 text-sm text-stone-800 outline-none focus:ring-2 focus:ring-stone-900"
+                    />
+                    <p className="text-xs text-stone-500">
+                      The member will need to change this password after their next sign-in.
+                    </p>
+                    <div className="flex items-center gap-3">
+                      <button
+                        type="button"
+                        onClick={() =>
+                          resetMemberPassword.mutate(
+                            { memberId: selectedMember.id, new_password: memberPasswordDraft },
+                            {
+                              onSuccess: () => {
+                                setMemberPasswordSaved(selectedMember.name)
+                                setMemberPasswordDraft('')
+                              },
+                            },
+                          )
+                        }
+                        disabled={resetMemberPassword.isPending || memberPasswordDraft.trim().length < 4}
+                        className="inline-flex h-9 items-center justify-center rounded-lg bg-stone-900 px-3 text-sm text-white disabled:opacity-50"
+                      >
+                        {resetMemberPassword.isPending ? 'Resetting…' : 'Reset password'}
+                      </button>
+                      {memberPasswordSaved ? (
+                        <span className="text-xs text-green-600">Password reset for {memberPasswordSaved}.</span>
+                      ) : null}
+                    </div>
+                    {resetMemberPassword.isError ? (
+                      <p className="text-xs text-red-600">
+                        {(resetMemberPassword.error as { response?: { data?: { detail?: string } } } | undefined)?.response?.data?.detail ?? 'Failed to reset password'}
+                      </p>
+                    ) : null}
+                  </div>
                 </div>
               ) : null}
 

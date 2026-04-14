@@ -113,6 +113,29 @@ prompt_with_default() {
   printf -v "$var_name" "%s" "$value"
 }
 
+prompt_password_optional() {
+  local var_name="$1"
+  local prompt_text="$2"
+  local value=""
+  local confirm=""
+  while true; do
+    read -r -s -p "$prompt_text: " value
+    echo
+    value="$(echo "$value" | sed 's/^ *//;s/ *$//')"
+    if [[ -z "$value" ]]; then
+      printf -v "$var_name" "%s" ""
+      return
+    fi
+    read -r -s -p "Confirm password: " confirm
+    echo
+    if [[ "$value" == "$confirm" ]]; then
+      printf -v "$var_name" "%s" "$value"
+      return
+    fi
+    echo "Passwords did not match. Try again."
+  done
+}
+
 prompt_yes_no_required() {
   local var_name="$1"
   local prompt_text="$2"
@@ -453,6 +476,7 @@ fi
 
 prompt_required OWNER_NAME "Owner full name"
 prompt_required OWNER_EMAIL "Owner email"
+prompt_password_optional OWNER_PASSWORD "Owner password (leave blank to use default 'admin')"
 is_valid_email "$OWNER_EMAIL" || die "Invalid owner email format: $OWNER_EMAIL"
 
 if [[ "$INSTALL_MODE" == "dev" ]]; then
@@ -587,11 +611,13 @@ BOOTSTRAP_JSON="$(
   "${COMPOSE_CMD[@]}" --profile "$COMPOSE_PROFILE" exec -T "$BACKEND_SERVICE" \
     python scripts/bootstrap_owner.py \
       --owner-name "$OWNER_NAME" \
-      --owner-email "$OWNER_EMAIL"
+      --owner-email "$OWNER_EMAIL" \
+      --owner-password "$OWNER_PASSWORD"
 )"
 echo "$BOOTSTRAP_JSON"
 WORKSPACE_ID="$(printf "%s" "$BOOTSTRAP_JSON" | python3 -c 'import json,sys; print(json.load(sys.stdin)["workspace_id"])')" || die "Failed to parse workspace_id from bootstrap output"
 OWNER_USER_ID="$(printf "%s" "$BOOTSTRAP_JSON" | python3 -c 'import json,sys; print(json.load(sys.stdin)["owner_user_id"])')" || die "Failed to parse owner_user_id from bootstrap output"
+USES_DEFAULT_PASSWORD="$(printf "%s" "$BOOTSTRAP_JSON" | python3 -c 'import json,sys; print(str(json.load(sys.stdin).get("uses_default_password", False)).lower())')" || die "Failed to parse uses_default_password from bootstrap output"
 [[ -n "$WORKSPACE_ID" ]] || die "Bootstrap did not return a workspace_id"
 [[ -n "$OWNER_USER_ID" ]] || die "Bootstrap did not return an owner_user_id"
 
@@ -647,6 +673,12 @@ if [[ "$DOMAIN" == "localhost" ]]; then
     echo "  • To view logs: docker compose --project-name $COMPOSE_PROJECT_NAME -f $SCRIPT_DIR/docker-compose.yml --env-file $ROOT_DIR/.env --profile dev logs -f backend-dev"
   fi
 else
-  echo "2) Request magic link using owner email"
-  echo "3) Login and verify imported workflows + handbook files"
+  if [[ "$USES_DEFAULT_PASSWORD" == "true" ]]; then
+    echo "2) Sign in with ${OWNER_EMAIL} and the default password: admin"
+    echo "3) Change the owner password immediately after login"
+    echo "4) Verify imported workflows + handbook files"
+  else
+    echo "2) Sign in with ${OWNER_EMAIL} and the password you provided during install"
+    echo "3) Verify imported workflows + handbook files"
+  fi
 fi

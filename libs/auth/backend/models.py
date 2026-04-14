@@ -15,9 +15,10 @@ class User(Base):
     # Nullable for agent accounts (no email login). Unique where not null.
     email: Mapped[str | None] = mapped_column(String, unique=True, nullable=True)
     name: Mapped[str] = mapped_column(String, nullable=False)
-    # Magic-link auth: password is unused but kept for schema compatibility.
-    # Invited users receive hashed_password="!no-password" (unusable hash).
+    # Accounts without a local password keep an unusable sentinel such as
+    # "!no-password" so password auth can be disabled per-user.
     hashed_password: Mapped[str] = mapped_column(String, nullable=False, default="!no-password")
+    must_change_password: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     # Ed25519 public key (base64url) for agent challenge-response auth. Null for humans.
     public_key: Mapped[str | None] = mapped_column(String(100), nullable=True)
     telegram_chat_id: Mapped[str | None] = mapped_column(String, nullable=True)
@@ -53,3 +54,20 @@ class AgentAuthChallenge(Base):
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     used: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+
+class UserPasswordResetToken(Base):
+    """One-time password reset tokens sent via email (30-min TTL)."""
+    __tablename__ = "user_password_reset_tokens"
+
+    id: Mapped[UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid4)
+    user_id: Mapped[UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    token: Mapped[str] = mapped_column(String(120), unique=True, nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    used: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+
+Index("ix_user_password_reset_tokens_user_id", UserPasswordResetToken.user_id)

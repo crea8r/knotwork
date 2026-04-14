@@ -35,6 +35,7 @@ class InvitationVerifyOut(BaseModel):
 
 class AcceptInvitationRequest(BaseModel):
     name: str = Field(..., min_length=1, max_length=200)
+    password: str = Field(..., min_length=4, max_length=200)
 
 
 class AcceptInvitationOut(BaseModel):
@@ -44,3 +45,4 @@ class AcceptInvitationOut(BaseModel):
     workspace_id: UUID
     name: str
     email: str
+    role: str

@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from libs.database import get_db
 from libs.auth.backend.deps import get_current_user, get_workspace_member, require_owner
+from libs.auth.backend import service as auth_service
 from libs.auth.backend.models import User
 from .workspaces_guide import DEFAULT_GUIDE_MD
 from .workspaces_models import Workspace, WorkspaceMember
@@ -66,6 +67,10 @@ class UpdateMemberAccessIn(BaseModel):
     status_note: str | None = Field(default=None, max_length=500)
     current_commitments: list[dict] | None = None
     recent_work: list[dict] | None = None
+
+
+class ResetMemberPasswordIn(BaseModel):
+    new_password: str = Field(..., min_length=4, max_length=200)
 
 
 def _member_out(member: WorkspaceMember, user: User) -> MemberOut:
@@ -269,6 +274,39 @@ async def update_workspace_member_access(
     if user is None:
         raise HTTPException(status_code=404, detail="User not found")
     await db.refresh(member)
+    return _member_out(member, user)
+
+
+@router.post("/{workspace_id}/members/{member_id}/reset-password", response_model=MemberOut)
+async def reset_workspace_member_password(
+    workspace_id: UUID,
+    member_id: UUID,
+    data: ResetMemberPasswordIn,
+    caller_member: WorkspaceMember = Depends(require_owner),
+    db: AsyncSession = Depends(get_db),
+) -> MemberOut:
+    member = await db.get(WorkspaceMember, member_id)
+    if member is None or member.workspace_id != workspace_id:
+        raise HTTPException(status_code=404, detail="Member not found")
+    if member.user_id == caller_member.user_id:
+        raise HTTPException(status_code=400, detail="Use Account settings to change your own password")
+    if member.kind != "human":
+        raise HTTPException(status_code=400, detail="Only human members can use password login")
+
+    user = await db.get(User, member.user_id)
+    if user is None:
+        raise HTTPException(status_code=404, detail="User not found")
+    if not (user.email or "").strip():
+        raise HTTPException(status_code=400, detail="Target user has no email login")
+
+    try:
+        auth_service.set_user_password(user, data.new_password, must_change_password=True)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    await db.commit()
+    await db.refresh(member)
+    await db.refresh(user)
     return _member_out(member, user)
 
 
