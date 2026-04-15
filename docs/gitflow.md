@@ -14,7 +14,7 @@ We use **GitHub Flow** (trunk-based with short-lived branches). No release branc
 ## Branching Model
 
 ```
-main          ← always deployable; what's on production
+main          ← always deployable; release-ready trunk
   └─ feature/session-8-1-docker     ← short-lived (1–3 days)
   └─ fix/invitation-expired-check   ← hotfixes merge directly
   └─ chore/update-deps              ← maintenance tasks
@@ -171,14 +171,14 @@ Use kebab-case. Keep names under 60 characters.
 
 ---
 
-## Deployment
+## Release Guidance
 
 ```
-main → staging (auto-deploy on merge, if configured)
-main → production (manual trigger via GitHub Actions or fly.io)
+main → optional staging environment (if your setup uses one)
+main → release target chosen by the operator
 ```
 
-**Never deploy from a feature branch.** `main` is the single source of truth for what runs in production.
+**Never release from a feature branch.** `main` is the single source of truth for reviewed code.
 
 ---
 
@@ -196,7 +196,7 @@ gh pr merge --merge
 
 ---
 
-## CI Checklist (GitHub Actions — to configure in S8.2)
+## CI Checklist
 
 - `pytest ../docs/implementation/ -v` — all tests pass
 - `npm run build` — TypeScript compiles

@@ -387,7 +387,7 @@ set_env_key "EMAIL_FROM" "$EMAIL_FROM" .env
 set_env_key "AUTH_DEV_BYPASS_USER_ID" "" .env
 write_install_manifest .knotwork-install.json
 
-log "Rebuilding and restarting production services..."
+log "Rebuilding and restarting public-facing services..."
 run_with_retry 2 3 docker compose --project-name "$COMPOSE_PROJECT_NAME" --profile prod up -d --build || die "docker compose up failed"
 wait_backend_health "$BACKEND_HOST_PORT"
 wait_frontend_http "$FRONTEND_HOST_PORT"
