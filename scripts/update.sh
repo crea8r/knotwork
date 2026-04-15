@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Knotwork production update script.
+# Knotwork self-hosted update script.
 #
 # Usage:
 #   ./scripts/update.sh                  # pull currently pinned version
