@@ -56,3 +56,5 @@ agent-bridge/**/**.key
 
 test-mcp-client
 .VSCodeCounter
+claude-session.jsonl
+tmp/

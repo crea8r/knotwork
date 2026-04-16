@@ -7,18 +7,18 @@ ROOT = Path("/Users/hieu/Work/crea8r/knotwork")
 
 
 FILES_AND_FORBIDDEN_IMPORTS = {
-    "modules/workflows/backend/runs_service.py": (
-        "from modules.workflows.backend.graphs_service import",
+    "modules/workflows/backend/runs/service.py": (
+        "from modules.workflows.backend.graphs.service import",
         "from modules.workflows.backend.runtime.validation import",
         "from modules.communication.backend import channels_service",
         "from knotwork.",
     ),
-    "modules/workflows/backend/graphs_service.py": (
+    "modules/workflows/backend/graphs/service.py": (
         "from modules.communication.backend.channels_service import _generate_channel_slug",
         "from modules.communication.backend import channels_service",
         "from knotwork.",
     ),
-    "modules/workflows/backend/graphs_version_service.py": (
+    "modules/workflows/backend/graphs/version_service.py": (
         "from modules.communication.backend import channels_service",
         "from knotwork.",
     ),
@@ -35,7 +35,7 @@ FILES_AND_FORBIDDEN_IMPORTS = {
         "from modules.communication.backend import channels_service",
         "from knotwork.",
     ),
-    "modules/communication/backend/escalations_service.py": (
+    "modules/workflows/backend/runs/escalations_service.py": (
         "from modules.communication.backend import channels_service",
         "from knotwork.",
     ),
@@ -47,15 +47,15 @@ FILES_AND_FORBIDDEN_IMPORTS = {
         "from modules.communication.backend import channels_service",
         "from knotwork.",
     ),
-    "modules/workflows/backend/public_workflows_service.py": (
-        "from modules.workflows.backend.runs_service import create_run",
+    "modules/workflows/backend/public_workflows/service.py": (
+        "from modules.workflows.backend.runs.service import create_run",
         "from knotwork.",
     ),
     "modules/communication/backend/handbook_agent.py": (
         "from modules.assets.backend import knowledge_service",
         "from knotwork.",
     ),
-    "modules/workflows/backend/designer_agent.py": (
+    "modules/workflows/backend/graphs/designer_agent.py": (
         "from modules.communication.backend.channels_service import create_message",
         "from knotwork.",
     ),
@@ -64,9 +64,9 @@ FILES_AND_FORBIDDEN_IMPORTS = {
         "from modules.assets.backend import knowledge_service as",
         "from knotwork.",
     ),
-    "modules/communication/backend/escalations_router.py": (
+    "modules/workflows/backend/runs/escalations_router.py": (
         "from modules.communication.backend.channels_service import (",
-        "from modules.workflows.backend.public_workflows_service import notify_public_run_aborted",
+        "from modules.workflows.backend.public_workflows.service import notify_public_run_aborted",
         "from knotwork.",
     ),
     "modules/assets/backend/knowledge_router.py": (

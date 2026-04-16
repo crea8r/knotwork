@@ -1,21 +1,40 @@
-import type { Escalation } from '@data-models'
-
 export type ChatRole = 'assistant' | 'user' | 'system'
+
+export type RequestResponseSchema = {
+  resolution_options?: string[]
+  supports_guidance?: boolean
+  supports_answers?: boolean
+  supports_override_output?: boolean
+  supports_next_branch?: boolean
+}
+
+export type RequestPayload = {
+  type?: string
+  status?: string
+  questions?: string[]
+  context_markdown?: string
+  assigned_to?: string[]
+  options?: string[]
+  escalation_id?: string
+  timeout_at?: string
+  response_schema?: RequestResponseSchema
+}
 
 export type ChatItem = {
   id: string
   role: ChatRole
-  kind?: 'message' | 'decision_confident' | 'decision_escalate' | 'loading'
+  kind?: 'message' | 'decision_confident' | 'request' | 'loading'
   speaker: string
   speakerAgentId?: string
   nodeId?: string
   nodeName?: string
   text: string
-  preText?: string   // agent's full output shown as context before an escalation question
+  preText?: string
   markdown?: boolean
   raw: unknown
   ts?: string | null
-  escalation?: Escalation
+  requestMessageId?: string
+  request?: RequestPayload
 }
 
 export const IMAGE_EXT_RE = /\.(png|jpe?g|gif|webp|bmp|svg)(\?.*)?(#.*)?$/i
@@ -141,22 +160,4 @@ export function humanizeInput(input: Record<string, unknown>): string {
   return entries
     .map(([k, v]) => `- ${k}: ${typeof v === 'string' ? v : formatJson(v)}`)
     .join('\n')
-}
-
-export function resolutionMessage(esc: Escalation): string | null {
-  const data = (esc.resolution_data ?? {}) as Record<string, unknown>
-  if (data.note === 'superseded_by_new_escalation') return null
-  if ((esc.resolution === 'request_revision' || esc.resolution === 'guided') && typeof data.guidance === 'string' && data.guidance.trim()) {
-    return data.guidance
-  }
-  const override = data.override_output ?? data.edited_output
-  if ((esc.resolution === 'override_output' || esc.resolution === 'edited') && override != null) {
-    if (typeof override === 'object' && override && 'text' in (override as Record<string, unknown>)) {
-      return String((override as Record<string, unknown>).text ?? '')
-    }
-    return formatJson(override)
-  }
-  if (esc.resolution === 'accept_output' || esc.resolution === 'approved') return 'Accepted output. Continue.'
-  if (esc.resolution === 'abort_run' || esc.resolution === 'aborted') return 'Abort this run.'
-  return null
 }

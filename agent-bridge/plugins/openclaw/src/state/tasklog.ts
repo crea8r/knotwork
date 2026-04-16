@@ -6,7 +6,11 @@ import { dirname } from 'node:path'
 
 export type TaskLogger = (event: string, taskId: string, extra?: Record<string, string>) => void
 
-export function createTaskLogger(logPath: string): TaskLogger {
+export function createTaskLogger(logPath: string, enabled = true): TaskLogger {
+  if (!enabled) {
+    return () => { /* debug logging disabled */ }
+  }
+
   function write(line: string): void {
     void appendFile(logPath, line).catch(async () => {
       try {

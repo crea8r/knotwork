@@ -29,7 +29,7 @@ from libs.auth.backend.models import User  # noqa: F401
 from libs.database import AsyncSessionLocal
 from modules.admin.backend.workspaces_models import Workspace, WorkspaceMember  # noqa: F401
 from modules.assets.backend import knowledge_service
-from modules.workflows.backend.graphs_models import Graph, GraphVersion
+from modules.workflows.backend.graphs.models import Graph, GraphVersion
 from modules.workflows.backend.runtime.knowledge_loader import (
     extract_wiki_links,
     get_domain,

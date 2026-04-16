@@ -62,6 +62,26 @@ class ChannelMessageCreate(BaseModel):
     metadata: dict = {}
 
 
+class ChannelMessageRespondRequest(BaseModel):
+    resolution: Literal[
+        "accept_output",
+        "override_output",
+        "request_revision",
+        "abort_run",
+        "approved",
+        "edited",
+        "guided",
+        "aborted",
+    ]
+    guidance: str | None = None
+    override_output: dict | None = None
+    edited_output: dict | None = None
+    answers: list[str] | None = None
+    next_branch: str | None = None
+    actor_name: str | None = None
+    actor_type: Literal["human", "agent", "system"] | None = None
+
+
 class DecisionEventOut(BaseModel):
     id: UUID
     workspace_id: UUID

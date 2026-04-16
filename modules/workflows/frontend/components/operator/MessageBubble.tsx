@@ -20,6 +20,16 @@ export default function MessageBubble({ item, highlighted, dimmed, onClick }: Pr
     if (images.some((img) => img.inlineSvg)) return stripInlineSvg(item.text)
     return item.text
   }, [item.text, images])
+  const flowLabel = useMemo(() => {
+    const raw = item.raw as Record<string, unknown> | null
+    if (!raw || typeof raw !== 'object') return null
+    const flow = raw.flow as Record<string, unknown> | undefined
+    if (!flow || typeof flow !== 'object') return null
+    const fromRole = typeof flow.from_role === 'string' ? flow.from_role : null
+    const toRole = typeof flow.to_role === 'string' ? flow.to_role : null
+    if (!fromRole || !toRole) return null
+    return `${fromRole} -> ${toRole}`
+  }, [item.raw])
 
   return (
     <div
@@ -42,6 +52,11 @@ export default function MessageBubble({ item, highlighted, dimmed, onClick }: Pr
         >
           <Bug size={11} /> {showRaw ? 'Hide raw' : 'Raw'}
         </button>
+        {flowLabel && (
+          <span className="rounded-full border border-gray-200 bg-gray-50 px-1.5 py-0.5 text-[10px] text-gray-500">
+            {flowLabel}
+          </span>
+        )}
       </div>
 
       <div

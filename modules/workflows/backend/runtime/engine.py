@@ -122,7 +122,7 @@ def compile_graph(graph_def: dict, checkpointer: Any = None) -> CompiledGraph:
     """Compile a stored graph definition into a runnable LangGraph object."""
     from langgraph.graph import END, START as LG_START, StateGraph
 
-    from modules.workflows.backend.graphs_schemas import normalize_graph_definition
+    from modules.workflows.backend.graphs.schemas import normalize_graph_definition
     from .nodes.agent import make_agent_node
 
     if checkpointer is None:

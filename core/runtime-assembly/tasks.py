@@ -40,13 +40,11 @@ import libs.auth.backend.models  # noqa: F401
 import libs.audit.backend.models  # noqa: F401
 import modules.admin.backend.workspaces_models  # noqa: F401
 import modules.assets.backend.knowledge_models  # noqa: F401
-import modules.communication.backend.escalations_models  # noqa: F401
+import modules.workflows.backend.runs.escalations_models  # noqa: F401
 import modules.communication.backend.notifications_models  # noqa: F401
 import modules.projects.backend.projects_models  # noqa: F401
-import modules.workflows.backend.graphs_models  # noqa: F401
-import modules.workflows.backend.ratings_models  # noqa: F401
-import modules.workflows.backend.runs_models  # noqa: F401
-import modules.workflows.backend.tools_models  # noqa: F401
+import modules.workflows.backend.graphs.models  # noqa: F401
+import modules.workflows.backend.runs.models  # noqa: F401
 
 from arq import cron
 from arq.connections import RedisSettings
@@ -91,9 +89,9 @@ async def check_escalation_timeouts(ctx: dict) -> None:
     Sets escalation status → 'timed_out' and run status → 'stopped'.
     """
     from libs.database import AsyncSessionLocal
-    from modules.communication.backend.escalations_service import timeout_open_escalations
+    from modules.workflows.backend.runs.escalations_service import timeout_open_escalations
     from modules.workflows.backend.runtime.events import publish_event
-    from modules.workflows.backend.runs_models import Run
+    from modules.workflows.backend.runs.models import Run
 
     async with AsyncSessionLocal() as db:
         run_ids = await timeout_open_escalations(db)

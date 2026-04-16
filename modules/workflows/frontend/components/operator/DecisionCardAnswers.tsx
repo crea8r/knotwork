@@ -1,5 +1,6 @@
 import { Send } from 'lucide-react'
-import type { useResolveEscalationAny } from '@modules/communication/frontend/api/escalations'
+import type { useRespondChannelMessage } from '@modules/communication/frontend/api/channels'
+import MarkdownViewer from '@ui/components/MarkdownViewer'
 
 interface Props {
   questions: string[]
@@ -7,8 +8,8 @@ interface Props {
   currentStep: number
   comment: string
   disabled: boolean
-  resolveEscalation: ReturnType<typeof useResolveEscalationAny>
-  escalationId: string
+  respondToMessage: ReturnType<typeof useRespondChannelMessage>
+  messageId: string
   onSetCurrentStep: (s: number) => void
   onSetAnswers: (a: string[]) => void
   onSetComment: (c: string) => void
@@ -17,7 +18,7 @@ interface Props {
 
 export default function DecisionCardAnswers({
   questions, normAnswers, currentStep, comment, disabled,
-  resolveEscalation, escalationId, onSetCurrentStep, onSetAnswers, onSetComment, onAfterResolve,
+  respondToMessage, messageId, onSetCurrentStep, onSetAnswers, onSetComment, onAfterResolve,
 }: Props) {
   const isLast = currentStep === questions.length - 1
   const currentAnswer = normAnswers[currentStep] ?? ''
@@ -26,9 +27,9 @@ export default function DecisionCardAnswers({
 
   function handleSendAnswers() {
     if (disabled) return
-    resolveEscalation.mutate(
+    respondToMessage.mutate(
       {
-        escalationId,
+        messageId,
         data: {
           resolution: 'request_revision',
           answers: normAnswers,
@@ -64,10 +65,12 @@ export default function DecisionCardAnswers({
         </div>
       </div>
 
-      <p className="text-sm font-medium text-amber-900 leading-relaxed">
-        {questions[currentStep]}
-        <span className="text-red-500 ml-0.5">*</span>
-      </p>
+      <div className="rounded-lg bg-white/70 px-3 py-2 border border-amber-100">
+        <div className="text-sm font-medium text-amber-900 leading-relaxed">
+          <MarkdownViewer content={questions[currentStep] ?? ''} compact />
+          <span className="text-red-500 ml-0.5">*</span>
+        </div>
+      </div>
 
       <textarea
         key={currentStep}
@@ -116,28 +119,28 @@ export default function DecisionCardAnswers({
       <div className="flex gap-2">
         <button
           onClick={handleSendAnswers}
-          disabled={disabled || resolveEscalation.isPending || !allAnswered}
+          disabled={disabled || respondToMessage.isPending || !allAnswered}
           className="flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-600 text-white text-xs font-medium hover:bg-amber-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
         >
           <Send size={12} />
-          {resolveEscalation.isPending
+          {respondToMessage.isPending
             ? 'Sending…'
             : allAnswered
               ? 'Submit answers'
               : `Submit (${answeredCount}/${questions.length} answered)`}
         </button>
         <button
-          onClick={() => resolveEscalation.mutate(
-            { escalationId, data: { resolution: 'abort_run' } },
+          onClick={() => respondToMessage.mutate(
+            { messageId, data: { resolution: 'abort_run' } },
             { onSuccess: () => onAfterResolve() },
           )}
-          disabled={disabled || resolveEscalation.isPending}
+          disabled={disabled || respondToMessage.isPending}
           className="px-3 py-1.5 rounded-lg bg-red-100 text-red-700 text-xs font-medium hover:bg-red-200 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
         >
           Abort
         </button>
       </div>
-      {resolveEscalation.isError && (
+      {respondToMessage.isError && (
         <p className="text-xs text-red-500">Failed to send. Please try again.</p>
       )}
     </div>

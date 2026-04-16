@@ -1,19 +1,20 @@
 import { useEffect, useRef, useState } from 'react'
 import { Send, Paperclip } from 'lucide-react'
 import MarkdownViewer from '@ui/components/MarkdownViewer'
-import type { useResolveEscalationAny } from '@modules/communication/frontend/api/escalations'
+import type { useRespondChannelMessage } from '@modules/communication/frontend/api/channels'
 import type { ChatItem } from '@modules/workflows/frontend/pages/runDetail/runDetailTypes'
 import DecisionCardAnswers from './DecisionCardAnswers'
 
 interface Props {
   item: ChatItem
-  resolveEscalation: ReturnType<typeof useResolveEscalationAny>
+  respondToMessage: ReturnType<typeof useRespondChannelMessage>
   disabled: boolean
   onAfterResolve: () => void
 }
 
-export default function DecisionCard({ item, resolveEscalation, disabled, onAfterResolve }: Props) {
-  const esc = item.escalation
+export default function DecisionCard({ item, respondToMessage, disabled, onAfterResolve }: Props) {
+  const request = item.request
+  const requestMessageId = item.requestMessageId
   const [guidance, setGuidance] = useState('')
   const [overrideOutput, setOverrideOutput] = useState('')
   const [mode, setMode] = useState<'revision' | 'override'>('revision')
@@ -23,14 +24,14 @@ export default function DecisionCard({ item, resolveEscalation, disabled, onAfte
   const [comment, setComment] = useState('')
   const [nowMs, setNowMs] = useState(() => Date.now())
   const textareaRef = useRef<HTMLTextAreaElement>(null)
-  const isOpen = esc?.status === 'open'
+  const isOpen = request?.status === 'open'
   const currentValue = mode === 'revision' ? guidance : overrideOutput
 
   useEffect(() => {
-    if (!isOpen || !esc?.timeout_at) return
+    if (!isOpen || !request?.timeout_at) return
     const id = window.setInterval(() => setNowMs(Date.now()), 1000)
     return () => window.clearInterval(id)
-  }, [isOpen, esc?.timeout_at])
+  }, [isOpen, request?.timeout_at])
 
   function autoGrow(el: HTMLTextAreaElement) {
     el.style.height = 'auto'
@@ -39,15 +40,15 @@ export default function DecisionCard({ item, resolveEscalation, disabled, onAfte
 
   function handleSend() {
     const trimmed = currentValue.trim()
-    if (!trimmed || disabled) return
+    if (!trimmed || disabled || !requestMessageId) return
     if (mode === 'revision') {
-      resolveEscalation.mutate(
-        { escalationId: esc!.id, data: { resolution: 'request_revision', guidance: trimmed } },
+      respondToMessage.mutate(
+        { messageId: requestMessageId, data: { resolution: 'request_revision', guidance: trimmed } },
         { onSuccess: () => { setGuidance(''); onAfterResolve() } },
       )
     } else {
-      resolveEscalation.mutate(
-        { escalationId: esc!.id, data: { resolution: 'override_output', override_output: { text: trimmed } } },
+      respondToMessage.mutate(
+        { messageId: requestMessageId, data: { resolution: 'override_output', override_output: { text: trimmed } } },
         { onSuccess: () => { setOverrideOutput(''); onAfterResolve() } },
       )
     }
@@ -55,26 +56,26 @@ export default function DecisionCard({ item, resolveEscalation, disabled, onAfte
 
   if (item.kind === 'decision_confident') {
     return (
-      <div className="max-w-[92%] mr-auto rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2">
+      <div className="w-full rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2">
         <p className="text-[10px] uppercase tracking-wide text-emerald-700">Decision</p>
         <p className="text-sm text-emerald-900">{item.text}</p>
       </div>
     )
   }
 
-  if (!esc) return null
-  const ctx = esc.context as Record<string, unknown>
-  const questions: string[] = Array.isArray(ctx.questions) ? ctx.questions.map(String) : []
-  const legacyQuestion = questions.length === 0 && typeof ctx.question === 'string' ? ctx.question : null
-  const options = Array.isArray(ctx.options) ? ctx.options.map(String) : []
+  if (!request || !requestMessageId) return null
+  const questions: string[] = request.questions ?? []
+  const supportingContext: string[] = request.context_markdown ? [request.context_markdown] : []
+  const options = request.options ?? []
+  const supportsNextBranch = !!request.response_schema?.supports_next_branch
   const hasQuestions = questions.length > 0
-  const hasRoutingOptions = options.length > 0
+  const hasRoutingOptions = options.length > 0 && supportsNextBranch
   const normAnswers = questions.length > 0
     ? [...Array(questions.length)].map((_, i) => answers[i] ?? '')
     : answers
-  const timeoutMs = esc.timeout_at ? new Date(esc.timeout_at).getTime() : null
+  const timeoutMs = request.timeout_at ? new Date(request.timeout_at).getTime() : null
   const remainingMs = timeoutMs == null ? null : Math.max(timeoutMs - nowMs, 0)
-  const isTimedOut = esc.status === 'timed_out' || (remainingMs !== null && remainingMs <= 0)
+  const isTimedOut = request.status === 'timed_out' || (remainingMs !== null && remainingMs <= 0)
   const isWarning = remainingMs !== null && remainingMs > 0 && remainingMs < 60 * 60 * 1000
 
   function formatRemaining(ms: number): string {
@@ -88,11 +89,11 @@ export default function DecisionCard({ item, resolveEscalation, disabled, onAfte
   }
 
   return (
-    <div className="max-w-[92%] mr-auto rounded-xl border border-amber-200 bg-amber-50 px-3 py-3 space-y-2">
+    <div className="w-full rounded-xl border border-amber-200 bg-amber-50 px-3 py-3 space-y-2">
       <div className="flex items-center justify-between gap-2">
-        <p className="text-[10px] uppercase tracking-wide text-amber-700">Escalation · needs your input</p>
+        <p className="text-[10px] uppercase tracking-wide text-amber-700">Request · needs your input</p>
         <span className={`text-[10px] px-2 py-0.5 rounded-full ${isOpen ? 'bg-amber-100 text-amber-700' : 'bg-gray-100 text-gray-600'}`}>
-          {esc.status}
+          {request.status ?? 'open'}
         </span>
       </div>
       {timeoutMs !== null && (
@@ -111,7 +112,7 @@ export default function DecisionCard({ item, resolveEscalation, disabled, onAfte
           </p>
           {!isTimedOut && (
             <p className="mt-0.5 text-[11px] opacity-80">
-              {esc.timeout_at ? new Date(esc.timeout_at).toLocaleString() : ''}
+              {request.timeout_at ? new Date(request.timeout_at).toLocaleString() : ''}
             </p>
           )}
         </div>
@@ -122,10 +123,14 @@ export default function DecisionCard({ item, resolveEscalation, disabled, onAfte
           <MarkdownViewer content={item.preText} compact />
         </div>
       )}
-      {legacyQuestion && (
-        <div className="border-t border-amber-200 pt-2">
-          <p className="text-[10px] uppercase tracking-wide text-amber-600 mb-1">Question</p>
-          <p className="text-sm font-medium text-amber-900">{legacyQuestion}</p>
+      {supportingContext.length > 0 && (
+        <div className="bg-white rounded-lg border border-amber-100 px-3 py-2 max-h-60 overflow-y-auto">
+          <p className="text-[10px] uppercase tracking-wide text-gray-400 mb-1">Task context</p>
+          <div className="space-y-2">
+            {supportingContext.map((message, idx) => (
+              <MarkdownViewer key={`${idx}-${message.slice(0, 24)}`} content={message} compact />
+            ))}
+          </div>
         </div>
       )}
       {isOpen && hasQuestions ? (
@@ -135,8 +140,8 @@ export default function DecisionCard({ item, resolveEscalation, disabled, onAfte
           currentStep={currentStep}
           comment={comment}
           disabled={disabled}
-          resolveEscalation={resolveEscalation}
-          escalationId={esc.id}
+          respondToMessage={respondToMessage}
+          messageId={requestMessageId}
           onSetCurrentStep={setCurrentStep}
           onSetAnswers={setAnswers}
           onSetComment={setComment}
@@ -162,7 +167,7 @@ export default function DecisionCard({ item, resolveEscalation, disabled, onAfte
               >
                 <input
                   type="radio"
-                  name={`branch-${esc.id}`}
+                  name={`branch-${requestMessageId}`}
                   value={opt}
                   checked={selectedBranch === opt}
                   disabled={disabled}
@@ -177,16 +182,16 @@ export default function DecisionCard({ item, resolveEscalation, disabled, onAfte
             <button
               onClick={() => {
                 if (!selectedBranch || disabled) return
-                resolveEscalation.mutate(
-                  { escalationId: esc.id, data: { resolution: 'accept_output', next_branch: selectedBranch } },
+                respondToMessage.mutate(
+                  { messageId: requestMessageId, data: { resolution: 'accept_output', next_branch: selectedBranch } },
                   { onSuccess: () => { setSelectedBranch(''); onAfterResolve() } },
                 )
               }}
-              disabled={disabled || !selectedBranch || resolveEscalation.isPending}
+              disabled={disabled || !selectedBranch || respondToMessage.isPending}
               className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-600 text-white text-xs font-medium hover:bg-amber-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
             >
               <Send size={12} />
-              {resolveEscalation.isPending ? 'Continuing…' : 'Continue'}
+              {respondToMessage.isPending ? 'Continuing…' : 'Continue'}
             </button>
           </div>
         </div>
@@ -230,11 +235,11 @@ export default function DecisionCard({ item, resolveEscalation, disabled, onAfte
               <span className="text-[10px] text-gray-400 select-none hidden sm:inline">Shift+Enter for new line</span>
               <button
                 onClick={handleSend}
-                disabled={disabled || !currentValue.trim() || resolveEscalation.isPending}
+                disabled={disabled || !currentValue.trim() || respondToMessage.isPending}
                 className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-600 text-white text-xs font-medium hover:bg-amber-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
               >
                 <Send size={12} />
-                {resolveEscalation.isPending ? 'Sending…' : 'Send'}
+                {respondToMessage.isPending ? 'Sending…' : 'Send'}
               </button>
             </div>
           </div>

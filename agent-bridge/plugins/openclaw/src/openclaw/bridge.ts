@@ -23,9 +23,13 @@ import type {
   RemoteTool,
   RunInfo,
   RunNodeStateInfo,
+  TaskTrigger,
+  MCPContractManifest,
+  WorkPacket,
   WorkspaceMemberInfo,
 } from '../types'
 import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 
 const PLUGIN_ID = 'knotwork-bridge'
 const PLUGIN_VERSION = (() => {
@@ -89,12 +93,28 @@ export function getConfig(api: OpenClawApi): PluginConfig {
       merged.knotworkTransportMode === 'mcp' || merged.knotworkTransportMode === 'rest'
         ? merged.knotworkTransportMode
         : (env('KNOTWORK_TRANSPORT_MODE') === 'mcp' ? 'mcp' : 'rest'),
+    semanticProtocolDebug:
+      typeof merged.semanticProtocolDebug === 'boolean'
+        ? merged.semanticProtocolDebug
+        : (env('KNOTWORK_SEMANTIC_PROTOCOL_DEBUG') ?? 'false') === 'true',
   }
 }
 
 export function resolveInstanceId(cfg: PluginConfig): string {
   if (cfg.pluginInstanceId?.trim()) return cfg.pluginInstanceId.trim()
   return `knotwork-${Math.random().toString(36).slice(2, 12)}`
+}
+
+export function getSemanticDebugRoot(_cfg: PluginConfig): string {
+  return join(__dirname, '..', '..')
+}
+
+export function getSemanticSessionsDir(cfg: PluginConfig): string {
+  return join(getSemanticDebugRoot(cfg), 'sessions')
+}
+
+export function getSemanticTaskLogPath(cfg: PluginConfig): string {
+  return join(getSemanticDebugRoot(cfg), 'tasks.log')
 }
 
 // Gateway WebSocket config — port + auth credentials for the native protocol.
@@ -164,7 +184,9 @@ export async function discoverAgents(api: OpenClawApi): Promise<RemoteAgent[]> {
       const out = unpackAgentList(res).map(normalizeAgent).filter(Boolean) as RemoteAgent[]
       if (out.length) return out
     } catch (e) {
-      console.log(`[knotwork-bridge] agents-list-error ${e instanceof Error ? e.message : String(e)}`)
+      if (getConfig(api).semanticProtocolDebug) {
+        console.log(`[knotwork-bridge] agents-list-error ${e instanceof Error ? e.message : String(e)}`)
+      }
     }
   }
   // 2. config.agents.list fallback
@@ -233,6 +255,41 @@ export async function pollInbox(baseUrl: string, workspaceId: string, jwt: strin
 /** Fetch the workspace guide document and its version number. */
 export async function fetchGuide(baseUrl: string, workspaceId: string, jwt: string): Promise<{ guide_md: string | null; guide_version: number }> {
   return httpGet(`${baseUrl}/api/v1/workspaces/${workspaceId}/guide`, jwt)
+}
+
+export async function fetchWorkPacket(
+  baseUrl: string,
+  workspaceId: string,
+  jwt: string,
+  input: {
+    taskId: string
+    trigger: TaskTrigger
+    sessionName?: string
+    legacyUserPrompt?: string
+  },
+): Promise<WorkPacket> {
+  return httpPost(
+    `${baseUrl}/api/v1/workspaces/${workspaceId}/mcp/work-packets`,
+    {
+      task_id: input.taskId,
+      trigger: input.trigger as unknown as LooseRecord,
+      session_name: input.sessionName ?? null,
+      legacy_user_prompt: input.legacyUserPrompt ?? null,
+    },
+    jwt,
+  )
+}
+
+export async function fetchMcpContract(
+  baseUrl: string,
+  workspaceId: string,
+  jwt: string,
+  contractId: string,
+): Promise<MCPContractManifest> {
+  return httpGet(
+    `${baseUrl}/api/v1/workspaces/${workspaceId}/mcp/contracts/${encodeURIComponent(contractId)}`,
+    jwt,
+  )
 }
 
 export async function fetchChannel(baseUrl: string, workspaceId: string, jwt: string, channelRef: string): Promise<ChannelInfo> {
@@ -379,6 +436,37 @@ export async function resolveEscalation(
   )
 }
 
+export async function respondChannelMessage(
+  baseUrl: string,
+  workspaceId: string,
+  jwt: string,
+  channelRef: string,
+  messageId: string,
+  body: {
+    resolution: string
+    actor_name: string
+    actor_type?: string
+    guidance?: string
+    override_output?: Record<string, unknown> | null
+    next_branch?: string | null
+    answers?: string[] | null
+  },
+): Promise<ChannelMessage> {
+  return httpPost(
+    `${baseUrl}/api/v1/workspaces/${workspaceId}/channels/${channelRef}/messages/${messageId}/respond`,
+    {
+      resolution: body.resolution,
+      actor_name: body.actor_name,
+      actor_type: body.actor_type ?? null,
+      guidance: body.guidance ?? null,
+      override_output: body.override_output ?? null,
+      next_branch: body.next_branch ?? null,
+      answers: body.answers ?? null,
+    },
+    jwt,
+  )
+}
+
 export async function listKnowledgeFiles(baseUrl: string, workspaceId: string, jwt: string, projectId?: string | null): Promise<KnowledgeFileSummary[]> {
   const params = new URLSearchParams()
   if (projectId) params.set('project_id', projectId)
@@ -422,6 +510,33 @@ export async function createKnowledgeChange(
       action_type: body.action_type ?? 'update_content',
       target_type: body.target_type ?? 'file',
       payload: body.payload ?? {},
+    },
+    jwt,
+  )
+}
+
+export async function executeMcpAction(
+  baseUrl: string,
+  workspaceId: string,
+  jwt: string,
+  body: {
+    contract_id: string
+    contract_checksum: string
+    action: Record<string, unknown>
+    fallback_run_id?: string | null
+    fallback_source_channel_id?: string | null
+    fallback_trigger_message_id?: string | null
+  },
+): Promise<LooseRecord> {
+  return httpPost(
+    `${baseUrl}/api/v1/workspaces/${workspaceId}/mcp/actions/execute`,
+    {
+      contract_id: body.contract_id,
+      contract_checksum: body.contract_checksum,
+      action: body.action,
+      fallback_run_id: body.fallback_run_id ?? null,
+      fallback_source_channel_id: body.fallback_source_channel_id ?? null,
+      fallback_trigger_message_id: body.fallback_trigger_message_id ?? null,
     },
     jwt,
   )

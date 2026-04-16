@@ -326,6 +326,37 @@ export function usePostChannelMessage(workspaceId: string, channelId: string) {
   })
 }
 
+export function useRespondChannelMessage(workspaceId: string, channelId: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (payload: {
+      messageId: string
+      data: {
+        resolution: 'accept_output' | 'override_output' | 'request_revision' | 'abort_run' | 'approved' | 'edited' | 'guided' | 'aborted'
+        guidance?: string
+        override_output?: Record<string, unknown>
+        edited_output?: Record<string, unknown>
+        answers?: string[]
+        next_branch?: string
+        actor_name?: string
+        actor_type?: 'human' | 'agent' | 'system'
+      }
+    }) =>
+      api
+        .post<ChannelMessage>(
+          `/workspaces/${workspaceId}/channels/${channelId}/messages/${payload.messageId}/respond`,
+          payload.data,
+        )
+        .then((r) => r.data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['channel-messages', workspaceId, channelId] })
+      qc.invalidateQueries({ queryKey: ['run-chat-messages'] })
+      qc.invalidateQueries({ queryKey: ['run'] })
+      qc.invalidateQueries({ queryKey: ['run-nodes'] })
+    },
+  })
+}
+
 export function useChannelDecisions(workspaceId: string, channelId: string) {
   return useQuery({
     queryKey: ['channel-decisions', workspaceId, channelId],

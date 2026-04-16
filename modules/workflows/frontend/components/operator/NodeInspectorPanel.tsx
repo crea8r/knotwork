@@ -1,6 +1,5 @@
 import { useState } from 'react'
 import { X, Copy, Check } from 'lucide-react'
-import { useSubmitRating } from "@modules/workflows/frontend/api/ratings"
 import StatusBadge from '@ui/components/StatusBadge'
 import MarkdownViewer from '@ui/components/MarkdownViewer'
 import type { RunNodeState } from '@data-models'
@@ -12,34 +11,6 @@ interface Props {
   workspaceId: string
   runId: string
   onClose: () => void
-}
-
-function StarRating({ workspaceId, runId, nodeState, onRated }: {
-  workspaceId: string
-  runId: string
-  nodeState: RunNodeState
-  onRated: (score: number) => void
-}) {
-  const [hovered, setHovered] = useState(0)
-  const submit = useSubmitRating(workspaceId, runId, nodeState.id)
-
-  if (nodeState.status !== 'completed') return null
-
-  return (
-    <span className="flex gap-0.5">
-      {[1, 2, 3, 4, 5].map((s) => (
-        <button
-          key={s}
-          className={`text-xl leading-none ${s <= hovered ? 'text-amber-400' : 'text-gray-300'}`}
-          onMouseEnter={() => setHovered(s)}
-          onMouseLeave={() => setHovered(0)}
-          onClick={() => submit.mutate({ score: s }, { onSuccess: () => onRated(s) })}
-        >
-          ★
-        </button>
-      ))}
-    </span>
-  )
 }
 
 function CopyButton({ text }: { text: string }) {
@@ -62,8 +33,9 @@ function CopyButton({ text }: { text: string }) {
 }
 
 export default function NodeInspectorPanel({ nodeId, nodeName, nodeState, workspaceId, runId, onClose }: Props) {
-  const [rated, setRated] = useState<number | null>(null)
   const displayName = nodeName ?? nodeId
+  void workspaceId
+  void runId
 
   return (
     <div
@@ -233,21 +205,6 @@ export default function NodeInspectorPanel({ nodeId, nodeName, nodeState, worksp
               </ul>
             </div>
           )}
-
-          {/* Rating */}
-          <div>
-            <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-1">Rate this output</p>
-            {rated !== null ? (
-              <span className="text-xs text-green-600">Rated {rated}★ — thank you</span>
-            ) : (
-              <StarRating
-                workspaceId={workspaceId}
-                runId={runId}
-                nodeState={nodeState}
-                onRated={setRated}
-              />
-            )}
-          </div>
         </div>
       )}
     </div>

@@ -1,8 +1,7 @@
 // rpc.ts — Gateway RPC method registrations (knotwork.* methods).
 // Callable from any terminal: `openclaw gateway call knotwork.<method>`
 
-import { join } from 'node:path'
-import { getConfig } from '../openclaw/bridge'
+import { getConfig, getSemanticTaskLogPath } from '../openclaw/bridge'
 import { getPublicKeyB64 } from './auth'
 import { createTaskLogger } from '../state/tasklog'
 import { runClaimedTask as _runClaimedTask } from './worker'
@@ -32,8 +31,12 @@ function ok(ctx: GatewayMethodContext, payload: LooseRecord): void {
 export function registerRpcMethods(ctx: RpcCtx): void {
   const { api, state, log, rememberError, runAuth, pollAndRun, runClaimedTask, resetAuth, computedLockPath } = ctx
   const apiKeys = Object.keys(api as object).join(',')
+  const cfg = getConfig(api)
+  const debugEnabled = Boolean(cfg.semanticProtocolDebug)
   if (typeof api.registerGatewayMethod !== 'function') {
-    console.log(`[knotwork-bridge] rpc:register-skipped registerGatewayMethod not a function — api keys: ${apiKeys}`)
+    if (debugEnabled) {
+      console.log(`[knotwork-bridge] rpc:register-skipped registerGatewayMethod not a function — api keys: ${apiKeys}`)
+    }
     return
   }
   const rpc = api.registerGatewayMethod.bind(api)
@@ -90,12 +93,13 @@ export function registerRpcMethods(ctx: RpcCtx): void {
     // Mutate in-place so any existing reference to the array also sees the clear.
     state.logs.splice(0, state.logs.length)
     // Write to console only — calling log() would immediately add an entry back.
-    console.log(`[knotwork-bridge] logs:cleared count=${count}`)
+    if (debugEnabled) {
+      console.log(`[knotwork-bridge] logs:cleared count=${count}`)
+    }
     ok(_gwCtx, { ok: true, cleared: count })
   })
 
   rpc('knotwork.get_public_key', (gwCtx: GatewayMethodContext) => {
-    const cfg = getConfig(api)
     if (!cfg.privateKeyPath) {
       ok(gwCtx, { ok: false, error: 'privateKeyPath not configured' })
       return
@@ -109,7 +113,6 @@ export function registerRpcMethods(ctx: RpcCtx): void {
   })
 
   const handleAuth = async (gwCtx: GatewayMethodContext): Promise<void> => {
-    const cfg = getConfig(api)
     log(`auth:debug url=${cfg.knotworkBackendUrl ?? 'MISSING'} privateKeyPath=${cfg.privateKeyPath ? 'set' : 'MISSING'}`)
     try {
       await runAuth()
@@ -150,7 +153,7 @@ export function registerRpcMethods(ctx: RpcCtx): void {
         if (hasSubprocessCreds) {
           const sp = payload as unknown as SubprocessParams
           const taskLogPath = typeof sp.taskLogPath === 'string' ? sp.taskLogPath : undefined
-          const taskLog = createTaskLogger(taskLogPath ?? join(__dirname, '..', 'tasks.log'))
+          const taskLog = createTaskLogger(taskLogPath ?? getSemanticTaskLogPath(cfg), debugEnabled)
           taskLog('execute_task:start', String(preClaimedTask.task_id ?? 'unknown'), {
             hasTask: 'true',
             subagentKeys: subagentKeys || 'none',

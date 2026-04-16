@@ -1,14 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import axios from 'axios'
-import { X } from 'lucide-react'
+import { ChevronDown, ChevronUp, X } from 'lucide-react'
 import {
   useRun, useRunNodes, useRunWorklog, useDeleteRun, useCloneRun,
   useExecuteRunInline, useRunChatMessages, useAbortRun,
 } from "@modules/workflows/frontend/api/runs"
 import { useGraphVersion } from "@modules/workflows/frontend/api/graphs"
-import { useEscalations, useResolveEscalationAny } from '@modules/communication/frontend/api/escalations'
-import { useRegisteredAgents } from "@modules/agents/frontend/api/agents"
+import { useMyChannelSubscriptions, useRespondChannelMessage } from '@modules/communication/frontend/api/channels'
+import { useRegisteredAgents } from "@modules/admin/frontend/api/agents"
 import GraphCanvas from '@modules/workflows/frontend/components/canvas/GraphCanvas'
 import Spinner from '@ui/components/Spinner'
 import RunInputPanel from '@modules/workflows/frontend/components/operator/RunInputPanel'
@@ -42,13 +42,19 @@ export default function RunDetailPage() {
     refetchInterval: run && (ACTIVE.has(run.status) || run.status === 'paused') ? 2000 : false,
   })
   const { data: worklog = [] } = useRunWorklog(workspaceId, runId!, { refetchInterval: isActivePoll(run) })
-  const { data: escalations = [], refetch: refetchEscalations } = useEscalations(workspaceId)
   const { data: agents = [] } = useRegisteredAgents()
   const deleteRun = useDeleteRun(workspaceId)
   const cloneRun = useCloneRun(workspaceId)
   const executeInline = useExecuteRunInline(workspaceId)
   const abortRun = useAbortRun(workspaceId)
-  const resolveEscalation = useResolveEscalationAny(workspaceId)
+  const runChannelId = runMessages[0]?.channel_id ?? ''
+  const respondToMessage = useRespondChannelMessage(workspaceId, runChannelId)
+  const { data: mySubscriptions = [] } = useMyChannelSubscriptions(workspaceId)
+  const currentParticipantId = useMemo(() => {
+    const inRunChannel = mySubscriptions.find((row) => row.channel_id === runChannelId)
+    if (inRunChannel?.participant_id) return inRunChannel.participant_id
+    return mySubscriptions[0]?.participant_id ?? null
+  }, [mySubscriptions, runChannelId])
 
   const definition = graphVersion?.definition ?? { nodes: [], edges: [] }
   const nodeStatuses = useRunNodeStatuses(nodeStates, definition, run?.status ?? '')
@@ -71,37 +77,81 @@ export default function RunDetailPage() {
   const [showMobileMap, setShowMobileMap] = useState(false)
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null)
   const [awaitingAgentAfterReply, setAwaitingAgentAfterReply] = useState(false)
-  const [lockedEscalationId, setLockedEscalationId] = useState<string | null>(null)
+  const [lockedRequestMessageId, setLockedRequestMessageId] = useState<string | null>(null)
+  const [escalationPanelCollapsed, setEscalationPanelCollapsed] = useState(false)
   const thinkingPhrases = useMemo(() => buildThinkingPhrases(), [])
   const [thinkingText, setThinkingText] = useState(() => pickRandomPhrase(thinkingPhrases))
   const chatScrollRef = useRef<HTMLDivElement | null>(null)
 
-  const wsConnected = useRunWebSocket({ runId: runId!, runStatus: run?.status, refetchRun, refetchNodes, refetchEscalations, refetchRunMessages })
+  const wsConnected = useRunWebSocket({ runId: runId!, runStatus: run?.status, refetchRun, refetchNodes, refetchRunMessages })
 
   const latestProgress = useMemo(() => {
     const msgs = runMessages.filter((m) => (m.metadata_ as Record<string, unknown>).kind === 'agent_progress')
     if (!msgs.length) return null
     const l = msgs[msgs.length - 1]; return { id: l.id, text: l.content }
   }, [runMessages])
-  const runEscalations = useMemo(() => escalations.filter((e) => e.run_id === runId).sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()), [escalations, runId])
-  const openEscalation = [...runEscalations].reverse().find((e) => e.status === 'open') ?? null
+  const openRequestMessageId = useMemo(() => {
+    const resolvedEscalationIds = new Set<string>()
+    for (const message of runMessages) {
+      const meta = message.metadata_ as Record<string, unknown>
+      if (meta.kind !== 'escalation_resolution') continue
+      const escalationId = typeof meta.escalation_id === 'string' ? meta.escalation_id : null
+      if (escalationId) resolvedEscalationIds.add(escalationId)
+    }
+    for (let i = runMessages.length - 1; i >= 0; i -= 1) {
+      const message = runMessages[i]
+      const meta = message.metadata_ as Record<string, unknown>
+      if (meta.kind !== 'request') continue
+      const req = meta.request as Record<string, unknown> | undefined
+      if (!req) continue
+      const assignedTo = Array.isArray(req.assigned_to) ? req.assigned_to.map(String) : []
+      const addressedToCurrentParticipant = assignedTo.length === 0 || (!!currentParticipantId && assignedTo.includes(currentParticipantId))
+      if (!addressedToCurrentParticipant) continue
+      const escalationId = typeof req.escalation_id === 'string' ? req.escalation_id : null
+      if (escalationId && resolvedEscalationIds.has(escalationId)) continue
+      if (req.status === 'answered') continue
+      return message.id
+    }
+    return null
+  }, [runMessages, currentParticipantId])
 
-  const chatItems = useRunChatItems({ run, runMessages, nodeStates, nodeNameMap, nodeSpeakerMap, runEscalations, awaitingAgentAfterReply, lockedEscalationId, openEscalation, thinkingText, thinkingPhrases, latestProgress })
+  const chatItems = useRunChatItems({
+    run,
+    runMessages,
+    nodeStates,
+    nodeNameMap,
+    nodeSpeakerMap,
+    awaitingAgentAfterReply,
+    lockedRequestMessageId,
+    openRequestMessageId,
+    thinkingText,
+    thinkingPhrases,
+    latestProgress,
+  })
   const debugTimeline = useRunDebugTimeline(nodeStates, nodeNameMap, worklog)
+  const openRequestItem = useMemo(() => {
+    if (!openRequestMessageId) return null
+    for (let i = chatItems.length - 1; i >= 0; i -= 1) {
+      const item = chatItems[i]
+      if (item.kind === 'request' && item.requestMessageId === openRequestMessageId && item.request?.status === 'open') return item
+    }
+    return null
+  }, [chatItems, openRequestMessageId])
 
-  useEffect(() => { if (run?.status === 'running' || openEscalation) setAwaitingAgentAfterReply(false) }, [run?.status, openEscalation])
+  useEffect(() => { if (run?.status === 'running' || openRequestMessageId) setAwaitingAgentAfterReply(false) }, [run?.status, openRequestMessageId])
   useEffect(() => {
-    if (!lockedEscalationId) return
-    if (openEscalation && openEscalation.id !== lockedEscalationId) { setLockedEscalationId(null); setAwaitingAgentAfterReply(false); return }
-    if (!openEscalation && run && run.status !== 'paused') { setLockedEscalationId(null); setAwaitingAgentAfterReply(false) }
-  }, [lockedEscalationId, openEscalation, run])
+    if (!lockedRequestMessageId) return
+    if (openRequestMessageId && openRequestMessageId !== lockedRequestMessageId) { setLockedRequestMessageId(null); setAwaitingAgentAfterReply(false); return }
+    if (!openRequestMessageId && run && run.status !== 'paused') { setLockedRequestMessageId(null); setAwaitingAgentAfterReply(false) }
+  }, [lockedRequestMessageId, openRequestMessageId, run])
   useEffect(() => {
-    const active = !!run && (run.status === 'running' || (run.status === 'paused' && !openEscalation))
+    const active = !!run && (run.status === 'running' || (run.status === 'paused' && !openRequestMessageId))
     if (!active) return
     setThinkingText((prev) => pickRandomPhrase(thinkingPhrases, prev))
     const t = window.setInterval(() => setThinkingText((prev) => pickRandomPhrase(thinkingPhrases, prev)), 4500)
     return () => window.clearInterval(t)
-  }, [run, openEscalation, thinkingPhrases])
+  }, [run, openRequestMessageId, thinkingPhrases])
+  useEffect(() => { setEscalationPanelCollapsed(false) }, [openRequestItem?.requestMessageId])
   useEffect(() => { const el = chatScrollRef.current; if (el) el.scrollTop = el.scrollHeight }, [chatItems.length, run?.status])
 
   async function handleDelete() {
@@ -111,7 +161,7 @@ export default function RunDetailPage() {
   }
   async function handleAbort() {
     if (!confirm('Abort this run?\n\nUse this only when the agent appears stuck with no response.')) return
-    try { await abortRun.mutateAsync(runId!); refetchRun(); refetchNodes(); refetchRunMessages(); refetchEscalations() }
+    try { await abortRun.mutateAsync(runId!); refetchRun(); refetchNodes(); refetchRunMessages() }
     catch (err) { alert(`Abort failed: ${axios.isAxiosError(err) ? (err.response?.data?.detail ?? err.message) : String(err)}`) }
   }
   async function handleCloneAndRun() {
@@ -153,21 +203,81 @@ export default function RunDetailPage() {
               </div>
             </div>
           )}
-          <div ref={chatScrollRef} className="flex-1 overflow-y-auto p-3 md:p-4 space-y-2.5">
+          <div ref={chatScrollRef} className="relative flex-1 overflow-y-auto p-3 md:p-4 space-y-2.5">
             {chatItems.map((item) => (
-              item.kind === 'decision_confident' || item.kind === 'decision_escalate' ? (
-                <DecisionCard key={item.id} item={item} resolveEscalation={resolveEscalation}
-                  disabled={resolveEscalation.isPending || (!!openEscalation && lockedEscalationId === openEscalation.id)}
-                  onAfterResolve={() => { setAwaitingAgentAfterReply(true); if (item.escalation?.id) setLockedEscalationId(item.escalation.id); refetchEscalations(); refetchRun(); refetchNodes(); refetchRunMessages() }}
-                />
-              ) : (
-                <MessageBubble key={item.id} item={item}
-                  highlighted={!!selectedNodeId && item.nodeId === selectedNodeId}
-                  dimmed={!!selectedNodeId && !!item.nodeId && item.nodeId !== selectedNodeId}
-                  onClick={item.nodeId ? () => setSelectedNodeId(item.nodeId!) : undefined}
-                />
-              )
+              <div key={item.id}>
+                {item.kind === 'decision_confident' ? (
+                  <DecisionCard item={item} respondToMessage={respondToMessage}
+                    disabled={respondToMessage.isPending || (!!openRequestMessageId && lockedRequestMessageId === openRequestMessageId)}
+                    onAfterResolve={() => { setAwaitingAgentAfterReply(true); if (item.requestMessageId) setLockedRequestMessageId(item.requestMessageId); refetchRun(); refetchNodes(); refetchRunMessages() }}
+                  />
+                ) : item.kind === 'request' ? (
+                  <div className="max-w-[92%] mr-auto rounded-xl border border-amber-200 bg-amber-50/90 px-3 py-2 shadow-sm">
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="min-w-0">
+                        <p className="text-[10px] uppercase tracking-wide text-amber-700">Request</p>
+                        <p className="text-sm text-amber-950 truncate">
+                          {item.nodeName ? `${item.nodeName} requires your decision.` : 'This step requires your decision.'}
+                        </p>
+                      </div>
+                      <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] ${
+                        item.request?.status === 'open'
+                          ? 'bg-amber-200 text-amber-800'
+                          : 'bg-gray-200 text-gray-700'
+                      }`}>
+                        {item.request?.status ?? 'pending'}
+                      </span>
+                    </div>
+                    {item.preText && (
+                      <div className="mt-1.5 rounded-lg border border-amber-100 bg-white/70 px-2.5 py-1.5">
+                        <p className="text-[10px] uppercase tracking-wide text-amber-700/80">Task context</p>
+                        <p className="mt-0.5 text-xs text-amber-900/90 line-clamp-3">
+                          {item.preText.replace(/\s+/g, ' ').trim()}
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <MessageBubble item={item}
+                    highlighted={!!selectedNodeId && item.nodeId === selectedNodeId}
+                    dimmed={!!selectedNodeId && !!item.nodeId && item.nodeId !== selectedNodeId}
+                    onClick={item.nodeId ? () => setSelectedNodeId(item.nodeId!) : undefined}
+                  />
+                )}
+              </div>
             ))}
+            {openRequestItem && (
+              <div className="pointer-events-none sticky bottom-3 md:bottom-4 z-20 flex justify-center px-1 md:px-2">
+                <div className="pointer-events-auto w-full rounded-2xl border border-amber-300 bg-white/96 shadow-[0_16px_40px_rgba(0,0,0,0.18)] backdrop-blur">
+                  <button
+                    type="button"
+                    onClick={() => setEscalationPanelCollapsed((v) => !v)}
+                    className="flex w-full items-center justify-between gap-3 rounded-t-2xl px-3 py-2.5 text-left hover:bg-amber-50/70 transition-colors"
+                  >
+                    <div className="min-w-0">
+                      <p className="text-[10px] uppercase tracking-wide text-amber-700">Waiting for your decision</p>
+                      <p className="truncate text-sm font-medium text-gray-900">
+                        {openRequestItem.nodeName ? openRequestItem.nodeName : 'Active request'}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="shrink-0 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] text-amber-800">
+                        {openRequestItem.request?.status ?? 'open'}
+                      </span>
+                      {escalationPanelCollapsed ? <ChevronUp size={16} className="text-amber-700" /> : <ChevronDown size={16} className="text-amber-700" />}
+                    </div>
+                  </button>
+                  {!escalationPanelCollapsed && (
+                    <div className="max-h-[65vh] overflow-y-auto border-t border-amber-100 px-2 pb-2 md:max-h-[58vh]">
+                      <DecisionCard item={openRequestItem} respondToMessage={respondToMessage}
+                        disabled={respondToMessage.isPending || (!!openRequestMessageId && lockedRequestMessageId === openRequestMessageId)}
+                        onAfterResolve={() => { setAwaitingAgentAfterReply(true); if (openRequestItem.requestMessageId) setLockedRequestMessageId(openRequestItem.requestMessageId); refetchRun(); refetchNodes(); refetchRunMessages() }}
+                      />
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
           </div>
         </div>
         <div className="hidden xl:block min-h-0 p-4 bg-white">

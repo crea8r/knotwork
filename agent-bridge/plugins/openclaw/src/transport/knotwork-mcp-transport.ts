@@ -1,22 +1,15 @@
 import { createKnotworkMcpClient, type JsonObject, type KnotworkMcpClient } from '@knotwork/mcp-client'
-import type { KnotworkTransport, SemanticCapabilitySnapshot, SemanticThinkingContext } from './contracts'
+import type { KnotworkTransport, SemanticCapabilitySnapshot } from './contracts'
+import { persistCachedContract, readCachedContract } from './contract-cache'
 import type {
-  ChannelAssetBinding,
-  ChannelInfo,
   ChannelMessage,
   ChannelSubscription,
-  EscalationInfo,
-  GraphDraftInfo,
-  GraphInfo,
-  KnowledgeFileSummary,
-  KnowledgeFileWithContent,
+  MCPContractManifest,
   MessageResponsePolicy,
-  ObjectiveInfo,
   ParticipantInfo,
-  ProjectDashboardInfo,
-  RunInfo,
-  RunNodeStateInfo,
+  PluginConfig,
   TaskTrigger,
+  WorkPacket,
   WorkspaceMemberInfo,
 } from '../types'
 
@@ -25,6 +18,7 @@ type McpTransportParams = {
   workspaceId: string
   jwt: string
   authorName: string
+  pluginConfig?: PluginConfig
 }
 
 function mcpServerUrl(baseUrl: string): string {
@@ -196,6 +190,7 @@ export function buildMessageResponsePolicy(input: {
 
 export class KnotworkMcpTransport implements KnotworkTransport {
   private clientPromise: Promise<KnotworkMcpClient> | null = null
+  private readonly contractCache = new Map<string, MCPContractManifest>()
 
   constructor(private readonly params: McpTransportParams) {}
 
@@ -215,24 +210,18 @@ export class KnotworkMcpTransport implements KnotworkTransport {
     return this.clientPromise
   }
 
-  async getCapabilitySnapshot(trigger: TaskTrigger): Promise<SemanticCapabilitySnapshot> {
-    const channelId = typeof trigger.channel_id === 'string' && trigger.channel_id.trim() ? trigger.channel_id.trim() : null
+  async getCapabilitySnapshot(input: { trigger: TaskTrigger; allowedActions: string[] }): Promise<SemanticCapabilitySnapshot> {
+    const channelId = typeof input.trigger.channel_id === 'string' && input.trigger.channel_id.trim() ? input.trigger.channel_id.trim() : null
     const client = await this.client()
-    const subscriptions = await mcpList<ChannelSubscription>(client.listMyChannelSubscriptions()).catch(() => [])
+    const subscriptions = await mcpList<ChannelSubscription>(
+      client.callTool('list_my_channel_subscriptions', undefined as unknown as JsonObject),
+    ).catch(() => [])
     const activeChannelIds = subscriptions.filter((item) => item.subscribed).map((item) => item.channel_id)
     if (channelId && !activeChannelIds.includes(channelId)) activeChannelIds.push(channelId)
     return {
       workspaceId: this.params.workspaceId,
       agentId: null,
-      actions: {
-        'channel.post_message': true,
-        'graph.apply_delta': true,
-        'graph.update_root_draft': true,
-        'escalation.resolve': true,
-        'knowledge.propose_change': true,
-        'control.noop': true,
-        'control.fail': true,
-      },
+      actions: Object.fromEntries(input.allowedActions.map((name) => [name, true])),
       channels: {
         readAllowed: activeChannelIds,
         postAllowed: activeChannelIds,
@@ -241,204 +230,79 @@ export class KnotworkMcpTransport implements KnotworkTransport {
     }
   }
 
-  async loadThinkingContext(trigger: TaskTrigger, legacyUserPrompt?: string): Promise<SemanticThinkingContext> {
+  async getWorkPacket(input: {
+    taskId: string
+    trigger: TaskTrigger
+    sessionName?: string
+    legacyUserPrompt?: string
+  }): Promise<WorkPacket> {
     const client = await this.client()
-    const channelId = typeof trigger.channel_id === 'string' && trigger.channel_id.trim() ? trigger.channel_id.trim() : null
-    const effectiveRunIdWithoutChannel = typeof trigger.run_id === 'string' && trigger.run_id.trim() ? trigger.run_id.trim() : null
-    if (!channelId) {
-      const [run, runNodes, escalation] = await Promise.all([
-        effectiveRunIdWithoutChannel
-          ? mcpResult<RunInfo>(client.getRun(effectiveRunIdWithoutChannel)).catch(() => null)
-          : Promise.resolve(null),
-        effectiveRunIdWithoutChannel
-          ? mcpList<RunNodeStateInfo>(client.listRunNodes(effectiveRunIdWithoutChannel)).catch(() => [])
-          : Promise.resolve([]),
-        typeof trigger.escalation_id === 'string' && trigger.escalation_id.trim()
-          ? mcpResult<EscalationInfo>(client.getEscalation(trigger.escalation_id.trim())).catch(() => null)
-          : Promise.resolve(null),
-      ])
-      return {
-        trigger,
-        agentSelf: await mcpResult<WorkspaceMemberInfo>(client.getCurrentMember()).catch(() => null),
-        channel: null,
-        messages: [],
-        channelParticipants: [],
-        channelAssets: [],
-        messageResponsePolicy: null,
-        assetContext: {
-          knowledgeFiles: [],
-          folderFiles: [],
-          objectiveChain: [],
-          projectDashboard: null,
-          graph: null,
-          graphRootDraft: null,
-          run,
-          runNodes,
-          escalation,
-        },
-        legacyUserPrompt: legacyUserPrompt ?? null,
+    return await mcpResult<WorkPacket>(client.callTool('build_mcp_work_packet', {
+      task_id: input.taskId,
+      trigger: input.trigger as unknown as JsonObject,
+      session_name: input.sessionName ?? null,
+      legacy_user_prompt: input.legacyUserPrompt ?? null,
+    }))
+  }
+
+  async getMcpContract(contractId: string, checksumHint?: string | null): Promise<MCPContractManifest> {
+    const hint = String(checksumHint ?? '').trim()
+    if (hint) {
+      const key = this.contractCacheKey(contractId, hint)
+      const cached = this.contractCache.get(key)
+      if (cached && cached.checksum === hint) return cached
+      const diskCached = await readCachedContract(this.params.pluginConfig, contractId, hint)
+      if (diskCached) {
+        this.contractCache.set(key, diskCached)
+        return diskCached
       }
     }
-
-    const [agentSelf, channel, messages, channelParticipants, channelAssets] = await Promise.all([
-      mcpResult<WorkspaceMemberInfo>(client.getCurrentMember()).catch(() => null),
-      mcpResult<ChannelInfo>(client.getChannel(channelId)),
-      mcpList<ChannelMessage>(client.listChannelMessages(channelId)),
-      mcpList<ParticipantInfo>(client.listChannelParticipants(channelId)).catch(() => []),
-      mcpList<ChannelAssetBinding>(client.listChannelAssets(channelId)).catch(() => []),
-    ])
-
-    const fileBindings = channelAssets.filter((binding) => binding.asset_type === 'file' && binding.path)
-    const folderBindings = channelAssets.filter((binding) => binding.asset_type === 'folder' && binding.path)
-    const projectId = typeof channel.project_id === 'string' && channel.project_id.trim()
-      ? channel.project_id.trim()
-      : null
-    const knowledgeFiles = await Promise.all(
-      fileBindings
-        .slice(0, 3)
-        .map((binding) => mcpResult<KnowledgeFileWithContent>(client.readKnowledgeFile(String(binding.path), projectId)).catch(() => null)),
+    const client = await this.client()
+    const contract = await mcpResult<MCPContractManifest>(
+      client.callTool('get_mcp_contract', { contract_id: contractId } as JsonObject),
     )
-    const allKnowledgeFiles = folderBindings.length > 0
-      ? await mcpList<KnowledgeFileSummary>(client.listKnowledgeFiles(projectId)).catch(() => [])
-      : []
-    const folderFiles = folderBindings.slice(0, 3).map((binding) => {
-      const basePath = String(binding.path ?? '').replace(/\/+$/, '')
-      const prefix = `${basePath}/`
-      return {
-        binding,
-        files: allKnowledgeFiles.filter((file) => file.path === basePath || file.path.startsWith(prefix)).slice(0, 10),
-      }
-    })
-
-    const effectiveRunId = typeof trigger.run_id === 'string' && trigger.run_id.trim()
-      ? trigger.run_id.trim()
-      : channelAssets.find((binding) => binding.asset_type === 'run')?.asset_id ?? null
-    const graphId = typeof channel.graph_id === 'string' && channel.graph_id.trim()
-      ? channel.graph_id.trim()
-      : null
-    const objectiveId = typeof channel.objective_id === 'string' && channel.objective_id.trim()
-      ? channel.objective_id.trim()
-      : null
-
-    const [objectiveChain, projectDashboard, graph, graphRootDraft, run, runNodes, escalation] = await Promise.all([
-      objectiveId ? mcpList<ObjectiveInfo>(client.getObjectiveChain(objectiveId)).catch(() => []) : Promise.resolve([]),
-      projectId ? mcpResult<ProjectDashboardInfo>(client.getProjectDashboard(projectId)).catch(() => null) : Promise.resolve(null),
-      graphId ? mcpResult<GraphInfo>(client.getGraph(graphId)).catch(() => null) : Promise.resolve(null),
-      graphId ? mcpResult<GraphDraftInfo>(client.getGraphRootDraft(graphId)).catch(() => null) : Promise.resolve(null),
-      effectiveRunId ? mcpResult<RunInfo>(client.getRun(effectiveRunId)).catch(() => null) : Promise.resolve(null),
-      effectiveRunId ? mcpList<RunNodeStateInfo>(client.listRunNodes(effectiveRunId)).catch(() => []) : Promise.resolve([]),
-      typeof trigger.escalation_id === 'string' && trigger.escalation_id.trim()
-        ? mcpResult<EscalationInfo>(client.getEscalation(trigger.escalation_id.trim())).catch(() => null)
-        : Promise.resolve(null),
-    ])
-
-    return {
-      trigger,
-      agentSelf,
-      channel,
-      messages,
-      channelParticipants,
-      channelAssets,
-      messageResponsePolicy: buildMessageResponsePolicy({
-        trigger,
-        agentSelf,
-        participants: channelParticipants,
-        messages,
-      }),
-      assetContext: {
-        knowledgeFiles: knowledgeFiles.filter(Boolean) as SemanticThinkingContext['assetContext']['knowledgeFiles'],
-        folderFiles,
-        objectiveChain,
-        projectDashboard,
-        graph: graph as GraphInfo | null,
-        graphRootDraft: graphRootDraft as GraphDraftInfo | null,
-        run,
-        runNodes,
-        escalation,
-      },
-      legacyUserPrompt: legacyUserPrompt ?? null,
-    }
+    this.contractCache.set(this.contractCacheKey(contract.id, contract.checksum), contract)
+    await persistCachedContract(this.params.pluginConfig, contract).catch(() => {})
+    return contract
   }
 
-  async postChannelMessage(input: {
-    channelId: string
-    content: string
-    authorName: string
-    runId?: string | null
-  }): Promise<{ messageId: string }> {
+  async executeMcpAction(input: {
+    contractId: string
+    contractChecksum: string
+    action: Record<string, unknown>
+    fallbackRunId?: string | null
+    fallbackSourceChannelId?: string | null
+    fallbackTriggerMessageId?: string | null
+  }): Promise<{
+    action_id: string
+    status: string
+    reason?: string
+    effect_ref?: { kind: string; id: string } | null
+    context_section?: string | null
+    output?: unknown
+  }> {
     const client = await this.client()
-    const msg = await mcpResult<{ id?: string }>(client.postChannelMessage({
-      channelRef: input.channelId,
-      content: input.content,
-      role: 'assistant',
-      authorType: 'agent',
-      authorName: input.authorName || this.params.authorName,
-      runId: input.runId ?? undefined,
-    }))
-    return { messageId: String(msg.id ?? '') }
+    return await mcpResult<{
+      action_id: string
+      status: string
+      reason?: string
+      effect_ref?: { kind: string; id: string } | null
+      context_section?: string | null
+      output?: unknown
+    }>(
+      client.callTool('execute_mcp_action', {
+        contract_id: input.contractId,
+        contract_checksum: input.contractChecksum,
+        action: input.action as JsonObject,
+        fallback_run_id: input.fallbackRunId ?? null,
+        fallback_source_channel_id: input.fallbackSourceChannelId ?? null,
+        fallback_trigger_message_id: input.fallbackTriggerMessageId ?? null,
+      } as JsonObject),
+    )
   }
 
-  async resolveEscalation(input: {
-    escalationId: string
-    resolution: string
-    actorName: string
-    guidance?: string
-    overrideOutput?: Record<string, unknown> | null
-    nextBranch?: string | null
-    answers?: string[] | null
-    channelId?: string | null
-  }): Promise<{ escalationId: string }> {
-    const client = await this.client()
-    await client.resolveEscalation({
-      escalationId: input.escalationId,
-      resolution: input.resolution,
-      actorName: input.actorName,
-      guidance: input.guidance,
-      overrideOutput: input.overrideOutput as JsonObject | undefined,
-      nextBranch: input.nextBranch ?? undefined,
-      answers: input.answers ?? undefined,
-      channelId: input.channelId ?? undefined,
-    })
-    return { escalationId: input.escalationId }
-  }
-
-  async proposeKnowledgeChange(input: {
-    path: string
-    proposedContent: string
-    reason: string
-    runId?: string
-    nodeId?: string
-    agentRef?: string | null
-    sourceChannelId?: string | null
-  }): Promise<{ proposalId: string; channelId?: string | null }> {
-    const client = await this.client()
-    const result = await mcpResult<{ id?: string; channel_id?: string | null }>(client.createKnowledgeChange({
-      path: input.path,
-      proposedContent: input.proposedContent,
-      reason: input.reason,
-      runId: input.runId,
-      nodeId: input.nodeId,
-      agentRef: input.agentRef ?? null,
-      sourceChannelId: input.sourceChannelId ?? null,
-    }))
-    return {
-      proposalId: String(result.id ?? ''),
-      channelId: typeof result.channel_id === 'string' ? result.channel_id : null,
-    }
-  }
-
-  async updateGraphRootDraft(input: {
-    graphId: string
-    definition: Record<string, unknown>
-    note?: string | null
-  }): Promise<{ graphId: string; draftId: string | null }> {
-    const client = await this.client()
-    const draft = await mcpResult<{ id?: string }>(client.updateGraphRootDraft({
-      graphId: input.graphId,
-      definition: input.definition as JsonObject,
-      note: input.note ?? null,
-    }))
-    return { graphId: input.graphId, draftId: String(draft.id ?? '') || null }
+  private contractCacheKey(contractId: string, checksum: string): string {
+    return `${contractId}:${checksum}`
   }
 
   async archiveDelivery(deliveryId: string): Promise<void> {

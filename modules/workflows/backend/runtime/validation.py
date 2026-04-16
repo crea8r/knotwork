@@ -19,7 +19,7 @@ def validate_graph(definition: dict) -> list[str]:
 
     All graphs with work nodes must have Start and End nodes wired up.
     """
-    from modules.workflows.backend.graphs_schemas import normalize_graph_definition
+    from modules.workflows.backend.graphs.schemas import normalize_graph_definition
 
     definition = normalize_graph_definition(definition)
     nodes = definition.get("nodes", [])

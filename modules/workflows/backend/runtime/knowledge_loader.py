@@ -16,7 +16,7 @@ company-guideline.md happens to link to finance/ratios.md.
 import re
 from dataclasses import dataclass, field
 
-from core.api.knowledge import get_storage_adapter
+from core.api.facades.knowledge import get_storage_adapter
 
 
 @dataclass

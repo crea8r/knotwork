@@ -4,14 +4,12 @@ import modules.admin.backend.invitations_models  # noqa: F401
 import modules.admin.backend.workspaces_models  # noqa: F401
 import modules.assets.backend.knowledge_models  # noqa: F401
 import modules.communication.backend.channels_models  # noqa: F401
-import modules.communication.backend.escalations_models  # noqa: F401
+import modules.workflows.backend.runs.escalations_models  # noqa: F401
 import modules.communication.backend.notifications_models  # noqa: F401
 import modules.projects.backend.projects_models  # noqa: F401
-import modules.workflows.backend.graphs_models  # noqa: F401
-import modules.workflows.backend.public_workflows_models  # noqa: F401
-import modules.workflows.backend.ratings_models  # noqa: F401
-import modules.workflows.backend.runs_models  # noqa: F401
-import modules.workflows.backend.tools_models  # noqa: F401
+import modules.workflows.backend.graphs.models  # noqa: F401
+import modules.workflows.backend.public_workflows.models  # noqa: F401
+import modules.workflows.backend.runs.models  # noqa: F401
 
 from .manifest import ENABLED_BACKEND_FEATURES, ENABLED_BACKEND_MODULES
 
@@ -29,8 +27,4 @@ def register_models() -> None:
         raise RuntimeError("manticore requires workflow models")
     if "public_workflows" not in _REGISTERED_FEATURES:
         raise RuntimeError("manticore requires public workflow models")
-    if "ratings" not in _REGISTERED_FEATURES:
-        raise RuntimeError("manticore requires ratings models")
-    if "tools" not in _REGISTERED_FEATURES:
-        raise RuntimeError("manticore requires tool models")
     return None

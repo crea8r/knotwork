@@ -1,21 +1,10 @@
 import type {
-  ChannelAssetBinding,
-  ChannelInfo,
-  ChannelMessage,
-  EscalationInfo,
-  GraphDraftInfo,
-  GraphInfo,
-  KnowledgeFileSummary,
-  KnowledgeFileWithContent,
-  MessageResponsePolicy,
-  ObjectiveInfo,
-  ParticipantInfo,
-  ProjectDashboardInfo,
-  RunInfo,
-  RunNodeStateInfo,
+  MCPContractManifest,
   TaskTrigger,
-  WorkspaceMemberInfo,
+  WorkPacket,
 } from '../types'
+
+export type MCPContract = MCPContractManifest
 
 export type SemanticCapabilitySnapshot = {
   workspaceId: string
@@ -26,28 +15,6 @@ export type SemanticCapabilitySnapshot = {
     postAllowed: string[]
     signalAllowed: string[]
   }
-}
-
-export type SemanticThinkingContext = {
-  trigger: TaskTrigger
-  agentSelf: WorkspaceMemberInfo | null
-  channel: ChannelInfo | null
-  messages: ChannelMessage[]
-  channelParticipants: ParticipantInfo[]
-  channelAssets: ChannelAssetBinding[]
-  messageResponsePolicy: MessageResponsePolicy | null
-  assetContext: {
-    knowledgeFiles: KnowledgeFileWithContent[]
-    folderFiles: Array<{ binding: ChannelAssetBinding; files: KnowledgeFileSummary[] }>
-    objectiveChain: ObjectiveInfo[]
-    projectDashboard: ProjectDashboardInfo | null
-    graph: GraphInfo | null
-    graphRootDraft: GraphDraftInfo | null
-    run: RunInfo | null
-    runNodes: RunNodeStateInfo[]
-    escalation: EscalationInfo | null
-  }
-  legacyUserPrompt: string | null
 }
 
 export type SemanticThinkInput = {
@@ -63,40 +30,28 @@ export interface ThinkingRuntime {
 }
 
 export interface KnotworkTransport {
-  getCapabilitySnapshot(trigger: TaskTrigger): Promise<SemanticCapabilitySnapshot>
-  loadThinkingContext(trigger: TaskTrigger, legacyUserPrompt?: string): Promise<SemanticThinkingContext>
-  postChannelMessage(input: {
-    channelId: string
-    content: string
-    authorName: string
-    runId?: string | null
-  }): Promise<{ messageId: string }>
-  resolveEscalation(input: {
-    escalationId: string
-    resolution: string
-    actorName: string
-    guidance?: string
-    overrideOutput?: Record<string, unknown> | null
-    nextBranch?: string | null
-    answers?: string[] | null
-    channelId?: string | null
-  }): Promise<{ escalationId: string }>
-  proposeKnowledgeChange(input: {
-    path: string
-    proposedContent: string
-    reason: string
-    runId?: string
-    nodeId?: string
-    agentRef?: string | null
-    sourceChannelId?: string | null
-    actionType?: string
-    targetType?: string
-    payload?: Record<string, unknown>
-  }): Promise<{ proposalId: string; channelId?: string | null }>
-  updateGraphRootDraft(input: {
-    graphId: string
-    definition: Record<string, unknown>
-    note?: string | null
-  }): Promise<{ graphId: string; draftId: string | null }>
+  getCapabilitySnapshot(input: { trigger: TaskTrigger; allowedActions: string[] }): Promise<SemanticCapabilitySnapshot>
+  getWorkPacket(input: {
+    taskId: string
+    trigger: TaskTrigger
+    sessionName?: string
+    legacyUserPrompt?: string
+  }): Promise<WorkPacket>
+  getMcpContract(contractId: string, checksumHint?: string | null): Promise<MCPContract>
+  executeMcpAction(input: {
+    contractId: string
+    contractChecksum: string
+    action: Record<string, unknown>
+    fallbackRunId?: string | null
+    fallbackSourceChannelId?: string | null
+    fallbackTriggerMessageId?: string | null
+  }): Promise<{
+    action_id: string
+    status: string
+    reason?: string
+    effect_ref?: { kind: string; id: string } | null
+    context_section?: string | null
+    output?: unknown
+  }>
   archiveDelivery(deliveryId: string): Promise<void>
 }

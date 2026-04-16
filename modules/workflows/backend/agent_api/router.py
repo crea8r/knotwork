@@ -70,7 +70,7 @@ async def log_entry(body: LogBody, authorization: str | None = Header(None)):
     node_id = claims["node_id"]
 
     from libs.database import AsyncSessionLocal
-    from modules.workflows.backend.runs_models import RunWorklogEntry
+    from modules.workflows.backend.runs.models import RunWorklogEntry
 
     entry = RunWorklogEntry(
         id=uuid4(),
@@ -123,7 +123,7 @@ async def escalate(body: EscalateBody, authorization: str | None = Header(None))
     workspace_id = UUID(claims["workspace_id"])
 
     from libs.database import AsyncSessionLocal
-    from modules.workflows.backend.runs_models import Run, RunNodeState
+    from modules.workflows.backend.runs.models import Run, RunNodeState
 
     async with AsyncSessionLocal() as db:
         # Find the active RunNodeState for this run + node
@@ -143,8 +143,8 @@ async def escalate(body: EscalateBody, authorization: str | None = Header(None))
         if run:
             run.status = "paused"
 
-        from modules.communication.backend.escalations_service import create_escalation
-        esc = await create_escalation(
+        from modules.workflows.backend.runs.human_review import create_run_escalation
+        esc = await create_run_escalation(
             db,
             run_id=run_id,
             run_node_state_id=node_state.id,
@@ -165,7 +165,7 @@ async def complete_node(body: CompleteBody, authorization: str | None = Header(N
     from sqlalchemy import select
 
     from libs.database import AsyncSessionLocal
-    from modules.workflows.backend.runs_models import RunNodeState
+    from modules.workflows.backend.runs.models import RunNodeState
 
     async with AsyncSessionLocal() as db:
         ns_q = await db.execute(

@@ -150,29 +150,3 @@ export type CreateKnotworkMcpClientOptions = {
   transport?: KnotworkTransportOptions
   clientInfo?: McpImplementation
 }
-
-export type KnotworkObjective = {
-  id: string
-  workspace_id: string
-  slug: string
-  project_id?: string | null
-  project_slug?: string | null
-  parent_objective_id?: string | null
-  code?: string | null
-  title: string
-  description?: string | null
-  status: string
-  progress_percent: number
-  status_summary?: string | null
-  key_results?: string[]
-  owner_type?: string | null
-  owner_name?: string | null
-  deadline?: string | null
-  origin_type?: string
-  origin_graph_id?: string | null
-  channel_id?: string | null
-  run_count?: number
-  latest_run_id?: string | null
-  created_at?: string
-  updated_at?: string
-}

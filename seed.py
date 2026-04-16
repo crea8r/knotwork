@@ -538,16 +538,14 @@ async def main() -> None:
     import modules.assets.backend.knowledge_models  # noqa: F401
     import modules.communication.backend.channels_models  # noqa: F401
     import modules.communication.backend.escalations_models  # noqa: F401
-    import modules.workflows.backend.graphs_models  # noqa: F401
-    import modules.workflows.backend.ratings_models  # noqa: F401
+    import modules.workflows.backend.graphs.models  # noqa: F401
     import modules.workflows.backend.runs_models  # noqa: F401
-    import modules.workflows.backend.tools_models  # noqa: F401
 
     from sqlalchemy import select
     from libs.database import AsyncSessionLocal
     from modules.admin.backend.workspaces_guide import DEFAULT_GUIDE_MD
     from modules.admin.backend.workspaces_models import Workspace
-    from modules.workflows.backend.graphs_models import Graph, GraphVersion
+    from modules.workflows.backend.graphs.models import Graph, GraphVersion
     from libs.namegen import generate_name
 
     async with AsyncSessionLocal() as db:

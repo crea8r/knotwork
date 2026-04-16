@@ -1,12 +1,11 @@
 """
 Knowledge file health scoring.
 
-Composite score [0.0, 5.0] — weighted sum of four signals:
+Composite score [0.0, 5.0] — weighted sum of three signals:
 
-  token_score      (20%): ideal range 300–3 000 tokens
-  confidence_score (30%): mean confidence of RunNodeState records that referenced the file
-  escalation_score (25%): inverse of the escalation rate among those runs
-  rating_score     (25%): mean operator star rating (1–5 scale)
+  token_score      (25%): ideal range 300–3 000 tokens
+  confidence_score (40%): mean confidence of RunNodeState records that referenced the file
+  escalation_score (35%): inverse of the escalation rate among those runs
 
 Returns 0.0 when no run data exists for the file (cold-start).
 """
@@ -17,9 +16,8 @@ from uuid import UUID
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from modules.communication.backend.escalations_models import Escalation
-from modules.workflows.backend.runs_models import Run, RunNodeState
-from modules.workflows.backend.ratings_models import Rating
+from modules.workflows.backend.runs.escalations_models import Escalation
+from modules.workflows.backend.runs.models import Run, RunNodeState
 
 from .knowledge_models import KnowledgeFile, KnowledgeHealthLog
 
@@ -83,20 +81,11 @@ async def compute_health_score(file_id: UUID, db: AsyncSession) -> float:
     esc_count = int(esc_result.scalar() or 0)
     escalation_score = round(max(0.0, (1 - esc_count / run_count) * 5), 2)
 
-    # ── Rating score: mean star rating (already on 1–5 scale) ────────────────
-    rating_result = await db.execute(
-        select(func.avg(Rating.score))
-        .where(Rating.run_node_state_id.in_(relevant_ids))
-    )
-    avg_rating = rating_result.scalar()
-    rating_score = round(float(avg_rating), 2) if avg_rating is not None else 0.0
-
     # ── Weighted composite ────────────────────────────────────────────────────
     composite = round(
-        token_score * 0.20
-        + confidence_score * 0.30
-        + escalation_score * 0.25
-        + rating_score * 0.25,
+        token_score * 0.25
+        + confidence_score * 0.40
+        + escalation_score * 0.35,
         2,
     )
 
@@ -107,7 +96,7 @@ async def compute_health_score(file_id: UUID, db: AsyncSession) -> float:
         token_score=token_score,
         confidence_score=confidence_score,
         escalation_score=escalation_score,
-        rating_score=rating_score,
+        rating_score=0.0,
         run_count=run_count,
     )
     db.add(log)

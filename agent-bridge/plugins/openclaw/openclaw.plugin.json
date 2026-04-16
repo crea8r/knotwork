@@ -49,6 +49,11 @@
         "description": "Require a valid json-action response when semantic action-protocol mode is enabled. If false, fall back to legacy behavior on semantic failures.",
         "default": false
       },
+      "semanticProtocolDebug": {
+        "type": "boolean",
+        "description": "Enable debug logging and per-session markdown traces for the semantic protocol path.",
+        "default": false
+      },
       "knotworkTransportMode": {
         "type": "string",
         "enum": ["rest", "mcp"],

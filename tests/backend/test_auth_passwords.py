@@ -24,12 +24,10 @@ import modules.admin.backend.workspaces_models  # noqa: F401
 import modules.assets.backend.knowledge_models  # noqa: F401
 import modules.communication.backend.channels_models  # noqa: F401
 import modules.communication.backend.notifications_models  # noqa: F401
-import modules.communication.backend.escalations_models  # noqa: F401
+import modules.workflows.backend.runs.escalations_models  # noqa: F401
 import modules.projects.backend.projects_models  # noqa: F401
-import modules.workflows.backend.graphs_models  # noqa: F401
-import modules.workflows.backend.runs_models  # noqa: F401
-import modules.workflows.backend.tools_models  # noqa: F401
-import modules.workflows.backend.ratings_models  # noqa: F401
+import modules.workflows.backend.graphs.models  # noqa: F401
+import modules.workflows.backend.runs.models  # noqa: F401
 
 from libs.auth.backend.models import User, UserPasswordResetToken
 from libs.auth.backend.service import (
@@ -170,5 +168,5 @@ def test_bootstrap_owner_defaults_to_admin_password(tmp_path: Path):
         text=True,
     )
 
-    payload = json.loads(result.stdout)
+    payload = json.loads(result.stdout.strip().splitlines()[-1])
     assert payload["uses_default_password"] is True

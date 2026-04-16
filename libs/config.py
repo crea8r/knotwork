@@ -57,6 +57,7 @@ class Settings(BaseSettings):
     confidence_threshold_default: float = 0.70
     retry_limit_default: int = 2
     escalation_timeout_hours_default: int = 24
+    mcp_contract_snapshot_dir: str = "./tmp/mcp-contracts"
 
     @property
     def is_local_app(self) -> bool:

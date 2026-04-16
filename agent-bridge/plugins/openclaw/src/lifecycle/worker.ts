@@ -4,15 +4,12 @@
 
 import {
   archiveInboxDelivery,
-  fetchChannel,
-  fetchChannelMessages,
   fetchCurrentMember,
-  fetchObjectiveChain,
   getConfig,
+  getSemanticSessionsDir,
   pollInbox,
   postChannelMessage,
 } from '../openclaw/bridge'
-import { executeTask } from '../openclaw/session'
 import { SemanticOrchestrator } from '../semantic/orchestrator'
 import { KnotworkMcpTransport } from '../transport/knotwork-mcp-transport'
 import { KnotworkRestTransport } from '../transport/knotwork-rest-transport'
@@ -24,15 +21,41 @@ import type {
   ExecutionTask,
   InboxEvent,
   OpenClawApi,
-  ObjectiveInfo,
   PluginState,
   RecentTask,
   RunningTaskInfo,
   TaskResult,
 } from '../types'
 
-const MAX_CHANNEL_MESSAGES = 20
 const DEFAULT_AUTHOR_NAME = 'Knotwork Agent'
+
+function isChannelNotifiableFailure(error: string): boolean {
+  return (
+    /OAuth token refresh failed/i.test(error) ||
+    /FailoverError/i.test(error) ||
+    /subagent\.run failed/i.test(error) ||
+    /api\.runtime\.subagent/i.test(error)
+  )
+}
+
+function buildChannelFailureMessage(error: string): string {
+  if (/OAuth token refresh failed/i.test(error) || /openai-codex/i.test(error)) {
+    return [
+      `I could not start this task because the OpenClaw model provider authentication failed.`,
+      ``,
+      `Problem: \`openai-codex\` OAuth token refresh failed.`,
+      `Action needed: re-authenticate that provider in OpenClaw, then retry the run or send the message again.`,
+      ``,
+      `No crawl/tool work was executed before this failure.`,
+    ].join('\n')
+  }
+
+  return [
+    `I could not start this task because the OpenClaw runtime failed before any Knotwork action was taken.`,
+    ``,
+    `Error: ${error.slice(0, 300)}`,
+  ].join('\n')
+}
 
 async function resolveAuthorName(
   baseUrl: string,
@@ -111,29 +134,11 @@ export function removeRunningTask(state: PluginState, taskId: string): void {
  * The agent's guide (system prompt) tells it what to do per event type.
  * This user prompt provides the structured event details.
  */
-export function inboxEventToTask(event: InboxEvent, guideContent: string | null): ExecutionTask {
-  const userPrompt = [
-    `## New inbox event`,
-    ``,
-    `**Type**: ${event.item_type}`,
-    `**Title**: ${event.title}`,
-    event.subtitle ? `**Details**: ${event.subtitle}` : null,
-    event.run_id ? `**Run ID**: ${event.run_id}` : null,
-    event.channel_id ? `**Channel ID**: ${event.channel_id}` : null,
-    event.escalation_id ? `**Escalation ID**: ${event.escalation_id}` : null,
-    event.proposal_id ? `**Proposal ID**: ${event.proposal_id}` : null,
-    `**Event ID**: ${event.id}`,
-    `**Delivery ID**: ${event.delivery_id ?? 'none'}`,
-    ``,
-    `Refer to the workspace guide for how to handle this event type.`,
-  ].filter((line) => line !== null).join('\n')
-
+export function inboxEventToTask(event: InboxEvent, _guideContent: string | null): ExecutionTask {
   return {
     task_id: event.id,
     channel_id: event.channel_id ?? undefined,
     session_name: event.channel_id ? `channel-${event.channel_id}` : `inbox-${event.item_type}-${event.id.slice(-8)}`,
-    system_prompt: guideContent ?? undefined,
-    user_prompt: userPrompt,
     trigger: {
       type: event.item_type,
       delivery_id: event.delivery_id,
@@ -141,69 +146,14 @@ export function inboxEventToTask(event: InboxEvent, guideContent: string | null)
       run_id: event.run_id,
       escalation_id: event.escalation_id,
       proposal_id: event.proposal_id,
+      message_id: event.message_id ?? null,
+      asset_type: event.asset_type ?? null,
+      asset_id: event.asset_id ?? null,
+      asset_path: event.asset_path ?? null,
       title: event.title,
       subtitle: event.subtitle,
     },
   }
-}
-
-function formatChannelSyncPrompt(
-  event: InboxEvent,
-  channel: { id: string; name: string; slug: string; channel_type: string; objective_id?: string | null },
-  messages: Array<{ created_at: string; role: string; author_type: string; author_name: string | null; content: string }>,
-  objectiveChain: ObjectiveInfo[] = [],
-): string {
-  const recentMessages = messages
-    .slice(-MAX_CHANNEL_MESSAGES)
-    .map((message) => {
-      const author = message.author_name?.trim() || message.author_type
-      return [
-        `- [${message.created_at}] ${author} (${message.role})`,
-        message.content,
-      ].join('\n')
-    })
-    .join('\n\n')
-  const objectiveContext = objectiveChain
-    .map((objective, index) => {
-      const label = index === objectiveChain.length - 1 ? 'current' : index === 0 ? 'root' : 'parent'
-      return [
-        `- ${label}: ${objective.code ? `${objective.code} ` : ''}${objective.title}`,
-        `  id: ${objective.id}`,
-        `  status: ${objective.status}, progress: ${objective.progress_percent}%`,
-        objective.status_summary ? `  summary: ${objective.status_summary}` : null,
-        objective.description ? `  description: ${objective.description}` : null,
-        objective.key_results?.length ? `  key results: ${objective.key_results.join('; ')}` : null,
-      ].filter((line) => line !== null).join('\n')
-    })
-    .join('\n')
-
-  return [
-    `## Channel sync`,
-    ``,
-    `Channel ID: ${channel.id}`,
-    `Channel name: ${channel.name}`,
-    `Channel slug: ${channel.slug}`,
-    `Channel type: ${channel.channel_type}`,
-    channel.objective_id ? `Objective ID: ${channel.objective_id}` : null,
-    ``,
-    objectiveChain.length > 0 ? `## Objective chain context` : null,
-    objectiveChain.length > 0 ? `Root objective first; current objective last.` : null,
-    objectiveChain.length > 0 ? objectiveContext : null,
-    ``,
-    `## Inbox item`,
-    `Type: ${event.item_type}`,
-    `Title: ${event.title}`,
-    event.subtitle ? `Details: ${event.subtitle}` : null,
-    event.run_id ? `Run ID: ${event.run_id}` : null,
-    event.escalation_id ? `Escalation ID: ${event.escalation_id}` : null,
-    event.proposal_id ? `Proposal ID: ${event.proposal_id}` : null,
-    `Delivery ID: ${event.delivery_id ?? 'none'}`,
-    ``,
-    `## Recent channel messages`,
-    recentMessages || `(no messages)`,
-    ``,
-    `Reply as the agent for this channel context. If you produce a user-facing reply, keep it suitable for posting back into the Knotwork channel.`,
-  ].filter((line) => line !== null).join('\n')
 }
 
 /**
@@ -256,81 +206,68 @@ export async function runClaimedTask(ctx: WorkerCtx, task: ExecutionTask, creds?
       log(`task:heartbeat id=${taskId} count=${heartbeatCount}`)
     }, 15_000)
 
-    const semanticEnabled = Boolean(cfg.semanticActionProtocolEnabled)
-    const semanticStrict = Boolean(cfg.semanticActionStrictMode)
+    if (!task.trigger) {
+      throw new Error('semantic-only mode requires trigger on every task')
+    }
     const authorName = await resolveAuthorName(baseUrl, workspaceId, jwt)
-    let usedSemanticPath = false
     let result: TaskResult
-    if (semanticEnabled && task.trigger) {
-      try {
-        usedSemanticPath = true
-        const semanticTransport = cfg.knotworkTransportMode === 'mcp'
-          ? new KnotworkMcpTransport({
-              baseUrl,
-              workspaceId,
-              jwt,
-              authorName,
-            })
-          : new KnotworkRestTransport({
-              baseUrl,
-              workspaceId,
-              jwt,
-              authorName,
-            })
-        const semanticRuntime = new OpenClawThinkingRuntime(api)
-        const orchestrator = new SemanticOrchestrator(semanticRuntime, semanticTransport)
-        const semanticOutcome = await orchestrator.run({
-          taskId,
-          channelId: task.channel_id,
-          sessionName: task.session_name,
-          systemPrompt: task.system_prompt,
-          legacyUserPrompt: task.user_prompt,
-          runId: task.run_id ?? null,
-          trigger: task.trigger,
-        }, {
-          defaultAuthorName: authorName,
-        })
-        result = semanticOutcome.dispatch.next_task_status === 'failed'
-          ? {
-              type: 'failed',
-              error: semanticOutcome.dispatch.action_results
-                .map((item) => item.reason)
-                .filter(Boolean)
-                .join('; ') || 'semantic action dispatch failed',
-            }
-          : { type: 'completed', output: '', next_branch: null }
-        log(`task:semantic id=${taskId} batch=${semanticOutcome.dispatch.batch_status}`)
-        taskLog('task:semantic', taskId, { batch: semanticOutcome.dispatch.batch_status })
-      } catch (semanticErr) {
-        const semanticMessage = semanticErr instanceof Error ? semanticErr.message : String(semanticErr)
-        log(`task:semantic-failed id=${taskId} strict=${semanticStrict} error=${JSON.stringify(semanticMessage)}`)
-        taskLog('task:semantic-failed', taskId, {
-          strict: String(semanticStrict),
-          error: semanticMessage.slice(0, 500),
-        })
-        if (semanticStrict) {
-          result = { type: 'failed', error: `semantic mode failed: ${semanticMessage}` }
-        } else {
-          usedSemanticPath = false
-          result = await executeTask(api, task)
-        }
-      }
-    } else {
-      result = await executeTask(api, task)
+    try {
+      const semanticTransport = cfg.knotworkTransportMode === 'mcp'
+        ? new KnotworkMcpTransport({
+            baseUrl,
+            workspaceId,
+            jwt,
+            authorName,
+            pluginConfig: cfg,
+          })
+        : new KnotworkRestTransport({
+            baseUrl,
+            workspaceId,
+            jwt,
+            authorName,
+            pluginConfig: cfg,
+          })
+      const semanticRuntime = new OpenClawThinkingRuntime(api)
+      const orchestrator = new SemanticOrchestrator(semanticRuntime, semanticTransport)
+      const semanticOutcome = await orchestrator.run({
+        taskId,
+        channelId: task.channel_id,
+        sessionName: task.session_name,
+        runId: task.run_id ?? null,
+        trigger: task.trigger,
+      }, {
+        defaultAuthorName: authorName,
+        debugEnabled: cfg.semanticProtocolDebug,
+        debugDir: getSemanticSessionsDir(cfg),
+      })
+      result = semanticOutcome.dispatch.next_task_status === 'failed'
+        ? {
+            type: 'failed',
+            error: semanticOutcome.dispatch.action_results
+              .map((item) => item.reason)
+              .filter(Boolean)
+              .join('; ') || 'semantic action dispatch failed',
+          }
+        : { type: 'completed', output: '', next_branch: null }
+      log(`task:semantic id=${taskId} batch=${semanticOutcome.dispatch.batch_status}`)
+      taskLog('task:semantic', taskId, { batch: semanticOutcome.dispatch.batch_status })
+    } catch (semanticErr) {
+      const semanticMessage = semanticErr instanceof Error ? semanticErr.message : String(semanticErr)
+      log(`task:semantic-failed id=${taskId} error=${JSON.stringify(semanticMessage)}`)
+      taskLog('task:semantic-failed', taskId, {
+        error: semanticMessage.slice(0, 500),
+      })
+      result = { type: 'failed', error: `semantic mode failed: ${semanticMessage}` }
     }
     if (heartbeat) clearInterval(heartbeat)
     const resultDetail =
       result.type === 'failed'
         ? ` error=${JSON.stringify(result.error)}`
-        : result.type === 'completed'
-          ? ` outputPreview=${JSON.stringify(result.output.slice(0, 160))}`
-          : ` questions=${JSON.stringify(result.questions.slice(0, 3))}`
+        : ` outputPreview=${JSON.stringify(result.output.slice(0, 160))}`
     log(`task:done id=${taskId} type=${result.type}${resultDetail}`)
     const finishedAt = new Date().toISOString()
 
-    const status = result.type === 'escalation' ? 'escalation'
-      : result.type === 'failed' ? 'failed'
-      : 'completed'
+    const status = result.type === 'failed' ? 'failed' : 'completed'
     const error = result.type === 'failed' ? result.error : null
     const recentTask = {
       ...currentRecentTask(state, task, taskId, taskStartedAt),
@@ -340,29 +277,23 @@ export async function runClaimedTask(ctx: WorkerCtx, task: ExecutionTask, creds?
     const taskLogExtra: Record<string, string> = { type: result.type }
     if (result.type === 'failed') taskLogExtra.error = result.error.slice(0, 500)
     if (result.type === 'completed') taskLogExtra.outputPreview = result.output.slice(0, 500)
-    if (result.type === 'escalation') taskLogExtra.questions = JSON.stringify(result.questions.slice(0, 3))
     taskLog('task:sent', taskId, taskLogExtra)
 
-    const shouldImplicitlyPost = !usedSemanticPath
-    if (shouldImplicitlyPost && task.channel_id && result.type !== 'failed') {
-      const replyText = result.type === 'completed'
-        ? result.output.trim()
-        : (result.message ?? '').trim()
-      if (replyText) {
-        try {
-          await postChannelMessage(
-            baseUrl,
-            workspaceId,
-            jwt,
-            task.channel_id,
-            replyText,
-            authorName,
-            task.run_id,
-          )
-          log(`task:posted id=${taskId} channel=${task.channel_id}`)
-        } catch (postErr) {
-          log(`task:post-failed id=${taskId} channel=${task.channel_id} error=${rememberError(postErr)}`)
-        }
+    if (result.type === 'failed' && task.channel_id && isChannelNotifiableFailure(result.error)) {
+      try {
+        await postChannelMessage(
+          baseUrl,
+          workspaceId,
+          jwt,
+          task.channel_id,
+          buildChannelFailureMessage(result.error),
+          authorName,
+          task.run_id,
+        )
+        log(`task:failure-posted id=${taskId} channel=${task.channel_id}`)
+        taskLog('task:failure-posted', taskId, { channel: task.channel_id })
+      } catch (postErr) {
+        log(`task:failure-post-failed id=${taskId} channel=${task.channel_id} error=${rememberError(postErr)}`)
       }
     }
 
@@ -447,25 +378,7 @@ export async function pollAndRun(ctx: WorkerCtx): Promise<void> {
 
   log(`poll:got count=${events.length}`)
   for (const event of events) {
-    let task = inboxEventToTask(event, state.guideContent)
-    if (event.channel_id) {
-      try {
-        const [channel, messages] = await Promise.all([
-          fetchChannel(baseUrl, workspaceId, jwt, event.channel_id),
-          fetchChannelMessages(baseUrl, workspaceId, jwt, event.channel_id),
-        ])
-        const objectiveChain = channel.objective_id
-          ? await fetchObjectiveChain(baseUrl, workspaceId, jwt, channel.objective_id).catch(() => [])
-          : []
-        task = {
-          ...task,
-          user_prompt: formatChannelSyncPrompt(event, channel, messages, objectiveChain),
-        }
-        log(`poll:channel-sync channel=${event.channel_id} messages=${messages.length} objectives=${objectiveChain.length}`)
-      } catch (channelErr) {
-        log(`poll:channel-sync-failed channel=${event.channel_id} error=${rememberError(channelErr)}`)
-      }
-    }
+    const task = inboxEventToTask(event, state.guideContent)
     // Store delivery_id on agent_key for retrieval in runClaimedTask.
     task.agent_key = event.delivery_id ?? undefined
     await runClaimedTask(ctx, task)

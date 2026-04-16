@@ -14,8 +14,8 @@ from modules.assets.backend.knowledge_models import KnowledgeFile, KnowledgeFold
 from modules.assets.backend.knowledge_suggestions import generate_suggestions
 from modules.assets.backend.storage import get_storage_adapter
 from modules.communication.backend.channels_models import Channel, ChannelAssetBinding
-from modules.workflows.backend.graphs_models import Graph
-from modules.workflows.backend.runs_models import Run
+from modules.workflows.backend.graphs.models import Graph
+from modules.workflows.backend.runs.models import Run
 
 from .projects_models import Objective, Project, ProjectStatusUpdate
 from .projects_schemas import (

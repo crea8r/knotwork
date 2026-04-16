@@ -9,6 +9,9 @@ import EmptyState from '@ui/components/EmptyState'
 const DEV_WORKSPACE = import.meta.env.VITE_DEV_WORKSPACE_ID ?? 'dev-workspace'
 
 function inboxTarget(item: import('@data-models').InboxItem) {
+  if ((item.item_type === 'mentioned_message' || item.item_type === 'task_assigned' || item.item_type === 'message_posted') && item.run_id) {
+    return `/runs/${item.run_id}`
+  }
   if (item.asset_type === 'workflow' && item.asset_id) {
     const params = new URLSearchParams()
     params.set('chat', '1')

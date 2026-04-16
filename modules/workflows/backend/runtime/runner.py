@@ -15,8 +15,8 @@ logger = logging.getLogger(__name__)
 
 async def _load_run_definition(run_id: str) -> tuple | None:
     from libs.database import AsyncSessionLocal
-    from modules.workflows.backend.graphs_models import GraphVersion
-    from modules.workflows.backend.runs_models import Run
+    from modules.workflows.backend.graphs.models import GraphVersion
+    from modules.workflows.backend.runs.models import Run
 
     async with AsyncSessionLocal() as db:
         run = await db.get(Run, run_id)
@@ -53,8 +53,8 @@ async def _update_run_status(
     from datetime import datetime, timezone
     from libs.database import AsyncSessionLocal
     from core.api import channels as core_channels
-    from modules.workflows.backend.runs_models import Run
-    from modules.workflows.backend.public_workflows_service import notify_public_run_completion
+    from modules.workflows.backend.runs.models import Run
+    from modules.workflows.backend.public_workflows.service import notify_public_run_completion
 
     async with AsyncSessionLocal() as db:
         run = await db.get(Run, run_id)
@@ -82,7 +82,7 @@ async def execute_run(run_id: str) -> None:
     """Drive a queued run to completion or until interrupted by a checkpoint."""
     from datetime import datetime, timezone
     from libs.database import AsyncSessionLocal
-    from modules.workflows.backend.runs_models import Run
+    from modules.workflows.backend.runs.models import Run
     from .engine import compile_graph, _checkpointer
     from .events import publish_event
 
@@ -137,8 +137,8 @@ async def resume_run(run_id: str, resolution: dict) -> None:
     """Resume a paused run using LangGraph Command(resume=resolution)."""
     from datetime import datetime, timezone
     from libs.database import AsyncSessionLocal
-    from modules.workflows.backend.graphs_models import GraphVersion
-    from modules.workflows.backend.runs_models import Run
+    from modules.workflows.backend.graphs.models import GraphVersion
+    from modules.workflows.backend.runs.models import Run
     from .engine import compile_graph, _checkpointer
     from .events import publish_event
 
@@ -202,7 +202,7 @@ async def _persist_run_output_from_result(
 ) -> None:
     from sqlalchemy.ext.asyncio import AsyncSession
     from libs.database import AsyncSessionLocal
-    from modules.workflows.backend.runs_models import Run
+    from modules.workflows.backend.runs.models import Run
 
     final_text = _extract_current_output(result)
     if final_text is None:

@@ -50,6 +50,30 @@ def _build_participant_task_prompt(
     return "\n\n".join(section for section in sections if section.strip())
 
 
+def _build_participant_escalation_question(
+    *,
+    node_name: str,
+    config: dict,
+    retry_guidance: str | None = None,
+) -> str:
+    if retry_guidance:
+        retry_line = next((line.strip() for line in str(retry_guidance).splitlines() if line.strip()), "")
+        if retry_line:
+            return retry_line
+    question = str(config.get("question") or "").strip()
+    if question:
+        return question
+    instruction = str(config.get("system_prompt") or config.get("prompt") or "").strip()
+    if instruction:
+        first_line = next((line.strip() for line in instruction.splitlines() if line.strip()), "")
+        if first_line:
+            return first_line
+    return (
+        f"Complete '{node_name}'. "
+        "If required input is missing, ask one specific clarifying question."
+    )
+
+
 def _resolution_output_text(resolution: dict) -> str | None:
     edited = resolution.get("override_output") or resolution.get("edited_output")
     if isinstance(edited, dict):
@@ -88,12 +112,9 @@ async def _create_participant_escalation(
     recipients: list[str],
     context: dict,
 ) -> UUID:
-    from sqlalchemy import update
-
     from libs.database import AsyncSessionLocal
-    from modules.communication.backend.escalations_models import Escalation
-    from modules.communication.backend.escalations_service import create_escalation
-    from modules.workflows.backend.runs_models import RunNodeState
+    from modules.workflows.backend.runs.models import RunNodeState
+    from modules.workflows.backend.runs.human_review import create_run_escalation, supersede_open_node_escalations
 
     async with AsyncSessionLocal() as db:
         ns = await db.get(RunNodeState, ns_id)
@@ -102,19 +123,9 @@ async def _create_participant_escalation(
             ns.completed_at = datetime.now(timezone.utc)
             await db.commit()
 
-        await db.execute(
-            update(Escalation)
-            .where(Escalation.run_id == run_id, Escalation.status == "open")
-            .values(
-                status="timed_out",
-                resolution=None,
-                resolution_data={"note": "superseded_by_new_escalation", "node_id": node_id},
-                resolved_at=datetime.now(timezone.utc),
-            )
-        )
-        await db.commit()
+        await supersede_open_node_escalations(db, run_id=run_id, node_id=node_id)
 
-        esc = await create_escalation(
+        esc = await create_run_escalation(
             db,
             run_id=run_id,
             run_node_state_id=ns_id,
@@ -122,6 +133,7 @@ async def _create_participant_escalation(
             type="agent_question",
             context=context,
             assigned_to=recipients,
+            publish_event=False,
         )
         return esc.id
 
@@ -146,7 +158,7 @@ def make_agent_node(node_def: dict, outgoing_edges: list[dict] | None = None):
         from libs.participants import resolve_participant_ids
         from ..events import publish_event
         from ..knowledge_loader import KnowledgeTree, load_knowledge_tree
-        from modules.workflows.backend.runs_models import RunNodeState, RunWorklogEntry
+        from modules.workflows.backend.runs.models import RunNodeState, RunWorklogEntry
 
         run_id = str(state["run_id"])
         workspace_id = state["workspace_id"]
@@ -180,14 +192,27 @@ def make_agent_node(node_def: dict, outgoing_edges: list[dict] | None = None):
             )
 
         tree = await load_knowledge_tree(knowledge_files, workspace_id) if knowledge_files else KnowledgeTree()
+        if not operator_id or not supervisor_id:
+            raise RuntimeError(f"Node '{node_name}' requires both operator_id and supervisor_id")
         async with AsyncSessionLocal() as db:
-            recipients = await resolve_participant_ids(
+            operator_recipients = await resolve_participant_ids(
                 db,
                 UUID(workspace_id),
-                [participant_id for participant_id in [operator_id, supervisor_id] if participant_id],
+                [participant_id for participant_id in [operator_id] if participant_id],
             )
-        if not recipients:
-            raise RuntimeError(f"Node '{node_name}' has no operator or supervisor assigned")
+            supervisor_recipients = await resolve_participant_ids(
+                db,
+                UUID(workspace_id),
+                [participant_id for participant_id in [supervisor_id] if participant_id],
+            )
+        if not operator_recipients:
+            raise RuntimeError(f"Node '{node_name}' operator '{operator_id}' is not resolvable in this workspace")
+        if not supervisor_recipients:
+            raise RuntimeError(f"Node '{node_name}' supervisor '{supervisor_id}' is not resolvable in this workspace")
+        operator_participant_id = operator_recipients[0]
+        supervisor_participant_id = supervisor_recipients[0]
+        recipients = operator_recipients
+        request_target_role = "operator"
 
         retry_guidance: str | None = None
         output_text = ""
@@ -264,6 +289,32 @@ def make_agent_node(node_def: dict, outgoing_edges: list[dict] | None = None):
                         ns.input = merged
                         await db.commit()
 
+            if ns_id is None:
+                raise RuntimeError("Node state ID not set")
+
+            question_text = _build_participant_escalation_question(
+                node_name=node_name,
+                config=config,
+                retry_guidance=retry_guidance,
+            )
+            escalation_id = await _create_participant_escalation(
+                ns_id=ns_id,
+                run_id=run_id,
+                node_id=node_id,
+                workspace_id=workspace_id,
+                recipients=recipients,
+                context={
+                    "questions": [question_text],
+                    "prompt": prompt,
+                    "messages": [prompt],
+                    "node_id": node_id,
+                    "operator_id": operator_id,
+                    "supervisor_id": supervisor_id,
+                    "participant_ids": recipients,
+                },
+            )
+
+            async with AsyncSessionLocal() as db:
                 run_channel = await core_channels.get_or_create_run_channel(
                     db,
                     workspace_id=UUID(workspace_id),
@@ -278,37 +329,55 @@ def make_agent_node(node_def: dict, outgoing_edges: list[dict] | None = None):
                     data=ChannelMessageCreate(
                         role="assistant",
                         author_type="system",
-                        author_name=node_name,
-                        content=prompt,
+                        author_name=f"Workflow Orchestrator · {node_name}",
+                        content=question_text,
                         run_id=run_id,
                         node_id=node_id,
                         metadata={
-                            "kind": "node_task",
+                            "kind": "request",
+                            "request": {
+                                "type": "agent_question",
+                                "status": "open",
+                                "questions": [question_text],
+                                "context_markdown": prompt,
+                                "response_schema": {
+                                    "resolution_options": [
+                                        "accept_output",
+                                        "override_output",
+                                        "request_revision",
+                                        "abort_run",
+                                    ],
+                                    "supports_guidance": True,
+                                    "supports_answers": True,
+                                    "supports_override_output": True,
+                                    "supports_next_branch": True,
+                                },
+                                "assigned_to": recipients,
+                                "escalation_id": str(escalation_id),
+                            },
+                            "flow": {
+                                "protocol": "knotwork.orchestrated_message/v1",
+                                "from_role": "orchestrator",
+                                "from_kind": "langgraph_machine",
+                                "to_role": request_target_role,
+                                "to_participant_ids": recipients,
+                                "about": "node_input_request",
+                                "run_id": run_id,
+                                "node_id": node_id,
+                                "escalation_id": str(escalation_id),
+                            },
                             "operator_id": operator_id,
                             "supervisor_id": supervisor_id,
                             "assigned_to": recipients,
+                            "orchestrator": {
+                                "kind": "workflow",
+                                "workflow_id": str(state.get("graph_id") or ""),
+                                "run_id": run_id,
+                                "mission": "Guide the channel conversation through the workflow and request human input when needed.",
+                            },
                         },
                     ),
                 )
-
-            if ns_id is None:
-                raise RuntimeError("Node state ID not set")
-
-            escalation_id = await _create_participant_escalation(
-                ns_id=ns_id,
-                run_id=run_id,
-                node_id=node_id,
-                workspace_id=workspace_id,
-                recipients=recipients,
-                context={
-                    "questions": [prompt],
-                    "prompt": prompt,
-                    "node_id": node_id,
-                    "operator_id": operator_id,
-                    "supervisor_id": supervisor_id,
-                    "participant_ids": recipients,
-                },
-            )
 
             await publish_event(state["run_id"], {"type": "escalation_created", "node_id": node_id})
             resolution = interrupt({
@@ -333,7 +402,34 @@ def make_agent_node(node_def: dict, outgoing_edges: list[dict] | None = None):
                     output_text = resolved_text
                     break
 
-                retry_guidance = resolved_text or "Please provide the task output directly."
+                actor_participant_id = str(resolution.get("actor_participant_id") or "").strip()
+                inferred_actor_role = request_target_role
+                if actor_participant_id == operator_participant_id:
+                    inferred_actor_role = "operator"
+                elif actor_participant_id == supervisor_participant_id:
+                    inferred_actor_role = "supervisor"
+
+                if resolution_type == "request_revision":
+                    if inferred_actor_role == "operator":
+                        # Operator requested supervision.
+                        recipients = supervisor_recipients
+                        request_target_role = "supervisor"
+                        retry_guidance = (
+                            resolved_text
+                            or "Operator requested supervision. Provide a decisive review instruction."
+                        )
+                        continue
+                    if inferred_actor_role == "supervisor":
+                        # Supervisor requested operator rework.
+                        recipients = operator_recipients
+                        request_target_role = "operator"
+                        retry_guidance = (
+                            resolved_text
+                            or "Supervisor requested revision. Rework and return decisive output."
+                        )
+                        continue
+
+                retry_guidance = resolved_text or "Please provide decisive task output."
                 continue
 
             raise RuntimeError("Run resumed with unsupported participant resolution")

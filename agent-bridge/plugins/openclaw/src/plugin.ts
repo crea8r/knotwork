@@ -5,7 +5,7 @@
 import { mkdir, writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
-import { getConfig, getGatewayConfig } from './openclaw/bridge'
+import { getConfig, getGatewayConfig, getSemanticSessionsDir, getSemanticTaskLogPath } from './openclaw/bridge'
 import { runAuth, recoverAuth as _recoverAuth } from './lifecycle/auth'
 import type { TimerRef } from './lifecycle/auth'
 import { pollAndRun as _pollAndRun, runClaimedTask as _runClaimedTask } from './lifecycle/worker'
@@ -19,12 +19,12 @@ import type { ExecutionTask, OpenClawApi, PluginState } from './types'
 const PLUGIN_ID = 'knotwork-bridge'
 const STATE_FILE = 'knotwork-bridge-state.json'
 const RUNTIME_LOCK_FILE = 'runtime.lock'
-const TASK_LOG_FILE = 'tasks.log'
-
 export function activate(api: OpenClawApi): void {
+  const cfg = getConfig(api)
+  const debugEnabled = Boolean(cfg.semanticProtocolDebug)
   const activationContext = detectActivationContext()
   const pid = process?.pid ?? null
-  const startupTaskLog = createTaskLogger(join(__dirname, '..', TASK_LOG_FILE))
+  const startupTaskLog = createTaskLogger(getSemanticTaskLogPath(cfg), debugEnabled)
   const apiKeys = Object.keys((api ?? {}) as object).join(',')
   const hasRegisterGatewayMethod = typeof api?.registerGatewayMethod === 'function'
   const hasSubagentRun = typeof (api as any)?.runtime?.subagent?.run === 'function'
@@ -45,9 +45,12 @@ export function activate(api: OpenClawApi): void {
   // For CLI gateway calls (subprocess invocation), register RPC methods with a
   // minimal context — credentials come in via SubprocessParams, not persisted state.
   if (activationContext === 'cli_gateway_call') {
-    console.log(`[${PLUGIN_ID}] activate() cli_gateway_call pid=${pid ?? 'unknown'} — registering RPC methods only`)
+    if (debugEnabled) {
+      console.log(`[${PLUGIN_ID}] activate() cli_gateway_call pid=${pid ?? 'unknown'} — registering RPC methods only`)
+    }
     const logs: string[] = []
     function log(msg: string): void {
+      if (!debugEnabled) return
       const line = `${new Date().toISOString()} ${msg}`
       logs.push(line)
       console.log(`[${PLUGIN_ID}] ${line}`)
@@ -84,7 +87,9 @@ export function activate(api: OpenClawApi): void {
     return
   }
 
-  console.log(`[${PLUGIN_ID}] activate() ${activationContext} pid=${pid ?? 'unknown'} hasRegisterGatewayMethod=${hasRegisterGatewayMethod} hasSubagentRun=${hasSubagentRun}`)
+  if (debugEnabled) {
+    console.log(`[${PLUGIN_ID}] activate() ${activationContext} pid=${pid ?? 'unknown'} hasRegisterGatewayMethod=${hasRegisterGatewayMethod} hasSubagentRun=${hasSubagentRun}`)
+  }
   startupLog('activate')
 
   let stateHydrated = false
@@ -105,11 +110,12 @@ export function activate(api: OpenClawApi): void {
   function getHomeDir(): string { try { return homedir() } catch { return process?.env?.HOME || '.' } }
   function getStateFilePath(): string { return join(getHomeDir(), '.openclaw', STATE_FILE) }
   function getRuntimeLockPath(): string { return join(__dirname, RUNTIME_LOCK_FILE) }
-  function getTaskLogPath(): string { return join(__dirname, '..', TASK_LOG_FILE) }
+  function getTaskLogPath(): string { return getSemanticTaskLogPath(cfg) }
   const taskLogPath = getTaskLogPath()
-  const taskLog = createTaskLogger(taskLogPath)
+  const taskLog = createTaskLogger(taskLogPath, debugEnabled)
 
   function log(msg: string): void {
+    if (!debugEnabled) return
     const line = `${new Date().toISOString()} ${msg}`
     state.logs = [...state.logs, line].slice(-200)
     console.log(`[${PLUGIN_ID}] ${line}`)
@@ -179,7 +185,6 @@ export function activate(api: OpenClawApi): void {
     return
   }
 
-  const cfg = getConfig(api)
   const { port, token } = getGatewayConfig(api)
   log(`gateway: ws://127.0.0.1:${port}/ tokenPresent=${token !== null}`)
 

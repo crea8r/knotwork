@@ -8,13 +8,12 @@ interface Params {
   runStatus: string | undefined
   refetchRun: () => void
   refetchNodes: () => void
-  refetchEscalations: () => void
   refetchRunMessages: () => void
 }
 
 /** Opens a WebSocket for a run and wires refetch callbacks. Returns live connection state. */
 export function useRunWebSocket({
-  runId, runStatus, refetchRun, refetchNodes, refetchEscalations, refetchRunMessages,
+  runId, runStatus, refetchRun, refetchNodes, refetchRunMessages,
 }: Params): boolean {
   const [wsConnected, setWsConnected] = useState(false)
 
@@ -27,13 +26,12 @@ export function useRunWebSocket({
       try {
         const e = JSON.parse(ev.data as string)
         if (e.type === 'node_completed' || e.type === 'escalation_created') refetchNodes()
-        if (e.type === 'escalation_created' || e.type === 'escalation_resolved') refetchEscalations()
         if (e.type === 'run_status_changed' || e.type === 'escalation_resolved') refetchRun()
         if (['node_completed', 'run_status_changed', 'escalation_created', 'escalation_resolved'].includes(e.type)) refetchRunMessages()
       } catch { /* ignore */ }
     }
     return () => { ws.close() }
-  }, [runId, runStatus, refetchRun, refetchNodes, refetchEscalations, refetchRunMessages])
+  }, [runId, runStatus, refetchRun, refetchNodes, refetchRunMessages])
 
   return wsConnected
 }

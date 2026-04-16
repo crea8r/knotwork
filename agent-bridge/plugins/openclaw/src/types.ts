@@ -41,6 +41,7 @@ export type PluginConfig = {
   semanticActionProtocolEnabled?: boolean
   semanticActionStrictMode?: boolean
   knotworkTransportMode?: 'rest' | 'mcp'
+  semanticProtocolDebug?: boolean
 }
 
 export type RemoteTool = {
@@ -70,6 +71,10 @@ export type InboxEvent = {
   channel_id: string | null
   escalation_id: string | null
   proposal_id: string | null
+  message_id?: string | null
+  asset_type?: 'workflow' | 'run' | 'file' | 'folder' | null
+  asset_id?: string | null
+  asset_path?: string | null
   unread: boolean
   created_at: string
 }
@@ -165,6 +170,184 @@ export type WorkspaceMemberInfo = {
   contribution_brief: string | null
   joined_at: string
   access_disabled_at: string | null
+}
+
+export type MCPContractRef = {
+  id: string
+  checksum: string
+  title: string
+  owning_module: string
+  allowed_actions: string[]
+  context_sections: string[]
+  instructions: string[]
+}
+
+export type MCPContractManifest = MCPContractRef & {
+  markdown: string
+  session_types: string[]
+  actions: Array<{
+    name: string
+    description: string
+    kind: 'read' | 'write' | 'control'
+    visibility?: 'initial' | 'on_demand' | null
+    context_section?: string | null
+    target_schema: Record<string, unknown>
+    payload_schema: Record<string, unknown>
+    output_schema?: Record<string, unknown> | null
+  }>
+  examples?: Array<{ summary: string; action: Record<string, unknown> }>
+}
+
+export type WorkPacket = {
+  version: 'knotwork.mcp/v1'
+  task_id: string
+  session_type: string
+  trigger: {
+    type: string
+    title?: string | null
+    subtitle?: string | null
+  }
+  mcp_contract: MCPContractRef
+  task_focus: {
+    mode: string
+    immediate_instruction?: string | null
+    preferred_actions: string[]
+    strict_scope: boolean
+    mode_instructions: string[]
+  }
+  workspace: {
+    id: string
+    name: string
+  }
+  agent: {
+    member_id: string
+    participant_id: string
+    name: string
+    role: string
+    kind: string
+    contribution_brief?: string | null
+    availability_status: string
+    capacity_level: string
+  }
+  refs: {
+    channel_id?: string | null
+    objective_id?: string | null
+    graph_id?: string | null
+    run_id?: string | null
+    escalation_id?: string | null
+    proposal_id?: string | null
+  }
+  continuation_key: {
+    kind: string
+    id: string
+  }
+  allowed_actions: string[]
+  work_policy: {
+    response_mode: string
+    prefer_small_next_action: boolean
+    explore_before_large_changes: boolean
+    instructions: string[]
+  }
+  message_response_policy?: {
+    decision: 'must_answer' | 'must_noop' | 'model_decides'
+    reason: string
+    trigger_message_id: string | null
+    directly_mentioned_self: boolean
+    mentioned_other_participant_ids: string[]
+    mentioned_participant_ids: string[]
+    assigned_participant_ids?: string[]
+    addressed_to_self?: boolean
+    recently_involved: boolean
+  } | null
+  channel_summary?: {
+    id: string
+    name: string
+    slug: string
+    channel_type: string
+    participant_count: number
+    asset_count: number
+  } | null
+  trigger_message?: {
+    id: string
+    created_at: string | null
+    role: string
+    author_type: string
+    author_name: string | null
+    content: string
+    metadata?: Record<string, unknown>
+  } | null
+  recent_messages: Array<{
+    id: string
+    created_at: string | null
+    role: string
+    author_type: string
+    author_name: string | null
+    content: string
+    metadata?: Record<string, unknown>
+  }>
+  participants: Array<{
+    participant_id: string
+    display_name: string
+    kind: string
+    mention_handle?: string | null
+    contribution_brief?: string | null
+    availability_status: string
+    capacity_level: string
+    subscribed: boolean
+  }>
+  asset_summaries: Array<{
+    asset_type: string
+    asset_id: string
+    display_name: string
+    path?: string | null
+    status?: string | null
+  }>
+  primary_subject?: {
+    kind: string
+    id: string
+    label: string
+    path?: string | null
+  } | null
+  objective_chain: Array<{
+    id: string
+    title: string
+    code?: string | null
+    status: string
+    progress_percent: number
+    status_summary?: string | null
+  }>
+  graph_summary?: {
+    id: string
+    name: string
+    path: string
+    status: string
+    default_model?: string | null
+    has_root_draft: boolean
+  } | null
+  run_summary?: {
+    id: string
+    status: string
+    trigger: string
+    name?: string | null
+    created_at?: string | null
+  } | null
+  escalation_summary?: {
+    id: string
+    type: string
+    status: string
+  } | null
+  request_summary?: {
+    message_id: string
+    type: string
+    status: string
+    questions: string[]
+    assigned_to?: string[]
+    response_schema?: Record<string, unknown>
+    flow?: Record<string, unknown> | null
+  } | null
+  request_context?: string | null
+  context_hints: Array<{ kind: string; value: string }>
+  legacy_task_context?: string | null
 }
 
 export type ParticipantInfo = {
@@ -321,6 +504,10 @@ export type TaskTrigger = {
   run_id?: string | null
   escalation_id?: string | null
   proposal_id?: string | null
+  message_id?: string | null
+  asset_type?: 'workflow' | 'run' | 'file' | 'folder' | null
+  asset_id?: string | null
+  asset_path?: string | null
   title?: string | null
   subtitle?: string | null
 }

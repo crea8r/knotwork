@@ -1,92 +1,14 @@
-import type { TaskTrigger } from '../types'
-import type { SemanticCapabilitySnapshot, SemanticThinkingContext } from '../transport/contracts'
+import type { MCPContractManifest, TaskTrigger, WorkPacket } from '../types'
+import type { SemanticCapabilitySnapshot } from '../transport/contracts'
 
 export type ActionProtocolVersion = 'knotwork.action/v1'
 
-export type ActionBase<TType extends string, TTarget, TPayload> = {
+export type ActionItem = {
   action_id: string
-  type: TType
-  target: TTarget
-  payload: TPayload
+  type: string
+  target: Record<string, unknown>
+  payload: Record<string, unknown>
 }
-
-export type ChannelPostMessageAction = ActionBase<
-  'channel.post_message',
-  { channel_id: string },
-  {
-    content: string
-    author_name?: string
-    run_id?: string | null
-  }
->
-
-export type ControlNoopAction = ActionBase<
-  'control.noop',
-  Record<string, never>,
-  { reason: string }
->
-
-export type ControlFailAction = ActionBase<
-  'control.fail',
-  Record<string, never>,
-  { reason: string }
->
-
-export type EscalationResolveAction = ActionBase<
-  'escalation.resolve',
-  { escalation_id: string },
-  {
-    resolution: 'accept_output' | 'override_output' | 'request_revision' | 'abort_run'
-    guidance?: string
-    override_output?: Record<string, unknown> | null
-    next_branch?: string | null
-    answers?: string[] | null
-    channel_id?: string | null
-  }
->
-
-export type KnowledgeProposeChangeAction = ActionBase<
-  'knowledge.propose_change',
-  { path: string },
-  {
-    proposed_content: string
-    reason: string
-    run_id?: string
-    node_id?: string
-    agent_ref?: string | null
-    source_channel_id?: string | null
-    action_type?: string
-    target_type?: string
-    payload?: Record<string, unknown>
-  }
->
-
-export type GraphUpdateRootDraftAction = ActionBase<
-  'graph.update_root_draft',
-  { graph_id: string },
-  {
-    definition: Record<string, unknown>
-    note?: string | null
-  }
->
-
-export type GraphApplyDeltaAction = ActionBase<
-  'graph.apply_delta',
-  { graph_id: string },
-  {
-    delta: Record<string, unknown>
-    note?: string | null
-  }
->
-
-export type ActionItem =
-  | ChannelPostMessageAction
-  | EscalationResolveAction
-  | KnowledgeProposeChangeAction
-  | GraphUpdateRootDraftAction
-  | GraphApplyDeltaAction
-  | ControlNoopAction
-  | ControlFailAction
 
 export type ActionEnvelope = {
   protocol_version: ActionProtocolVersion
@@ -117,7 +39,7 @@ export type ActionResult = {
   status: 'applied' | 'rejected' | 'failed' | 'skipped'
   reason?: string
   effect_ref?: {
-    kind: 'channel_message'
+    kind: string
     id: string
   }
 }
@@ -132,8 +54,6 @@ export type SemanticTask = {
   taskId: string
   channelId?: string
   sessionName?: string
-  systemPrompt?: string
-  legacyUserPrompt?: string
   runId?: string | null
   trigger: TaskTrigger
 }
@@ -141,5 +61,5 @@ export type SemanticTask = {
 export type SemanticPreparedInput = {
   task: SemanticTask
   capabilities: SemanticCapabilitySnapshot
-  context: SemanticThinkingContext
+  workPacket: WorkPacket & { mcp_contract: MCPContractManifest }
 }

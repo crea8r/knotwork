@@ -1,11 +1,10 @@
-// session.ts — Session execution: send message, wait for completion, parse output.
+// session.ts — Session execution for semantic thinking turns.
 // Uses api.runtime.subagent (injected by OpenClaw when plugin exports default register).
 // create_session: implicit — OpenClaw auto-creates on first subagent.run call.
 // send_message:   subagent.run({ sessionKey, message, extraSystemPrompt, idempotencyKey })
 // sync_session:   subagent.waitForRun({ runId }) -> subagent.getSessionMessages({ sessionKey })
-// completion:     agent ends final message with ```json-decision block (confident|escalate)
 
-import type { ExecutionTask, LooseRecord, OpenClawApi, TaskResult } from '../types'
+import type { ExecutionTask, LooseRecord, OpenClawApi } from '../types'
 
 const AGENT_WAIT_TIMEOUT_MS = 900_000
 
@@ -67,44 +66,6 @@ export type RawTaskResult =
   | { type: 'completed'; output: string }
   | { type: 'failed'; error: string }
 
-// Parse the agent's structured ```json-decision block from the end of its final message.
-// Returns a TaskResult if the block is present and valid; null if absent
-// (treated as a confident completion by the caller).
-function parseDecisionBlock(text: string): TaskResult | null {
-  const FENCE = '```json-decision'
-  const lastFence = text.lastIndexOf(FENCE)
-  if (lastFence === -1) return null
-  const newline = text.indexOf('\n', lastFence)
-  if (newline === -1) return null
-  const closeFence = text.indexOf('```', newline + 1)
-  if (closeFence === -1) return null
-  const jsonStr = text.slice(newline + 1, closeFence).trim()
-  let d: LooseRecord
-  try { d = JSON.parse(jsonStr) as LooseRecord } catch { return null }
-  if (d.decision === 'escalate') {
-    const message = text.slice(0, lastFence).trim()
-    // Support questions array or legacy single question
-    let questions: string[] = []
-    if (Array.isArray(d.questions) && d.questions.length > 0) {
-      questions = (d.questions as unknown[]).map((q) => String(q).trim()).filter(Boolean)
-    } else if (typeof d.question === 'string' && d.question.trim()) {
-      questions = [d.question.trim()]
-    }
-    if (questions.length === 0) questions = ['Need human input']
-    return {
-      type: 'escalation',
-      questions,
-      options: Array.isArray(d.options) ? (d.options as string[]) : [],
-      message: message || undefined,
-    }
-  }
-  const rawOutput = typeof d.output === 'string' ? d.output.trim() : ''
-  const output = rawOutput || text.slice(0, lastFence).trim()
-  const next_branch = typeof d.next_branch === 'string' ? d.next_branch : null
-  return { type: 'completed', output, next_branch }
-}
-
-
 export async function executeTaskRaw(api: OpenClawApi, task: ExecutionTask): Promise<RawTaskResult> {
   const taskId = String(task.task_id ?? '')
   if (!taskId) throw new Error('task missing task_id')
@@ -151,12 +112,6 @@ export async function executeTaskRaw(api: OpenClawApi, task: ExecutionTask): Pro
     return { type: 'failed', error: `agent timed out after ${Math.floor(AGENT_WAIT_TIMEOUT_MS / 1000)}s [runId: ${runId}] [sessionKey: ${sKey}]` }
   }
   return { type: 'failed', error: `unexpected wait status: ${status} [runId: ${runId}] [sessionKey: ${sKey}]` }
-}
-
-export async function executeTask(api: OpenClawApi, task: ExecutionTask): Promise<TaskResult> {
-  const raw = await executeTaskRaw(api, task)
-  if (raw.type === 'failed') return raw
-  return parseDecisionBlock(raw.output) ?? { type: 'completed', output: raw.output, next_branch: null }
 }
 
 export async function verifyGatewayOperatorScopes(api: OpenClawApi): Promise<void> {
