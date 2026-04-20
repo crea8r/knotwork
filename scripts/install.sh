@@ -64,11 +64,27 @@ is_valid_email() {
 }
 
 is_valid_domain() {
-  local d="$1"
-  if [[ "$d" == "localhost" ]]; then
-    return 0
-  fi
-  [[ "$d" =~ ^[A-Za-z0-9.-]+$ ]] && [[ "$d" == *.* ]]
+  python3 - "$1" <<'PY'
+import re
+import sys
+
+domain = sys.argv[1].strip()
+if domain == "localhost":
+    raise SystemExit(0)
+if not domain or len(domain) > 253:
+    raise SystemExit(1)
+if domain.startswith(".") or domain.endswith(".") or ".." in domain:
+    raise SystemExit(1)
+if not re.fullmatch(r"[A-Za-z0-9.-]+", domain):
+    raise SystemExit(1)
+labels = domain.split(".")
+if len(labels) < 2:
+    raise SystemExit(1)
+if not re.fullmatch(r"[A-Za-z][A-Za-z0-9-]{1,62}", labels[-1]):
+    raise SystemExit(1)
+label_pattern = re.compile(r"[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?")
+raise SystemExit(0 if all(label_pattern.fullmatch(label or "") for label in labels) else 1)
+PY
 }
 
 is_valid_port() {

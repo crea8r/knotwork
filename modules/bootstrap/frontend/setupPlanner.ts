@@ -8,7 +8,19 @@ export function isValidEmail(value: string) {
 export function isValidDomain(value: string) {
   const trimmed = value.trim()
   if (trimmed === 'localhost') return true
-  return /^[A-Za-z0-9.-]+$/.test(trimmed) && trimmed.includes('.')
+  if (!trimmed || trimmed.length > 253) return false
+  if (trimmed.startsWith('.') || trimmed.endsWith('.')) return false
+  if (trimmed.includes('..')) return false
+  if (!/^[A-Za-z0-9.-]+$/.test(trimmed)) return false
+
+  const labels = trimmed.split('.')
+  if (labels.length < 2) return false
+  if (!/^[A-Za-z][A-Za-z0-9-]{1,62}$/.test(labels[labels.length - 1])) return false
+
+  return labels.every((label) => {
+    if (!label || label.length > 63) return false
+    return /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?$/.test(label)
+  })
 }
 
 export function isValidPort(value: string) {
