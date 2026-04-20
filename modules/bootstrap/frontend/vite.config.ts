@@ -29,6 +29,12 @@ export default defineConfig({
   },
   server: {
     port: parseInt(process.env.PORT ?? '3000'),
+    proxy: {
+      '/api/v1': {
+        target: process.env.BOOTSTRAP_BACKEND_PROXY_URL ?? 'http://127.0.0.1:8010',
+        changeOrigin: true,
+      },
+    },
     fs: {
       allow: [path.resolve(__dirname, '../../..')],
     },

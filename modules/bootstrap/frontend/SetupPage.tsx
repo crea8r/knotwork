@@ -39,7 +39,7 @@ type InstallField =
   | 'resendApi'
   | 'emailFrom'
 
-type UninstallField = 'backupDir'
+type UninstallField = 'installDir' | 'backupDir'
 
 type TouchedMap<K extends string> = Partial<Record<K, boolean>>
 
@@ -762,6 +762,15 @@ export default function SetupPage() {
     lastCompletedRunRefreshRef.current = signature
   }, [currentRun, installDir, refetchInstallDetection])
 
+  useEffect(() => {
+    if (!restoreBackupPath) return
+    if (!backupsData) return
+    const selectedBackup = backups.find((backup) => backup.path === restoreBackupPath)
+    if (!selectedBackup || selectedBackup.stale) {
+      setRestoreBackupPath('')
+    }
+  }, [backups, backupsData, restoreBackupPath])
+
   const installErrors = useMemo(() => {
     const errors: Partial<Record<InstallField, string>> = {}
 
@@ -839,9 +848,10 @@ export default function SetupPage() {
 
   const uninstallErrors = useMemo(() => {
     const errors: Partial<Record<UninstallField, string>> = {}
+    if (!installDir.trim()) errors.installDir = 'Choose the installation directory to uninstall.'
     if (createBackup && !backupDir.trim()) errors.backupDir = 'Backup directory is required.'
     return errors
-  }, [backupDir, createBackup])
+  }, [backupDir, createBackup, installDir])
 
   const showInstallError = (field: InstallField) => Boolean((installAttempted || installTouched[field]) && installErrors[field])
   const showUninstallError = (field: UninstallField) => Boolean((uninstallAttempted || uninstallTouched[field]) && uninstallErrors[field])
@@ -953,7 +963,7 @@ export default function SetupPage() {
   async function runUninstall() {
     setUninstallAttempted(true)
     if (Object.keys(uninstallErrors).length > 0) {
-      const firstError: UninstallField | undefined = uninstallErrors.backupDir ? 'backupDir' : undefined
+      const firstError: UninstallField | undefined = uninstallErrors.installDir ? 'installDir' : uninstallErrors.backupDir ? 'backupDir' : undefined
       if (firstError) scrollToField(firstError)
       return
     }
@@ -1619,6 +1629,46 @@ export default function SetupPage() {
                     </div>
                   ) : null}
 
+                  <FormSection
+                    title="Installation directory"
+                    description="Choose the Knotwork instance directory that should be removed. The wizard will not scan the whole machine."
+                  >
+                    <div ref={(node) => registerFieldRef('installDir', node)}>
+                      <TextField
+                        label="Installation directory"
+                        required
+                        value={installDir}
+                        onChange={setInstallDir}
+                        onBlur={() => setUninstallTouched((s) => ({ ...s, installDir: true }))}
+                        error={showUninstallError('installDir') ? uninstallErrors.installDir : undefined}
+                        action={
+                          <>
+                            <input
+                              ref={installDirectoryInputRef}
+                              type="file"
+                              className="hidden"
+                              onChange={handleDirectoryInputChange}
+                            />
+                            <Btn size="sm" variant="secondary" type="button" onClick={() => handleDirectoryPick('install')} className="w-full sm:w-auto">
+                              <FolderOpen size={14} />
+                              Choose Folder
+                            </Btn>
+                          </>
+                        }
+                      />
+                      {installDetection?.install_markers?.length ? (
+                        <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-3">
+                          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Detected markers</p>
+                          <div className="mt-2 flex flex-wrap gap-2">
+                            {installDetection.install_markers.map((marker) => (
+                              <ToneChip key={marker} tone="neutral">{marker}</ToneChip>
+                            ))}
+                          </div>
+                        </div>
+                      ) : null}
+                    </div>
+                  </FormSection>
+
                   <div className="grid gap-4 md:grid-cols-2">
                     <div className="rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3">
                       <label className="flex items-start gap-3 text-sm text-gray-800">
@@ -1717,6 +1767,9 @@ export default function SetupPage() {
                             disabled={backupDeleteSelection.length === 0}
                             loading={deleteBackups.isPending}
                             onClick={async () => {
+                              if (backupDeleteSelection.includes(restoreBackupPath)) {
+                                setRestoreBackupPath('')
+                              }
                               await deleteBackups.mutateAsync(backupDeleteSelection)
                               setBackupDeleteSelection([])
                               await refetchBackups()

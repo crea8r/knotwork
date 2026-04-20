@@ -3,10 +3,26 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BOOTSTRAP_DIR="$ROOT_DIR/tmp/setup-wizard"
+DEFAULT_BACKEND_BIND="0.0.0.0"
+DEFAULT_FRONTEND_BIND="0.0.0.0"
+if [[ "$(uname -s)" == "Darwin" ]]; then
+  DEFAULT_BACKEND_BIND="127.0.0.1"
+  DEFAULT_FRONTEND_BIND="127.0.0.1"
+fi
+BACKEND_BIND="${BOOTSTRAP_BACKEND_BIND:-$DEFAULT_BACKEND_BIND}"
 BACKEND_PORT="${BOOTSTRAP_BACKEND_PORT:-8010}"
+FRONTEND_BIND="${BOOTSTRAP_FRONTEND_BIND:-$DEFAULT_FRONTEND_BIND}"
 FRONTEND_PORT="${BOOTSTRAP_FRONTEND_PORT:-3010}"
 BACKEND_URL="http://127.0.0.1:${BACKEND_PORT}"
-FRONTEND_URL="http://127.0.0.1:${FRONTEND_PORT}"
+FRONTEND_URL_HOST="$FRONTEND_BIND"
+if [[ "$FRONTEND_URL_HOST" == "0.0.0.0" || "$FRONTEND_URL_HOST" == "::" ]]; then
+  FRONTEND_URL_HOST="127.0.0.1"
+fi
+if [[ "$FRONTEND_PORT" == "80" ]]; then
+  FRONTEND_URL="http://${FRONTEND_URL_HOST}"
+else
+  FRONTEND_URL="http://${FRONTEND_URL_HOST}:${FRONTEND_PORT}"
+fi
 API_URL="${BACKEND_URL}/api/v1"
 DEFAULT_WIZARD_INSTALL_DIR="${BOOTSTRAP_DEFAULT_INSTALL_DIR:-~/.knotwork}"
 BACKEND_LOG="$BOOTSTRAP_DIR/backend.log"
@@ -32,12 +48,19 @@ require_cmd() {
 
 ensure_dirs() {
   mkdir -p "$BOOTSTRAP_DIR"
+  export BOOTSTRAP_FRONTEND_BIND="$FRONTEND_BIND"
+  export BOOTSTRAP_FRONTEND_PORT="$FRONTEND_PORT"
+  export BOOTSTRAP_BACKEND_BIND="$BACKEND_BIND"
+  export BOOTSTRAP_BACKEND_PORT="$BACKEND_PORT"
   cat > "$BOOTSTRAP_ENV" <<EOF
+BOOTSTRAP_BACKEND_BIND=${BACKEND_BIND}
 BOOTSTRAP_BACKEND_PORT=${BACKEND_PORT}
+BOOTSTRAP_FRONTEND_BIND=${FRONTEND_BIND}
 BOOTSTRAP_FRONTEND_PORT=${FRONTEND_PORT}
 BOOTSTRAP_BACKEND_URL=${BACKEND_URL}
 BOOTSTRAP_FRONTEND_URL=${FRONTEND_URL}
 BOOTSTRAP_API_URL=${API_URL}
+BOOTSTRAP_BACKEND_PROXY_URL=http://host.docker.internal:${BACKEND_PORT}
 BOOTSTRAP_NETWORK=${BOOTSTRAP_NETWORK}
 BOOTSTRAP_FRONTEND_MODE=
 EOF
@@ -63,6 +86,27 @@ port_pid() {
     return 0
   fi
   return 1
+}
+
+server_lan_ip() {
+  if command -v hostname >/dev/null 2>&1; then
+    local ip
+    ip="$(hostname -I 2>/dev/null | awk '{print $1}' || true)"
+    if [[ -n "$ip" ]]; then
+      printf '%s\n' "$ip"
+      return
+    fi
+  fi
+  echo ""
+}
+
+format_wizard_url() {
+  local host="$1"
+  if [[ "$FRONTEND_PORT" == "80" ]]; then
+    printf 'http://%s/' "$host"
+  else
+    printf 'http://%s:%s/' "$host" "$FRONTEND_PORT"
+  fi
 }
 
 is_bootstrap_backend_pid() {
@@ -225,12 +269,17 @@ read_pid() {
 
 wait_for_url() {
   local url="$1"
+  local label="${2:-$url}"
+  printf "Waiting for %s" "$label"
   for _ in $(seq 1 60); do
     if curl -fsS "$url" >/dev/null 2>&1; then
+      printf " ready.\n"
       return 0
     fi
+    printf "."
     sleep 1
   done
+  printf " timed out.\n"
   return 1
 }
 
@@ -333,18 +382,24 @@ start_backend() {
   log "Starting bootstrap backend on ${BACKEND_URL}"
   (
     cd "$ROOT_DIR"
-    "$PYTHON_BIN" -m uvicorn modules.bootstrap.backend.main:app --host 127.0.0.1 --port "$BACKEND_PORT"
+    "$PYTHON_BIN" -m uvicorn modules.bootstrap.backend.main:app --host "$BACKEND_BIND" --port "$BACKEND_PORT"
   ) >"$BACKEND_LOG" 2>&1 &
   echo $! > "$BACKEND_PID_FILE"
 
-  wait_for_url "${API_URL}/setup/status" || die "Bootstrap backend did not become ready. See ${BACKEND_LOG}"
+  wait_for_url "${API_URL}/setup/status" "bootstrap backend" \
+    || die "Bootstrap backend did not become ready. See ${BACKEND_LOG}"
 }
 
 start_frontend() {
+  if port_in_use "$FRONTEND_PORT"; then
+    die "Port ${FRONTEND_PORT} is already in use, so the bootstrap wizard frontend cannot start. Stop the process using that port or rerun with a different BOOTSTRAP_FRONTEND_PORT."
+  fi
+
   log "Starting bootstrap frontend container"
   compose_cmd up -d --build >/dev/null
   sed -i.bak 's/^BOOTSTRAP_FRONTEND_MODE=.*/BOOTSTRAP_FRONTEND_MODE=docker/' "$BOOTSTRAP_ENV" && rm -f "$BOOTSTRAP_ENV.bak"
-  wait_for_url "${FRONTEND_URL}/" || die "Bootstrap frontend did not become ready. See docker compose logs"
+  wait_for_url "${FRONTEND_URL}/" "bootstrap frontend" \
+    || die "Bootstrap frontend did not become ready at ${FRONTEND_URL}/. Run: docker compose -p ${BOOTSTRAP_COMPOSE_PROJECT} -f ${BOOTSTRAP_COMPOSE_FILE} logs --tail=200 bootstrap-frontend"
 }
 
 launch_wizard() {
@@ -359,15 +414,32 @@ launch_wizard() {
     wizard_url="${FRONTEND_URL}/?mode=uninstall"
   fi
 
+  local lan_ip remote_url
+  lan_ip="$(server_lan_ip)"
+  remote_url=""
+  if [[ "$FRONTEND_BIND" == "0.0.0.0" || "$FRONTEND_BIND" == "::" ]]; then
+    if [[ -n "$lan_ip" ]]; then
+      remote_url="$(format_wizard_url "$lan_ip")"
+      if [[ "$mode" == "uninstall" ]]; then
+        remote_url="${remote_url}?mode=uninstall"
+      fi
+    fi
+  fi
+
   echo
   echo "Bootstrap runtime is ready."
   echo "Wizard URL: ${wizard_url}"
+  if [[ -n "$remote_url" ]]; then
+    echo "Remote URL on this network: ${remote_url}"
+    echo "If this is a cloud server, use the server public IP or DNS name with port ${FRONTEND_PORT}."
+  fi
   echo
   echo "Logs:"
   echo "  Backend : ${BACKEND_LOG}"
   echo "  Stack   : docker compose -p ${BOOTSTRAP_COMPOSE_PROJECT} -f ${BOOTSTRAP_COMPOSE_FILE} logs -f"
   echo
-  echo "The setup controller runs on the host so install/uninstall acts on the real machine context."
+  echo "The wizard frontend is exposed on ${FRONTEND_BIND}:${FRONTEND_PORT}; API requests are proxied to the setup controller on ${BACKEND_BIND}:${BACKEND_PORT}."
+  echo "For cloud servers, expose only the wizard frontend port unless you intentionally need direct controller access."
 }
 
 show_menu() {

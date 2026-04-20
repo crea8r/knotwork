@@ -300,6 +300,50 @@ compose_ps_running() {
   compose_cmd ps -q | grep -q .
 }
 
+docker_project_has_resources() {
+  local project network default_network
+  project="$(compose_project_name)"
+  [[ -n "$project" ]] || return 1
+  if ! docker_ready; then
+    return 1
+  fi
+
+  if docker ps -a --format '{{.Names}}' | grep -E -q "^${project}($|[-_])"; then
+    return 0
+  fi
+  if docker volume ls --format '{{.Name}}' | grep -E -q "^${project}($|[-_])"; then
+    return 0
+  fi
+
+  network="$(manifest_value network_name 2>/dev/null || true)"
+  [[ -n "$network" ]] || network="${project}-network"
+  default_network="${project}_default"
+  if docker network inspect "$network" >/dev/null 2>&1; then
+    return 0
+  fi
+  if docker network inspect "$default_network" >/dev/null 2>&1; then
+    return 0
+  fi
+
+  return 1
+}
+
+can_create_runtime_backup() {
+  if ! docker_ready; then
+    warn "Skipping backup because the Docker daemon is not reachable."
+    return 1
+  fi
+  if [[ -z "$(compose_project_name)" ]]; then
+    warn "Skipping backup because no compose project metadata was found."
+    return 1
+  fi
+  if ! docker_project_has_resources; then
+    warn "Skipping backup because the Docker runtime for this install is already gone. Runtime residue will still be removed."
+    return 1
+  fi
+  return 0
+}
+
 ensure_postgres_running() {
   log "Ensuring postgres is running for backup..."
   run_with_retry 2 3 compose_cmd up -d postgres || die "Failed to start postgres service for backup"
@@ -587,7 +631,9 @@ PY
 cleanup_public_host_artifacts() {
   local install_mode frontend_url backend_url frontend_host backend_host conf_available conf_enabled cert_name
   install_mode="$(manifest_value install_mode 2>/dev/null || true)"
-  [[ "$install_mode" == "public" ]] || return
+  if [[ "$install_mode" != "public" ]]; then
+    return 0
+  fi
 
   frontend_url="$(manifest_value frontend_url 2>/dev/null || true)"
   backend_url="$(manifest_value backend_url 2>/dev/null || true)"
@@ -650,12 +696,9 @@ main() {
 
   local backup_zip="(skipped: backup disabled)"
   if [[ "$CREATE_BACKUP" == "yes" ]]; then
-    mkdir -p "$BACKUP_DIR"
     local ts
     ts="$(date +%Y%m%d-%H%M%S)"
     backup_zip="${BACKUP_DIR}/$(project_name)-backup-${ts}.zip"
-    TEMP_DIR="$(mktemp -d)"
-    trap 'if [[ -n "${TEMP_DIR:-}" ]]; then rm -rf "$TEMP_DIR"; fi' EXIT
   fi
 
   echo "This will:"
@@ -676,9 +719,16 @@ main() {
   fi
 
   if [[ "$CREATE_BACKUP" == "yes" ]]; then
-    if ! ( create_backup_zip "$backup_zip" "$TEMP_DIR" ); then
-      warn "Backup zip creation failed; continuing uninstall without backup."
-      backup_zip="(skipped: backup creation failed)"
+    if ! can_create_runtime_backup; then
+      backup_zip="(skipped: Docker runtime already removed)"
+    else
+      mkdir -p "$BACKUP_DIR"
+      TEMP_DIR="$(mktemp -d)"
+      trap 'if [[ -n "${TEMP_DIR:-}" ]]; then rm -rf "$TEMP_DIR"; fi' EXIT
+      if ! ( create_backup_zip "$backup_zip" "$TEMP_DIR" ); then
+        warn "Backup zip creation failed; continuing uninstall without backup."
+        backup_zip="(skipped: backup creation failed)"
+      fi
     fi
   fi
   docker_cleanup
