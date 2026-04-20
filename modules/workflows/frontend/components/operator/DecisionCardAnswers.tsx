@@ -74,7 +74,6 @@ export default function DecisionCardAnswers({
 
       <textarea
         key={currentStep}
-        autoFocus
         value={currentAnswer}
         onChange={(e) => {
           const next = [...normAnswers]
@@ -140,9 +139,6 @@ export default function DecisionCardAnswers({
           Abort
         </button>
       </div>
-      {respondToMessage.isError && (
-        <p className="text-xs text-red-500">Failed to send. Please try again.</p>
-      )}
     </div>
   )
 }

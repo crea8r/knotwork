@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import axios from 'axios'
-import { ChevronDown, ChevronUp, X } from 'lucide-react'
+import { X } from 'lucide-react'
 import {
   useRun, useRunNodes, useDeleteRun, useCloneRun,
   useExecuteRunInline, useRunChatMessages, useAbortRun, useRunDefinition,
@@ -13,6 +13,7 @@ import Spinner from '@ui/components/Spinner'
 import RunInputPanel from '@modules/workflows/frontend/components/operator/RunInputPanel'
 import MessageBubble from '@modules/workflows/frontend/components/operator/MessageBubble'
 import DecisionCard from '@modules/workflows/frontend/components/operator/DecisionCard'
+import OperatorRequestWorkbench from '@modules/workflows/frontend/components/operator/OperatorRequestWorkbench'
 import RunDetailHeader from '@modules/workflows/frontend/components/operator/RunDetailHeader'
 import RunFinalResultCard from '@modules/workflows/frontend/components/operator/RunFinalResultCard'
 import RunStartInputCard from '@modules/workflows/frontend/components/operator/RunStartInputCard'
@@ -24,6 +25,7 @@ import { buildThinkingPhrases, pickRandomPhrase } from '@modules/workflows/front
 import { buildParticipantLabelMap, formatAssignedParticipants } from '@modules/workflows/frontend/lib/participantLabels'
 import { getRunFinalOutput } from '@modules/workflows/frontend/lib/runOutput'
 import { humanizeRunInput } from '@modules/workflows/frontend/lib/runInput'
+import { getRequestTargetRoleLabel, parseRequestContext } from '@modules/workflows/frontend/lib/requestContext'
 
 const DEV_WORKSPACE = import.meta.env.VITE_DEV_WORKSPACE_ID ?? 'dev-workspace'
 const ACTIVE = new Set(['queued', 'running'])
@@ -91,7 +93,7 @@ export default function RunDetailPage() {
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null)
   const [awaitingAgentAfterReply, setAwaitingAgentAfterReply] = useState(false)
   const [lockedRequestMessageId, setLockedRequestMessageId] = useState<string | null>(null)
-  const [escalationPanelCollapsed, setEscalationPanelCollapsed] = useState(false)
+  const [requestWorkbenchOpen, setRequestWorkbenchOpen] = useState(false)
   const thinkingPhrases = useMemo(() => buildThinkingPhrases(), [])
   const [thinkingText, setThinkingText] = useState(() => pickRandomPhrase(thinkingPhrases))
   const chatScrollRef = useRef<HTMLDivElement | null>(null)
@@ -155,6 +157,17 @@ export default function RunDetailPage() {
     return null
   }, [chatItems, openRequestMessageId])
   const formatAssigneeText = (assignedTo?: string[]) => formatAssignedParticipants(assignedTo, participantLabelMap)
+  const summarizeRequestContext = (markdown?: string | null) => parseRequestContext(markdown)
+  const requestActionDisabled = respondToMessage.isPending || (!!openRequestMessageId && lockedRequestMessageId === openRequestMessageId)
+
+  const handleRequestResolved = (requestMessageId?: string) => {
+    setAwaitingAgentAfterReply(true)
+    if (requestMessageId) setLockedRequestMessageId(requestMessageId)
+    setRequestWorkbenchOpen(false)
+    refetchRun()
+    refetchNodes()
+    refetchRunMessages()
+  }
 
   useEffect(() => { if (run?.status === 'running' || openRequestMessageId) setAwaitingAgentAfterReply(false) }, [run?.status, openRequestMessageId])
   useEffect(() => {
@@ -169,7 +182,14 @@ export default function RunDetailPage() {
     const t = window.setInterval(() => setThinkingText((prev) => pickRandomPhrase(thinkingPhrases, prev)), 4500)
     return () => window.clearInterval(t)
   }, [run, openRequestMessageId, thinkingPhrases])
-  useEffect(() => { setEscalationPanelCollapsed(false) }, [openRequestItem?.requestMessageId])
+  useEffect(() => {
+    if (!openRequestItem?.requestMessageId) {
+      setRequestWorkbenchOpen(false)
+      return
+    }
+    const autoOpen = window.matchMedia('(min-width: 1280px)').matches
+    setRequestWorkbenchOpen(autoOpen)
+  }, [openRequestItem?.requestMessageId])
   useEffect(() => { const el = chatScrollRef.current; if (el) el.scrollTop = el.scrollHeight }, [chatItems.length, run?.status])
 
   async function handleDelete() {
@@ -236,15 +256,17 @@ export default function RunDetailPage() {
               <div key={item.id}>
                 {item.kind === 'decision_confident' ? (
                   <DecisionCard item={item} respondToMessage={respondToMessage}
-                    disabled={respondToMessage.isPending || (!!openRequestMessageId && lockedRequestMessageId === openRequestMessageId)}
-                    onAfterResolve={() => { setAwaitingAgentAfterReply(true); if (item.requestMessageId) setLockedRequestMessageId(item.requestMessageId); refetchRun(); refetchNodes(); refetchRunMessages() }}
+                    disabled={requestActionDisabled}
+                    onAfterResolve={() => handleRequestResolved(item.requestMessageId)}
                   />
                 ) : item.kind === 'request' ? (
                   item.request?.status === 'open' && item.requestMessageId === openRequestMessageId ? null : (
                   <div className="max-w-[92%] mr-auto rounded-xl border border-amber-200 bg-amber-50/90 px-3 py-2 shadow-sm">
                     <div className="flex items-center justify-between gap-2">
                       <div className="min-w-0">
-                        <p className="text-[10px] uppercase tracking-wide text-amber-700">Operator request</p>
+                        <p className="text-[10px] uppercase tracking-wide text-amber-700">
+                          {getRequestTargetRoleLabel(item.request?.target_role)} request
+                        </p>
                         <p className="text-sm text-amber-950 truncate">
                           {`Waiting for ${formatAssigneeText(item.request?.assigned_to)} to respond.`}
                         </p>
@@ -262,14 +284,32 @@ export default function RunDetailPage() {
                         {item.request?.status ?? 'pending'}
                       </span>
                     </div>
-                    {item.preText && (
-                      <div className="mt-1.5 rounded-lg border border-amber-100 bg-white/70 px-2.5 py-1.5">
-                        <p className="text-[10px] uppercase tracking-wide text-amber-700/80">Task context</p>
-                        <p className="mt-0.5 text-xs text-amber-900/90 line-clamp-3">
-                          {item.preText.replace(/\s+/g, ' ').trim()}
-                        </p>
-                      </div>
-                    )}
+                    {(() => {
+                      const requestContext = summarizeRequestContext(item.request?.context_markdown ?? item.preText)
+                      if (!requestContext.previewText) return null
+                      return (
+                        <div className="mt-1.5 rounded-lg border border-amber-100 bg-white/70 px-2.5 py-1.5">
+                          <p className="text-[10px] uppercase tracking-wide text-amber-700/80">Task brief</p>
+                          <p className="mt-0.5 text-xs text-amber-900/90 line-clamp-3">
+                            {requestContext.previewText}
+                          </p>
+                          {requestContext.handbookEntries.length > 0 || requestContext.missingHandbookFiles.length > 0 ? (
+                            <div className="mt-1.5 flex flex-wrap gap-1">
+                              {requestContext.handbookEntries.length > 0 ? (
+                                <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] text-amber-800">
+                                  Handbook {requestContext.handbookEntries.length}
+                                </span>
+                              ) : null}
+                              {requestContext.missingHandbookFiles.length > 0 ? (
+                                <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] text-amber-800">
+                                  Missing {requestContext.missingHandbookFiles.length}
+                                </span>
+                              ) : null}
+                            </div>
+                          ) : null}
+                        </div>
+                      )
+                    })()}
                   </div>
                   )
                 ) : (
@@ -288,39 +328,52 @@ export default function RunDetailPage() {
                 onClick={endNodeId ? () => setSelectedNodeId(endNodeId) : undefined}
               />
             ) : null}
-            {openRequestItem && (
+            {openRequestItem && !requestWorkbenchOpen && (
               <div className="pointer-events-none sticky bottom-3 md:bottom-4 z-20 flex justify-center px-1 md:px-2">
                 <div className="pointer-events-auto w-full rounded-2xl border border-amber-300 bg-white/96 shadow-[0_16px_40px_rgba(0,0,0,0.18)] backdrop-blur">
-                  <button
-                    type="button"
-                    onClick={() => setEscalationPanelCollapsed((v) => !v)}
-                    className="flex w-full items-center justify-between gap-3 rounded-t-2xl px-3 py-2.5 text-left hover:bg-amber-50/70 transition-colors"
-                  >
-                    <div className="min-w-0">
-                      <p className="text-[10px] uppercase tracking-wide text-amber-700">Awaiting operator response</p>
+                  <div className="flex items-center gap-3 px-3 py-3">
+                    <div className="min-w-0 flex-1">
+                      <p className="text-[10px] uppercase tracking-wide text-amber-700">
+                        Awaiting {getRequestTargetRoleLabel(openRequestItem.request?.target_role).toLowerCase()} response
+                      </p>
                       <p className="truncate text-sm font-medium text-gray-900">
                         {openRequestItem.nodeName ? openRequestItem.nodeName : 'Active request'}
                       </p>
                       <p className="mt-0.5 truncate text-xs text-amber-900/80">
                         Assigned to: {formatAssigneeText(openRequestItem.request?.assigned_to)}
                       </p>
+                      {(() => {
+                        const requestContext = summarizeRequestContext(openRequestItem.request?.context_markdown ?? openRequestItem.preText)
+                        if (!requestContext.previewText) return null
+                        return (
+                          <>
+                            <p className="mt-1.5 line-clamp-2 text-xs text-gray-600">
+                              {requestContext.previewText}
+                            </p>
+                            <div className="mt-1.5 flex flex-wrap gap-1">
+                              {requestContext.handbookEntries.length > 0 ? (
+                                <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] text-amber-800">
+                                  Handbook {requestContext.handbookEntries.length}
+                                </span>
+                              ) : null}
+                              {requestContext.missingHandbookFiles.length > 0 ? (
+                                <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] text-amber-800">
+                                  Missing {requestContext.missingHandbookFiles.length}
+                                </span>
+                              ) : null}
+                            </div>
+                          </>
+                        )
+                      })()}
                     </div>
-                    <div className="flex items-center gap-2">
-                      <span className="shrink-0 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] text-amber-800">
-                        {openRequestItem.request?.status ?? 'open'}
-                      </span>
-                      {escalationPanelCollapsed ? <ChevronUp size={16} className="text-amber-700" /> : <ChevronDown size={16} className="text-amber-700" />}
-                    </div>
-                  </button>
-                  {!escalationPanelCollapsed && (
-                    <div className="max-h-[65vh] overflow-y-auto border-t border-amber-100 px-2 pb-2 md:max-h-[58vh]">
-                      <DecisionCard item={openRequestItem} respondToMessage={respondToMessage}
-                        assigneeText={formatAssigneeText(openRequestItem.request?.assigned_to)}
-                        disabled={respondToMessage.isPending || (!!openRequestMessageId && lockedRequestMessageId === openRequestMessageId)}
-                        onAfterResolve={() => { setAwaitingAgentAfterReply(true); if (openRequestItem.requestMessageId) setLockedRequestMessageId(openRequestItem.requestMessageId); refetchRun(); refetchNodes(); refetchRunMessages() }}
-                      />
-                    </div>
-                  )}
+                    <button
+                      type="button"
+                      onClick={() => setRequestWorkbenchOpen(true)}
+                      className="inline-flex min-h-11 shrink-0 items-center justify-center rounded-xl bg-amber-600 px-3 py-2 text-xs font-medium text-white transition-colors hover:bg-amber-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400"
+                    >
+                      Open request
+                    </button>
+                  </div>
                 </div>
               </div>
             )}
@@ -346,6 +399,17 @@ export default function RunDetailPage() {
       )}
       {showInputPanel && (
         <RunInputPanel runId={runId!} workspaceId={workspaceId} runStatus={run.status} input={run.input} definition={definition} onClose={() => setShowInputPanel(false)} onInputSaved={refetchRun} />
+      )}
+      {openRequestItem && requestWorkbenchOpen && (
+        <OperatorRequestWorkbench
+          item={openRequestItem}
+          assigneeText={formatAssigneeText(openRequestItem.request?.assigned_to)}
+          disabled={requestActionDisabled}
+          isOpen={requestWorkbenchOpen}
+          respondToMessage={respondToMessage}
+          onAfterResolve={() => handleRequestResolved(openRequestItem.requestMessageId)}
+          onClose={() => setRequestWorkbenchOpen(false)}
+        />
       )}
     </div>
   )

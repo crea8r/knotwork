@@ -3,6 +3,7 @@ import type { Run, RunNodeState, ChannelMessage } from '@data-models'
 import {
   type ChatItem,
   type RequestPayload,
+  type RequestTargetRole,
   friendlyProgressText,
 } from '@modules/workflows/frontend/pages/runDetail/runDetailTypes'
 
@@ -104,13 +105,28 @@ export function useRunChatItems(params: Params): ChatItem[] {
         const kind = typeof meta.kind === 'string' ? meta.kind : ''
         if (kind === 'agent_progress' || kind === 'escalation_question') continue
         if (kind === 'request') {
+          const flow = meta.flow && typeof meta.flow === 'object'
+            ? meta.flow as Record<string, unknown>
+            : undefined
           const request = normalizeRequestPayload(meta.request)
           const escalationId = request?.escalation_id
           const derivedStatus = escalationId && resolvedEscalationIds.has(escalationId)
             ? 'answered'
             : request?.status
           if (derivedStatus === 'open' && m.node_id && completedNodeIds.has(m.node_id)) continue
-          const normalizedRequest = request ? { ...request, status: derivedStatus } : request
+          const targetRole: RequestTargetRole =
+            flow?.to_role === 'supervisor'
+              ? 'supervisor'
+              : flow?.to_role === 'participant'
+                ? 'participant'
+                : 'operator'
+          const normalizedRequest = request
+            ? {
+                ...request,
+                status: derivedStatus,
+                target_role: targetRole,
+              }
+            : request
           if (m.node_id) requestNodeIds.add(m.node_id)
           items.push({
             id: m.id,

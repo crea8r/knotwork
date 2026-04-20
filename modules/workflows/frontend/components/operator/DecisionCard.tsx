@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
 import { Send, Paperclip } from 'lucide-react'
-import MarkdownViewer from '@ui/components/MarkdownViewer'
 import type { useRespondChannelMessage } from '@modules/communication/frontend/api/channels'
 import type { ChatItem } from '@modules/workflows/frontend/pages/runDetail/runDetailTypes'
+import { getRequestTargetRoleLabel } from '@modules/workflows/frontend/lib/requestContext'
 import DecisionCardAnswers from './DecisionCardAnswers'
+import RequestContextSections from './RequestContextSections'
 
 interface Props {
   item: ChatItem
@@ -23,6 +24,7 @@ export default function DecisionCard({ item, respondToMessage, assigneeText, dis
   const [answers, setAnswers] = useState<string[]>([])
   const [currentStep, setCurrentStep] = useState(0)
   const [comment, setComment] = useState('')
+  const [supervisorNote, setSupervisorNote] = useState('')
   const [nowMs, setNowMs] = useState(() => Date.now())
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const isOpen = request?.status === 'open'
@@ -66,11 +68,12 @@ export default function DecisionCard({ item, respondToMessage, assigneeText, dis
 
   if (!request || !requestMessageId) return null
   const questions: string[] = request.questions ?? []
-  const supportingContext: string[] = request.context_markdown ? [request.context_markdown] : []
   const options = request.options ?? []
   const supportsNextBranch = !!request.response_schema?.supports_next_branch
   const hasQuestions = questions.length > 0
   const hasRoutingOptions = options.length > 0 && supportsNextBranch
+  const targetRoleLabel = getRequestTargetRoleLabel(request.target_role)
+  const canAskSupervisor = isOpen && request.target_role !== 'supervisor'
   const normAnswers = questions.length > 0
     ? [...Array(questions.length)].map((_, i) => answers[i] ?? '')
     : answers
@@ -89,13 +92,61 @@ export default function DecisionCard({ item, respondToMessage, assigneeText, dis
     return `${seconds}s`
   }
 
+  function buildSupervisorGuidance(): string {
+    const promptLine = supervisorNote.trim() || questions.find((question) => question.trim()) || 'Please review this request and unblock the next step.'
+    const originalQuestions = questions
+      .map((question) => question.trim())
+      .filter(Boolean)
+    const draftAnswers = questions
+      .map((question, index) => {
+        const answer = normAnswers[index]?.trim()
+        if (!answer) return null
+        return `- ${question}\n  Draft answer: ${answer}`
+      })
+      .filter((value): value is string => !!value)
+    const parts = [promptLine]
+    if (originalQuestions.length > 0) {
+      parts.push(['Original questions:', ...originalQuestions.map((question) => `- ${question}`)].join('\n'))
+    }
+    if (draftAnswers.length > 0) {
+      parts.push(['Operator draft answers:', ...draftAnswers].join('\n'))
+    }
+    if (comment.trim()) {
+      parts.push(`Operator context:\n${comment.trim()}`)
+    }
+    return parts.filter(Boolean).join('\n\n')
+  }
+
+  function handleAskSupervisor() {
+    if (disabled || !requestMessageId) return
+    const guidanceText = buildSupervisorGuidance().trim()
+    if (!guidanceText) return
+    respondToMessage.mutate(
+      {
+        messageId: requestMessageId,
+        data: {
+          resolution: 'request_revision',
+          guidance: guidanceText,
+        },
+      },
+      {
+        onSuccess: () => {
+          setSupervisorNote('')
+          setAnswers([])
+          setComment('')
+          onAfterResolve()
+        },
+      },
+    )
+  }
+
   return (
     <div className="w-full rounded-xl border border-amber-200 bg-amber-50 px-3 py-3 space-y-2">
       <div className="flex items-center justify-between gap-2">
         <div className="min-w-0">
-          <p className="text-[10px] uppercase tracking-wide text-amber-700">Operator request</p>
+          <p className="text-[10px] uppercase tracking-wide text-amber-700">{targetRoleLabel} request</p>
           <p className="mt-0.5 truncate text-xs text-amber-900/80">
-            {assigneeText ? `Requested from: ${assigneeText}` : 'Waiting for operator response'}
+            {assigneeText ? `Requested from: ${assigneeText}` : `Waiting for ${targetRoleLabel.toLowerCase()} response`}
           </p>
         </div>
         <span className={`text-[10px] px-2 py-0.5 rounded-full ${isOpen ? 'bg-amber-100 text-amber-700' : 'bg-gray-100 text-gray-600'}`}>
@@ -123,22 +174,7 @@ export default function DecisionCard({ item, respondToMessage, assigneeText, dis
           )}
         </div>
       )}
-      {item.preText && (
-        <div className="bg-white rounded-lg border border-amber-100 px-3 py-2 max-h-60 overflow-y-auto">
-          <p className="text-[10px] uppercase tracking-wide text-gray-400 mb-1">Agent's analysis</p>
-          <MarkdownViewer content={item.preText} compact />
-        </div>
-      )}
-      {supportingContext.length > 0 && (
-        <div className="bg-white rounded-lg border border-amber-100 px-3 py-2 max-h-60 overflow-y-auto">
-          <p className="text-[10px] uppercase tracking-wide text-gray-400 mb-1">Task context</p>
-          <div className="space-y-2">
-            {supportingContext.map((message, idx) => (
-              <MarkdownViewer key={`${idx}-${message.slice(0, 24)}`} content={message} compact />
-            ))}
-          </div>
-        </div>
-      )}
+      <RequestContextSections contextMarkdown={request.context_markdown} />
       {isOpen && hasQuestions ? (
         <DecisionCardAnswers
           questions={questions}
@@ -250,6 +286,42 @@ export default function DecisionCard({ item, respondToMessage, assigneeText, dis
             </div>
           </div>
         </div>
+      ) : null}
+      {canAskSupervisor ? (
+        <div className="overflow-hidden rounded-xl border border-slate-200 bg-slate-50/90 shadow-sm">
+          <div className="border-b border-slate-200 px-3 pt-2.5 pb-2">
+            <p className="text-xs font-medium text-slate-900">Need supervisor review?</p>
+            <p className="mt-0.5 text-[11px] text-slate-600">
+              Forward this request upstream with a focused question instead of answering it here.
+            </p>
+          </div>
+          <div className="space-y-2 px-3 py-3">
+            <textarea
+              value={supervisorNote}
+              onChange={(e) => setSupervisorNote(e.target.value)}
+              rows={3}
+              placeholder="What should the supervisor answer or decide? Put the main question first."
+              className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm leading-relaxed outline-none focus-visible:ring-2 focus-visible:ring-slate-300"
+            />
+            <div className="flex items-center justify-between gap-3">
+              <p className="text-[10px] text-slate-500">
+                Original request details and any draft answers will be included automatically.
+              </p>
+              <button
+                type="button"
+                onClick={handleAskSupervisor}
+                disabled={disabled || respondToMessage.isPending || !buildSupervisorGuidance().trim()}
+                className="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-slate-900 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                <Send size={12} />
+                {respondToMessage.isPending ? 'Sending…' : 'Ask supervisor'}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+      {respondToMessage.isError ? (
+        <p className="text-xs text-red-500">Failed to send. Please try again.</p>
       ) : null}
     </div>
   )

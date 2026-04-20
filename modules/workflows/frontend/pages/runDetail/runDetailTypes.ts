@@ -8,6 +8,8 @@ export type RequestResponseSchema = {
   supports_next_branch?: boolean
 }
 
+export type RequestTargetRole = 'operator' | 'supervisor' | 'participant'
+
 export type RequestPayload = {
   type?: string
   status?: string
@@ -17,6 +19,7 @@ export type RequestPayload = {
   options?: string[]
   escalation_id?: string
   timeout_at?: string
+  target_role?: RequestTargetRole
   response_schema?: RequestResponseSchema
 }
 
