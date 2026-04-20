@@ -144,6 +144,8 @@ async def setup_install(payload: InstallRequest):
     command = [str(INSTALL_SCRIPT)]
     if payload.install_mode == "dev":
         command.append("--dev")
+    else:
+        command.append("--prod")
     try:
         return await runtime.start_install(command=command, answers=_install_answers(payload))
     except RuntimeError as exc:

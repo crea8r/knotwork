@@ -10,15 +10,25 @@ if [[ "${EUID}" -ne 0 ]]; then
 fi
 
 # ── Install mode ──────────────────────────────────────────────────────────────
-# --dev  Hot-reload dev install (localhost only, volume-mounted source, Vite HMR).
-#        Code changes in backend/ and frontend/src/ take effect without reinstalling.
+# --dev   Hot-reload dev install (localhost only, volume-mounted source, Vite HMR).
+# --prod  Production-style install without the interactive dev-mode switch prompt.
 INSTALL_MODE="prod"
 DEV_FLAG_EXPLICIT=0
 for arg in "$@"; do
-  if [[ "$arg" == "--dev" ]]; then
-    INSTALL_MODE="dev"
-    DEV_FLAG_EXPLICIT=1
-  fi
+  case "$arg" in
+    --dev)
+      INSTALL_MODE="dev"
+      DEV_FLAG_EXPLICIT=1
+      ;;
+    --prod)
+      INSTALL_MODE="prod"
+      DEV_FLAG_EXPLICIT=1
+      ;;
+    *)
+      echo "ERROR: Unknown argument: $arg" >&2
+      exit 1
+      ;;
+  esac
 done
 
 log() { printf "\n[%s] %s\n" "$(date +'%H:%M:%S')" "$*"; }

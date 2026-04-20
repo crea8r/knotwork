@@ -1,6 +1,6 @@
 import type { ChangeEvent, InputHTMLAttributes, ReactNode } from 'react'
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { AlertTriangle, AlignJustify, CheckCircle2, ChevronDown, ChevronRight, FolderOpen, Maximize2, Minimize2, Play, RefreshCw, Rocket, Shield, SlidersHorizontal, Square, Trash2, Wrench, X } from 'lucide-react'
+import { AlertTriangle, AlignJustify, CheckCircle2, ChevronDown, ChevronRight, Eye, EyeOff, FolderOpen, Maximize2, Minimize2, Play, RefreshCw, Rocket, Shield, SlidersHorizontal, Square, Trash2, Wrench, X } from 'lucide-react'
 import { useSearchParams } from 'react-router-dom'
 import {
   useCancelSetup,
@@ -227,23 +227,41 @@ function TextField({
   placeholder?: string
   action?: ReactNode
 }) {
+  const isPassword = type === 'password'
+  const [passwordVisible, setPasswordVisible] = useState(false)
+  const resolvedType = isPassword && passwordVisible ? 'text' : type
+
   return (
     <FieldShell label={label} required={required} error={error} help={help}>
       <div className="flex min-w-0 flex-col gap-2 sm:flex-row">
-        <input
-          type={type}
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-          onBlur={onBlur}
-          inputMode={inputMode}
-          maxLength={maxLength}
-          placeholder={placeholder}
-          className={`w-full rounded-lg border bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 ${
-            error
-              ? 'border-red-300 focus:ring-red-200'
-              : 'border-gray-200 focus:ring-brand-400'
-          }`}
-        />
+        <div className="relative min-w-0 flex-1">
+          <input
+            type={resolvedType}
+            value={value}
+            onChange={(e) => onChange(e.target.value)}
+            onBlur={onBlur}
+            inputMode={inputMode}
+            maxLength={maxLength}
+            placeholder={placeholder}
+            className={`w-full rounded-lg border bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 ${
+              isPassword ? 'pr-10' : ''
+            } ${
+              error
+                ? 'border-red-300 focus:ring-red-200'
+                : 'border-gray-200 focus:ring-brand-400'
+            }`}
+          />
+          {isPassword ? (
+            <button
+              type="button"
+              onClick={() => setPasswordVisible((visible) => !visible)}
+              className="absolute inset-y-0 right-0 flex w-10 items-center justify-center text-slate-400 transition-colors hover:text-slate-700 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-brand-400"
+              aria-label={passwordVisible ? 'Hide password' : 'Show password'}
+            >
+              {passwordVisible ? <EyeOff size={16} /> : <Eye size={16} />}
+            </button>
+          ) : null}
+        </div>
         {action ? <div className="min-w-0 sm:shrink-0">{action}</div> : null}
       </div>
     </FieldShell>
