@@ -1,0 +1,76 @@
+{
+  "hash": "86ab2dcc",
+  "configHash": "0a3286be",
+  "lockfileHash": "e3b0c442",
+  "browserHash": "b7787a9a",
+  "optimized": {
+    "react": {
+      "src": "../../../../../core/app-shell/node_modules/react/index.js",
+      "file": "react.js",
+      "fileHash": "9f676015",
+      "needsInterop": true
+    },
+    "react-dom": {
+      "src": "../../../../../core/app-shell/node_modules/react-dom/index.js",
+      "file": "react-dom.js",
+      "fileHash": "d40dd3bc",
+      "needsInterop": true
+    },
+    "react/jsx-dev-runtime": {
+      "src": "../../../../../core/app-shell/node_modules/react/jsx-dev-runtime.js",
+      "file": "react_jsx-dev-runtime.js",
+      "fileHash": "15799dd4",
+      "needsInterop": true
+    },
+    "react/jsx-runtime": {
+      "src": "../../../../../core/app-shell/node_modules/react/jsx-runtime.js",
+      "file": "react_jsx-runtime.js",
+      "fileHash": "b1558d1b",
+      "needsInterop": true
+    },
+    "@tanstack/react-query": {
+      "src": "../../../../../core/app-shell/node_modules/@tanstack/react-query/build/modern/index.js",
+      "file": "@tanstack_react-query.js",
+      "fileHash": "11638746",
+      "needsInterop": false
+    },
+    "axios": {
+      "src": "../../../../../core/app-shell/node_modules/axios/index.js",
+      "file": "axios.js",
+      "fileHash": "d210d518",
+      "needsInterop": false
+    },
+    "lucide-react": {
+      "src": "../../../../../core/app-shell/node_modules/lucide-react/dist/esm/lucide-react.js",
+      "file": "lucide-react.js",
+      "fileHash": "be67b03d",
+      "needsInterop": false
+    },
+    "react-dom/client": {
+      "src": "../../../../../core/app-shell/node_modules/react-dom/client.js",
+      "file": "react-dom_client.js",
+      "fileHash": "e9797e93",
+      "needsInterop": true
+    },
+    "react-router-dom": {
+      "src": "../../../../../core/app-shell/node_modules/react-router-dom/dist/index.js",
+      "file": "react-router-dom.js",
+      "fileHash": "1ef15013",
+      "needsInterop": false
+    }
+  },
+  "chunks": {
+    "chunk-L2FA7V3V": {
+      "file": "chunk-L2FA7V3V.js"
+    },
+    "chunk-NMP2TH7Q": {
+      "file": "chunk-NMP2TH7Q.js"
+    },
+    "chunk-4IFIMFEE": {
+      "file": "chunk-4IFIMFEE.js"
+    },
+    "chunk-4MBMRILA": {
+      "file": "chunk-4MBMRILA.js"
+    }
+  }
+}

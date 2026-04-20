@@ -1,6 +1,8 @@
 # ── Stage 1: build ─────────────────────────────────────────────────────────────
 FROM node:20-alpine AS builder
 WORKDIR /app/core/app-shell
+ARG VITE_KNOTWORK_DISTRIBUTION=chimera
+ENV VITE_KNOTWORK_DISTRIBUTION=${VITE_KNOTWORK_DISTRIBUTION}
 COPY core/app-shell/package*.json ./
 RUN npm ci
 COPY core /app/core
@@ -10,7 +12,7 @@ COPY distributions /app/distributions
 # No VITE_API_URL build arg — URL is injected at runtime via window._env.
 # The fallback in client.ts (http://localhost:8000/api/v1) is only used in
 # local npm-run-dev mode; the Docker prod container always has API_URL set.
-RUN npm run build
+RUN if [ "$VITE_KNOTWORK_DISTRIBUTION" = "manticore" ]; then npm run build:manticore; else npm run build:chimera; fi
 
 # ── Stage 2: serve (prod) — runtime API_URL via env.js substitution ────────────
 FROM nginx:alpine AS prod

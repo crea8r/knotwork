@@ -12,7 +12,7 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=[".env", "../.env"], extra="ignore")
 
     # Database
-    database_url: str
+    database_url: str = "postgresql+asyncpg://knotwork:knotwork@127.0.0.1:5432/knotwork"
     # Sync connection string for LangGraph AsyncPostgresSaver (strip +asyncpg).
     # If unset, engine falls back to MemorySaver.
     database_url_sync: str = ""
@@ -31,7 +31,7 @@ class Settings(BaseSettings):
     knotwork_distribution: str = "chimera"
 
     # Auth
-    jwt_secret: str
+    jwt_secret: str = "setup-mode-placeholder-secret"
     jwt_algorithm: str = "HS256"
     jwt_expire_minutes: int = 60 * 24 * 7  # 7 days
 
