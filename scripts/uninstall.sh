@@ -6,6 +6,7 @@ ROOT_DIR=""
 PARENT_DIR=""
 TEMP_DIR=""
 INSTALL_MANIFEST=""
+INSTALL_DIR_OVERRIDE=""
 
 SUDO=""
 if [[ "${EUID}" -ne 0 ]]; then
@@ -15,6 +16,18 @@ fi
 log() { printf "\n[%s] %s\n" "$(date +'%H:%M:%S')" "$*"; }
 die() { echo "ERROR: $*" >&2; exit 1; }
 warn() { echo "WARN: $*" >&2; }
+
+resolve_compose_cmd() {
+  if docker compose version >/dev/null 2>&1; then
+    COMPOSE_BIN=(docker compose)
+    return
+  fi
+  if command -v docker-compose >/dev/null 2>&1 && docker-compose version >/dev/null 2>&1; then
+    COMPOSE_BIN=(docker-compose)
+    return
+  fi
+  die "Docker Compose is required. Install or enable either 'docker compose' or 'docker-compose', then rerun this script."
+}
 
 require_cmd() {
   command -v "$1" >/dev/null 2>&1 || die "Missing required command: $1"
@@ -57,6 +70,14 @@ prompt_with_default() {
 
 resolve_root_dir() {
   local default_dir="${HOME}/.knotwork"
+  if [[ -n "$INSTALL_DIR_OVERRIDE" ]]; then
+    ROOT_DIR="${INSTALL_DIR_OVERRIDE/#\~/$HOME}"
+    [[ -d "$ROOT_DIR" ]] || die "Installation directory not found: $ROOT_DIR"
+    PARENT_DIR="$(dirname "$ROOT_DIR")"
+    INSTALL_MANIFEST="$ROOT_DIR/.knotwork-install.json"
+    cd "$ROOT_DIR"
+    return
+  fi
   prompt_with_default ROOT_DIR "Installation directory" "$default_dir"
   ROOT_DIR="${ROOT_DIR/#\~/$HOME}"
   [[ -d "$ROOT_DIR" ]] || die "Installation directory not found: $ROOT_DIR"
@@ -73,21 +94,65 @@ confirm_or_die() {
   [[ "$answer" == "y" || "$answer" == "yes" ]] || die "Cancelled."
 }
 
+prompt_yes_no_default() {
+  local var_name="$1"
+  local prompt_text="$2"
+  local default_value="$3"
+  local answer=""
+  local normalized_default
+
+  normalized_default="$(echo "$default_value" | tr '[:upper:]' '[:lower:]')"
+  [[ "$normalized_default" == "yes" || "$normalized_default" == "no" ]] \
+    || die "prompt_yes_no_default default must be yes or no"
+
+  while true; do
+    if [[ "$normalized_default" == "yes" ]]; then
+      read -r -p "$prompt_text [Y/n]: " answer
+    else
+      read -r -p "$prompt_text [y/N]: " answer
+    fi
+    answer="$(echo "$answer" | tr '[:upper:]' '[:lower:]' | sed 's/^ *//;s/ *$//')"
+    if [[ -z "$answer" ]]; then
+      answer="$normalized_default"
+    fi
+    case "$answer" in
+      y|yes)
+        printf -v "$var_name" "%s" "yes"
+        return
+        ;;
+      n|no)
+        printf -v "$var_name" "%s" "no"
+        return
+        ;;
+      *)
+        echo "Invalid choice. Enter y or n."
+        ;;
+    esac
+  done
+}
+
 parse_args() {
-  CLEAN_MODE="runtime"
   ASSUME_YES=0
-  BACKUP_DIR_DEFAULT="${PARENT_DIR}/knotwork-uninstall-backups"
-  BACKUP_DIR="$BACKUP_DIR_DEFAULT"
+  SKIP_BACKUP=0
+  BACKUP_DIR=""
 
   while [[ $# -gt 0 ]]; do
     case "$1" in
+      --install-dir)
+        INSTALL_DIR_OVERRIDE="${2:-}"
+        shift 2
+        ;;
       --cleanup-mode)
-        CLEAN_MODE="${2:-}"
+        [[ "${2:-}" == "runtime" ]] || die "cleanup-mode full was removed. Runtime cleanup is the supported uninstall mode."
         shift 2
         ;;
       --backup-dir)
         BACKUP_DIR="${2:-}"
         shift 2
+        ;;
+      --skip-backup)
+        SKIP_BACKUP=1
+        shift
         ;;
       --yes)
         ASSUME_YES=1
@@ -98,8 +163,6 @@ parse_args() {
         ;;
     esac
   done
-
-  [[ "$CLEAN_MODE" == "runtime" || "$CLEAN_MODE" == "full" ]] || die "cleanup-mode must be runtime or full"
 }
 
 project_name() {
@@ -136,13 +199,79 @@ compose_project_name() {
     awk -F= '$1=="COMPOSE_PROJECT_NAME" {print substr($0, index($0,$2)); exit}' "$ROOT_DIR/.env"
     return
   fi
-  echo "$(project_name)"
+  echo ""
+}
+
+docker_ready() {
+  command -v docker >/dev/null 2>&1 && docker info >/dev/null 2>&1
+}
+
+detect_installation_markers() {
+  local markers=()
+  local project network default_network
+  project="$(compose_project_name)"
+  network="$(manifest_value network_name 2>/dev/null || true)"
+  if [[ -n "$project" ]]; then
+    [[ -n "$network" ]] || network="${project}-network"
+    default_network="${project}_default"
+  else
+    network=""
+    default_network=""
+  fi
+
+  [[ -f "$ROOT_DIR/.env" ]] && markers+=(".env")
+  [[ -d "$ROOT_DIR/data" ]] && markers+=("data/")
+  [[ -d "$ROOT_DIR/logs" ]] && markers+=("logs/")
+
+  if [[ -n "$project" ]] && docker_ready; then
+    if docker ps -a --format '{{.Names}}' | grep -E -q "^${project}($|[-_])"; then
+      markers+=("docker-containers:${project}")
+    fi
+    if docker volume ls --format '{{.Name}}' | grep -E -q "^${project}($|[-_])"; then
+      markers+=("docker-volumes:${project}")
+    fi
+    if [[ -n "$network" ]] && docker network inspect "$network" >/dev/null 2>&1; then
+      markers+=("docker-network:${network}")
+    fi
+    if [[ -n "$default_network" ]] && docker network inspect "$default_network" >/dev/null 2>&1; then
+      markers+=("docker-network:${default_network}")
+    fi
+  fi
+
+  printf '%s\n' "${markers[@]}"
+}
+
+assert_installation_exists() {
+  local markers=()
+  while IFS= read -r marker; do
+    [[ -n "$marker" ]] && markers+=("$marker")
+  done < <(detect_installation_markers)
+
+  if [[ "${#markers[@]}" -eq 0 ]]; then
+    cat >&2 <<EOF
+ERROR: No active Knotwork installation was detected in ${ROOT_DIR}
+
+Checked for:
+- runtime files (.env, data/, logs/)
+- Docker containers/volumes/networks owned by the install
+
+A stale .knotwork-install.json by itself does not count as an installed instance.
+Nothing will be uninstalled.
+EOF
+    exit 1
+  fi
+
+  log "Detected install markers:"
+  local marker
+  for marker in "${markers[@]}"; do
+    echo "  - ${marker}"
+  done
 }
 
 compose_cmd() {
   local env_args=()
   [[ -f "$ROOT_DIR/.env" ]] && env_args=(--env-file "$ROOT_DIR/.env")
-  docker compose --project-name "$(compose_project_name)" -f "$SCRIPT_DIR/docker-compose.yml" "${env_args[@]}" "$@"
+  "${COMPOSE_BIN[@]}" --project-name "$(compose_project_name)" -f "$SCRIPT_DIR/docker-compose.yml" "${env_args[@]}" "$@"
 }
 
 owned_image_names() {
@@ -291,7 +420,7 @@ write_manifest() {
 {
   "created_at_utc": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
   "project_root": $(json_escape "$ROOT_DIR"),
-  "cleanup_mode": "$CLEAN_MODE",
+  "cleanup_mode": "runtime",
   "project_name": "$(project_name)",
   "compose_project_name": $(json_escape "$compose_project"),
   "network_name": $(json_escape "$network_name"),
@@ -336,7 +465,6 @@ PY
 force_remove_network() {
   local _net="$1"
   if ! docker network inspect "$_net" >/dev/null 2>&1; then
-    log "Docker network '${_net}' already removed or not found; skipping."
     return 0
   fi
   log "Force-removing Docker network '${_net}'..."
@@ -347,7 +475,7 @@ force_remove_network() {
     docker network inspect --format '{{range $id,$c:=.Containers}}{{$id}} {{end}}' "$_net" 2>/dev/null \
       | tr ' ' '\n'
   )
-  docker network rm "$_net" 2>/dev/null || warn "Could not remove network: $_net"
+  docker network rm "$_net" >/dev/null 2>&1 || warn "Could not remove network: $_net"
 }
 
 docker_cleanup() {
@@ -358,37 +486,38 @@ docker_cleanup() {
 
   local project
   project="$(compose_project_name)"
+  if [[ -z "$project" ]]; then
+    warn "No compose project metadata was found for this install. Skipping targeted Docker resource cleanup."
+    return
+  fi
 
   log "Stopping and removing docker resources owned by compose project '${project}'..."
   compose_cmd down --remove-orphans --volumes 2>/dev/null || true
   compose_cmd --profile prod down --remove-orphans --volumes 2>/dev/null || true
   compose_cmd --profile dev down --remove-orphans --volumes 2>/dev/null || true
 
-  # Force-remove any containers whose name starts with the project name —
-  # these are stragglers not owned by compose (no labels) that compose down skips
-  log "Force-removing any leftover containers matching '${project}*'..."
+  # Remove stragglers not owned by compose that compose down may skip.
   local found_containers=0
   while IFS= read -r _cid; do
     [[ -n "$_cid" ]] || continue
+    if [[ "$found_containers" -eq 0 ]]; then
+      log "Force-removing leftover containers matching '${project}*'..."
+    fi
     found_containers=1
     log "  removing container $_cid"
     docker rm -f "$_cid" 2>/dev/null || warn "Could not remove container $_cid"
   done < <(docker ps -a --filter "name=^${project}" --format '{{.ID}}')
-  if [[ "$found_containers" -eq 0 ]]; then
-    log "No leftover containers found for '${project}'."
-  fi
 
-  # Also remove any volumes prefixed with the project name
-  log "Removing any leftover volumes matching '${project}*'..."
+  # Also remove any volumes prefixed with the project name.
   local found_volumes=0
   while IFS= read -r _vol; do
     [[ -n "$_vol" ]] || continue
+    if [[ "$found_volumes" -eq 0 ]]; then
+      log "Removing leftover volumes matching '${project}*'..."
+    fi
     found_volumes=1
     docker volume rm "$_vol" 2>/dev/null || warn "Could not remove volume $_vol"
   done < <(docker volume ls --filter "name=^${project}" --format '{{.Name}}')
-  if [[ "$found_volumes" -eq 0 ]]; then
-    log "No leftover volumes found for '${project}'."
-  fi
 
   local net net_default
   net="$(manifest_value network_name 2>/dev/null || true)"
@@ -399,116 +528,167 @@ docker_cleanup() {
   done
 
   log "Removing project images only..."
-  local found_images=0
+  local removed_images=0
   while IFS= read -r image; do
     [[ -n "$image" ]] || continue
     if ! docker image inspect "$image" >/dev/null 2>&1; then
-      log "Image already removed or not found: $image"
       continue
     fi
-    found_images=1
     if docker ps -a --filter "ancestor=$image" --format '{{.ID}}' | grep -q .; then
       warn "Skipping image still referenced by a container: $image"
       continue
     fi
-    docker image rm -f "$image" >/dev/null 2>&1 || warn "Could not remove image: $image"
+    if docker image rm -f "$image" >/dev/null 2>&1; then
+      removed_images=$((removed_images + 1))
+    else
+      warn "Could not remove image: $image"
+    fi
   done < <(owned_image_names)
-  if [[ "$found_images" -eq 0 ]]; then
-    log "No removable project images found."
+  if [[ "$removed_images" -gt 0 ]]; then
+    log "Removed ${removed_images} project image(s)."
   fi
 }
 
 cleanup_runtime_files() {
   log "Cleaning runtime-generated files..."
-  local path found_runtime_files=0
+  local path removed_count=0
   for path in \
     "$ROOT_DIR/.env" \
     "$ROOT_DIR/.knotwork-install.json" \
     "$ROOT_DIR/data" \
     "$ROOT_DIR/logs"; do
     if [[ -e "$path" || -L "$path" ]]; then
-      found_runtime_files=1
+      removed_count=$((removed_count + 1))
       rm -rf "$path"
       log "Removed: $path"
-    else
-      log "Already removed or not found: $path"
     fi
   done
 
-  local backup_found=0
   shopt -s nullglob
   for path in "$ROOT_DIR"/.env.backup.*; do
-    backup_found=1
-    found_runtime_files=1
+    removed_count=$((removed_count + 1))
     rm -rf "$path"
     log "Removed: $path"
   done
   shopt -u nullglob
-  if [[ "$backup_found" -eq 0 ]]; then
-    log "Already removed or not found: $ROOT_DIR/.env.backup.*"
-  fi
-  if [[ "$found_runtime_files" -eq 0 ]]; then
+  if [[ "$removed_count" -eq 0 ]]; then
     log "No runtime-generated files found to remove."
   fi
 }
 
-cleanup_full_tree() {
-  log "Removing project files (keeping .git only)..."
-  local path found_entries=0
-  shopt -s dotglob nullglob
-  for path in "$ROOT_DIR"/*; do
-    [[ "$(basename "$path")" == ".git" ]] && continue
-    found_entries=1
-    rm -rf "$path"
-    log "Removed: $path"
-  done
-  shopt -u dotglob nullglob
-  if [[ "$found_entries" -eq 0 ]]; then
-    log "Project files already removed; nothing left besides .git."
+url_host() {
+  python3 - "$1" <<'PY'
+from urllib.parse import urlparse
+import sys
+print(urlparse(sys.argv[1]).hostname or "")
+PY
+}
+
+cleanup_public_host_artifacts() {
+  local install_mode frontend_url backend_url frontend_host backend_host conf_available conf_enabled cert_name
+  install_mode="$(manifest_value install_mode 2>/dev/null || true)"
+  [[ "$install_mode" == "public" ]] || return
+
+  frontend_url="$(manifest_value frontend_url 2>/dev/null || true)"
+  backend_url="$(manifest_value backend_url 2>/dev/null || true)"
+  frontend_host="$(url_host "$frontend_url")"
+  backend_host="$(url_host "$backend_url")"
+  conf_available="/etc/nginx/sites-available/knotwork.conf"
+  conf_enabled="/etc/nginx/sites-enabled/knotwork.conf"
+
+  log "Cleaning public nginx/TLS artifacts..."
+  if [[ -e "$conf_enabled" || -L "$conf_enabled" ]]; then
+    $SUDO rm -f "$conf_enabled" || warn "Could not remove $conf_enabled"
+    log "Removed: $conf_enabled"
   fi
+  if [[ -e "$conf_available" || -L "$conf_available" ]]; then
+    $SUDO rm -f "$conf_available" || warn "Could not remove $conf_available"
+    log "Removed: $conf_available"
+  fi
+
+  if command -v nginx >/dev/null 2>&1; then
+    $SUDO nginx -t >/dev/null 2>&1 && {
+      if command -v systemctl >/dev/null 2>&1; then
+        $SUDO systemctl reload nginx 2>/dev/null || true
+      elif command -v service >/dev/null 2>&1; then
+        $SUDO service nginx reload 2>/dev/null || true
+      fi
+    }
+  fi
+
+  if command -v certbot >/dev/null 2>&1; then
+    for cert_name in "$frontend_host" "$backend_host"; do
+      [[ -n "$cert_name" ]] || continue
+      if $SUDO test -d "/etc/letsencrypt/live/${cert_name}"; then
+        $SUDO certbot delete --non-interactive --cert-name "$cert_name" >/dev/null 2>&1 \
+          && log "Removed Let's Encrypt certificate: $cert_name" \
+          || warn "Could not remove Let's Encrypt certificate: $cert_name"
+      fi
+    done
+  fi
+
+  echo "Note: DNS records and firewall/security-group rules are outside this host and were not changed."
 }
 
 main() {
-  resolve_root_dir
   parse_args "$@"
+  resolve_root_dir
+  if [[ -z "$BACKUP_DIR" ]]; then
+    BACKUP_DIR="${PARENT_DIR}/knotwork-uninstall-backups"
+  fi
+  assert_installation_exists
   require_cmd docker
   require_cmd python3
+  resolve_compose_cmd
 
-  mkdir -p "$BACKUP_DIR"
-  local ts
-  ts="$(date +%Y%m%d-%H%M%S)"
-  local backup_zip="${BACKUP_DIR}/$(project_name)-backup-${ts}.zip"
-  TEMP_DIR="$(mktemp -d)"
-  trap 'if [[ -n "${TEMP_DIR:-}" ]]; then rm -rf "$TEMP_DIR"; fi' EXIT
+  local CREATE_BACKUP="yes"
+  if [[ "$SKIP_BACKUP" -eq 1 ]]; then
+    CREATE_BACKUP="no"
+  elif [[ "$ASSUME_YES" -ne 1 ]]; then
+    prompt_yes_no_default CREATE_BACKUP "Create a backup before uninstall?" "no"
+  fi
+
+  local backup_zip="(skipped: backup disabled)"
+  if [[ "$CREATE_BACKUP" == "yes" ]]; then
+    mkdir -p "$BACKUP_DIR"
+    local ts
+    ts="$(date +%Y%m%d-%H%M%S)"
+    backup_zip="${BACKUP_DIR}/$(project_name)-backup-${ts}.zip"
+    TEMP_DIR="$(mktemp -d)"
+    trap 'if [[ -n "${TEMP_DIR:-}" ]]; then rm -rf "$TEMP_DIR"; fi' EXIT
+  fi
 
   echo "This will:"
-  echo "1) Create a zip backup with metadata, PostgreSQL dump, and handbook archive"
+  if [[ "$CREATE_BACKUP" == "yes" ]]; then
+    echo "1) Create a zip backup with metadata, PostgreSQL dump, and handbook archive"
+  else
+    echo "1) Skip backup creation"
+  fi
   echo "2) Remove project docker containers/networks/volumes and local images"
-  echo "3) Clean files using cleanup mode: $CLEAN_MODE"
-  echo "Backup zip: $backup_zip"
+  echo "3) Clean runtime files"
+  echo "4) Remove public nginx/TLS artifacts when this was a public-domain install"
+  if [[ "$CREATE_BACKUP" == "yes" ]]; then
+    echo "Backup zip: $backup_zip"
+  fi
 
   if [[ "$ASSUME_YES" -ne 1 ]]; then
     confirm_or_die "Proceed with uninstall?"
-    if [[ "$CLEAN_MODE" == "full" ]]; then
-      confirm_or_die "Full cleanup removes the project tree contents. Continue?"
+  fi
+
+  if [[ "$CREATE_BACKUP" == "yes" ]]; then
+    if ! ( create_backup_zip "$backup_zip" "$TEMP_DIR" ); then
+      warn "Backup zip creation failed; continuing uninstall without backup."
+      backup_zip="(skipped: backup creation failed)"
     fi
   fi
-
-  if ! ( create_backup_zip "$backup_zip" "$TEMP_DIR" ); then
-    warn "Backup zip creation failed; continuing uninstall without backup."
-    backup_zip="(skipped: backup creation failed)"
-  fi
   docker_cleanup
-
-  case "$CLEAN_MODE" in
-    runtime) cleanup_runtime_files ;;
-    full) cleanup_full_tree ;;
-  esac
+  cleanup_public_host_artifacts
+  cleanup_runtime_files
 
   echo
   echo "Uninstall complete."
   echo "Backup: $backup_zip"
-  echo "Cleanup mode: $CLEAN_MODE"
+  echo "Cleanup mode: runtime"
 }
 
 main "$@"

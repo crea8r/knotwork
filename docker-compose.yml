@@ -42,12 +42,14 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.backend
-    env_file: .env
+    env_file:
+      - ${KNOTWORK_RUNTIME_ENV_FILE:-.env}
     environment:
       # Docker-internal DB/Redis URLs override .env if set
       DATABASE_URL: postgresql+asyncpg://knotwork:knotwork@postgres:5432/knotwork
       DATABASE_URL_SYNC: postgresql://knotwork:knotwork@postgres:5432/knotwork
       REDIS_URL: redis://redis:6379
+      KNOTWORK_DISTRIBUTION: ${KNOTWORK_DISTRIBUTION:-chimera}
       # Explicit override so pydantic-settings reads it from process env, not the
       # baked-in backend/.env which does not contain this key.
       AUTH_DEV_BYPASS_USER_ID: ${AUTH_DEV_BYPASS_USER_ID:-}
@@ -73,11 +75,13 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.backend
-    env_file: .env
+    env_file:
+      - ${KNOTWORK_RUNTIME_ENV_FILE:-.env}
     environment:
       DATABASE_URL: postgresql+asyncpg://knotwork:knotwork@postgres:5432/knotwork
       DATABASE_URL_SYNC: postgresql://knotwork:knotwork@postgres:5432/knotwork
       REDIS_URL: redis://redis:6379
+      KNOTWORK_DISTRIBUTION: ${KNOTWORK_DISTRIBUTION:-chimera}
       AUTH_DEV_BYPASS_USER_ID: ${AUTH_DEV_BYPASS_USER_ID:-}
     ports:
       - "${BACKEND_DEV_HOST_PORT:-8000}:8000"
@@ -103,11 +107,13 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.backend
-    env_file: .env
+    env_file:
+      - ${KNOTWORK_RUNTIME_ENV_FILE:-.env}
     environment:
       DATABASE_URL: postgresql+asyncpg://knotwork:knotwork@postgres:5432/knotwork
       DATABASE_URL_SYNC: postgresql://knotwork:knotwork@postgres:5432/knotwork
       REDIS_URL: redis://redis:6379
+      KNOTWORK_DISTRIBUTION: ${KNOTWORK_DISTRIBUTION:-chimera}
       AUTH_DEV_BYPASS_USER_ID: ${AUTH_DEV_BYPASS_USER_ID:-}
     depends_on:
       postgres:
@@ -126,11 +132,13 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.backend
-    env_file: .env
+    env_file:
+      - ${KNOTWORK_RUNTIME_ENV_FILE:-.env}
     environment:
       DATABASE_URL: postgresql+asyncpg://knotwork:knotwork@postgres:5432/knotwork
       DATABASE_URL_SYNC: postgresql://knotwork:knotwork@postgres:5432/knotwork
       REDIS_URL: redis://redis:6379
+      KNOTWORK_DISTRIBUTION: ${KNOTWORK_DISTRIBUTION:-chimera}
       AUTH_DEV_BYPASS_USER_ID: ${AUTH_DEV_BYPASS_USER_ID:-}
     depends_on:
       postgres:
@@ -196,6 +204,8 @@ services:
       context: .
       dockerfile: Dockerfile.frontend
       target: prod
+      args:
+        VITE_KNOTWORK_DISTRIBUTION: ${VITE_KNOTWORK_DISTRIBUTION:-chimera}
     environment:
       # Passed to docker-entrypoint.sh which substitutes it into env.js at start.
       # Reuses VITE_API_URL from .env so only one variable needs to be set.
