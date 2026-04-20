@@ -17,6 +17,10 @@ BOOTSTRAP_NETWORK="${BOOTSTRAP_WIZARD_NETWORK:-knotwork-bootstrap-network}"
 BOOTSTRAP_COMPOSE_FILE="$ROOT_DIR/modules/bootstrap/docker-compose.yml"
 BOOTSTRAP_COMPOSE_PROJECT="${BOOTSTRAP_COMPOSE_PROJECT:-knotwork-bootstrap}"
 PYTHON_BIN="${BOOTSTRAP_PYTHON_BIN:-$ROOT_DIR/.venv/bin/python}"
+SUDO=""
+if [[ "${EUID}" -ne 0 ]]; then
+  SUDO="sudo"
+fi
 
 log() { printf "\n[%s] %s\n" "$(date +'%H:%M:%S')" "$*"; }
 warn() { printf "WARN: %s\n" "$*" >&2; }
@@ -230,15 +234,91 @@ wait_for_url() {
   return 1
 }
 
-ensure_backend_python() {
-  if [[ -x "$PYTHON_BIN" ]]; then
+require_python_version() {
+  python3 - <<'PY' || die "Knotwork requires Python 3.12 or newer for the bootstrap backend. Install Python 3.12+, then rerun the bootstrap wizard."
+import sys
+raise SystemExit(0 if sys.version_info >= (3, 12) else 1)
+PY
+}
+
+python_venv_package_name() {
+  local versioned_pkg
+  versioned_pkg="$(python3 - <<'PY'
+import sys
+print(f"python{sys.version_info.major}.{sys.version_info.minor}-venv")
+PY
+)"
+  if command -v apt-cache >/dev/null 2>&1 && apt-cache show "$versioned_pkg" >/dev/null 2>&1; then
+    printf '%s\n' "$versioned_pkg"
     return
   fi
+  printf '%s\n' "python3-venv"
+}
 
+install_python_venv_package() {
+  if ! command -v apt-get >/dev/null 2>&1; then
+    die "Python venv support is missing. Install the python3-venv package for this OS, then rerun the bootstrap wizard."
+  fi
+  if [[ -n "$SUDO" ]] && ! command -v sudo >/dev/null 2>&1; then
+    die "Python venv support is missing and sudo is not available. Install python3-venv as root, then rerun the bootstrap wizard."
+  fi
+
+  local package_name
+  package_name="$(python_venv_package_name)"
+  log "Installing Python virtual environment support (${package_name})"
+  $SUDO apt-get update
+  $SUDO apt-get install -y "$package_name"
+}
+
+ensure_python_venv_available() {
+  local probe_dir probe_log
+  probe_dir="$(mktemp -d)"
+  probe_log="$BOOTSTRAP_DIR/venv-probe.log"
+  if python3 -m venv "$probe_dir/probe" >"$probe_log" 2>&1; then
+    rm -rf "$probe_dir"
+    return
+  fi
+  rm -rf "$probe_dir"
+
+  install_python_venv_package
+
+  probe_dir="$(mktemp -d)"
+  if python3 -m venv "$probe_dir/probe" >"$probe_log" 2>&1; then
+    rm -rf "$probe_dir"
+    return
+  fi
+  rm -rf "$probe_dir"
+  die "Python venv support is still unavailable after package installation. See ${probe_log}"
+}
+
+ensure_backend_python() {
   require_cmd python3
-  log "Preparing local bootstrap backend environment"
-  python3 -m venv "$ROOT_DIR/.venv"
-  "$ROOT_DIR/.venv/bin/pip" install -e ".[dev]" >/dev/null
+  require_python_version
+  if [[ ! -x "$PYTHON_BIN" ]]; then
+    log "Preparing local bootstrap backend environment"
+    ensure_python_venv_available
+    rm -rf "$ROOT_DIR/.venv"
+    python3 -m venv "$ROOT_DIR/.venv"
+  fi
+
+  if ! "$PYTHON_BIN" -m pip --version >/dev/null 2>&1; then
+    log "Repairing bootstrap Python package installer"
+    ensure_python_venv_available
+    "$PYTHON_BIN" -m ensurepip --upgrade >/dev/null 2>&1 \
+      || die "The bootstrap Python environment does not have pip. Install python3-venv, remove ${ROOT_DIR}/.venv, then rerun the bootstrap wizard."
+  fi
+
+  if ! "$PYTHON_BIN" -m uvicorn --version >/dev/null 2>&1; then
+    log "Installing bootstrap backend Python dependencies"
+    "$PYTHON_BIN" -m pip install --upgrade pip >/dev/null
+    (
+      cd "$ROOT_DIR"
+      "$PYTHON_BIN" -m pip install -e ".[dev]"
+    )
+  fi
+
+  "$PYTHON_BIN" -m uvicorn --version >/dev/null 2>&1 \
+    || die "Bootstrap backend dependency check failed: uvicorn is still unavailable in ${ROOT_DIR}/.venv"
 }
 
 start_backend() {
