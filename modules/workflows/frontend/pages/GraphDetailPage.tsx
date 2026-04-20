@@ -2,6 +2,7 @@ import { useEffect, useId, useState } from 'react'
 import { useParams, useSearchParams } from 'react-router-dom'
 import { Menu } from 'lucide-react'
 import { useWorkspaceMembers } from "@modules/admin/frontend/api/auth"
+import { useChannelParticipants } from '@modules/communication/frontend/api/channels'
 import { useGraph } from "@modules/workflows/frontend/api/graphs"
 import { useRuns } from "@modules/workflows/frontend/api/runs"
 import GraphCanvas from '@modules/workflows/frontend/components/canvas/GraphCanvas'
@@ -23,6 +24,7 @@ import { useVersionSync } from './designer/useVersionSync'
 import { useVersionActions } from './designer/useVersionActions'
 import type { WorkflowTab } from './designer/graphVersionUtils'
 import { EditorWorkspaceTabs } from '@ui/components/EditorWorkspace'
+import { buildParticipantLabelMap } from '@modules/workflows/frontend/lib/participantLabels'
 
 const DEV_WORKSPACE = import.meta.env.VITE_DEV_WORKSPACE_ID ?? 'dev-workspace'
 const WORKFLOW_TABS: { id: WorkflowTab; label: string }[] = [
@@ -40,8 +42,10 @@ export default function GraphDetailPage() {
 
   const { data: graph, isLoading } = useGraph(workspaceId, graphId!)
   const { data: agentMembers } = useWorkspaceMembers(workspaceId, 1, 'agent', false)
+  const { data: participants = [] } = useChannelParticipants(workspaceId)
   const { data: runs = [] } = useRuns(workspaceId)
   const hasAgentZero = Boolean(agentMembers?.items.some((member) => member.agent_zero_role))
+  const participantLabelMap = buildParticipantLabelMap(participants)
 
   const [activeTab, setActiveTab] = useState<WorkflowTab>('graph')
   const [editorMode, setEditorMode] = useState<'view' | 'edit'>('view')
@@ -127,7 +131,12 @@ export default function GraphDetailPage() {
             <div style={{ flex: 1, display: 'flex', flexDirection: 'row', minHeight: 0 }}>
               <div style={{ flex: 1, minWidth: 0, overflow: 'hidden', padding: 16 }}>
                 {activeTab === 'graph' ? (
-                  <GraphCanvas definition={definition} selectedNodeId={selectedNodeId} onSelectNode={selectNode} />
+                  <GraphCanvas
+                    definition={definition}
+                    participantLabelMap={participantLabelMap}
+                    selectedNodeId={selectedNodeId}
+                    onSelectNode={selectNode}
+                  />
                 ) : activeTab === 'history' ? (
                   <HistoryTab
                     graphSlug={graph.slug ?? null}

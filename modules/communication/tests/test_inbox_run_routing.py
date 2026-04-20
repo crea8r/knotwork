@@ -5,6 +5,7 @@ import sys
 from pathlib import Path
 
 import pytest
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 ROOT = Path(__file__).resolve().parents[3]
@@ -31,7 +32,9 @@ from libs.database import Base
 from libs.participants import human_participant_id
 from modules.admin.backend.workspaces_models import Workspace, WorkspaceMember
 from modules.communication.backend.channels_models import Channel, ChannelAssetBinding, ChannelEvent, ChannelMessage, ChannelSubscription
+from modules.communication.backend.channels_schemas import ChannelMessageCreate
 from modules.communication.backend.channels_service import inbox_items
+from modules.communication.backend.channel_services.messages import create_message
 from modules.workflows.backend.runs.escalations_service import create_escalation
 from modules.communication.backend.notifications_models import EventDelivery
 from modules.workflows.backend.graphs.models import Graph
@@ -286,6 +289,126 @@ async def test_escalation_delivery_prefers_run_channel_over_workflow_channel(db:
 
     assert len(escalation_rows) == 1
     assert escalation_rows[0]["channel_id"] == str(run_channel.id)
+
+
+@pytest.mark.asyncio
+async def test_assigned_run_request_message_publishes_task_assigned_and_preserves_run_context(
+    db: AsyncSession,
+    workspace: Workspace,
+):
+    user = User(name="Assigned User", email="assigned@example.com")
+    db.add(user)
+    await db.flush()
+
+    member = WorkspaceMember(
+        workspace_id=workspace.id,
+        user_id=user.id,
+        role="owner",
+        kind="human",
+    )
+    db.add(member)
+    await db.flush()
+
+    participant_id = human_participant_id(user.id)
+
+    graph = Graph(
+        workspace_id=workspace.id,
+        name="Assigned Workflow",
+        path="workflows/assigned-workflow",
+        trigger_config={},
+    )
+    db.add(graph)
+    await db.flush()
+
+    channel = Channel(
+        workspace_id=workspace.id,
+        name="run discussion",
+        slug="run-discussion",
+        channel_type="run",
+        graph_id=graph.id,
+    )
+    db.add(channel)
+    await db.flush()
+
+    db.add(
+        ChannelSubscription(
+            workspace_id=workspace.id,
+            channel_id=channel.id,
+            participant_id=participant_id,
+        )
+    )
+
+    run = Run(
+        workspace_id=workspace.id,
+        graph_id=graph.id,
+        graph_version_id=None,
+        input={"topic": "test"},
+        trigger="manual",
+        status="paused",
+    )
+    db.add(run)
+    await db.flush()
+
+    db.add(
+        ChannelAssetBinding(
+            workspace_id=workspace.id,
+            channel_id=channel.id,
+            asset_type="run",
+            asset_id=run.id,
+        )
+    )
+    await db.commit()
+
+    message = await create_message(
+        db,
+        workspace.id,
+        channel.id,
+        ChannelMessageCreate(
+            role="assistant",
+            author_type="system",
+            author_name="Workflow Orchestrator",
+            content="Please review the latest run output.",
+            run_id=run.id,
+            metadata={
+                "kind": "request",
+                "assigned_to": [participant_id],
+                "request": {
+                    "type": "agent_question",
+                    "status": "open",
+                    "assigned_to": [participant_id],
+                },
+            },
+        ),
+    )
+    await db.commit()
+
+    event_result = await db.execute(
+        select(ChannelEvent)
+        .where(ChannelEvent.source_type == "message", ChannelEvent.source_id == str(message.id))
+        .order_by(ChannelEvent.created_at.desc(), ChannelEvent.id.desc())
+    )
+    events = list(event_result.scalars())
+    assert len(events) == 1
+    assert events[0].event_type == "task_assigned"
+
+    delivery_result = await db.execute(
+        select(EventDelivery).where(
+            EventDelivery.event_id == events[0].id,
+            EventDelivery.participant_id == participant_id,
+            EventDelivery.delivery_mean == "app",
+            EventDelivery.status == "sent",
+        )
+    )
+    delivery = delivery_result.scalar_one()
+
+    rows = await inbox_items(db, workspace.id, participant_id, archived=False)
+    task_rows = [row for row in rows if row["delivery_id"] == str(delivery.id)]
+
+    assert len(task_rows) == 1
+    assert task_rows[0]["item_type"] == "task_assigned"
+    assert task_rows[0]["run_id"] == run.id
+    assert task_rows[0]["channel_id"] == str(channel.id)
+    assert task_rows[0]["message_id"] == str(message.id)
 
 
 @pytest.mark.asyncio

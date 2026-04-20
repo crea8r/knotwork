@@ -26,7 +26,7 @@ export type SemanticThinkInput = {
 }
 
 export interface ThinkingRuntime {
-  think(input: SemanticThinkInput): Promise<{ rawOutput: string }>
+  think(input: SemanticThinkInput): Promise<{ rawOutput: string; deliveredSystemPrompt?: string }>
 }
 
 export interface KnotworkTransport {

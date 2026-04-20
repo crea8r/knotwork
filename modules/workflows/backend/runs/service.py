@@ -287,6 +287,22 @@ async def get_run(db: AsyncSession, run_id: str) -> Run | None:
     return await db.get(Run, run_id)
 
 
+async def get_run_definition(db: AsyncSession, run_id: str) -> dict | None:
+    from modules.workflows.backend.graphs.models import GraphVersion
+
+    run = await db.get(Run, run_id)
+    if run is None:
+        return None
+    if isinstance(run.draft_definition, dict):
+        return run.draft_definition
+    if run.graph_version_id is None:
+        return None
+    version = await db.get(GraphVersion, run.graph_version_id)
+    if version is None or not isinstance(version.definition, dict):
+        return None
+    return version.definition
+
+
 async def update_run(db: AsyncSession, run_id: str, data: RunUpdate) -> Run | None:
     run = await db.get(Run, run_id)
     if not run:

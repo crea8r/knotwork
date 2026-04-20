@@ -4,6 +4,10 @@ import {
   NODE_W, NODE_H, NODE_COLORS, SELECT_RING, SELECT_GLOW,
 } from './graphCanvasConstants'
 
+function truncateLabel(text: string, maxLength: number): string {
+  return text.length > maxLength ? `${text.slice(0, maxLength - 1)}…` : text
+}
+
 export function StartEndOval({
   node, x, y, selected, neighbor, dimmed, pulse, statusColor, onClick,
 }: {
@@ -18,10 +22,12 @@ export function StartEndOval({
   onClick: () => void
 }) {
   const isStart = node.type === 'start'
-  const fill = statusColor ?? NODE_COLORS[node.type]
+  const fill = statusColor ?? (isStart ? NODE_COLORS.start : NODE_COLORS.end)
   const rx = NODE_W / 2
   const ry = NODE_H / 2
-  const label = isStart ? '▶ Start' : '■ End'
+  const label = isStart
+    ? 'Start'
+    : truncateLabel(node.name?.trim() && node.name.trim().toLowerCase() !== 'end' ? node.name : 'Final result', 18)
   const scale = selected ? (pulse ? 1.07 : 1.04) : (neighbor ? 1.01 : 1)
   const opacity = dimmed ? 0.58 : 1
 
@@ -45,7 +51,21 @@ export function StartEndOval({
       <ellipse cx={0} cy={0} rx={rx} ry={ry}
         fill={fill} fillOpacity={0.18}
         stroke={selected ? SELECT_RING : fill} strokeWidth={selected ? 4 : 2} />
-      <text x={0} y={5} fontSize={13} fontWeight="600" fill={fill}
+      {!isStart && (
+        <text
+          x={0}
+          y={-7}
+          fontSize={9}
+          fontWeight="700"
+          fill={fill}
+          fontFamily="sans-serif"
+          textAnchor="middle"
+          style={{ letterSpacing: '0.08em', textTransform: 'uppercase' }}
+        >
+          Workflow result
+        </text>
+      )}
+      <text x={0} y={isStart ? 5 : 12} fontSize={13} fontWeight="600" fill={fill}
         fontFamily="sans-serif" textAnchor="middle">
         {label}
       </text>
@@ -54,11 +74,13 @@ export function StartEndOval({
 }
 
 export function NodeBox({
-  node, x, y, selected, neighbor, dimmed, pulse, statusColor, branchCount = 0, onClick,
+  node, x, y, operatorLabel, supervisorLabel, selected, neighbor, dimmed, pulse, statusColor, branchCount = 0, onClick,
 }: {
   node: NodeDef
   x: number
   y: number
+  operatorLabel: string
+  supervisorLabel: string
   selected: boolean
   neighbor: boolean
   dimmed: boolean
@@ -75,6 +97,9 @@ export function NodeBox({
     : neighbor
       ? 'drop-shadow(0px 4px 8px rgba(0,0,0,0.12))'
       : 'none'
+  const nodeName = truncateLabel(node.name, 20)
+  const operatorText = `Operator · ${truncateLabel(operatorLabel, 15)}`
+  const supervisorText = `Supervisor · ${truncateLabel(supervisorLabel, 13)}`
 
   return (
     <g
@@ -103,11 +128,14 @@ export function NodeBox({
       <rect width={NODE_W} height={NODE_H} rx={8} fill={fill} fillOpacity={0.15}
         stroke={selected ? SELECT_RING : fill} strokeWidth={selected ? 4 : 1.5} />
       <rect width={4} height={NODE_H} rx={2} fill={fill} />
-      <text x={16} y={22} fontSize={11} fill="#6b7280" fontFamily="sans-serif">
-        {node.type.replace(/_/g, ' ')}
+      <text x={16} y={24} fontSize={13} fontWeight="600" fill="#1f2937" fontFamily="sans-serif">
+        {nodeName}
       </text>
-      <text x={16} y={38} fontSize={13} fontWeight="600" fill="#1f2937" fontFamily="sans-serif">
-        {node.name.length > 20 ? node.name.slice(0, 18) + '…' : node.name}
+      <text x={16} y={48} fontSize={10} fill="#4b5563" fontFamily="sans-serif">
+        {operatorText}
+      </text>
+      <text x={16} y={64} fontSize={10} fill="#6b7280" fontFamily="sans-serif">
+        {supervisorText}
       </text>
       {branchCount > 1 && (
         <g transform={`translate(${NODE_W - 56},10)`}>

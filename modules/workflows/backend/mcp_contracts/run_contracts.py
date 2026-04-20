@@ -67,7 +67,8 @@ RUN_ACTION_NAMES = {
     "context.get_request_summary",
     "context.get_request_context",
     "context.get_run_summary",
-    "message.respond",
+    "run.resolve_request",
+    "run.escalate_to_supervisor",
 }
 
 
@@ -84,26 +85,50 @@ def build_run_session_specs() -> dict[str, WorkflowSessionSpec]:
                 "context.get_recent_messages",
                 "context.get_participants",
                 "context.get_run_summary",
-                "message.respond",
+                "run.resolve_request",
+                "run.escalate_to_supervisor",
                 "control.noop",
                 "control.fail",
             ],
             context_sections=["trigger_message", "request_summary", "request_context", "recent_messages", "run_summary", "participants"],
             instructions=[
                 "Respond to the active structured request only.",
-                "Use message.respond for the final decision.",
+                "Use run.resolve_request for the final workflow decision.",
+                "Use run.escalate_to_supervisor when operator review should hand off to the supervisor.",
+                "When using run.resolve_request with resolution=accept_output, include the decisive task output in payload.answers as plain strings or in payload.override_output.",
+                "Do not send accept_output with an empty output payload.",
                 "Do not substitute channel.post_message for the decision.",
                 "Start with the loaded context only.",
                 "If you need more context, call a read action first and do not mix read and write actions in one batch.",
             ],
             examples=[
                 MCPContractExample(
+                    summary="Load the full request context before deciding",
+                    action={
+                        "action": "context.get_request_context",
+                        "target": {},
+                        "payload": {},
+                    },
+                ),
+                MCPContractExample(
+                    summary="Accept the completed task output",
+                    action={
+                        "action": "run.resolve_request",
+                        "target": {"request_message_id": "message-id"},
+                        "payload": {
+                            "resolution": "accept_output",
+                            "answers": [
+                                "Elite Fitness Đà Nẵng is located at Vĩnh Trung Plaza B, 255–257 Hùng Vương, Thanh Khê, Đà Nẵng. Sources: official site, Foody, GlobalGymBunny.",
+                            ],
+                        },
+                    },
+                ),
+                MCPContractExample(
                     summary="Ask supervisor for review",
                     action={
-                        "action": "message.respond",
-                        "target": {"channel_id": "channel-id", "message_id": "message-id"},
+                        "action": "run.escalate_to_supervisor",
+                        "target": {"request_message_id": "message-id"},
                         "payload": {
-                            "resolution": "request_revision",
                             "guidance": "Escalate this to supervisor with the missing identifier requirement.",
                         },
                     },
@@ -190,7 +215,7 @@ def build_request_context_action() -> MCPContractAction:
         name="context.get_request_context",
         description="Load the full request context markdown.",
         section="request_context",
-        visibility="on_demand",
+        visibility="initial",
         output_schema=_string_schema(),
     )
 
@@ -214,14 +239,14 @@ def build_run_summary_action(*, visibility: str) -> MCPContractAction:
     )
 
 
-def build_message_respond_action() -> MCPContractAction:
+def build_run_resolve_request_action() -> MCPContractAction:
     return MCPContractAction(
-        name="message.respond",
-        description="Resolve the active structured request message.",
+        name="run.resolve_request",
+        description="Resolve the active workflow run request.",
         kind="write",
         target_schema=_object_schema(
-            properties={"channel_id": _string_schema(), "message_id": _string_schema()},
-            required=["channel_id", "message_id"],
+            properties={"request_message_id": _string_schema()},
+            required=["request_message_id"],
         ),
         payload_schema=_object_schema(
             properties={
@@ -232,6 +257,25 @@ def build_message_respond_action() -> MCPContractAction:
                 "answers": _array_schema(_string_schema()),
             },
             required=["resolution"],
+        ),
+    )
+
+
+def build_run_escalate_to_supervisor_action() -> MCPContractAction:
+    return MCPContractAction(
+        name="run.escalate_to_supervisor",
+        description="Escalate the active workflow run request to the supervisor.",
+        kind="write",
+        target_schema=_object_schema(
+            properties={"request_message_id": _string_schema()},
+            required=["request_message_id"],
+        ),
+        payload_schema=_object_schema(
+            properties={
+                "guidance": _string_schema(),
+                "answers": _array_schema(_string_schema()),
+            },
+            additional_properties=False,
         ),
     )
 
@@ -303,6 +347,20 @@ def resolve_run_session_contract(
             contract=manifest,
         )
 
+    if request is not None and trigger_type == "task_assigned":
+        manifest = manifests["telemetry.observe"]
+        request_status = str(request.get("status") or "open")
+        return MCPContract(
+            session_type="telemetry.observe",
+            immediate_instruction="This assigned request is no longer active. Do not reply.",
+            mode_instructions=[
+                f"The assigned request is {request_status}.",
+                "Do not post a reply or take workflow actions for a superseded or answered request.",
+            ],
+            preferred_actions=["control.noop"],
+            contract=manifest,
+        )
+
     if escalation_present or trigger_type == "escalation":
         manifest = manifests["workflow.escalation.review"]
         return MCPContract(
@@ -338,6 +396,7 @@ async def execute_run_action(
     payload: dict[str, Any],
     loaded_channel_context: Any | None = None,
     fallback_run_id: str | None = None,
+    fallback_trigger_message_id: str | None = None,
 ) -> MCPActionResult:
     if action_name == "context.get_request_summary":
         summary = _request_summary(loaded_channel_context.trigger_message if loaded_channel_context else None)
@@ -378,18 +437,48 @@ async def execute_run_action(
             },
         )
 
-    if action_name == "message.respond":
+    if action_name == "run.resolve_request":
+        request_message_id = str(target.get("request_message_id") or fallback_trigger_message_id or "").strip()
+        if not request_message_id:
+            raise ValueError("request_message_id is required")
+        channel = loaded_channel_context.channel if loaded_channel_context else None
+        if channel is None:
+            raise ValueError("Channel not available for request resolution")
         responded = await core_channels.respond_channel_message(
             db,
             workspace_id=workspace_id,
-            channel_ref=str(target["channel_id"]),
-            message_id=str(target["message_id"]),
+            channel_ref=str(channel.id),
+            message_id=request_message_id,
             current_user=current_user,
             member=member,
             resolution=str(payload["resolution"]),
             guidance=payload.get("guidance"),
             override_output=payload.get("override_output"),
             next_branch=payload.get("next_branch"),
+            answers=payload.get("answers"),
+        )
+        return MCPActionResult(
+            action_id=action_id,
+            status="applied",
+            effect_ref={"kind": "channel_message", "id": str(responded.id)},
+        )
+
+    if action_name == "run.escalate_to_supervisor":
+        request_message_id = str(target.get("request_message_id") or fallback_trigger_message_id or "").strip()
+        if not request_message_id:
+            raise ValueError("request_message_id is required")
+        channel = loaded_channel_context.channel if loaded_channel_context else None
+        if channel is None:
+            raise ValueError("Channel not available for supervisor escalation")
+        responded = await core_channels.respond_channel_message(
+            db,
+            workspace_id=workspace_id,
+            channel_ref=str(channel.id),
+            message_id=request_message_id,
+            current_user=current_user,
+            member=member,
+            resolution="request_revision",
+            guidance=payload.get("guidance"),
             answers=payload.get("answers"),
         )
         return MCPActionResult(

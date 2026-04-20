@@ -204,8 +204,11 @@ export type WorkPacket = {
   session_type: string
   trigger: {
     type: string
+    delivery_id?: string | null
+    channel_id?: string | null
     title?: string | null
     subtitle?: string | null
+    detail?: Record<string, unknown>
   }
   mcp_contract: MCPContractRef
   task_focus: {
@@ -501,6 +504,9 @@ export type TaskTrigger = {
   type: string
   delivery_id?: string | null
   channel_id?: string | null
+  title?: string | null
+  subtitle?: string | null
+  detail?: Record<string, unknown>
   run_id?: string | null
   escalation_id?: string | null
   proposal_id?: string | null
@@ -508,8 +514,24 @@ export type TaskTrigger = {
   asset_type?: 'workflow' | 'run' | 'file' | 'folder' | null
   asset_id?: string | null
   asset_path?: string | null
-  title?: string | null
-  subtitle?: string | null
+}
+
+function triggerDetailValue(trigger: TaskTrigger | WorkPacket['trigger'] | undefined, key: string): unknown {
+  const detail = trigger?.detail
+  if (detail && typeof detail === 'object' && key in detail) return detail[key]
+  return undefined
+}
+
+export function triggerChannelId(trigger: TaskTrigger | WorkPacket['trigger'] | undefined): string | null {
+  const value = trigger?.channel_id
+  return typeof value === 'string' && value.trim() ? value.trim() : null
+}
+
+export function triggerMessageId(trigger: TaskTrigger | WorkPacket['trigger'] | undefined): string | null {
+  const nested = triggerDetailValue(trigger, 'message_id')
+  if (typeof nested === 'string' && nested.trim()) return nested.trim()
+  const legacy = 'message_id' in (trigger ?? {}) ? (trigger as TaskTrigger).message_id : null
+  return typeof legacy === 'string' && legacy.trim() ? legacy.trim() : null
 }
 
 export type RecentTask = {

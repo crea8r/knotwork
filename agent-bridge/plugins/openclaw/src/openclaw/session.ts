@@ -7,6 +7,7 @@
 import type { ExecutionTask, LooseRecord, OpenClawApi } from '../types'
 
 const AGENT_WAIT_TIMEOUT_MS = 900_000
+const lastSystemPromptBySession = new Map<string, string>()
 
 function toErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error)
@@ -63,7 +64,7 @@ function latestAssistantMessage(messages: unknown[]): string {
 }
 
 export type RawTaskResult =
-  | { type: 'completed'; output: string }
+  | { type: 'completed'; output: string; deliveredSystemPrompt?: string }
   | { type: 'failed'; error: string }
 
 export async function executeTaskRaw(api: OpenClawApi, task: ExecutionTask): Promise<RawTaskResult> {
@@ -74,6 +75,17 @@ export async function executeTaskRaw(api: OpenClawApi, task: ExecutionTask): Pro
   const sKey = buildSessionKey(task)
   const iKey = idempotencyKey(taskId)
   const subagentKeys = Object.keys(subagent as object).join(',')
+  const systemPrompt = String(task.system_prompt ?? '')
+  const lastSystemPrompt = lastSystemPromptBySession.get(sKey) ?? null
+  let includeSystemPrompt = systemPrompt.length > 0
+
+  try {
+    const existing = await subagent.getSessionMessages({ sessionKey: sKey, limit: 1 })
+    const hasMessages = Array.isArray(existing.messages) && existing.messages.length > 0
+    includeSystemPrompt = systemPrompt.length > 0 && (!hasMessages || lastSystemPrompt !== systemPrompt)
+  } catch {
+    includeSystemPrompt = systemPrompt.length > 0
+  }
 
   let started: { runId: string }
   try {
@@ -81,11 +93,14 @@ export async function executeTaskRaw(api: OpenClawApi, task: ExecutionTask): Pro
       sessionKey: sKey,
       idempotencyKey: iKey,
       message: String(task.user_prompt ?? ''),
-      extraSystemPrompt: String(task.system_prompt ?? '') || undefined,
+      extraSystemPrompt: includeSystemPrompt ? systemPrompt : undefined,
       deliver: false,
     })
   } catch (e) {
     throw new Error(`subagent.run failed: ${toErrorMessage(e)} [subagent-keys: ${subagentKeys}] [sessionKey: ${sKey}] [idempotencyKey: ${iKey}] [pid: ${process?.pid ?? 'unknown'}]`)
+  }
+  if (includeSystemPrompt) {
+    lastSystemPromptBySession.set(sKey, systemPrompt)
   }
 
   const { runId } = started
@@ -101,13 +116,23 @@ export async function executeTaskRaw(api: OpenClawApi, task: ExecutionTask): Pro
 
   if (status === 'ok') {
     const lastMsg = await fetchLastMsg()
-    return { type: 'completed', output: lastMsg }
+    return {
+      type: 'completed',
+      output: lastMsg,
+      deliveredSystemPrompt: includeSystemPrompt ? systemPrompt : undefined,
+    }
   }
   if (status === 'error') return { type: 'failed', error: `agent error: ${String(waited.error ?? 'unknown')} [runId: ${runId}] [sessionKey: ${sKey}]` }
   if (status === 'timeout') {
     try {
       const lastMsg = await fetchLastMsg()
-      if (lastMsg) return { type: 'completed', output: lastMsg }
+      if (lastMsg) {
+        return {
+          type: 'completed',
+          output: lastMsg,
+          deliveredSystemPrompt: includeSystemPrompt ? systemPrompt : undefined,
+        }
+      }
     } catch { /* ignore fallback errors */ }
     return { type: 'failed', error: `agent timed out after ${Math.floor(AGENT_WAIT_TIMEOUT_MS / 1000)}s [runId: ${runId}] [sessionKey: ${sKey}]` }
   }

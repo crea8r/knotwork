@@ -7,23 +7,17 @@ function sanitize(value: string | null | undefined): string {
   return normalized || 'unknown'
 }
 
-function codeBlock(label: string, language: string, body: string): string {
-  return [
-    `## ${label}`,
-    `\`\`\`${language}`,
-    body,
-    '```',
-    '',
-  ].join('\n')
-}
-
-function toPretty(value: unknown): string {
-  if (typeof value === 'string') return value
-  return JSON.stringify(value, null, 2)
+function fenced(label: string, body: string): string {
+  return [`## ${label}`, '```text', body, '```', ''].join('\n')
 }
 
 export class SemanticDebugTrace {
-  private readonly sections: string[] = []
+  private readonly deliveries: Array<{
+    iteration: string
+    message: string
+    extraSystemPrompt?: string
+    reply?: string
+  }> = []
   readonly filePath: string
 
   constructor(input: {
@@ -35,41 +29,56 @@ export class SemanticDebugTrace {
     const baseDir = input.rootDir?.trim() || join(homedir(), '.openclaw', 'knotwork-debug', 'sessions')
     const sessionKey = sanitize(input.sessionName)
     const taskKey = sanitize(input.taskId)
-    this.filePath = join(baseDir, `${taskKey}--${sessionKey}.md`)
-    if (!input.enabled) this.filePath = ''
+    this.filePath = join(baseDir, `delivery_${taskKey}--${sessionKey}.md`)
+    if (!input.enabled) {
+      this.filePath = ''
+    }
   }
 
   get enabled(): boolean {
     return this.filePath.length > 0
   }
 
-  async writeSection(label: string, value: unknown, language = 'json'): Promise<void> {
+  async writeDelivery(input: { iteration: string; message: string; extraSystemPrompt?: string | null }): Promise<void> {
     if (!this.enabled) return
-    this.sections.push(codeBlock(label, language, toPretty(value)))
-    await this.flush()
+    const record: { iteration: string; message: string; extraSystemPrompt?: string; reply?: string } = {
+      iteration: input.iteration,
+      message: String(input.message ?? ''),
+    }
+    const systemPrompt = String(input.extraSystemPrompt ?? '')
+    if (systemPrompt) record.extraSystemPrompt = systemPrompt
+    this.deliveries.push(record)
+    await this.flushDelivery()
   }
 
-  async writeMarkdownSection(label: string, markdown: string): Promise<void> {
+  async writeReply(input: { iteration: string; reply: string | null | undefined }): Promise<void> {
     if (!this.enabled) return
-    this.sections.push(`## ${label}\n${markdown.trim()}\n`)
-    await this.flush()
+    const reply = String(input.reply ?? '')
+    const delivery = this.deliveries.find((item) => item.iteration === input.iteration)
+    if (!delivery) return
+    delivery.reply = reply
+    await this.flushDelivery()
   }
+
+  async writeSection(_label: string, _value: unknown, _language = 'json'): Promise<void> {}
+
+  async writeMarkdownSection(_label: string, _markdown: string): Promise<void> {}
 
   async writeError(error: unknown): Promise<void> {
-    const message = error instanceof Error ? `${error.name}: ${error.message}` : String(error)
-    await this.writeSection('Error', message, 'text')
+    void error
   }
 
-  private async flush(): Promise<void> {
+  private async flushDelivery(): Promise<void> {
     if (!this.enabled) return
-    const header = [
-      '# Knotwork Semantic Session Debug',
-      '',
-      `- Generated at: ${new Date().toISOString()}`,
-      `- File: ${this.filePath}`,
-      '',
-    ].join('\n')
     await mkdir(dirname(this.filePath), { recursive: true })
-    await writeFile(this.filePath, `${header}${this.sections.join('\n')}`)
+    const body = this.deliveries.map((delivery) => {
+      const parts: string[] = []
+      if (this.deliveries.length > 1) parts.push(`# Delivery ${delivery.iteration}`, '')
+      if (delivery.extraSystemPrompt) parts.push(fenced('extraSystemPrompt', delivery.extraSystemPrompt))
+      parts.push(fenced('message', delivery.message))
+      if (delivery.reply !== undefined) parts.push(fenced('reply', delivery.reply))
+      return parts.join('\n')
+    }).join('\n')
+    await writeFile(this.filePath, `${body}`)
   }
 }

@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+from contextlib import asynccontextmanager
 from types import SimpleNamespace
 
 import pytest
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+import libs.database
 from libs.namegen import generate_name
 from modules.workflows.backend.graphs.models import Graph, GraphVersion
 from modules.workflows.backend.graphs.version_service import (
@@ -19,7 +21,8 @@ from modules.workflows.backend.graphs.version_service import (
     upsert_draft,
 )
 from modules.workflows.backend.runs.schemas import RunCreate
-from modules.workflows.backend.runs.service import create_run
+from modules.workflows.backend.runs.service import create_run, get_run_definition
+from modules.workflows.backend.runtime.runner import resume_run
 
 SIMPLE_DEFINITION = {
     "name": "Workflow",
@@ -163,6 +166,72 @@ async def test_version_run_has_no_draft_snapshot(db: AsyncSession, graph: Graph)
     assert run.draft_definition is None
     assert run.draft_snapshot_at is None
     assert run.graph_version_id == version.id
+
+
+@pytest.mark.asyncio
+async def test_get_run_definition_prefers_frozen_draft_snapshot(db: AsyncSession, graph: Graph):
+    draft = await get_draft_for_version(db, graph.id, None)
+    run = await create_run(
+        db,
+        graph.workspace_id,
+        graph.id,
+        RunCreate(input={}),
+        force_graph_version_id=draft.id,
+    )
+    draft.definition["nodes"][1]["operator_id"] = "agent:someone-else"
+    await db.commit()
+
+    definition = await get_run_definition(db, run.id)
+
+    assert definition is not None
+    assert definition["nodes"][1]["operator_id"] == "human:operator"
+
+
+@pytest.mark.asyncio
+async def test_resume_run_uses_frozen_draft_definition(db: AsyncSession, engine, graph: Graph, monkeypatch):
+    draft = await get_draft_for_version(db, graph.id, None)
+    run = await create_run(
+        db,
+        graph.workspace_id,
+        graph.id,
+        RunCreate(input={}),
+        force_graph_version_id=draft.id,
+    )
+    run.status = "paused"
+    draft.definition["nodes"][1]["operator_id"] = "agent:someone-else"
+    await db.commit()
+
+    captured: dict[str, object] = {}
+
+    class _FakeCompiledGraph:
+        async def ainvoke(self, *args, **kwargs):
+            return {"current_output": "ok"}
+
+    @asynccontextmanager
+    async def _fake_checkpointer():
+        yield object()
+
+    async def _noop_publish_event(*args, **kwargs):
+        return None
+
+    async def _noop_async(*args, **kwargs):
+        return None
+
+    def _fake_compile_graph(definition, checkpointer=None):
+        captured["definition"] = definition
+        return _FakeCompiledGraph()
+
+    session_factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+    monkeypatch.setattr(libs.database, "AsyncSessionLocal", session_factory)
+    monkeypatch.setattr("modules.workflows.backend.runtime.engine.compile_graph", _fake_compile_graph)
+    monkeypatch.setattr("modules.workflows.backend.runtime.engine._checkpointer", _fake_checkpointer)
+    monkeypatch.setattr("modules.workflows.backend.runtime.events.publish_event", _noop_publish_event)
+    monkeypatch.setattr("modules.workflows.backend.runtime.runner._update_run_status", _noop_async)
+    monkeypatch.setattr("modules.workflows.backend.runtime.runner._persist_run_output_from_result", _noop_async)
+
+    await resume_run(run.id, {"resolution": "accept_output"})
+
+    assert captured["definition"]["nodes"][1]["operator_id"] == "human:operator"
 
 
 @pytest.mark.asyncio

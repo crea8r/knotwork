@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from libs.config import settings
 from libs.database import get_db
+from modules.workflows.backend.graphs.schemas import GraphDefinitionSchema
 from modules.assets.backend.storage import get_storage_adapter
 from modules.communication.backend.channels_schemas import ChannelMessageOut
 
@@ -134,6 +135,21 @@ async def get_run(workspace_id: UUID, run_id: str = PathParam(..., min_length=8,
     if not run or run.workspace_id != workspace_id:
         raise HTTPException(404, "Run not found")
     return RunOut.model_validate(run)
+
+
+@router.get("/{workspace_id}/runs/{run_id}/definition", response_model=GraphDefinitionSchema)
+async def get_run_definition(
+    workspace_id: UUID,
+    run_id: str = PathParam(..., min_length=8, max_length=36),
+    db: AsyncSession = Depends(get_db),
+):
+    run = await service.get_run(db, run_id)
+    if not run or run.workspace_id != workspace_id:
+        raise HTTPException(404, "Run not found")
+    definition = await service.get_run_definition(db, run_id)
+    if definition is None:
+        raise HTTPException(404, "Run definition not found")
+    return GraphDefinitionSchema.model_validate(definition)
 
 
 @router.patch("/{workspace_id}/runs/{run_id}", response_model=RunOut)

@@ -14,6 +14,7 @@ import { SemanticOrchestrator } from '../semantic/orchestrator'
 import { KnotworkMcpTransport } from '../transport/knotwork-mcp-transport'
 import { KnotworkRestTransport } from '../transport/knotwork-rest-transport'
 import { OpenClawThinkingRuntime } from '../transport/openclaw-thinking-runtime'
+import type { KnotworkTransport } from '../transport/contracts'
 import { isAuthError } from './auth'
 import { MAX_RECENT_TASKS } from '../state/persist'
 import type { TaskLogger } from '../state/tasklog'
@@ -25,6 +26,7 @@ import type {
   RecentTask,
   RunningTaskInfo,
   TaskResult,
+  WorkPacket,
 } from '../types'
 
 const DEFAULT_AUTHOR_NAME = 'Knotwork Agent'
@@ -34,7 +36,9 @@ function isChannelNotifiableFailure(error: string): boolean {
     /OAuth token refresh failed/i.test(error) ||
     /FailoverError/i.test(error) ||
     /subagent\.run failed/i.test(error) ||
-    /api\.runtime\.subagent/i.test(error)
+    /api\.runtime\.subagent/i.test(error) ||
+    /semantic mode failed/i.test(error) ||
+    /semantic session exceeded context-read limit/i.test(error)
   )
 }
 
@@ -55,6 +59,18 @@ function buildChannelFailureMessage(error: string): string {
     ``,
     `Error: ${error.slice(0, 300)}`,
   ].join('\n')
+}
+
+function fallbackRunId(task: ExecutionTask, packet?: WorkPacket | null): string | undefined {
+  const detail = (task.trigger?.detail && typeof task.trigger.detail === 'object')
+    ? task.trigger.detail as Record<string, unknown>
+    : null
+  const triggerRunId = typeof detail?.run_id === 'string' && detail.run_id.trim()
+    ? detail.run_id.trim()
+    : undefined
+  return packet?.refs.run_id
+    ?? task.run_id
+    ?? triggerRunId
 }
 
 async function resolveAuthorName(
@@ -135,6 +151,18 @@ export function removeRunningTask(state: PluginState, taskId: string): void {
  * This user prompt provides the structured event details.
  */
 export function inboxEventToTask(event: InboxEvent, _guideContent: string | null): ExecutionTask {
+  const detail: Record<string, unknown> = {}
+  if (event.message_id) detail.message_id = event.message_id
+  if (event.run_id) detail.run_id = event.run_id
+  if (event.escalation_id) detail.escalation_id = event.escalation_id
+  if (event.proposal_id) detail.proposal_id = event.proposal_id
+  if (event.asset_type || event.asset_id || event.asset_path) {
+    detail.asset = {
+      type: event.asset_type ?? null,
+      id: event.asset_id ?? null,
+      path: event.asset_path ?? null,
+    }
+  }
   return {
     task_id: event.id,
     channel_id: event.channel_id ?? undefined,
@@ -143,15 +171,9 @@ export function inboxEventToTask(event: InboxEvent, _guideContent: string | null
       type: event.item_type,
       delivery_id: event.delivery_id,
       channel_id: event.channel_id,
-      run_id: event.run_id,
-      escalation_id: event.escalation_id,
-      proposal_id: event.proposal_id,
-      message_id: event.message_id ?? null,
-      asset_type: event.asset_type ?? null,
-      asset_id: event.asset_id ?? null,
-      asset_path: event.asset_path ?? null,
       title: event.title,
       subtitle: event.subtitle,
+      detail,
     },
   }
 }
@@ -197,6 +219,7 @@ export async function runClaimedTask(ctx: WorkerCtx, task: ExecutionTask, creds?
 
   // Delivery ID for ACKing — stored on task.agent_key by convention (see inboxEventToTask)
   const deliveryId = task.agent_key ?? null
+  let failurePacket: WorkPacket | null = null
 
   let heartbeat: ReturnType<typeof setInterval> | null = null
   try {
@@ -253,6 +276,30 @@ export async function runClaimedTask(ctx: WorkerCtx, task: ExecutionTask, creds?
       taskLog('task:semantic', taskId, { batch: semanticOutcome.dispatch.batch_status })
     } catch (semanticErr) {
       const semanticMessage = semanticErr instanceof Error ? semanticErr.message : String(semanticErr)
+      try {
+        const semanticTransport = cfg.knotworkTransportMode === 'mcp'
+          ? new KnotworkMcpTransport({
+              baseUrl,
+              workspaceId,
+              jwt,
+              authorName,
+              pluginConfig: cfg,
+            })
+          : new KnotworkRestTransport({
+              baseUrl,
+              workspaceId,
+              jwt,
+              authorName,
+              pluginConfig: cfg,
+            })
+        failurePacket = await semanticTransport.getWorkPacket({
+          taskId,
+          trigger: task.trigger,
+          sessionName: task.session_name,
+        })
+      } catch {
+        failurePacket = null
+      }
       log(`task:semantic-failed id=${taskId} error=${JSON.stringify(semanticMessage)}`)
       taskLog('task:semantic-failed', taskId, {
         error: semanticMessage.slice(0, 500),
@@ -288,7 +335,7 @@ export async function runClaimedTask(ctx: WorkerCtx, task: ExecutionTask, creds?
           task.channel_id,
           buildChannelFailureMessage(result.error),
           authorName,
-          task.run_id,
+          fallbackRunId(task, failurePacket),
         )
         log(`task:failure-posted id=${taskId} channel=${task.channel_id}`)
         taskLog('task:failure-posted', taskId, { channel: task.channel_id })

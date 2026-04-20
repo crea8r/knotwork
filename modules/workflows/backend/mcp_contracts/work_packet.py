@@ -11,6 +11,8 @@ from core.mcp.contracts.work_packet_context import (
     isoformat_or_none,
     serialize_message,
     serialize_participant,
+    trigger_asset_type,
+    trigger_run_id,
 )
 
 
@@ -125,7 +127,7 @@ def workflow_resolution_context(context: LoadedWorkPacketContext) -> dict[str, A
         "asset_type": (
             str(context.primary_asset.get("asset_type"))
             if context.primary_asset is not None
-            else first_non_empty(str(context.trigger.get("asset_type")) if context.trigger.get("asset_type") is not None else None)
+            else first_non_empty(trigger_asset_type(context.trigger))
         ),
         "graph_present": context.graph is not None,
         "is_telemetry_trigger": _is_telemetry_message(context),
@@ -195,7 +197,7 @@ def _message_response_policy(context: LoadedWorkPacketContext) -> dict[str, Any]
     is_workflow_run_context = bool(
         context.run is not None
         or request is not None
-        or str(context.trigger.get("run_id") or "").strip()
+        or str(trigger_run_id(context.trigger) or "").strip()
         or channel_type == "run"
     )
     directly_mentioned_self = bool(context.self_participant_id and context.self_participant_id in mentioned_participant_ids)
@@ -271,7 +273,7 @@ def build_workflows_work_packet(
     asset_type = (
         str(context.primary_asset.get("asset_type"))
         if context.primary_asset is not None
-        else first_non_empty(str(context.trigger.get("asset_type")) if context.trigger.get("asset_type") is not None else None)
+        else first_non_empty(trigger_asset_type(context.trigger))
     )
     context_hints = [
         {"kind": "query", "value": "channel.latest_messages"} if context.channel is not None else None,

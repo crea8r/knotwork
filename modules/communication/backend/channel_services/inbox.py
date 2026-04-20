@@ -141,7 +141,16 @@ async def _inbox_item_from_delivery_event(db: AsyncSession, delivery: EventDeliv
         title = str(payload.get("title") or f"New message in {payload.get('channel_name') or 'channel'}")
         return _inbox_row(delivery, event, asset_context, "message_posted", title, str(payload.get("subtitle") or payload.get("message_preview") or ""), run_id=message_run_id, message_id=str(payload.get("message_id") or "") or None)
     if event.event_type == "task_assigned":
-        return _inbox_row(delivery, event, asset_context, "task_assigned", str(payload.get("title") or "Task assigned"), str(payload.get("subtitle") or ""), run_id=str(payload.get("run_id") or "") or None)
+        return _inbox_row(
+            delivery,
+            event,
+            asset_context,
+            "task_assigned",
+            str(payload.get("title") or "Task assigned"),
+            str(payload.get("subtitle") or payload.get("message_preview") or ""),
+            run_id=str(payload.get("run_id") or "") or message_run_id,
+            message_id=str(payload.get("message_id") or "") or None,
+        )
     if event.event_type in {"run_failed", "run_completed"}:
         return _inbox_row(delivery, event, asset_context, "run_event", str(payload.get("title") or event.event_type.replace("_", " ")), str(payload.get("subtitle") or ""), run_id=str(payload.get("run_id") or "") or None)
     return None

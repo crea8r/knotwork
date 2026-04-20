@@ -30,7 +30,7 @@ def _build_participant_task_prompt(
     config: dict,
     run_input: dict | None,
     current_output: str | None,
-    knowledge_files: list[str],
+    knowledge_tree,
     retry_guidance: str | None = None,
 ) -> str:
     instruction = str(
@@ -38,15 +38,24 @@ def _build_participant_task_prompt(
         or config.get("question")
         or f"Complete the task for node '{node_name}'."
     ).strip()
-    sections = [f"## Task\n{instruction or node_name}"]
+    summary_parts = [instruction or f"Complete the task for node '{node_name}'."]
     if retry_guidance:
-        sections.append(f"## Revision Request\n{retry_guidance}")
+        summary_parts.append(f"Revision guidance: {retry_guidance.strip()}")
     if current_output:
-        sections.append(f"## Current Input\n{current_output}")
+        summary_parts.append(f"Current input: {current_output}")
     elif run_input:
-        sections.append(f"## Run Input\n{run_input}")
-    if knowledge_files:
-        sections.append("## Handbook Context\n" + "\n".join(f"- {path}" for path in knowledge_files))
+        summary_parts.append(f"Run input: {run_input}")
+
+    sections = [" ".join(part for part in summary_parts if part).strip()]
+    fragments = list(getattr(knowledge_tree, "fragments", []) or [])
+    if fragments:
+        handbook_sections = []
+        for fragment in fragments:
+            handbook_sections.append(f"### {fragment.path}\n{fragment.content}".strip())
+        sections.append("## Handbook Context\n" + "\n\n".join(handbook_sections))
+    missing_links = list(getattr(knowledge_tree, "missing_links", []) or [])
+    if missing_links:
+        sections.append("## Missing Handbook Files\n" + "\n".join(f"- {path}" for path in missing_links))
     return "\n\n".join(section for section in sections if section.strip())
 
 
@@ -218,6 +227,7 @@ def make_agent_node(node_def: dict, outgoing_edges: list[dict] | None = None):
         output_text = ""
         next_branch_val: str | None = None
         ns_id: UUID | None = None
+        active_escalation_id: str | None = None
 
         async with AsyncSessionLocal() as db:
             from sqlalchemy import select
@@ -235,6 +245,8 @@ def make_agent_node(node_def: dict, outgoing_edges: list[dict] | None = None):
             existing_ns = existing_state.scalar_one_or_none()
             if existing_ns is not None:
                 ns_id = existing_ns.id
+                existing_input = existing_ns.input if isinstance(existing_ns.input, dict) else {}
+                active_escalation_id = str(existing_input.get("active_escalation_id") or "").strip() or None
 
         while True:
             prompt = _build_participant_task_prompt(
@@ -242,7 +254,7 @@ def make_agent_node(node_def: dict, outgoing_edges: list[dict] | None = None):
                 config=config,
                 run_input=state.get("input"),
                 current_output=str(state.get("current_output") or "").strip() or None,
-                knowledge_files=knowledge_files,
+                knowledge_tree=tree,
                 retry_guidance=retry_guidance,
             )
 
@@ -264,6 +276,7 @@ def make_agent_node(node_def: dict, outgoing_edges: list[dict] | None = None):
                             "visit_index": current_visit,
                             "max_visits": MAX_NODE_VISITS_PER_RUN,
                             "is_repeat_visit": current_visit > 1,
+                            "active_escalation_id": active_escalation_id,
                         },
                         knowledge_snapshot=tree.version_snapshot,
                         started_at=datetime.now(timezone.utc),
@@ -274,8 +287,9 @@ def make_agent_node(node_def: dict, outgoing_edges: list[dict] | None = None):
                 else:
                     ns = await db.get(RunNodeState, ns_id)
                     if ns is not None:
-                        ns.status = "running"
-                        ns.completed_at = None
+                        if active_escalation_id is None:
+                            ns.status = "running"
+                            ns.completed_at = None
                         merged = dict(ns.input or {})
                         merged.update({
                             "task_prompt": prompt,
@@ -285,6 +299,7 @@ def make_agent_node(node_def: dict, outgoing_edges: list[dict] | None = None):
                             "visit_index": current_visit,
                             "max_visits": MAX_NODE_VISITS_PER_RUN,
                             "is_repeat_visit": current_visit > 1,
+                            "active_escalation_id": active_escalation_id,
                         })
                         ns.input = merged
                         await db.commit()
@@ -297,89 +312,100 @@ def make_agent_node(node_def: dict, outgoing_edges: list[dict] | None = None):
                 config=config,
                 retry_guidance=retry_guidance,
             )
-            escalation_id = await _create_participant_escalation(
-                ns_id=ns_id,
-                run_id=run_id,
-                node_id=node_id,
-                workspace_id=workspace_id,
-                recipients=recipients,
-                context={
-                    "questions": [question_text],
-                    "prompt": prompt,
-                    "messages": [prompt],
-                    "node_id": node_id,
-                    "operator_id": operator_id,
-                    "supervisor_id": supervisor_id,
-                    "participant_ids": recipients,
-                },
-            )
-
-            async with AsyncSessionLocal() as db:
-                run_channel = await core_channels.get_or_create_run_channel(
-                    db,
-                    workspace_id=UUID(workspace_id),
+            if active_escalation_id:
+                escalation_id = UUID(active_escalation_id)
+            else:
+                escalation_id = await _create_participant_escalation(
+                    ns_id=ns_id,
                     run_id=run_id,
-                    graph_id=UUID(str(state["graph_id"])) if state.get("graph_id") else None,
-                    participant_ids=None,
+                    node_id=node_id,
+                    workspace_id=workspace_id,
+                    recipients=recipients,
+                    context={
+                        "questions": [question_text],
+                        "prompt": prompt,
+                        "messages": [prompt],
+                        "node_id": node_id,
+                        "operator_id": operator_id,
+                        "supervisor_id": supervisor_id,
+                        "participant_ids": recipients,
+                    },
                 )
-                await core_channels.create_message(
-                    db,
-                    workspace_id=UUID(workspace_id),
-                    channel_id=run_channel.id,
-                    data=ChannelMessageCreate(
-                        role="assistant",
-                        author_type="system",
-                        author_name=f"Workflow Orchestrator · {node_name}",
-                        content=question_text,
-                        run_id=run_id,
-                        node_id=node_id,
-                        metadata={
-                            "kind": "request",
-                            "request": {
-                                "type": "agent_question",
-                                "status": "open",
-                                "questions": [question_text],
-                                "context_markdown": prompt,
-                                "response_schema": {
-                                    "resolution_options": [
-                                        "accept_output",
-                                        "override_output",
-                                        "request_revision",
-                                        "abort_run",
-                                    ],
-                                    "supports_guidance": True,
-                                    "supports_answers": True,
-                                    "supports_override_output": True,
-                                    "supports_next_branch": True,
-                                },
-                                "assigned_to": recipients,
-                                "escalation_id": str(escalation_id),
-                            },
-                            "flow": {
-                                "protocol": "knotwork.orchestrated_message/v1",
-                                "from_role": "orchestrator",
-                                "from_kind": "langgraph_machine",
-                                "to_role": request_target_role,
-                                "to_participant_ids": recipients,
-                                "about": "node_input_request",
-                                "run_id": run_id,
-                                "node_id": node_id,
-                                "escalation_id": str(escalation_id),
-                            },
-                            "operator_id": operator_id,
-                            "supervisor_id": supervisor_id,
-                            "assigned_to": recipients,
-                            "orchestrator": {
-                                "kind": "workflow",
-                                "workflow_id": str(state.get("graph_id") or ""),
-                                "run_id": run_id,
-                                "mission": "Guide the channel conversation through the workflow and request human input when needed.",
-                            },
-                        },
-                    ),
-                )
+                active_escalation_id = str(escalation_id)
 
-            await publish_event(state["run_id"], {"type": "escalation_created", "node_id": node_id})
+                async with AsyncSessionLocal() as db:
+                    ns = await db.get(RunNodeState, ns_id)
+                    if ns is not None:
+                        merged = dict(ns.input or {})
+                        merged["active_escalation_id"] = active_escalation_id
+                        ns.input = merged
+                    run_channel = await core_channels.get_or_create_run_channel(
+                        db,
+                        workspace_id=UUID(workspace_id),
+                        run_id=run_id,
+                        graph_id=UUID(str(state["graph_id"])) if state.get("graph_id") else None,
+                        participant_ids=None,
+                    )
+                    await core_channels.create_message(
+                        db,
+                        workspace_id=UUID(workspace_id),
+                        channel_id=run_channel.id,
+                        data=ChannelMessageCreate(
+                            role="assistant",
+                            author_type="system",
+                            author_name=f"Workflow Orchestrator · {node_name}",
+                            content=question_text,
+                            run_id=run_id,
+                            node_id=node_id,
+                            metadata={
+                                "kind": "request",
+                                "request": {
+                                    "type": "agent_question",
+                                    "status": "open",
+                                    "questions": [question_text],
+                                    "context_markdown": prompt,
+                                    "response_schema": {
+                                        "resolution_options": [
+                                            "accept_output",
+                                            "override_output",
+                                            "request_revision",
+                                            "abort_run",
+                                        ],
+                                        "supports_guidance": True,
+                                        "supports_answers": True,
+                                        "supports_override_output": True,
+                                        "supports_next_branch": True,
+                                    },
+                                    "assigned_to": recipients,
+                                    "escalation_id": str(escalation_id),
+                                },
+                                "flow": {
+                                    "protocol": "knotwork.orchestrated_message/v1",
+                                    "from_role": "orchestrator",
+                                    "from_kind": "langgraph_machine",
+                                    "to_role": request_target_role,
+                                    "to_participant_ids": recipients,
+                                    "about": "node_input_request",
+                                    "run_id": run_id,
+                                    "node_id": node_id,
+                                    "escalation_id": str(escalation_id),
+                                },
+                                "operator_id": operator_id,
+                                "supervisor_id": supervisor_id,
+                                "assigned_to": recipients,
+                                "orchestrator": {
+                                    "kind": "workflow",
+                                    "workflow_id": str(state.get("graph_id") or ""),
+                                    "run_id": run_id,
+                                    "mission": "Guide the channel conversation through the workflow and request human input when needed.",
+                                },
+                            },
+                        ),
+                    )
+                    await db.commit()
+
+                await publish_event(state["run_id"], {"type": "escalation_created", "node_id": node_id})
+
             resolution = interrupt({
                 "reason": "participant_task",
                 "node_id": node_id,
@@ -387,6 +413,7 @@ def make_agent_node(node_def: dict, outgoing_edges: list[dict] | None = None):
             })
             resolution = resolution if isinstance(resolution, dict) else {}
             resolution_type = _normalize_resolution_type(resolution.get("resolution"))
+            active_escalation_id = None
 
             if resolution_type == "abort_run":
                 raise RuntimeError("Run aborted during participant task")
@@ -483,6 +510,9 @@ def make_agent_node(node_def: dict, outgoing_edges: list[dict] | None = None):
                 ns.status = "completed"
                 ns.output = {"text": output_text}
                 ns.next_branch = next_branch_val
+                merged = dict(ns.input or {})
+                merged["active_escalation_id"] = None
+                ns.input = merged
                 ns.completed_at = datetime.now(timezone.utc)
                 await db.commit()
 

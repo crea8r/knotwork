@@ -2,7 +2,7 @@ import dagre from '@dagrejs/dagre'
 import type { GraphDefinition } from '@data-models'
 
 export const NODE_W = 168
-export const NODE_H = 56
+export const NODE_H = 84
 export const PAD = 32
 
 export const NODE_COLORS: Record<string, string> = {

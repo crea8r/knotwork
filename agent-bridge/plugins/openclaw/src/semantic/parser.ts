@@ -1,16 +1,17 @@
 import type { MCPContractManifest, WorkPacket } from '../types'
-import type { ActionEnvelope, ActionItem } from './types'
+import type { ActionEnvelope, ActionItem, TaskPhaseOutput } from './types'
 
 const ACTION_FENCE = '```json-action'
+const TASK_FENCE = '```json-task'
 
-function extractActionJson(rawOutput: string): string {
+function extractFenceJson(rawOutput: string, fence: string): string {
   const text = String(rawOutput ?? '').trim()
-  const start = text.lastIndexOf(ACTION_FENCE)
-  if (start === -1) throw new Error('missing ```json-action block')
+  const start = text.lastIndexOf(fence)
+  if (start === -1) throw new Error(`missing ${fence} block`)
   const newline = text.indexOf('\n', start)
-  if (newline === -1) throw new Error('invalid json-action opening fence')
+  if (newline === -1) throw new Error(`invalid ${fence} opening fence`)
   const end = text.indexOf('```', newline + 1)
-  if (end === -1) throw new Error('missing closing ``` fence for json-action block')
+  if (end === -1) throw new Error(`missing closing \`\`\` fence for ${fence} block`)
   return text.slice(newline + 1, end).trim()
 }
 
@@ -60,6 +61,50 @@ function protocolActionMap(packet: WorkPacket & { mcp_contract: MCPContractManif
   )
 }
 
+function stringifyForSchema(value: unknown): string {
+  if (typeof value === 'string') return value
+  return JSON.stringify(value, null, 2)
+}
+
+function stringifyTaskResult(value: unknown): string {
+  if (typeof value === 'string') return value.trim()
+  if (value === null || value === undefined) return ''
+  try {
+    return JSON.stringify(value, null, 2).trim()
+  } catch {
+    return String(value).trim()
+  }
+}
+
+function normalizeValueToSchema(value: unknown, schema: Record<string, unknown>): unknown {
+  const expectedType = schema.type
+  if (expectedType === 'string') {
+    return stringifyForSchema(value)
+  }
+  if (expectedType === 'array') {
+    const itemSchema = schema.items && typeof schema.items === 'object' ? schema.items as Record<string, unknown> : null
+    const values = Array.isArray(value) ? value : (value === null || value === undefined ? [] : [value])
+    return itemSchema ? values.map((item) => normalizeValueToSchema(item, itemSchema)) : values
+  }
+  if (expectedType === 'object') {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) {
+      return value
+    }
+    const objectValue = value as Record<string, unknown>
+    const properties = schema.properties && typeof schema.properties === 'object'
+      ? schema.properties as Record<string, Record<string, unknown>>
+      : {}
+    const next: Record<string, unknown> = { ...objectValue }
+    for (const [key, propSchema] of Object.entries(properties)) {
+      if (key in objectValue) {
+        next[key] = normalizeValueToSchema(objectValue[key], propSchema)
+      }
+    }
+    return next
+  }
+  return value
+}
+
 function assertActionItem(value: unknown, index: number, packet: WorkPacket & { mcp_contract: MCPContractManifest }): ActionItem {
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error(`action[${index}] must be an object`)
   const action = value as Record<string, unknown>
@@ -84,12 +129,22 @@ function normalizeShorthandEnvelope(env: Record<string, unknown>, packet: WorkPa
   const actionType = String(env.action ?? '').trim()
   if (!actionType) return null
   if (!packet.mcp_contract.allowed_actions.includes(actionType)) throw new Error(`unsupported shorthand action type: ${actionType}`)
+  const definition = protocolActionMap(packet).get(actionType)
+  if (!definition) throw new Error(`unsupported shorthand action type: ${actionType}`)
   const target = (env.target && typeof env.target === 'object' && !Array.isArray(env.target)) ? env.target as Record<string, unknown> : {}
-  const payload = (env.payload && typeof env.payload === 'object' && !Array.isArray(env.payload)) ? env.payload as Record<string, unknown> : {}
+  const payload = normalizeValueToSchema(
+    (env.payload && typeof env.payload === 'object' && !Array.isArray(env.payload)) ? env.payload as Record<string, unknown> : {},
+    definition.payload_schema,
+  ) as Record<string, unknown>
+  const normalizedTarget = normalizeValueToSchema(
+    target,
+    definition.target_schema,
+  )
+  const reasoning = String(env.reasoning ?? '').trim()
   const action: ActionItem = assertActionItem({
     action_id: 'action-1',
     type: actionType,
-    target,
+    target: normalizedTarget as Record<string, unknown>,
     payload,
   }, 0, packet)
   return {
@@ -105,6 +160,7 @@ function normalizeShorthandEnvelope(env: Record<string, unknown>, packet: WorkPa
       workspace_id: packet.workspace.id,
       trigger: packet.trigger,
     },
+    intent: reasoning ? { summary: reasoning } : undefined,
     actions: [action],
     completion: {
       task_status: actionType === 'control.fail' ? 'failed' : 'completed',
@@ -114,7 +170,7 @@ function normalizeShorthandEnvelope(env: Record<string, unknown>, packet: WorkPa
 }
 
 export function parseActionEnvelope(rawOutput: string, packet: WorkPacket & { mcp_contract: MCPContractManifest }): ActionEnvelope {
-  const json = extractActionJson(rawOutput)
+  const json = extractFenceJson(rawOutput, ACTION_FENCE)
   let parsed: unknown
   try {
     parsed = JSON.parse(json)
@@ -147,4 +203,63 @@ export function parseActionEnvelope(rawOutput: string, packet: WorkPacket & { mc
       archive_trigger_delivery: Boolean(completion?.archive_trigger_delivery),
     },
   }
+}
+
+export function parseTaskPhaseOutput(rawOutput: string, packet: WorkPacket & { mcp_contract: MCPContractManifest }): TaskPhaseOutput {
+  const json = extractFenceJson(rawOutput, TASK_FENCE)
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(json)
+  } catch (error) {
+    throw new Error(`invalid json-task payload: ${error instanceof Error ? error.message : String(error)}`)
+  }
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) throw new Error('task phase output must be an object')
+  const env = parsed as Record<string, unknown>
+  const type = String(env.type ?? '').trim()
+  if (type === 'read_request') {
+    const actionType = String(env.action ?? '').trim()
+    if (!actionType) throw new Error('read_request.action is required')
+    if (!packet.mcp_contract.allowed_actions.includes(actionType)) throw new Error(`unsupported read_request action type: ${actionType}`)
+    const target = (env.target && typeof env.target === 'object' && !Array.isArray(env.target)) ? env.target as Record<string, unknown> : {}
+    const payload = (env.payload && typeof env.payload === 'object' && !Array.isArray(env.payload)) ? env.payload as Record<string, unknown> : {}
+    const action: ActionItem = assertActionItem({
+      action_id: 'action-1',
+      type: actionType,
+      target,
+      payload,
+    }, 0, packet)
+    const definition = protocolActionMap(packet).get(actionType)
+    if (!definition) throw new Error(`read_request action is missing protocol schema for ${actionType}`)
+    const kind = packet.mcp_contract.actions.find((item) => item.name === actionType)?.kind
+    if (kind !== 'read') throw new Error(`read_request action must be a read action: ${actionType}`)
+    return {
+      type: 'read_request',
+      reasoning: String(env.reasoning ?? '').trim() || undefined,
+      action: action.type,
+      target: action.target,
+      payload: action.payload,
+    }
+  }
+  if (type === 'result') {
+    const result = stringifyTaskResult(env.result)
+    if (!result) throw new Error('result.result is required')
+    const confidenceRaw = env.confidence
+    const confidence = typeof confidenceRaw === 'number' && Number.isFinite(confidenceRaw) ? confidenceRaw : undefined
+    return {
+      type: 'result',
+      reasoning: String(env.reasoning ?? '').trim() || undefined,
+      result,
+      confidence,
+    }
+  }
+  if (type === 'fail') {
+    const error = String(env.error ?? '').trim()
+    if (!error) throw new Error('fail.error is required')
+    return {
+      type: 'fail',
+      reasoning: String(env.reasoning ?? '').trim() || undefined,
+      error,
+    }
+  }
+  throw new Error('task phase output type must be one of: read_request, result, fail')
 }

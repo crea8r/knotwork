@@ -34,7 +34,8 @@ from modules.workflows.backend.mcp_contracts import (
 from modules.workflows.backend.mcp_contracts.context import load_channel_context
 from modules.workflows.backend.mcp_contracts.work_packet import build_workflows_work_packet, workflow_resolution_context
 from modules.workflows.backend.mcp_contracts.run_contracts import (
-    build_message_respond_action,
+    build_run_escalate_to_supervisor_action,
+    build_run_resolve_request_action,
     build_request_context_action,
     build_request_summary_action,
     build_run_summary_action,
@@ -44,6 +45,7 @@ from modules.workflows.backend.mcp_contracts.workflow_edit_contracts import (
     build_graph_summary_action,
     build_graph_update_root_draft_action,
 )
+from core.mcp.contracts.registry import get_mcp_contract
 from core.mcp.contracts.work_packet_context import LoadedWorkPacketContext
 
 
@@ -145,7 +147,8 @@ class ComposedWorkflowMCPContractProvider:
                     build_recent_messages_context_action(description="Load recent channel messages around the request."),
                     build_participants_context_action(description="Load active channel participants for the request."),
                     build_run_summary_action(visibility="on_demand"),
-                    build_message_respond_action(),
+                    build_run_resolve_request_action(),
+                    build_run_escalate_to_supervisor_action(),
                     build_control_noop_action(),
                     build_control_fail_action(description="Fail explicitly when no safe decision can be produced."),
                 ],
@@ -227,11 +230,20 @@ class ComposedWorkflowMCPContractProvider:
     def manifests(self) -> list[MCPContractManifest]:
         return list(self._manifests.values())
 
+    def _registered_manifests(self) -> dict[str, MCPContractManifest]:
+        return {
+            contract_id: get_mcp_contract(contract_id)
+            for contract_id in self._manifests
+        }
+
     def resolve(self, context: dict[str, Any]) -> MCPContract | None:
-        return resolve_workflow_session_contract(context, manifests=self._manifests)
+        return resolve_workflow_session_contract(context, manifests=self._registered_manifests())
 
     def resolve_loaded_context(self, loaded_context: LoadedWorkPacketContext) -> MCPContract | None:
-        return resolve_workflow_session_contract(workflow_resolution_context(loaded_context), manifests=self._manifests)
+        return resolve_workflow_session_contract(
+            workflow_resolution_context(loaded_context),
+            manifests=self._registered_manifests(),
+        )
 
     async def build_work_packet(
         self,
@@ -264,6 +276,8 @@ class ComposedWorkflowMCPContractProvider:
             "context.get_graph_summary",
             "context.get_asset_summaries",
             "context.get_primary_subject",
+            "run.resolve_request",
+            "run.escalate_to_supervisor",
         }:
             loaded_channel_context = await load_channel_context(
                 db,
@@ -342,6 +356,7 @@ class ComposedWorkflowMCPContractProvider:
                 payload=payload,
                 loaded_channel_context=loaded_channel_context,
                 fallback_run_id=fallback_run_id,
+                fallback_trigger_message_id=fallback_trigger_message_id,
             )
 
         raise ValueError(f"Unsupported composed workflow MCP contract '{contract_id}' action: {action_name}")

@@ -8,11 +8,12 @@ import DecisionCardAnswers from './DecisionCardAnswers'
 interface Props {
   item: ChatItem
   respondToMessage: ReturnType<typeof useRespondChannelMessage>
+  assigneeText?: string
   disabled: boolean
   onAfterResolve: () => void
 }
 
-export default function DecisionCard({ item, respondToMessage, disabled, onAfterResolve }: Props) {
+export default function DecisionCard({ item, respondToMessage, assigneeText, disabled, onAfterResolve }: Props) {
   const request = item.request
   const requestMessageId = item.requestMessageId
   const [guidance, setGuidance] = useState('')
@@ -91,7 +92,12 @@ export default function DecisionCard({ item, respondToMessage, disabled, onAfter
   return (
     <div className="w-full rounded-xl border border-amber-200 bg-amber-50 px-3 py-3 space-y-2">
       <div className="flex items-center justify-between gap-2">
-        <p className="text-[10px] uppercase tracking-wide text-amber-700">Request · needs your input</p>
+        <div className="min-w-0">
+          <p className="text-[10px] uppercase tracking-wide text-amber-700">Operator request</p>
+          <p className="mt-0.5 truncate text-xs text-amber-900/80">
+            {assigneeText ? `Requested from: ${assigneeText}` : 'Waiting for operator response'}
+          </p>
+        </div>
         <span className={`text-[10px] px-2 py-0.5 rounded-full ${isOpen ? 'bg-amber-100 text-amber-700' : 'bg-gray-100 text-gray-600'}`}>
           {request.status ?? 'open'}
         </span>

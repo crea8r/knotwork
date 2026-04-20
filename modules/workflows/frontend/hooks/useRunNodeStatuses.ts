@@ -4,6 +4,23 @@ import type { RunNodeState, NodeStatus, GraphDefinition } from '@data-models'
 const TERMINAL_RUN = new Set(['completed', 'failed', 'stopped'])
 const ACTIVE_NODE = new Set(['running', 'paused'])
 
+function endNodeStatusForRun(runStatus: string): NodeStatus {
+  switch (runStatus) {
+    case 'running':
+      return 'running'
+    case 'paused':
+      return 'paused'
+    case 'completed':
+      return 'completed'
+    case 'failed':
+      return 'failed'
+    case 'stopped':
+      return 'skipped'
+    default:
+      return 'pending'
+  }
+}
+
 /**
  * Synthesizes a NodeStatus for every non-start/end node in the graph definition.
  * - Sorts nodeStates by started_at ASC; uses the last entry per node_id as most recent
@@ -27,10 +44,11 @@ export function useRunNodeStatuses(
       result[node.id] = 'pending'
     }
 
-    // Synthesize end node as completed when run is completed
+    // Synthesize end node from overall run status so the terminal node reflects
+    // whether the workflow is still in progress or actually finished.
     for (const node of definition.nodes) {
-      if (node.type === 'end' && runStatus === 'completed') {
-        result[node.id] = 'completed'
+      if (node.type === 'end') {
+        result[node.id] = endNodeStatusForRun(runStatus)
       }
     }
 

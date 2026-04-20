@@ -3,25 +3,27 @@ import { useParams, useNavigate } from 'react-router-dom'
 import axios from 'axios'
 import { ChevronDown, ChevronUp, X } from 'lucide-react'
 import {
-  useRun, useRunNodes, useRunWorklog, useDeleteRun, useCloneRun,
-  useExecuteRunInline, useRunChatMessages, useAbortRun,
+  useRun, useRunNodes, useDeleteRun, useCloneRun,
+  useExecuteRunInline, useRunChatMessages, useAbortRun, useRunDefinition,
 } from "@modules/workflows/frontend/api/runs"
-import { useGraphVersion } from "@modules/workflows/frontend/api/graphs"
-import { useMyChannelSubscriptions, useRespondChannelMessage } from '@modules/communication/frontend/api/channels'
+import { useChannelParticipants, useMyChannelSubscriptions, useRespondChannelMessage } from '@modules/communication/frontend/api/channels'
 import { useRegisteredAgents } from "@modules/admin/frontend/api/agents"
 import GraphCanvas from '@modules/workflows/frontend/components/canvas/GraphCanvas'
 import Spinner from '@ui/components/Spinner'
 import RunInputPanel from '@modules/workflows/frontend/components/operator/RunInputPanel'
 import MessageBubble from '@modules/workflows/frontend/components/operator/MessageBubble'
 import DecisionCard from '@modules/workflows/frontend/components/operator/DecisionCard'
-import DebugTimelinePanel from '@modules/workflows/frontend/components/operator/DebugTimelinePanel'
 import RunDetailHeader from '@modules/workflows/frontend/components/operator/RunDetailHeader'
+import RunFinalResultCard from '@modules/workflows/frontend/components/operator/RunFinalResultCard'
+import RunStartInputCard from '@modules/workflows/frontend/components/operator/RunStartInputCard'
 import { useAuthStore } from '@auth'
 import { useRunNodeStatuses } from '@modules/workflows/frontend/hooks/useRunNodeStatuses'
 import { useRunChatItems } from '@modules/workflows/frontend/hooks/useRunChatItems'
-import { useRunDebugTimeline } from '@modules/workflows/frontend/hooks/useRunDebugTimeline'
 import { useRunWebSocket } from '@modules/workflows/frontend/hooks/useRunWebSocket'
 import { buildThinkingPhrases, pickRandomPhrase } from '@modules/workflows/frontend/pages/runDetail/runDetailTypes'
+import { buildParticipantLabelMap, formatAssignedParticipants } from '@modules/workflows/frontend/lib/participantLabels'
+import { getRunFinalOutput } from '@modules/workflows/frontend/lib/runOutput'
+import { humanizeRunInput } from '@modules/workflows/frontend/lib/runInput'
 
 const DEV_WORKSPACE = import.meta.env.VITE_DEV_WORKSPACE_ID ?? 'dev-workspace'
 const ACTIVE = new Set(['queued', 'running'])
@@ -37,12 +39,12 @@ export default function RunDetailPage() {
     refetchInterval: (q) => { const s = (q.state.data as { status?: string } | undefined)?.status; return !s || ACTIVE.has(s) ? 2000 : false },
   })
   const { data: nodeStates = [], refetch: refetchNodes } = useRunNodes(workspaceId, runId!, { refetchInterval: isActivePoll(run) })
-  const { data: graphVersion } = useGraphVersion(workspaceId, run?.graph_version_id ?? '')
+  const { data: runDefinition } = useRunDefinition(workspaceId, runId!)
   const { data: runMessages = [], refetch: refetchRunMessages } = useRunChatMessages(workspaceId, runId!, {
     refetchInterval: run && (ACTIVE.has(run.status) || run.status === 'paused') ? 2000 : false,
   })
-  const { data: worklog = [] } = useRunWorklog(workspaceId, runId!, { refetchInterval: isActivePoll(run) })
   const { data: agents = [] } = useRegisteredAgents()
+  const { data: participants = [] } = useChannelParticipants(workspaceId)
   const deleteRun = useDeleteRun(workspaceId)
   const cloneRun = useCloneRun(workspaceId)
   const executeInline = useExecuteRunInline(workspaceId)
@@ -56,8 +58,18 @@ export default function RunDetailPage() {
     return mySubscriptions[0]?.participant_id ?? null
   }, [mySubscriptions, runChannelId])
 
-  const definition = graphVersion?.definition ?? { nodes: [], edges: [] }
+  const definition = runDefinition ?? { nodes: [], edges: [] }
   const nodeStatuses = useRunNodeStatuses(nodeStates, definition, run?.status ?? '')
+  const finalOutput = useMemo(() => getRunFinalOutput(run), [run])
+  const startInputMarkdown = useMemo(() => humanizeRunInput(run?.input ?? {}), [run?.input])
+  const startNodeId = useMemo(
+    () => definition.nodes.find((node) => node.type === 'start')?.id ?? null,
+    [definition.nodes],
+  )
+  const endNodeId = useMemo(
+    () => definition.nodes.find((node) => node.type === 'end')?.id ?? null,
+    [definition.nodes],
+  )
   const nodeNameMap = useMemo(() => Object.fromEntries((definition.nodes ?? []).map(n => [n.id, n.name])), [definition.nodes])
   const nodeSpeakerMap = useMemo(() => {
     const byId = new Map(agents.map(a => [a.id, a.display_name]))
@@ -72,6 +84,7 @@ export default function RunDetailPage() {
     }
     return { nameMap: map, agentIdMap: mapAgentId }
   }, [agents, definition.nodes])
+  const participantLabelMap = useMemo(() => buildParticipantLabelMap(participants), [participants])
 
   const [showInputPanel, setShowInputPanel] = useState(false)
   const [showMobileMap, setShowMobileMap] = useState(false)
@@ -90,6 +103,10 @@ export default function RunDetailPage() {
     if (!msgs.length) return null
     const l = msgs[msgs.length - 1]; return { id: l.id, text: l.content }
   }, [runMessages])
+  const completedNodeIds = useMemo(
+    () => new Set(nodeStates.filter((nodeState) => nodeState.status === 'completed').map((nodeState) => nodeState.node_id)),
+    [nodeStates],
+  )
   const openRequestMessageId = useMemo(() => {
     const resolvedEscalationIds = new Set<string>()
     for (const message of runMessages) {
@@ -102,6 +119,7 @@ export default function RunDetailPage() {
       const message = runMessages[i]
       const meta = message.metadata_ as Record<string, unknown>
       if (meta.kind !== 'request') continue
+      if (message.node_id && completedNodeIds.has(message.node_id)) continue
       const req = meta.request as Record<string, unknown> | undefined
       if (!req) continue
       const assignedTo = Array.isArray(req.assigned_to) ? req.assigned_to.map(String) : []
@@ -113,7 +131,7 @@ export default function RunDetailPage() {
       return message.id
     }
     return null
-  }, [runMessages, currentParticipantId])
+  }, [runMessages, currentParticipantId, completedNodeIds])
 
   const chatItems = useRunChatItems({
     run,
@@ -128,7 +146,6 @@ export default function RunDetailPage() {
     thinkingPhrases,
     latestProgress,
   })
-  const debugTimeline = useRunDebugTimeline(nodeStates, nodeNameMap, worklog)
   const openRequestItem = useMemo(() => {
     if (!openRequestMessageId) return null
     for (let i = chatItems.length - 1; i >= 0; i -= 1) {
@@ -137,6 +154,7 @@ export default function RunDetailPage() {
     }
     return null
   }, [chatItems, openRequestMessageId])
+  const formatAssigneeText = (assignedTo?: string[]) => formatAssignedParticipants(assignedTo, participantLabelMap)
 
   useEffect(() => { if (run?.status === 'running' || openRequestMessageId) setAwaitingAgentAfterReply(false) }, [run?.status, openRequestMessageId])
   useEffect(() => {
@@ -171,7 +189,13 @@ export default function RunDetailPage() {
 
   if (!run) return <div className="flex justify-center py-16"><Spinner size="lg" /></div>
 
-  const canvasProps = { definition, nodeStatuses, selectedNodeId, onSelectNode: (nid: string | null) => setSelectedNodeId(nid) }
+  const canvasProps = {
+    definition,
+    nodeStatuses,
+    participantLabelMap,
+    selectedNodeId,
+    onSelectNode: (nid: string | null) => setSelectedNodeId(nid),
+  }
 
   return (
     <div className="h-full flex flex-col pt-11 md:pt-0">
@@ -193,7 +217,6 @@ export default function RunDetailPage() {
       )}
       <div className="flex-1 min-h-0 grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_400px]">
         <div className="flex flex-col min-h-0 border-r border-gray-200 bg-[#f7f8fb]">
-          <DebugTimelinePanel debugTimeline={debugTimeline} />
           {run.status === 'failed' && run.error && (
             <div className="mx-3 md:mx-4 mt-3 rounded-xl border border-red-200 bg-red-50 px-3 py-2 flex items-start gap-2">
               <span className="mt-0.5 shrink-0 text-red-500">✕</span>
@@ -204,6 +227,11 @@ export default function RunDetailPage() {
             </div>
           )}
           <div ref={chatScrollRef} className="relative flex-1 overflow-y-auto p-3 md:p-4 space-y-2.5">
+            <RunStartInputCard
+              inputMarkdown={startInputMarkdown}
+              createdAt={run.created_at}
+              onClick={startNodeId ? () => setSelectedNodeId(startNodeId) : undefined}
+            />
             {chatItems.map((item) => (
               <div key={item.id}>
                 {item.kind === 'decision_confident' ? (
@@ -212,13 +240,19 @@ export default function RunDetailPage() {
                     onAfterResolve={() => { setAwaitingAgentAfterReply(true); if (item.requestMessageId) setLockedRequestMessageId(item.requestMessageId); refetchRun(); refetchNodes(); refetchRunMessages() }}
                   />
                 ) : item.kind === 'request' ? (
+                  item.request?.status === 'open' && item.requestMessageId === openRequestMessageId ? null : (
                   <div className="max-w-[92%] mr-auto rounded-xl border border-amber-200 bg-amber-50/90 px-3 py-2 shadow-sm">
                     <div className="flex items-center justify-between gap-2">
                       <div className="min-w-0">
-                        <p className="text-[10px] uppercase tracking-wide text-amber-700">Request</p>
+                        <p className="text-[10px] uppercase tracking-wide text-amber-700">Operator request</p>
                         <p className="text-sm text-amber-950 truncate">
-                          {item.nodeName ? `${item.nodeName} requires your decision.` : 'This step requires your decision.'}
+                          {`Waiting for ${formatAssigneeText(item.request?.assigned_to)} to respond.`}
                         </p>
+                        {item.nodeName ? (
+                          <p className="mt-0.5 text-xs text-amber-900/80 truncate">
+                            Step: {item.nodeName}
+                          </p>
+                        ) : null}
                       </div>
                       <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] ${
                         item.request?.status === 'open'
@@ -237,6 +271,7 @@ export default function RunDetailPage() {
                       </div>
                     )}
                   </div>
+                  )
                 ) : (
                   <MessageBubble item={item}
                     highlighted={!!selectedNodeId && item.nodeId === selectedNodeId}
@@ -246,6 +281,13 @@ export default function RunDetailPage() {
                 )}
               </div>
             ))}
+            {run.status === 'completed' && finalOutput ? (
+              <RunFinalResultCard
+                finalOutput={finalOutput}
+                completedAt={run.completed_at}
+                onClick={endNodeId ? () => setSelectedNodeId(endNodeId) : undefined}
+              />
+            ) : null}
             {openRequestItem && (
               <div className="pointer-events-none sticky bottom-3 md:bottom-4 z-20 flex justify-center px-1 md:px-2">
                 <div className="pointer-events-auto w-full rounded-2xl border border-amber-300 bg-white/96 shadow-[0_16px_40px_rgba(0,0,0,0.18)] backdrop-blur">
@@ -255,9 +297,12 @@ export default function RunDetailPage() {
                     className="flex w-full items-center justify-between gap-3 rounded-t-2xl px-3 py-2.5 text-left hover:bg-amber-50/70 transition-colors"
                   >
                     <div className="min-w-0">
-                      <p className="text-[10px] uppercase tracking-wide text-amber-700">Waiting for your decision</p>
+                      <p className="text-[10px] uppercase tracking-wide text-amber-700">Awaiting operator response</p>
                       <p className="truncate text-sm font-medium text-gray-900">
                         {openRequestItem.nodeName ? openRequestItem.nodeName : 'Active request'}
+                      </p>
+                      <p className="mt-0.5 truncate text-xs text-amber-900/80">
+                        Assigned to: {formatAssigneeText(openRequestItem.request?.assigned_to)}
                       </p>
                     </div>
                     <div className="flex items-center gap-2">
@@ -270,6 +315,7 @@ export default function RunDetailPage() {
                   {!escalationPanelCollapsed && (
                     <div className="max-h-[65vh] overflow-y-auto border-t border-amber-100 px-2 pb-2 md:max-h-[58vh]">
                       <DecisionCard item={openRequestItem} respondToMessage={respondToMessage}
+                        assigneeText={formatAssigneeText(openRequestItem.request?.assigned_to)}
                         disabled={respondToMessage.isPending || (!!openRequestMessageId && lockedRequestMessageId === openRequestMessageId)}
                         onAfterResolve={() => { setAwaitingAgentAfterReply(true); if (openRequestItem.requestMessageId) setLockedRequestMessageId(openRequestItem.requestMessageId); refetchRun(); refetchNodes(); refetchRunMessages() }}
                       />

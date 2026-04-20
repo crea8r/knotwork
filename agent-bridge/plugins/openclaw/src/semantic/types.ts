@@ -63,3 +63,26 @@ export type SemanticPreparedInput = {
   capabilities: SemanticCapabilitySnapshot
   workPacket: WorkPacket & { mcp_contract: MCPContractManifest }
 }
+
+export type TaskPhaseReadRequest = {
+  type: 'read_request'
+  reasoning?: string
+  action: string
+  target: Record<string, unknown>
+  payload: Record<string, unknown>
+}
+
+export type TaskPhaseResult = {
+  type: 'result'
+  reasoning?: string
+  result: string
+  confidence?: number
+}
+
+export type TaskPhaseFailure = {
+  type: 'fail'
+  reasoning?: string
+  error: string
+}
+
+export type TaskPhaseOutput = TaskPhaseReadRequest | TaskPhaseResult | TaskPhaseFailure

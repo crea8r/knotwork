@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Literal
 from uuid import UUID
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -21,10 +21,14 @@ class WorkPacketTriggerIn(BaseModel):
     type: str
     delivery_id: str | None = None
     channel_id: str | None = None
+    detail: dict | None = None
     run_id: str | None = None
     escalation_id: str | None = None
     proposal_id: str | None = None
     message_id: str | None = None
+    asset_type: str | None = None
+    asset_id: str | None = None
+    asset_path: str | None = None
     title: str | None = None
     subtitle: str | None = None
 
@@ -92,16 +96,22 @@ async def create_mcp_work_packet(
     member: WorkspaceMember = Depends(get_workspace_member),
     db: AsyncSession = Depends(get_db),
 ) -> WorkPacketResponse:
-    packet = await build_work_packet(
-        db,
-        workspace_id=workspace_id,
-        current_user=current_user,
-        member=member,
-        task_id=data.task_id,
-        trigger=data.trigger.model_dump(),
-        session_name=data.session_name,
-        legacy_user_prompt=data.legacy_user_prompt,
-    )
+    try:
+        packet = await build_work_packet(
+            db,
+            workspace_id=workspace_id,
+            current_user=current_user,
+            member=member,
+            task_id=data.task_id,
+            trigger=data.trigger.model_dump(),
+            session_name=data.session_name,
+            legacy_user_prompt=data.legacy_user_prompt,
+        )
+    except Exception as exc:
+        raise HTTPException(
+            status_code=400,
+            detail=f"build_mcp_work_packet failed: {exc.__class__.__name__}: {exc}",
+        ) from exc
     return WorkPacketResponse.model_validate(packet)
 
 
@@ -113,16 +123,22 @@ async def execute_mcp_contract_action(
     member: WorkspaceMember = Depends(get_workspace_member),
     db: AsyncSession = Depends(get_db),
 ) -> MCPActionResponse:
-    result = await execute_mcp_action(
-        db,
-        workspace_id=workspace_id,
-        current_user=current_user,
-        member=member,
-        contract_id=data.contract_id,
-        contract_checksum=data.contract_checksum,
-        action=data.action,
-        fallback_run_id=data.fallback_run_id,
-        fallback_source_channel_id=data.fallback_source_channel_id,
-        fallback_trigger_message_id=data.fallback_trigger_message_id,
-    )
-    return MCPActionResponse.model_validate(result)
+    try:
+        result = await execute_mcp_action(
+            db,
+            workspace_id=workspace_id,
+            current_user=current_user,
+            member=member,
+            contract_id=data.contract_id,
+            contract_checksum=data.contract_checksum,
+            action=data.action,
+            fallback_run_id=data.fallback_run_id,
+            fallback_source_channel_id=data.fallback_source_channel_id,
+            fallback_trigger_message_id=data.fallback_trigger_message_id,
+        )
+    except Exception as exc:
+        raise HTTPException(
+            status_code=400,
+            detail=f"execute_mcp_action failed: {exc.__class__.__name__}: {exc}",
+        ) from exc
+    return MCPActionResponse.model_validate(result.model_dump(mode="json"))

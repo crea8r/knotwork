@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from core.api import channels as core_channels
 from core.api import knowledge as core_knowledge
 from core.mcp.contracts.schemas import MCPActionResult, MCPContract, MCPContractAction, MCPContractManifest
-from core.mcp.contracts.work_packet_context import LoadedWorkPacketContext, first_non_empty
+from core.mcp.contracts.work_packet_context import LoadedWorkPacketContext, first_non_empty, trigger_asset_type
 from libs.auth.backend.models import User
 from modules.assets.backend.mcp_work_packet import build_assets_work_packet
 
@@ -105,11 +105,7 @@ class AssetsMCPContractProvider:
                 "asset_type": (
                     str(loaded_context.primary_asset.get("asset_type"))
                     if loaded_context.primary_asset is not None
-                    else first_non_empty(
-                        str(loaded_context.trigger.get("asset_type"))
-                        if loaded_context.trigger.get("asset_type") is not None
-                        else None
-                    )
+                    else first_non_empty(trigger_asset_type(loaded_context.trigger))
                 ),
             }
         )

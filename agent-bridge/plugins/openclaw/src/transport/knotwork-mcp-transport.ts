@@ -1,6 +1,7 @@
 import { createKnotworkMcpClient, type JsonObject, type KnotworkMcpClient } from '@knotwork/mcp-client'
 import type { KnotworkTransport, SemanticCapabilitySnapshot } from './contracts'
 import { persistCachedContract, readCachedContract } from './contract-cache'
+import { triggerChannelId, triggerMessageId } from '../types'
 import type {
   ChannelMessage,
   ChannelSubscription,
@@ -47,6 +48,29 @@ function unwrapMcpTextJson<T>(value: unknown): T {
   return (parsed.length === 1 ? parsed[0] : parsed) as T
 }
 
+function describeResult(value: unknown): string {
+  if (typeof value === 'string') return value
+  try {
+    return JSON.stringify(value)
+  } catch {
+    return String(value)
+  }
+}
+
+function hasStringField(value: unknown, key: string): boolean {
+  return isRecord(value) && typeof value[key] === 'string' && value[key].length > 0
+}
+
+function assertWorkPacket(value: unknown): asserts value is WorkPacket {
+  if (!isRecord(value)) {
+    throw new Error(`build_mcp_work_packet returned non-object result: ${describeResult(value)}`)
+  }
+  const contract = isRecord(value.mcp_contract) ? value.mcp_contract : null
+  if (!contract || !hasStringField(contract, 'id') || !hasStringField(contract, 'checksum')) {
+    throw new Error(`build_mcp_work_packet returned invalid work packet: ${describeResult(value)}`)
+  }
+}
+
 async function mcpResult<T>(promise: Promise<unknown>): Promise<T> {
   return unwrapMcpTextJson<T>(await promise)
 }
@@ -80,6 +104,11 @@ function metadataParticipantIds(message: ChannelMessage | null): string[] {
 }
 
 function findTriggerMessage(trigger: TaskTrigger, messages: ChannelMessage[]): ChannelMessage | null {
+  const explicitMessageId = triggerMessageId(trigger)
+  if (explicitMessageId) {
+    const exactMatch = [...messages].reverse().find((message) => message.id === explicitMessageId)
+    if (exactMatch) return exactMatch
+  }
   const preview = String(trigger.subtitle ?? '').trim()
   if (preview) {
     const match = [...messages].reverse().find((message) => message.content.startsWith(preview))
@@ -211,7 +240,7 @@ export class KnotworkMcpTransport implements KnotworkTransport {
   }
 
   async getCapabilitySnapshot(input: { trigger: TaskTrigger; allowedActions: string[] }): Promise<SemanticCapabilitySnapshot> {
-    const channelId = typeof input.trigger.channel_id === 'string' && input.trigger.channel_id.trim() ? input.trigger.channel_id.trim() : null
+    const channelId = triggerChannelId(input.trigger)
     const client = await this.client()
     const subscriptions = await mcpList<ChannelSubscription>(
       client.callTool('list_my_channel_subscriptions', undefined as unknown as JsonObject),
@@ -237,12 +266,14 @@ export class KnotworkMcpTransport implements KnotworkTransport {
     legacyUserPrompt?: string
   }): Promise<WorkPacket> {
     const client = await this.client()
-    return await mcpResult<WorkPacket>(client.callTool('build_mcp_work_packet', {
+    const result = await mcpResult<unknown>(client.callTool('build_mcp_work_packet', {
       task_id: input.taskId,
       trigger: input.trigger as unknown as JsonObject,
       session_name: input.sessionName ?? null,
       legacy_user_prompt: input.legacyUserPrompt ?? null,
     }))
+    assertWorkPacket(result)
+    return result
   }
 
   async getMcpContract(contractId: string, checksumHint?: string | null): Promise<MCPContractManifest> {
@@ -307,6 +338,8 @@ export class KnotworkMcpTransport implements KnotworkTransport {
 
   async archiveDelivery(deliveryId: string): Promise<void> {
     const client = await this.client()
-    await client.updateInboxDelivery({ deliveryId, read: true, archived: true })
+    await (client as KnotworkMcpClient & {
+      updateInboxDelivery: (input: { deliveryId: string; read: boolean; archived: boolean }) => Promise<unknown>
+    }).updateInboxDelivery({ deliveryId, read: true, archived: true })
   }
 }

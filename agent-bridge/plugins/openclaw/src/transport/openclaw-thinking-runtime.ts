@@ -5,7 +5,7 @@ import type { OpenClawApi } from '../types'
 export class OpenClawThinkingRuntime implements ThinkingRuntime {
   constructor(private readonly api: OpenClawApi) {}
 
-  async think(input: SemanticThinkInput): Promise<{ rawOutput: string }> {
+  async think(input: SemanticThinkInput): Promise<{ rawOutput: string; deliveredSystemPrompt?: string }> {
     const result = await executeTaskRaw(this.api, {
       task_id: input.taskId,
       channel_id: input.channelId,
@@ -14,6 +14,6 @@ export class OpenClawThinkingRuntime implements ThinkingRuntime {
       user_prompt: input.userPrompt,
     })
     if (result.type === 'failed') throw new Error(result.error)
-    return { rawOutput: result.output }
+    return { rawOutput: result.output, deliveredSystemPrompt: result.deliveredSystemPrompt }
   }
 }

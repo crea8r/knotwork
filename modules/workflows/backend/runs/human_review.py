@@ -4,13 +4,13 @@ import logging
 from datetime import datetime, timezone
 from uuid import UUID
 
-from sqlalchemy import select, update
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.api import channels as core_channels
 from core.api import runs as core_runs
 from libs.auth.backend.models import User
-from libs.participants import member_participant_id, participant_kind
+from libs.participants import member_participant_id
 from modules.communication.backend import channels_service
 from modules.communication.backend.channels_models import ChannelMessage
 from modules.communication.backend.channels_schemas import (
@@ -90,10 +90,34 @@ def build_resolution_payload(
             "next_branch": next_branch,
             "channel_id": channel_id,
             "actor_name": actor_name or current_user.name,
-            "actor_type": actor_type or participant_kind(member),
+            "actor_type": actor_type or str(getattr(member, "kind", "") or "human"),
             "actor_participant_id": member_participant_id(member, current_user.id),
         }
     )
+
+
+def _update_request_message_status(
+    message: ChannelMessage,
+    *,
+    status: str,
+    resolution: str,
+    resolved_at: datetime | None = None,
+    note: str | None = None,
+) -> bool:
+    metadata = dict(message.metadata_ or {})
+    request_meta = metadata.get("request")
+    if str(metadata.get("kind") or "") != "request" or not isinstance(request_meta, dict):
+        return False
+
+    updated_request = dict(request_meta)
+    updated_request["status"] = status
+    updated_request["resolved_at"] = (resolved_at or datetime.now(timezone.utc)).isoformat()
+    updated_request["resolution"] = resolution
+    if note:
+        updated_request["note"] = note
+    metadata["request"] = updated_request
+    message.metadata_ = metadata
+    return True
 
 
 async def respond_to_run_message(
@@ -192,14 +216,11 @@ async def resolve_run_escalation(
         await abort_run_from_escalation(db, resolved.run_id)
 
     if update_request_message is not None:
-        metadata = dict(update_request_message.metadata_ or {})
-        request_meta = metadata.get("request") if isinstance(metadata.get("request"), dict) else {}
-        request_meta = dict(request_meta)
-        request_meta["status"] = "answered"
-        request_meta["resolved_at"] = datetime.now(timezone.utc).isoformat()
-        request_meta["resolution"] = normalized_resolution
-        metadata["request"] = request_meta
-        update_request_message.metadata_ = metadata
+        _update_request_message_status(
+            update_request_message,
+            status="answered",
+            resolution=normalized_resolution,
+        )
         await db.commit()
         await db.refresh(update_request_message)
 
@@ -413,14 +434,50 @@ async def supersede_open_node_escalations(
     run_id: str,
     node_id: str,
 ) -> None:
-    await db.execute(
-        update(Escalation)
-        .where(Escalation.run_id == run_id, Escalation.status == "open")
-        .values(
-            status="timed_out",
-            resolution=None,
-            resolution_data={"note": "superseded_by_new_escalation", "node_id": node_id},
-            resolved_at=datetime.now(timezone.utc),
+    open_escalations = (
+        await db.execute(
+            select(Escalation).where(
+                Escalation.run_id == run_id,
+                Escalation.status == "open",
+            )
         )
-    )
+    ).scalars().all()
+    if not open_escalations:
+        return
+
+    resolved_at = datetime.now(timezone.utc)
+    superseded_ids = {str(escalation.id) for escalation in open_escalations}
+    for escalation in open_escalations:
+        escalation.status = "timed_out"
+        escalation.resolution = None
+        escalation.resolution_data = {
+            "note": "superseded_by_new_escalation",
+            "node_id": node_id,
+        }
+        escalation.resolved_at = resolved_at
+
+    request_messages = (
+        await db.execute(
+            select(ChannelMessage).where(
+                ChannelMessage.run_id == run_id,
+                ChannelMessage.node_id == node_id,
+            )
+        )
+    ).scalars().all()
+    for message in request_messages:
+        metadata = dict(message.metadata_ or {})
+        request_meta = metadata.get("request") if isinstance(metadata.get("request"), dict) else None
+        if not isinstance(request_meta, dict):
+            continue
+        escalation_id = str(request_meta.get("escalation_id") or "").strip()
+        if escalation_id not in superseded_ids or str(request_meta.get("status") or "open") != "open":
+            continue
+        _update_request_message_status(
+            message,
+            status="superseded",
+            resolution="superseded_by_new_escalation",
+            resolved_at=resolved_at,
+            note="superseded_by_new_escalation",
+        )
+
     await db.commit()

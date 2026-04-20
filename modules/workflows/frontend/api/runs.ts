@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import type { ChannelMessage, ProviderCallLog, Run, RunNodeState, RunWorklogEntry } from '@data-models'
+import type { ChannelMessage, GraphDefinition, ProviderCallLog, Run, RunNodeState, RunWorklogEntry } from '@data-models'
 import { api } from '@sdk'
 
 export interface RunAttachmentRef {
@@ -53,6 +53,17 @@ export function useRunNodes(
         .then((r) => r.data),
     enabled: !!workspaceId && !!runId,
     ...options,
+  })
+}
+
+export function useRunDefinition(workspaceId: string, runId: string) {
+  return useQuery({
+    queryKey: ['run-definition', runId],
+    queryFn: () =>
+      api
+        .get<GraphDefinition>(`/workspaces/${workspaceId}/runs/${runId}/definition`)
+        .then((r) => r.data),
+    enabled: !!workspaceId && !!runId,
   })
 }
 

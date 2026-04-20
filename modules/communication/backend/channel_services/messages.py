@@ -101,15 +101,26 @@ async def _publish_message_events(
     if not _is_telemetry_message_kind(metadata.get("kind")):
         assigned_to = _assigned_participant_ids(metadata)
         actor_participant_id = metadata.get("author_participant_id")
-        payload = {"message_id": str(message.id), "channel_name": channel.name, "message_preview": data.content[:160]}
+        payload = {
+            "message_id": str(message.id),
+            "channel_name": channel.name,
+            "message_preview": data.content[:160],
+        }
         if assigned_to:
             recipient_ids = [participant_id for participant_id in assigned_to if participant_id != actor_participant_id]
-            payload["assigned_to"] = recipient_ids
+            payload.update(
+                {
+                    "assigned_to": recipient_ids,
+                    "run_id": data.run_id,
+                    "title": f"Task assigned in {channel.name}",
+                    "subtitle": data.content[:200],
+                }
+            )
             await publish_channel_event(
                 db,
                 workspace_id=workspace_id,
                 channel_id=channel.id,
-                event_type="message_posted",
+                event_type="task_assigned",
                 source_type="message",
                 source_id=str(message.id),
                 actor_type=data.author_type,

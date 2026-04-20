@@ -146,16 +146,19 @@ async def resume_run(run_id: str, resolution: dict) -> None:
         run = await db.get(Run, run_id)
         if not run or run.status != "paused":
             return
-        version = await db.get(GraphVersion, run.graph_version_id)
-        if not version:
-            return
         # Mark as running before invoke so watchdog fallback does not trigger
         # duplicate resumes while this resume execution is in-flight.
         run.status = "running"
         if run.started_at is None:
             run.started_at = datetime.now(timezone.utc)
         await db.commit()
-        definition = version.definition
+        if run.draft_definition is not None:
+            definition = run.draft_definition
+        else:
+            version = await db.get(GraphVersion, run.graph_version_id)
+            if not version:
+                return
+            definition = version.definition
 
     try:
         from langgraph.types import Command

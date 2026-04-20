@@ -1,9 +1,9 @@
 import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Bug, Loader2 } from 'lucide-react'
+import { Loader2 } from 'lucide-react'
 import MarkdownViewer from '@ui/components/MarkdownViewer'
 import type { ChatItem } from '@modules/workflows/frontend/pages/runDetail/runDetailTypes'
-import { extractImageSources, stripInlineSvg, formatJson } from '@modules/workflows/frontend/pages/runDetail/runDetailTypes'
+import { extractImageSources, stripInlineSvg, formatElapsedDuration } from '@modules/workflows/frontend/pages/runDetail/runDetailTypes'
 
 interface Props {
   item: ChatItem
@@ -13,23 +13,12 @@ interface Props {
 }
 
 export default function MessageBubble({ item, highlighted, dimmed, onClick }: Props) {
-  const [showRaw, setShowRaw] = useState(false)
   const [previewImage, setPreviewImage] = useState<string | null>(null)
   const images = useMemo(() => extractImageSources(item.text), [item.text])
   const renderText = useMemo(() => {
     if (images.some((img) => img.inlineSvg)) return stripInlineSvg(item.text)
     return item.text
   }, [item.text, images])
-  const flowLabel = useMemo(() => {
-    const raw = item.raw as Record<string, unknown> | null
-    if (!raw || typeof raw !== 'object') return null
-    const flow = raw.flow as Record<string, unknown> | undefined
-    if (!flow || typeof flow !== 'object') return null
-    const fromRole = typeof flow.from_role === 'string' ? flow.from_role : null
-    const toRole = typeof flow.to_role === 'string' ? flow.to_role : null
-    if (!fromRole || !toRole) return null
-    return `${fromRole} -> ${toRole}`
-  }, [item.raw])
 
   return (
     <div
@@ -45,17 +34,6 @@ export default function MessageBubble({ item, highlighted, dimmed, onClick }: Pr
           <p className="text-[10px] uppercase tracking-wide text-gray-400">
             {item.speaker}{item.nodeName ? ` • ${item.nodeName}` : ''}
           </p>
-        )}
-        <button
-          onClick={() => setShowRaw(v => !v)}
-          className="text-[10px] text-gray-400 hover:text-gray-700 inline-flex items-center gap-1"
-        >
-          <Bug size={11} /> {showRaw ? 'Hide raw' : 'Raw'}
-        </button>
-        {flowLabel && (
-          <span className="rounded-full border border-gray-200 bg-gray-50 px-1.5 py-0.5 text-[10px] text-gray-500">
-            {flowLabel}
-          </span>
         )}
       </div>
 
@@ -110,15 +88,15 @@ export default function MessageBubble({ item, highlighted, dimmed, onClick }: Pr
           />
         </div>
       )}
-      {showRaw && (
-        <pre className="mt-1.5 bg-black text-green-200 rounded-lg p-2.5 text-[11px] overflow-auto max-h-56">
-          {formatJson(item.raw)}
-        </pre>
-      )}
       {item.ts && (
-        <p className="text-[10px] text-gray-400 mt-0.5">
-          {new Date(item.ts).toLocaleString()}
-        </p>
+        <div className="mt-0.5 flex flex-wrap items-center gap-2 text-[10px] text-gray-400">
+          {item.answerDurationMs != null ? (
+            <span className="rounded-full bg-gray-100 px-1.5 py-0.5 text-[10px] text-gray-500">
+              Answered in {formatElapsedDuration(item.answerDurationMs)}
+            </span>
+          ) : null}
+          <span>{new Date(item.ts).toLocaleString()}</span>
+        </div>
       )}
     </div>
   )

@@ -33,6 +33,7 @@ export type ChatItem = {
   markdown?: boolean
   raw: unknown
   ts?: string | null
+  answerDurationMs?: number | null
   requestMessageId?: string
   request?: RequestPayload
 }
@@ -154,10 +155,12 @@ export function formatJson(value: unknown): string {
   }
 }
 
-export function humanizeInput(input: Record<string, unknown>): string {
-  const entries = Object.entries(input)
-  if (!entries.length) return 'No input provided.'
-  return entries
-    .map(([k, v]) => `- ${k}: ${typeof v === 'string' ? v : formatJson(v)}`)
-    .join('\n')
+export function formatElapsedDuration(ms: number): string {
+  const totalSeconds = Math.max(0, Math.round(ms / 1000))
+  const hours = Math.floor(totalSeconds / 3600)
+  const minutes = Math.floor((totalSeconds % 3600) / 60)
+  const seconds = totalSeconds % 60
+  if (hours > 0) return `${hours}h ${minutes}m`
+  if (minutes > 0) return `${minutes}m ${seconds}s`
+  return `${seconds}s`
 }

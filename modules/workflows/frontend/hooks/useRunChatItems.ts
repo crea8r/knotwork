@@ -4,7 +4,6 @@ import {
   type ChatItem,
   type RequestPayload,
   friendlyProgressText,
-  humanizeInput,
 } from '@modules/workflows/frontend/pages/runDetail/runDetailTypes'
 
 interface Params {
@@ -57,9 +56,20 @@ export function useRunChatItems(params: Params): ChatItem[] {
     const items: ChatItem[] = []
     if (!run) return items
     const activeRun = run
+    const completedNodeIds = new Set(
+      nodeStates
+        .filter((nodeState) => nodeState.status === 'completed')
+        .map((nodeState) => nodeState.node_id),
+    )
+    const requestCreatedAtByEscalationId = new Map<string, number>()
     const resolvedEscalationIds = new Set<string>()
     for (const message of runMessages) {
       const meta = message.metadata_ as Record<string, unknown>
+      if (meta.kind === 'request') {
+        const request = normalizeRequestPayload(meta.request)
+        const escalationId = request?.escalation_id
+        if (escalationId) requestCreatedAtByEscalationId.set(escalationId, new Date(message.created_at).getTime())
+      }
       if (meta.kind !== 'escalation_resolution') continue
       const escalationId = typeof meta.escalation_id === 'string' ? meta.escalation_id : null
       if (escalationId) resolvedEscalationIds.add(escalationId)
@@ -99,6 +109,7 @@ export function useRunChatItems(params: Params): ChatItem[] {
           const derivedStatus = escalationId && resolvedEscalationIds.has(escalationId)
             ? 'answered'
             : request?.status
+          if (derivedStatus === 'open' && m.node_id && completedNodeIds.has(m.node_id)) continue
           const normalizedRequest = request ? { ...request, status: derivedStatus } : request
           if (m.node_id) requestNodeIds.add(m.node_id)
           items.push({
@@ -118,6 +129,10 @@ export function useRunChatItems(params: Params): ChatItem[] {
           })
           continue
         }
+        const escalationId = typeof meta.escalation_id === 'string' ? meta.escalation_id : null
+        const answerDurationMs = escalationId && requestCreatedAtByEscalationId.has(escalationId)
+          ? Math.max(0, new Date(m.created_at).getTime() - (requestCreatedAtByEscalationId.get(escalationId) ?? 0))
+          : null
         items.push({
           id: m.id,
           role,
@@ -129,6 +144,7 @@ export function useRunChatItems(params: Params): ChatItem[] {
           markdown: role === 'assistant',
           raw: m.metadata_ ?? {},
           ts: m.created_at,
+          answerDurationMs,
         })
       }
       for (const ns of nodeStates) {
@@ -157,14 +173,6 @@ export function useRunChatItems(params: Params): ChatItem[] {
       return items
     }
 
-    items.push({
-      id: `run-input-${run.id}`,
-      role: 'user',
-      speaker: 'You',
-      text: `Started run with:\n${humanizeInput(run.input)}`,
-      raw: run.input,
-      ts: activeRun.created_at,
-    })
     for (const ns of nodeStates) {
       const nodeName = nodeNameMap[ns.node_id] ?? ns.node_name ?? ns.node_id
       const speaker = nodeSpeakerMap.nameMap.get(ns.node_id) ?? (ns.agent_ref || 'Agent')

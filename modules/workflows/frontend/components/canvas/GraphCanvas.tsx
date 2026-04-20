@@ -8,6 +8,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Maximize2, Minus, Plus } from 'lucide-react'
 import type { GraphDefinition, NodeStatus } from '@data-models'
+import { getNodeAssignmentLabels, type ParticipantLabelMap } from '@modules/workflows/frontend/lib/participantLabels'
 import { computeLayout, PAD, STATUS_COLORS } from './graphCanvasConstants'
 import { StartEndOval, NodeBox, EdgePath } from './GraphCanvasNodes'
 
@@ -16,11 +17,18 @@ const SELECT_RING = '#2563eb'
 interface Props {
   definition: GraphDefinition
   nodeStatuses?: Record<string, NodeStatus>
+  participantLabelMap?: ParticipantLabelMap
   selectedNodeId?: string | null
   onSelectNode?: (nodeId: string | null) => void
 }
 
-export default function GraphCanvas({ definition, nodeStatuses = {}, selectedNodeId, onSelectNode }: Props) {
+export default function GraphCanvas({
+  definition,
+  nodeStatuses = {},
+  participantLabelMap = {},
+  selectedNodeId,
+  onSelectNode,
+}: Props) {
   const svgRef = useRef<SVGSVGElement>(null)
   const [zoom, setZoom] = useState(1)
   const [pan, setPan] = useState({ x: 0, y: 0 })
@@ -157,6 +165,7 @@ export default function GraphCanvas({ definition, nodeStatuses = {}, selectedNod
             const pos = g.node(node.id)
             if (!pos) return null
             const status = nodeStatuses[node.id]
+            const assignmentLabels = getNodeAssignmentLabels(node, participantLabelMap)
             const isSelected = selected === node.id
             const isNeighbor = neighborIds.has(node.id)
             const isDimmed = hasSelection && !isSelected && !isNeighbor
@@ -171,6 +180,7 @@ export default function GraphCanvas({ definition, nodeStatuses = {}, selectedNod
             }
             return (
               <NodeBox key={node.id} node={node} x={pos.x} y={pos.y}
+                operatorLabel={assignmentLabels.operator} supervisorLabel={assignmentLabels.supervisor}
                 selected={isSelected} neighbor={isNeighbor} dimmed={isDimmed} pulse={isPulse}
                 statusColor={statusColor} branchCount={outgoingCounts[node.id] ?? 0} onClick={() => handleNodeClick(node.id)} />
             )

@@ -13,6 +13,7 @@ import type {
   TaskTrigger,
   WorkPacket,
 } from '../types'
+import { triggerChannelId } from '../types'
 
 export class KnotworkRestTransport implements KnotworkTransport {
   private readonly contractCache = new Map<string, MCPContractManifest>()
@@ -28,7 +29,7 @@ export class KnotworkRestTransport implements KnotworkTransport {
   ) {}
 
   async getCapabilitySnapshot(input: { trigger: TaskTrigger; allowedActions: string[] }): Promise<SemanticCapabilitySnapshot> {
-    const channelId = typeof input.trigger.channel_id === 'string' && input.trigger.channel_id.trim() ? input.trigger.channel_id.trim() : null
+    const channelId = triggerChannelId(input.trigger)
     const subscriptions = await fetchMyChannelSubscriptions(this.params.baseUrl, this.params.workspaceId, this.params.jwt).catch(() => [])
     const activeChannelIds = subscriptions.filter((item) => item.subscribed).map((item) => item.channel_id)
     if (channelId && !activeChannelIds.includes(channelId)) activeChannelIds.push(channelId)

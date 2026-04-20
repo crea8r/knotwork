@@ -30,6 +30,164 @@ def first_non_empty(*values: str | None) -> str | None:
     return None
 
 
+def _compact_dict(value: dict[str, Any]) -> dict[str, Any]:
+    out: dict[str, Any] = {}
+    for key, item in value.items():
+        if item is None:
+            continue
+        if isinstance(item, dict):
+            nested = _compact_dict(item)
+            if nested:
+                out[key] = nested
+            continue
+        if isinstance(item, list):
+            compact_list = [entry for entry in item if entry is not None]
+            if compact_list:
+                out[key] = compact_list
+            continue
+        out[key] = item
+    return out
+
+
+def trigger_detail(trigger: dict[str, Any] | None) -> dict[str, Any]:
+    if not isinstance(trigger, dict):
+        return {}
+    detail = trigger.get("detail")
+    return dict(detail) if isinstance(detail, dict) else {}
+
+
+def trigger_channel_id(trigger: dict[str, Any] | None) -> str | None:
+    if not isinstance(trigger, dict):
+        return None
+    return first_non_empty(str(trigger.get("channel_id")) if trigger.get("channel_id") is not None else None)
+
+
+def trigger_message_id(trigger: dict[str, Any] | None) -> str | None:
+    if not isinstance(trigger, dict):
+        return None
+    detail = trigger_detail(trigger)
+    return first_non_empty(
+        str(detail.get("message_id")) if detail.get("message_id") is not None else None,
+        str(trigger.get("message_id")) if trigger.get("message_id") is not None else None,
+    )
+
+
+def trigger_run_id(trigger: dict[str, Any] | None) -> str | None:
+    if not isinstance(trigger, dict):
+        return None
+    detail = trigger_detail(trigger)
+    task = detail.get("task") if isinstance(detail.get("task"), dict) else None
+    return first_non_empty(
+        str(detail.get("run_id")) if detail.get("run_id") is not None else None,
+        str(task.get("run_id")) if isinstance(task, dict) and task.get("run_id") is not None else None,
+        str(trigger.get("run_id")) if trigger.get("run_id") is not None else None,
+    )
+
+
+def trigger_escalation_id(trigger: dict[str, Any] | None) -> str | None:
+    if not isinstance(trigger, dict):
+        return None
+    detail = trigger_detail(trigger)
+    task = detail.get("task") if isinstance(detail.get("task"), dict) else None
+    return first_non_empty(
+        str(detail.get("escalation_id")) if detail.get("escalation_id") is not None else None,
+        str(task.get("escalation_id")) if isinstance(task, dict) and task.get("escalation_id") is not None else None,
+        str(trigger.get("escalation_id")) if trigger.get("escalation_id") is not None else None,
+    )
+
+
+def trigger_proposal_id(trigger: dict[str, Any] | None) -> str | None:
+    if not isinstance(trigger, dict):
+        return None
+    detail = trigger_detail(trigger)
+    return first_non_empty(
+        str(detail.get("proposal_id")) if detail.get("proposal_id") is not None else None,
+        str(trigger.get("proposal_id")) if trigger.get("proposal_id") is not None else None,
+    )
+
+
+def trigger_asset_type(trigger: dict[str, Any] | None) -> str | None:
+    if not isinstance(trigger, dict):
+        return None
+    detail = trigger_detail(trigger)
+    asset = detail.get("asset") if isinstance(detail.get("asset"), dict) else None
+    return first_non_empty(
+        str(asset.get("type")) if isinstance(asset, dict) and asset.get("type") is not None else None,
+        str(detail.get("asset_type")) if detail.get("asset_type") is not None else None,
+        str(trigger.get("asset_type")) if trigger.get("asset_type") is not None else None,
+    )
+
+
+def trigger_asset_id(trigger: dict[str, Any] | None) -> str | None:
+    if not isinstance(trigger, dict):
+        return None
+    detail = trigger_detail(trigger)
+    asset = detail.get("asset") if isinstance(detail.get("asset"), dict) else None
+    return first_non_empty(
+        str(asset.get("id")) if isinstance(asset, dict) and asset.get("id") is not None else None,
+        str(detail.get("asset_id")) if detail.get("asset_id") is not None else None,
+        str(trigger.get("asset_id")) if trigger.get("asset_id") is not None else None,
+    )
+
+
+def trigger_asset_path(trigger: dict[str, Any] | None) -> str | None:
+    if not isinstance(trigger, dict):
+        return None
+    detail = trigger_detail(trigger)
+    asset = detail.get("asset") if isinstance(detail.get("asset"), dict) else None
+    return first_non_empty(
+        str(asset.get("path")) if isinstance(asset, dict) and asset.get("path") is not None else None,
+        str(detail.get("asset_path")) if detail.get("asset_path") is not None else None,
+        str(trigger.get("asset_path")) if trigger.get("asset_path") is not None else None,
+    )
+
+
+def normalize_trigger(trigger: dict[str, Any]) -> dict[str, Any]:
+    detail = trigger_detail(trigger)
+    trigger_type = str(trigger.get("type") or "")
+    if not detail:
+        if trigger_type in {"message_posted", "mentioned_message"}:
+            detail = _compact_dict({"message_id": trigger.get("message_id")})
+        elif trigger_type == "task_assigned":
+            detail = _compact_dict(
+                {
+                    "message_id": trigger.get("message_id"),
+                    "run_id": trigger.get("run_id"),
+                    "task": {
+                        "run_id": trigger.get("run_id"),
+                        "escalation_id": trigger.get("escalation_id"),
+                    },
+                }
+            )
+        elif trigger_type == "escalation":
+            detail = _compact_dict({"escalation_id": trigger.get("escalation_id"), "run_id": trigger.get("run_id")})
+        elif trigger_type == "run_event":
+            detail = _compact_dict({"run_id": trigger.get("run_id")})
+        elif trigger_type == "knowledge_change":
+            detail = _compact_dict(
+                {
+                    "proposal_id": trigger.get("proposal_id"),
+                    "run_id": trigger.get("run_id"),
+                    "asset": {
+                        "type": trigger.get("asset_type"),
+                        "id": trigger.get("asset_id"),
+                        "path": trigger.get("asset_path"),
+                    },
+                }
+            )
+
+    return _compact_dict(
+        {
+            "type": trigger_type,
+            "delivery_id": trigger.get("delivery_id"),
+            "channel_id": trigger.get("channel_id"),
+            "title": trigger.get("title"),
+            "subtitle": trigger.get("subtitle"),
+            "detail": detail,
+        }
+    )
+
+
 def serialize_message(message: ChannelMessage) -> dict[str, Any]:
     return {
         "id": str(message.id),
@@ -101,18 +259,18 @@ async def _build_objective_chain(db: AsyncSession, workspace_id: UUID, objective
 
 
 def _primary_asset(assets: list[dict[str, Any]], trigger: dict[str, Any]) -> dict[str, Any] | None:
-    trigger_asset_id = first_non_empty(
-        str(trigger.get("asset_id")) if trigger.get("asset_id") is not None else None,
-        str(trigger.get("proposal_id")) if trigger.get("proposal_id") is not None and trigger.get("asset_type") == "file" else None,
+    trigger_asset_id_value = first_non_empty(
+        trigger_asset_id(trigger),
+        trigger_proposal_id(trigger) if trigger_asset_type(trigger) == "file" else None,
     )
-    trigger_asset_type = first_non_empty(str(trigger.get("asset_type")) if trigger.get("asset_type") is not None else None)
-    if trigger_asset_type and trigger_asset_id:
+    trigger_asset_type_value = trigger_asset_type(trigger)
+    if trigger_asset_type_value and trigger_asset_id_value:
         for asset in assets:
-            if str(asset.get("asset_type")) == trigger_asset_type and str(asset.get("asset_id")) == trigger_asset_id:
+            if str(asset.get("asset_type")) == trigger_asset_type_value and str(asset.get("asset_id")) == trigger_asset_id_value:
                 return asset
-    if trigger_asset_type:
+    if trigger_asset_type_value:
         for asset in assets:
-            if str(asset.get("asset_type")) == trigger_asset_type:
+            if str(asset.get("asset_type")) == trigger_asset_type_value:
                 return asset
     return assets[0] if assets else None
 
@@ -151,12 +309,13 @@ async def load_work_packet_context(
     session_name: str | None = None,
     legacy_user_prompt: str | None = None,
 ) -> LoadedWorkPacketContext:
+    trigger = normalize_trigger(trigger)
     workspace = await db.get(Workspace, workspace_id)
     if workspace is None:
         raise ValueError("Workspace not found")
 
     self_participant_id = member_participant_id(member, current_user.id)
-    channel_id_value = trigger.get("channel_id")
+    channel_id_value = trigger_channel_id(trigger)
     channel = await core_channels.get_channel(db, workspace_id, channel_id_value) if channel_id_value else None
 
     channel_messages: list[ChannelMessage] = []
@@ -168,13 +327,14 @@ async def load_work_packet_context(
         assets = await channels_service.list_channel_asset_bindings(db, workspace_id, channel.id)
 
     trigger_message = find_trigger_message(
-        message_id=str(trigger.get("message_id") or "") or None,
+        message_id=trigger_message_id(trigger),
         subtitle=trigger.get("subtitle"),
         messages=channel_messages,
     )
-    run_id = trigger.get("run_id")
+    run_id = trigger_run_id(trigger)
     run = await runs_service.get_run(db, run_id) if run_id else None
-    escalation = await db.get(Escalation, trigger["escalation_id"]) if trigger.get("escalation_id") else None
+    escalation_id = trigger_escalation_id(trigger)
+    escalation = await db.get(Escalation, escalation_id) if escalation_id else None
     graph = await core_graphs.get_graph(db, channel.graph_id) if channel and channel.graph_id else None
     root_draft = await core_graphs.get_any_draft(db, channel.graph_id) if channel and channel.graph_id else None
     objective_chain = await _build_objective_chain(db, workspace_id, channel.objective_id if channel else None)
