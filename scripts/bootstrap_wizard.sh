@@ -333,6 +333,33 @@ read_pid() {
   return 1
 }
 
+ufw_active() {
+  command -v ufw >/dev/null 2>&1 && ufw status 2>/dev/null | grep -q '^Status: active'
+}
+
+ufw_has_allow_rule() {
+  local port="$1"
+  ufw status numbered 2>/dev/null | grep -Eq "(^|\])\s*${port}/tcp(\s|$).*ALLOW IN"
+}
+
+ensure_ufw_port_open() {
+  local port="$1"
+  local scope_label="$2"
+  if ! ufw_active; then
+    return
+  fi
+  if ufw_has_allow_rule "$port"; then
+    return
+  fi
+  log "Opening UFW port ${port}/tcp for ${scope_label}"
+  $SUDO ufw allow "$port"/tcp >/dev/null
+}
+
+verify_end_to_end_routes() {
+  wait_for_url "${FRONTEND_URL}/" "bootstrap public frontend"     || die "Bootstrap frontend did not become reachable at ${FRONTEND_URL}/."
+  wait_for_url "${FRONTEND_URL}/api/v1/setup/status" "bootstrap public api"     || die "Bootstrap API did not become reachable through ${FRONTEND_URL}/api/v1/setup/status. Check firewall rules for ports ${FRONTEND_PORT} and ${BACKEND_PORT}."
+}
+
 wait_for_url() {
   local url="$1"
   local label="${2:-$url}"
@@ -473,7 +500,10 @@ launch_wizard() {
   ensure_dirs
   ensure_bootstrap_network
   start_backend
+  ensure_ufw_port_open "$BACKEND_PORT" "bootstrap backend access from local container/network paths"
   start_frontend
+  ensure_ufw_port_open "$FRONTEND_PORT" "public bootstrap wizard access"
+  verify_end_to_end_routes
 
   local wizard_url="${FRONTEND_URL}/"
   if [[ "$mode" == "uninstall" ]]; then
@@ -494,6 +524,9 @@ launch_wizard() {
 
   echo
   echo "Bootstrap runtime is ready."
+  if ufw_active; then
+    echo "Firewall: verified UFW rules for wizard port ${FRONTEND_PORT} and bootstrap API port ${BACKEND_PORT}."
+  fi
   echo "Wizard URL: ${wizard_url}"
   if [[ -n "$remote_url" ]]; then
     echo "Remote URL on this network: ${remote_url}"
