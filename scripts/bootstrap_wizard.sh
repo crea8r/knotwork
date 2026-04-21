@@ -60,7 +60,7 @@ BOOTSTRAP_FRONTEND_PORT=${FRONTEND_PORT}
 BOOTSTRAP_BACKEND_URL=${BACKEND_URL}
 BOOTSTRAP_FRONTEND_URL=${FRONTEND_URL}
 BOOTSTRAP_API_URL=${API_URL}
-BOOTSTRAP_BACKEND_PROXY_URL=http://host.docker.internal:${BACKEND_PORT}
+BOOTSTRAP_BACKEND_PROXY_URL=http://$(host_gateway_ip):${BACKEND_PORT}
 BOOTSTRAP_NETWORK=${BOOTSTRAP_NETWORK}
 BOOTSTRAP_FRONTEND_MODE=
 EOF
@@ -98,6 +98,34 @@ server_lan_ip() {
     fi
   fi
   echo ""
+}
+
+host_gateway_ip() {
+  local ip=""
+
+  ip="$(ip route show default 2>/dev/null | awk '/default/ {print $3; exit}' || true)"
+  if [[ -n "$ip" ]]; then
+    printf '%s
+' "$ip"
+    return
+  fi
+
+  ip="$(ip -4 addr show docker0 2>/dev/null | awk '/inet / {print $2}' | cut -d/ -f1 | head -n1 || true)"
+  if [[ -n "$ip" ]]; then
+    printf '%s
+' "$ip"
+    return
+  fi
+
+  ip="$(server_lan_ip || true)"
+  if [[ -n "$ip" ]]; then
+    printf '%s
+' "$ip"
+    return
+  fi
+
+  printf '127.0.0.1
+'
 }
 
 format_wizard_url() {
