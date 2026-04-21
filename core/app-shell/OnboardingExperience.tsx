@@ -184,31 +184,31 @@ export default function OnboardingExperience() {
   return (
     <>
       {isOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 p-4">
-          <div className="relative w-full max-w-4xl overflow-hidden rounded-3xl bg-white shadow-2xl">
+        <div className="fixed inset-0 z-50 flex min-h-0 items-center justify-center bg-black/45 p-2 sm:p-4">
+          <div className="relative flex max-h-[calc(100dvh-1rem)] w-full max-w-4xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl sm:max-h-[calc(100dvh-2rem)] sm:rounded-3xl">
             <button
               type="button"
               onClick={skipForNow}
-              className="absolute right-4 top-4 inline-flex h-9 w-9 items-center justify-center rounded-full border border-gray-200 bg-white text-gray-500 hover:text-gray-700"
+              className="absolute right-3 top-3 z-10 inline-flex h-9 w-9 items-center justify-center rounded-full border border-gray-200 bg-white text-gray-500 shadow-sm hover:text-gray-700 sm:right-4 sm:top-4"
               aria-label="Close onboarding"
             >
               <X size={16} />
             </button>
 
-            <div className="grid gap-0 lg:grid-cols-[1.1fr_0.9fr]">
-              <div className="bg-stone-950 px-6 py-8 text-white lg:px-8">
+            <div className="grid min-h-0 flex-1 gap-0 overflow-hidden lg:grid-cols-[1.1fr_0.9fr]">
+              <div className="min-h-0 overflow-y-auto bg-stone-950 px-4 py-5 text-white sm:px-6 sm:py-8 lg:px-8">
                 <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/10 px-3 py-1 text-xs uppercase tracking-[0.2em] text-white/70">
                   <Sparkles size={12} />
                   {onboarding.welcomeEyebrow}
                 </div>
-                <h2 className="mt-5 max-w-md text-3xl font-semibold tracking-tight">
+                <h2 className="mt-4 max-w-md text-2xl font-semibold tracking-tight sm:mt-5 sm:text-3xl">
                   {onboarding.welcomeTitle}
                 </h2>
-                <p className="mt-4 max-w-lg text-sm leading-7 text-white/75">
+                <p className="mt-3 max-w-lg text-sm leading-6 text-white/75 sm:mt-4 sm:leading-7">
                   {onboarding.welcomeDescription}
                 </p>
 
-                <div className="mt-8 rounded-2xl border border-white/10 bg-white/5 p-4">
+                <div className="mt-5 rounded-2xl border border-white/10 bg-white/5 p-3 sm:mt-8 sm:p-4">
                   <div className="flex items-center justify-between text-xs uppercase tracking-wide text-white/60">
                     <span>Progress</span>
                     <span>{completedCount}/{steps.length} complete</span>
@@ -240,7 +240,7 @@ export default function OnboardingExperience() {
                 </div>
               </div>
 
-              <div className="px-6 py-8 lg:px-8">
+              <div className="min-h-0 min-w-0 overflow-y-auto px-4 py-5 sm:px-6 sm:py-8 lg:px-8">
                 {!hasStarted ? (
                   <>
                     <p className="text-xs font-medium uppercase tracking-wide text-gray-400">
@@ -329,10 +329,10 @@ export default function OnboardingExperience() {
                           return (
                             <div
                               key={step.id}
-                              className={`w-full rounded-2xl border p-4 transition-colors ${cardClassName}`}
+                              className={`min-w-0 w-full overflow-hidden rounded-2xl border p-4 transition-colors ${cardClassName}`}
                             >
-                              <div className="flex items-start justify-between gap-3">
-                                <div>
+                              <div className="flex min-w-0 items-start justify-between gap-3">
+                                <div className="min-w-0">
                                   <div className="flex items-center gap-2">
                                     {complete ? (
                                       <CheckCircle2 size={16} className="text-emerald-600" />
@@ -342,7 +342,7 @@ export default function OnboardingExperience() {
                                     <p className="text-sm font-medium text-gray-900">{step.title}</p>
                                   </div>
                                   <p className="mt-2 text-sm leading-6 text-gray-600">{step.description}</p>
-                                  <div className="mt-3 rounded-xl border border-blue-100 bg-blue-50 p-3 text-sm leading-6 text-blue-900">
+                                  <div className="mt-3 min-w-0 overflow-hidden rounded-xl border border-blue-100 bg-blue-50 p-3 text-sm leading-6 text-blue-900">
                                     <p className="font-medium">{onboarding.agentSetup.title}</p>
                                     <p className="mt-2">{onboarding.agentSetup.description}</p>
                                     <ol className="mt-2 space-y-1 text-sm text-blue-900">
@@ -350,7 +350,7 @@ export default function OnboardingExperience() {
                                         <li key={item}>{index + 1}. {item}</li>
                                       ))}
                                     </ol>
-                                    <div className="mt-3 flex flex-wrap gap-2">
+                                    <div className="mt-3 flex min-w-0 flex-wrap gap-2">
                                       {onboarding.agentSetup.externalLinkUrl && onboarding.agentSetup.externalLinkLabel && (
                                         <a
                                           href={onboarding.agentSetup.externalLinkUrl}
@@ -363,14 +363,14 @@ export default function OnboardingExperience() {
                                         </a>
                                       )}
                                       {discoveryUrl && (
-                                        <code className="max-w-full overflow-hidden rounded-lg border border-blue-200 bg-white px-3 py-2 text-xs text-blue-900">
+                                        <code className="block max-w-full overflow-x-auto whitespace-nowrap rounded-lg border border-blue-200 bg-white px-3 py-2 text-xs text-blue-900 [scrollbar-width:thin]">
                                           {discoveryUrl}
                                         </code>
                                       )}
                                     </div>
                                   </div>
                                 </div>
-                                <span className="text-xs font-medium uppercase tracking-wide text-gray-400">
+                                <span className="shrink-0 text-xs font-medium uppercase tracking-wide text-gray-400">
                                   {complete ? 'Done' : step.hrefLabel}
                                 </span>
                               </div>

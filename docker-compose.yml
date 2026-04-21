@@ -103,10 +103,7 @@ services:
 
   # ── Worker (arq background tasks) ─────────────────────────────────────────────
   worker:
-    image: ${COMPOSE_PROJECT_NAME:-knotwork}-worker:latest
-    build:
-      context: .
-      dockerfile: Dockerfile.backend
+    image: ${COMPOSE_PROJECT_NAME:-knotwork}-backend:latest
     env_file:
       - ${KNOTWORK_RUNTIME_ENV_FILE:-.env}
     environment:
@@ -128,10 +125,7 @@ services:
       - knotwork-network
 
   worker-dev:
-    image: ${COMPOSE_PROJECT_NAME:-knotwork}-worker-dev:latest
-    build:
-      context: .
-      dockerfile: Dockerfile.backend
+    image: ${COMPOSE_PROJECT_NAME:-knotwork}-backend-dev:latest
     env_file:
       - ${KNOTWORK_RUNTIME_ENV_FILE:-.env}
     environment:
@@ -178,7 +172,7 @@ services:
       - knotwork-network
 
   frontend-dev-manticore:
-    image: ${COMPOSE_PROJECT_NAME:-knotwork}-frontend-dev-manticore:latest
+    image: ${COMPOSE_PROJECT_NAME:-knotwork}-frontend-dev:latest
     build:
       context: .
       dockerfile: Dockerfile.frontend
