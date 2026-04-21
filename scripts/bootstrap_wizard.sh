@@ -355,6 +355,39 @@ ensure_ufw_port_open() {
   $SUDO ufw allow "$port"/tcp >/dev/null
 }
 
+bootstrap_backend_ufw_sources() {
+  local sources=()
+  local gateway_ip=""
+  local lan_ip=""
+
+  gateway_ip="$(host_gateway_ip || true)"
+  lan_ip="$(server_lan_ip || true)"
+
+  [[ -n "$gateway_ip" ]] && sources+=("$gateway_ip")
+  [[ -n "$lan_ip" ]] && sources+=("$lan_ip")
+  sources+=("172.17.0.0/16" "172.18.0.0/16")
+
+  printf '%s
+' "${sources[@]}"
+}
+
+ensure_ufw_backend_port_open() {
+  local port="$1"
+  local source=""
+  if ! ufw_active; then
+    return
+  fi
+
+  while IFS= read -r source; do
+    [[ -n "$source" ]] || continue
+    if ufw status numbered 2>/dev/null | grep -Fq "${port}/tcp" && ufw status numbered 2>/dev/null | grep -Fq "$source"; then
+      continue
+    fi
+    log "Opening UFW port ${port}/tcp for bootstrap backend source ${source}"
+    $SUDO ufw allow from "$source" to any port "$port" proto tcp >/dev/null
+  done < <(bootstrap_backend_ufw_sources)
+}
+
 verify_end_to_end_routes() {
   wait_for_url "${FRONTEND_URL}/" "bootstrap public frontend"     || die "Bootstrap frontend did not become reachable at ${FRONTEND_URL}/."
   wait_for_url "${FRONTEND_URL}/api/v1/setup/status" "bootstrap public api"     || die "Bootstrap API did not become reachable through ${FRONTEND_URL}/api/v1/setup/status. Check firewall rules for ports ${FRONTEND_PORT} and ${BACKEND_PORT}."
@@ -500,7 +533,7 @@ launch_wizard() {
   ensure_dirs
   ensure_bootstrap_network
   start_backend
-  ensure_ufw_port_open "$BACKEND_PORT" "bootstrap backend access from local container/network paths"
+  ensure_ufw_backend_port_open "$BACKEND_PORT"
   start_frontend
   ensure_ufw_port_open "$FRONTEND_PORT" "public bootstrap wizard access"
   verify_end_to_end_routes
