@@ -10,15 +10,25 @@ if [[ "${EUID}" -ne 0 ]]; then
 fi
 
 # ── Install mode ──────────────────────────────────────────────────────────────
-# --dev  Hot-reload dev install (localhost only, volume-mounted source, Vite HMR).
-#        Code changes in backend/ and frontend/src/ take effect without reinstalling.
+# --dev   Hot-reload dev install (localhost only, volume-mounted source, Vite HMR).
+# --prod  Production-style install without the interactive dev-mode switch prompt.
 INSTALL_MODE="prod"
 DEV_FLAG_EXPLICIT=0
 for arg in "$@"; do
-  if [[ "$arg" == "--dev" ]]; then
-    INSTALL_MODE="dev"
-    DEV_FLAG_EXPLICIT=1
-  fi
+  case "$arg" in
+    --dev)
+      INSTALL_MODE="dev"
+      DEV_FLAG_EXPLICIT=1
+      ;;
+    --prod)
+      INSTALL_MODE="prod"
+      DEV_FLAG_EXPLICIT=1
+      ;;
+    *)
+      echo "ERROR: Unknown argument: $arg" >&2
+      exit 1
+      ;;
+  esac
 done
 
 log() { printf "\n[%s] %s\n" "$(date +'%H:%M:%S')" "$*"; }
@@ -59,16 +69,147 @@ run_with_retry() {
   done
 }
 
+docker_builder_prune_after_install() {
+  if [[ "${KNOTWORK_PRUNE_BUILD_CACHE_AFTER_INSTALL:-yes}" != "yes" ]]; then
+    log "Skipping Docker build cache prune because KNOTWORK_PRUNE_BUILD_CACHE_AFTER_INSTALL is not 'yes'."
+    return
+  fi
+  if ! docker info >/dev/null 2>&1; then
+    warn "Docker daemon is not reachable; skipping build cache prune."
+    return
+  fi
+  log "Pruning Docker build cache to reduce disk usage..."
+  docker builder prune -f >/dev/null 2>&1 || warn "Docker builder cache prune failed."
+  docker image prune -f >/dev/null 2>&1 || warn "Dangling image prune failed."
+}
+
+detect_cpu_count() {
+  local cpu_count=""
+  if command -v getconf >/dev/null 2>&1; then
+    cpu_count="$(getconf _NPROCESSORS_ONLN 2>/dev/null || true)"
+  fi
+  if [[ -z "$cpu_count" && -r /proc/cpuinfo ]]; then
+    cpu_count="$(grep -c '^processor' /proc/cpuinfo 2>/dev/null || true)"
+  fi
+  if [[ -z "$cpu_count" ]] && command -v sysctl >/dev/null 2>&1; then
+    cpu_count="$(sysctl -n hw.ncpu 2>/dev/null || true)"
+  fi
+  [[ "$cpu_count" =~ ^[0-9]+$ ]] || cpu_count=0
+  echo "$cpu_count"
+}
+
+detect_memory_mb() {
+  local memory_kb=""
+  if [[ -r /proc/meminfo ]]; then
+    memory_kb="$(awk '/^MemTotal:/ {print $2; exit}' /proc/meminfo)"
+  elif command -v sysctl >/dev/null 2>&1; then
+    local memory_bytes
+    memory_bytes="$(sysctl -n hw.memsize 2>/dev/null || true)"
+    if [[ "$memory_bytes" =~ ^[0-9]+$ ]]; then
+      echo $((memory_bytes / 1024 / 1024))
+      return
+    fi
+  fi
+  [[ "$memory_kb" =~ ^[0-9]+$ ]] || memory_kb=0
+  echo $((memory_kb / 1024))
+}
+
+detect_swap_mb() {
+  local swap_kb=""
+  if [[ -r /proc/meminfo ]]; then
+    swap_kb="$(awk '/^SwapTotal:/ {print $2; exit}' /proc/meminfo)"
+  elif command -v sysctl >/dev/null 2>&1; then
+    # macOS swap is not useful for sizing a remote Linux install, but this keeps
+    # local dry-runs from reporting an unknown value.
+    swap_kb="0"
+  fi
+  [[ "$swap_kb" =~ ^[0-9]+$ ]] || swap_kb=0
+  echo $((swap_kb / 1024))
+}
+
+detect_free_disk_mb() {
+  local path="${1:-.}"
+  df -Pm "$path" 2>/dev/null | awk 'NR==2 {print $4; exit}'
+}
+
+print_resource_report() {
+  local cpu_count="$1"
+  local memory_mb="$2"
+  local swap_mb="$3"
+  local disk_mb="$4"
+  echo "Detected resources:"
+  echo "  CPU cores        : ${cpu_count}"
+  echo "  RAM              : ${memory_mb} MB"
+  echo "  Swap             : ${swap_mb} MB"
+  echo "  Free install disk: ${disk_mb} MB"
+}
+
+select_install_resource_mode() {
+  local requested="${KNOTWORK_INSTALL_RESOURCE_MODE:-auto}"
+  requested="$(echo "$requested" | tr '[:upper:]' '[:lower:]' | sed 's/^ *//;s/ *$//')"
+  case "$requested" in
+    auto|fast|low) ;;
+    *) die "KNOTWORK_INSTALL_RESOURCE_MODE must be auto, fast, or low." ;;
+  esac
+
+  local cpu_count memory_mb swap_mb disk_mb total_memory_mb
+  cpu_count="$(detect_cpu_count)"
+  memory_mb="$(detect_memory_mb)"
+  swap_mb="$(detect_swap_mb)"
+  disk_mb="$(detect_free_disk_mb "$ROOT_DIR")"
+  [[ "$disk_mb" =~ ^[0-9]+$ ]] || disk_mb=0
+  total_memory_mb=$((memory_mb + swap_mb))
+
+  log "Checking host resources for Docker build strategy..."
+  print_resource_report "$cpu_count" "$memory_mb" "$swap_mb" "$disk_mb"
+  echo "Fast-build target : >=4 CPU cores, >=6144 MB RAM, >=20480 MB free disk"
+  echo "Low-resource target: >=2 CPU cores, >=2048 MB RAM+swap, >=10240 MB free disk"
+
+  if (( cpu_count < 2 || total_memory_mb < 2048 || disk_mb < 10240 )); then
+    warn "This host is below the recommended minimum for building Knotwork locally. Installation may be slow or fail."
+    warn "Recommended minimum for low-resource install: 2 CPU cores, 2 GB RAM+swap, 10 GB free disk."
+  fi
+
+  if [[ "$requested" == "fast" || "$requested" == "low" ]]; then
+    INSTALL_RESOURCE_MODE="$requested"
+    log "Using forced Docker build strategy: ${INSTALL_RESOURCE_MODE}"
+    return
+  fi
+
+  if (( cpu_count >= 4 && memory_mb >= 6144 && disk_mb >= 20480 )); then
+    INSTALL_RESOURCE_MODE="fast"
+  else
+    INSTALL_RESOURCE_MODE="low"
+  fi
+  log "Selected Docker build strategy: ${INSTALL_RESOURCE_MODE}"
+}
+
 is_valid_email() {
   [[ "$1" =~ ^[^[:space:]@]+@[^[:space:]@]+\.[^[:space:]@]+$ ]]
 }
 
 is_valid_domain() {
-  local d="$1"
-  if [[ "$d" == "localhost" ]]; then
-    return 0
-  fi
-  [[ "$d" =~ ^[A-Za-z0-9.-]+$ ]] && [[ "$d" == *.* ]]
+  python3 - "$1" <<'PY'
+import re
+import sys
+
+domain = sys.argv[1].strip()
+if domain == "localhost":
+    raise SystemExit(0)
+if not domain or len(domain) > 253:
+    raise SystemExit(1)
+if domain.startswith(".") or domain.endswith(".") or ".." in domain:
+    raise SystemExit(1)
+if not re.fullmatch(r"[A-Za-z0-9.-]+", domain):
+    raise SystemExit(1)
+labels = domain.split(".")
+if len(labels) < 2:
+    raise SystemExit(1)
+if not re.fullmatch(r"[A-Za-z][A-Za-z0-9-]{1,62}", labels[-1]):
+    raise SystemExit(1)
+label_pattern = re.compile(r"[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?")
+raise SystemExit(0 if all(label_pattern.fullmatch(label or "") for label in labels) else 1)
+PY
 }
 
 is_valid_port() {
@@ -444,10 +585,8 @@ EOF
   "frontend_surfaces": ${frontends_json},
   "images": [
     "${COMPOSE_PROJECT_NAME}-backend:latest",
-    "${COMPOSE_PROJECT_NAME}-worker:latest",
     "${COMPOSE_PROJECT_NAME}-frontend-prod:latest",
     "${COMPOSE_PROJECT_NAME}-backend-dev:latest",
-    "${COMPOSE_PROJECT_NAME}-worker-dev:latest",
     "${COMPOSE_PROJECT_NAME}-frontend-dev:latest"
   ]
 }
@@ -739,6 +878,61 @@ wait_backend_health() {
     "${COMPOSE_CMD[@]}" --profile "$COMPOSE_PROFILE" logs --tail=200 "$BACKEND_SERVICE" postgres redis "$WORKER_SERVICE" || true
   fi
   die "Backend did not become healthy in time."
+}
+
+build_service_sequentially() {
+  local service="$1"
+  log "Building Docker image for ${service}..."
+  run_with_retry 2 3 "${COMPOSE_CMD[@]}" --profile "$COMPOSE_PROFILE" build "$service" \
+    || die "Docker image build failed for ${service}"
+}
+
+start_service_no_build() {
+  local service="$1"
+  log "Starting ${service}..."
+  run_with_retry 2 3 "${COMPOSE_CMD[@]}" --profile "$COMPOSE_PROFILE" up -d --no-build "$service" \
+    || die "Compose service startup failed for ${service}"
+}
+
+start_docker_stack_low_resource() {
+  export COMPOSE_PARALLEL_LIMIT="${COMPOSE_PARALLEL_LIMIT:-1}"
+  log "Using low-resource Docker startup flow (COMPOSE_PARALLEL_LIMIT=${COMPOSE_PARALLEL_LIMIT})."
+
+  if [[ "$INSTALL_MODE" == "dev" ]]; then
+    build_service_sequentially "$BACKEND_SERVICE"
+    if [[ "${#FRONTEND_SERVICES[@]}" -gt 0 ]]; then
+      # Both dev frontend services share the same image; build it once.
+      build_service_sequentially "frontend-dev"
+    fi
+  else
+    build_service_sequentially "$BACKEND_SERVICE"
+    build_service_sequentially "frontend-prod"
+  fi
+
+  start_service_no_build "postgres"
+  start_service_no_build "redis"
+  start_service_no_build "$BACKEND_SERVICE"
+  start_service_no_build "$WORKER_SERVICE"
+
+  local frontend_service
+  for frontend_service in "${FRONTEND_SERVICES[@]}"; do
+    start_service_no_build "$frontend_service"
+  done
+}
+
+start_docker_stack_fast() {
+  log "Using fast Docker startup flow."
+  run_with_retry 2 3 "${COMPOSE_CMD[@]}" --profile "$COMPOSE_PROFILE" up -d --build \
+    "$BACKEND_SERVICE" "$WORKER_SERVICE" "${FRONTEND_SERVICES[@]}" \
+    || die "Compose stack startup failed"
+}
+
+start_docker_stack() {
+  case "$INSTALL_RESOURCE_MODE" in
+    fast) start_docker_stack_fast ;;
+    low) start_docker_stack_low_resource ;;
+    *) die "Unknown Docker build strategy: ${INSTALL_RESOURCE_MODE:-unset}" ;;
+  esac
 }
 
 validate_restore_backup() {
@@ -1035,10 +1229,9 @@ log "Creating Docker network '${KNOTWORK_NETWORK_NAME}' (if not exists)..."
 docker network inspect "$KNOTWORK_NETWORK_NAME" >/dev/null 2>&1 \
   || docker network create "$KNOTWORK_NETWORK_NAME"
 
+select_install_resource_mode
 log "Starting Docker ${COMPOSE_PROFILE} stack..."
-run_with_retry 2 3 "${COMPOSE_CMD[@]}" --profile "$COMPOSE_PROFILE" up -d --build \
-  "$BACKEND_SERVICE" "$WORKER_SERVICE" "${FRONTEND_SERVICES[@]}" \
-  || die "Compose stack startup failed"
+start_docker_stack
 wait_backend_health "$BACKEND_HOST_PORT"
 restore_backup_zip "$RESTORE_BACKUP_PATH"
 
@@ -1089,6 +1282,8 @@ run_with_retry 3 5 "${COMPOSE_CMD[@]}" --profile "$COMPOSE_PROFILE" exec -T "$BA
     --workflow-id landing-page-builder \
     --workflow-id simple-writing \
   || warn "Default workflow import failed after retries — run manually: python scripts/import_default_workflows.py --workspace-id $WORKSPACE_ID --workflow-id landing-page-builder --workflow-id simple-writing"
+
+docker_builder_prune_after_install
 
 echo
 echo "Install complete (mode: ${COMPOSE_PROFILE})."

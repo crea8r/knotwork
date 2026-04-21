@@ -3,10 +3,26 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BOOTSTRAP_DIR="$ROOT_DIR/tmp/setup-wizard"
+DEFAULT_BACKEND_BIND="0.0.0.0"
+DEFAULT_FRONTEND_BIND="0.0.0.0"
+if [[ "$(uname -s)" == "Darwin" ]]; then
+  DEFAULT_BACKEND_BIND="127.0.0.1"
+  DEFAULT_FRONTEND_BIND="127.0.0.1"
+fi
+BACKEND_BIND="${BOOTSTRAP_BACKEND_BIND:-$DEFAULT_BACKEND_BIND}"
 BACKEND_PORT="${BOOTSTRAP_BACKEND_PORT:-8010}"
+FRONTEND_BIND="${BOOTSTRAP_FRONTEND_BIND:-$DEFAULT_FRONTEND_BIND}"
 FRONTEND_PORT="${BOOTSTRAP_FRONTEND_PORT:-3010}"
 BACKEND_URL="http://127.0.0.1:${BACKEND_PORT}"
-FRONTEND_URL="http://127.0.0.1:${FRONTEND_PORT}"
+FRONTEND_URL_HOST="$FRONTEND_BIND"
+if [[ "$FRONTEND_URL_HOST" == "0.0.0.0" || "$FRONTEND_URL_HOST" == "::" ]]; then
+  FRONTEND_URL_HOST="127.0.0.1"
+fi
+if [[ "$FRONTEND_PORT" == "80" ]]; then
+  FRONTEND_URL="http://${FRONTEND_URL_HOST}"
+else
+  FRONTEND_URL="http://${FRONTEND_URL_HOST}:${FRONTEND_PORT}"
+fi
 API_URL="${BACKEND_URL}/api/v1"
 DEFAULT_WIZARD_INSTALL_DIR="${BOOTSTRAP_DEFAULT_INSTALL_DIR:-~/.knotwork}"
 BACKEND_LOG="$BOOTSTRAP_DIR/backend.log"
@@ -17,6 +33,10 @@ BOOTSTRAP_NETWORK="${BOOTSTRAP_WIZARD_NETWORK:-knotwork-bootstrap-network}"
 BOOTSTRAP_COMPOSE_FILE="$ROOT_DIR/modules/bootstrap/docker-compose.yml"
 BOOTSTRAP_COMPOSE_PROJECT="${BOOTSTRAP_COMPOSE_PROJECT:-knotwork-bootstrap}"
 PYTHON_BIN="${BOOTSTRAP_PYTHON_BIN:-$ROOT_DIR/.venv/bin/python}"
+SUDO=""
+if [[ "${EUID}" -ne 0 ]]; then
+  SUDO="sudo"
+fi
 
 log() { printf "\n[%s] %s\n" "$(date +'%H:%M:%S')" "$*"; }
 warn() { printf "WARN: %s\n" "$*" >&2; }
@@ -28,12 +48,19 @@ require_cmd() {
 
 ensure_dirs() {
   mkdir -p "$BOOTSTRAP_DIR"
+  export BOOTSTRAP_FRONTEND_BIND="$FRONTEND_BIND"
+  export BOOTSTRAP_FRONTEND_PORT="$FRONTEND_PORT"
+  export BOOTSTRAP_BACKEND_BIND="$BACKEND_BIND"
+  export BOOTSTRAP_BACKEND_PORT="$BACKEND_PORT"
   cat > "$BOOTSTRAP_ENV" <<EOF
+BOOTSTRAP_BACKEND_BIND=${BACKEND_BIND}
 BOOTSTRAP_BACKEND_PORT=${BACKEND_PORT}
+BOOTSTRAP_FRONTEND_BIND=${FRONTEND_BIND}
 BOOTSTRAP_FRONTEND_PORT=${FRONTEND_PORT}
 BOOTSTRAP_BACKEND_URL=${BACKEND_URL}
 BOOTSTRAP_FRONTEND_URL=${FRONTEND_URL}
 BOOTSTRAP_API_URL=${API_URL}
+BOOTSTRAP_BACKEND_PROXY_URL=$(backend_proxy_target)
 BOOTSTRAP_NETWORK=${BOOTSTRAP_NETWORK}
 BOOTSTRAP_FRONTEND_MODE=
 EOF
@@ -59,6 +86,93 @@ port_pid() {
     return 0
   fi
   return 1
+}
+
+server_lan_ip() {
+  if command -v hostname >/dev/null 2>&1; then
+    local ip
+    ip="$(hostname -I 2>/dev/null | awk '{print $1}' || true)"
+    if [[ -n "$ip" ]]; then
+      printf '%s\n' "$ip"
+      return
+    fi
+  fi
+  echo ""
+}
+
+host_gateway_ip() {
+  local ip=""
+
+  ip="$(ip route show default 2>/dev/null | awk '/default/ {print $3; exit}' || true)"
+  if [[ -n "$ip" ]]; then
+    printf '%s
+' "$ip"
+    return
+  fi
+
+  ip="$(ip -4 addr show docker0 2>/dev/null | awk '/inet / {print $2}' | cut -d/ -f1 | head -n1 || true)"
+  if [[ -n "$ip" ]]; then
+    printf '%s
+' "$ip"
+    return
+  fi
+
+  ip="$(server_lan_ip || true)"
+  if [[ -n "$ip" ]]; then
+    printf '%s
+' "$ip"
+    return
+  fi
+
+  printf '127.0.0.1
+'
+}
+
+backend_proxy_target() {
+  local candidates=()
+  local lan_ip=""
+  local gateway_ip=""
+  local candidate=""
+
+  gateway_ip="$(host_gateway_ip || true)"
+  lan_ip="$(server_lan_ip || true)"
+
+  candidates+=("host.docker.internal")
+  [[ -n "$gateway_ip" ]] && candidates+=("$gateway_ip")
+  candidates+=("172.17.0.1" "172.18.0.1")
+  [[ -n "$lan_ip" ]] && candidates+=("$lan_ip")
+  candidates+=("127.0.0.1")
+
+  for candidate in "${candidates[@]}"; do
+    [[ -n "$candidate" ]] || continue
+    if python3 - "$candidate" "$BACKEND_PORT" <<'PYEOF'
+import socket, sys
+host = sys.argv[1]
+port = int(sys.argv[2])
+try:
+    with socket.create_connection((host, port), timeout=1.5):
+        sys.exit(0)
+except OSError:
+    sys.exit(1)
+PYEOF
+    then
+      printf 'http://%s:%s
+' "$candidate" "$BACKEND_PORT"
+      return
+    fi
+  done
+
+  printf 'http://host.docker.internal:%s
+' "$BACKEND_PORT"
+}
+
+format_wizard_url() {
+  local host="$1"
+  if [[ "$FRONTEND_PORT" == "80" ]]; then
+    printf 'http://%s/' "$host"
+  else
+    printf 'http://%s:%s/' "$host" "$FRONTEND_PORT"
+  fi
 }
 
 is_bootstrap_backend_pid() {
@@ -219,26 +333,167 @@ read_pid() {
   return 1
 }
 
-wait_for_url() {
-  local url="$1"
-  for _ in $(seq 1 60); do
-    if curl -fsS "$url" >/dev/null 2>&1; then
-      return 0
-    fi
-    sleep 1
-  done
-  return 1
+ufw_active() {
+  command -v ufw >/dev/null 2>&1 && ufw status 2>/dev/null | grep -q '^Status: active'
 }
 
-ensure_backend_python() {
-  if [[ -x "$PYTHON_BIN" ]]; then
+ufw_has_allow_rule() {
+  local port="$1"
+  ufw status numbered 2>/dev/null | grep -Eq "(^|\])\s*${port}/tcp(\s|$).*ALLOW IN"
+}
+
+ensure_ufw_port_open() {
+  local port="$1"
+  local scope_label="$2"
+  if ! ufw_active; then
+    return
+  fi
+  if ufw_has_allow_rule "$port"; then
+    return
+  fi
+  log "Opening UFW port ${port}/tcp for ${scope_label}"
+  $SUDO ufw allow "$port"/tcp >/dev/null
+}
+
+bootstrap_backend_ufw_sources() {
+  local sources=()
+  local gateway_ip=""
+  local lan_ip=""
+
+  gateway_ip="$(host_gateway_ip || true)"
+  lan_ip="$(server_lan_ip || true)"
+
+  [[ -n "$gateway_ip" ]] && sources+=("$gateway_ip")
+  [[ -n "$lan_ip" ]] && sources+=("$lan_ip")
+  sources+=("172.17.0.0/16" "172.18.0.0/16")
+
+  printf '%s
+' "${sources[@]}"
+}
+
+ensure_ufw_backend_port_open() {
+  local port="$1"
+  local source=""
+  if ! ufw_active; then
     return
   fi
 
+  while IFS= read -r source; do
+    [[ -n "$source" ]] || continue
+    if ufw status numbered 2>/dev/null | grep -Fq "${port}/tcp" && ufw status numbered 2>/dev/null | grep -Fq "$source"; then
+      continue
+    fi
+    log "Opening UFW port ${port}/tcp for bootstrap backend source ${source}"
+    $SUDO ufw allow from "$source" to any port "$port" proto tcp >/dev/null
+  done < <(bootstrap_backend_ufw_sources)
+}
+
+verify_end_to_end_routes() {
+  wait_for_url "${FRONTEND_URL}/" "bootstrap public frontend"     || die "Bootstrap frontend did not become reachable at ${FRONTEND_URL}/."
+  wait_for_url "${FRONTEND_URL}/api/v1/setup/status" "bootstrap public api"     || die "Bootstrap API did not become reachable through ${FRONTEND_URL}/api/v1/setup/status. Check firewall rules for ports ${FRONTEND_PORT} and ${BACKEND_PORT}."
+}
+
+wait_for_url() {
+  local url="$1"
+  local label="${2:-$url}"
+  printf "Waiting for %s" "$label"
+  for _ in $(seq 1 60); do
+    if curl -fsS "$url" >/dev/null 2>&1; then
+      printf " ready.\n"
+      return 0
+    fi
+    printf "."
+    sleep 1
+  done
+  printf " timed out.\n"
+  return 1
+}
+
+require_python_version() {
+  python3 - <<'PY' || die "Knotwork requires Python 3.12 or newer for the bootstrap backend. Install Python 3.12+, then rerun the bootstrap wizard."
+import sys
+raise SystemExit(0 if sys.version_info >= (3, 12) else 1)
+PY
+}
+
+python_venv_package_name() {
+  local versioned_pkg
+  versioned_pkg="$(python3 - <<'PY'
+import sys
+print(f"python{sys.version_info.major}.{sys.version_info.minor}-venv")
+PY
+)"
+  if command -v apt-cache >/dev/null 2>&1 && apt-cache show "$versioned_pkg" >/dev/null 2>&1; then
+    printf '%s\n' "$versioned_pkg"
+    return
+  fi
+  printf '%s\n' "python3-venv"
+}
+
+install_python_venv_package() {
+  if ! command -v apt-get >/dev/null 2>&1; then
+    die "Python venv support is missing. Install the python3-venv package for this OS, then rerun the bootstrap wizard."
+  fi
+  if [[ -n "$SUDO" ]] && ! command -v sudo >/dev/null 2>&1; then
+    die "Python venv support is missing and sudo is not available. Install python3-venv as root, then rerun the bootstrap wizard."
+  fi
+
+  local package_name
+  package_name="$(python_venv_package_name)"
+  log "Installing Python virtual environment support (${package_name})"
+  $SUDO apt-get update
+  $SUDO apt-get install -y "$package_name"
+}
+
+ensure_python_venv_available() {
+  local probe_dir probe_log
+  probe_dir="$(mktemp -d)"
+  probe_log="$BOOTSTRAP_DIR/venv-probe.log"
+  if python3 -m venv "$probe_dir/probe" >"$probe_log" 2>&1; then
+    rm -rf "$probe_dir"
+    return
+  fi
+  rm -rf "$probe_dir"
+
+  install_python_venv_package
+
+  probe_dir="$(mktemp -d)"
+  if python3 -m venv "$probe_dir/probe" >"$probe_log" 2>&1; then
+    rm -rf "$probe_dir"
+    return
+  fi
+  rm -rf "$probe_dir"
+  die "Python venv support is still unavailable after package installation. See ${probe_log}"
+}
+
+ensure_backend_python() {
   require_cmd python3
-  log "Preparing local bootstrap backend environment"
-  python3 -m venv "$ROOT_DIR/.venv"
-  "$ROOT_DIR/.venv/bin/pip" install -e ".[dev]" >/dev/null
+  require_python_version
+  if [[ ! -x "$PYTHON_BIN" ]]; then
+    log "Preparing local bootstrap backend environment"
+    ensure_python_venv_available
+    rm -rf "$ROOT_DIR/.venv"
+    python3 -m venv "$ROOT_DIR/.venv"
+  fi
+
+  if ! "$PYTHON_BIN" -m pip --version >/dev/null 2>&1; then
+    log "Repairing bootstrap Python package installer"
+    ensure_python_venv_available
+    "$PYTHON_BIN" -m ensurepip --upgrade >/dev/null 2>&1 \
+      || die "The bootstrap Python environment does not have pip. Install python3-venv, remove ${ROOT_DIR}/.venv, then rerun the bootstrap wizard."
+  fi
+
+  if ! "$PYTHON_BIN" -m uvicorn --version >/dev/null 2>&1; then
+    log "Installing bootstrap backend Python dependencies"
+    "$PYTHON_BIN" -m pip install --upgrade pip >/dev/null
+    (
+      cd "$ROOT_DIR"
+      "$PYTHON_BIN" -m pip install -e ".[dev]"
+    )
+  fi
+
+  "$PYTHON_BIN" -m uvicorn --version >/dev/null 2>&1 \
+    || die "Bootstrap backend dependency check failed: uvicorn is still unavailable in ${ROOT_DIR}/.venv"
 }
 
 start_backend() {
@@ -253,18 +508,24 @@ start_backend() {
   log "Starting bootstrap backend on ${BACKEND_URL}"
   (
     cd "$ROOT_DIR"
-    "$PYTHON_BIN" -m uvicorn modules.bootstrap.backend.main:app --host 127.0.0.1 --port "$BACKEND_PORT"
+    "$PYTHON_BIN" -m uvicorn modules.bootstrap.backend.main:app --host "$BACKEND_BIND" --port "$BACKEND_PORT"
   ) >"$BACKEND_LOG" 2>&1 &
   echo $! > "$BACKEND_PID_FILE"
 
-  wait_for_url "${API_URL}/setup/status" || die "Bootstrap backend did not become ready. See ${BACKEND_LOG}"
+  wait_for_url "${API_URL}/setup/status" "bootstrap backend" \
+    || die "Bootstrap backend did not become ready. See ${BACKEND_LOG}"
 }
 
 start_frontend() {
+  if port_in_use "$FRONTEND_PORT"; then
+    die "Port ${FRONTEND_PORT} is already in use, so the bootstrap wizard frontend cannot start. Stop the process using that port or rerun with a different BOOTSTRAP_FRONTEND_PORT."
+  fi
+
   log "Starting bootstrap frontend container"
   compose_cmd up -d --build >/dev/null
   sed -i.bak 's/^BOOTSTRAP_FRONTEND_MODE=.*/BOOTSTRAP_FRONTEND_MODE=docker/' "$BOOTSTRAP_ENV" && rm -f "$BOOTSTRAP_ENV.bak"
-  wait_for_url "${FRONTEND_URL}/" || die "Bootstrap frontend did not become ready. See docker compose logs"
+  wait_for_url "${FRONTEND_URL}/" "bootstrap frontend" \
+    || die "Bootstrap frontend did not become ready at ${FRONTEND_URL}/. Run: docker compose -p ${BOOTSTRAP_COMPOSE_PROJECT} -f ${BOOTSTRAP_COMPOSE_FILE} logs --tail=200 bootstrap-frontend"
 }
 
 launch_wizard() {
@@ -272,22 +533,45 @@ launch_wizard() {
   ensure_dirs
   ensure_bootstrap_network
   start_backend
+  ensure_ufw_backend_port_open "$BACKEND_PORT"
   start_frontend
+  ensure_ufw_port_open "$FRONTEND_PORT" "public bootstrap wizard access"
+  verify_end_to_end_routes
 
   local wizard_url="${FRONTEND_URL}/"
   if [[ "$mode" == "uninstall" ]]; then
     wizard_url="${FRONTEND_URL}/?mode=uninstall"
   fi
 
+  local lan_ip remote_url
+  lan_ip="$(server_lan_ip)"
+  remote_url=""
+  if [[ "$FRONTEND_BIND" == "0.0.0.0" || "$FRONTEND_BIND" == "::" ]]; then
+    if [[ -n "$lan_ip" ]]; then
+      remote_url="$(format_wizard_url "$lan_ip")"
+      if [[ "$mode" == "uninstall" ]]; then
+        remote_url="${remote_url}?mode=uninstall"
+      fi
+    fi
+  fi
+
   echo
   echo "Bootstrap runtime is ready."
+  if ufw_active; then
+    echo "Firewall: verified UFW rules for wizard port ${FRONTEND_PORT} and bootstrap API port ${BACKEND_PORT}."
+  fi
   echo "Wizard URL: ${wizard_url}"
+  if [[ -n "$remote_url" ]]; then
+    echo "Remote URL on this network: ${remote_url}"
+    echo "If this is a cloud server, use the server public IP or DNS name with port ${FRONTEND_PORT}."
+  fi
   echo
   echo "Logs:"
   echo "  Backend : ${BACKEND_LOG}"
   echo "  Stack   : docker compose -p ${BOOTSTRAP_COMPOSE_PROJECT} -f ${BOOTSTRAP_COMPOSE_FILE} logs -f"
   echo
-  echo "The setup controller runs on the host so install/uninstall acts on the real machine context."
+  echo "The wizard frontend is exposed on ${FRONTEND_BIND}:${FRONTEND_PORT}; API requests are proxied to the setup controller on ${BACKEND_BIND}:${BACKEND_PORT}."
+  echo "For cloud servers, expose only the wizard frontend port unless you intentionally need direct controller access."
 }
 
 show_menu() {

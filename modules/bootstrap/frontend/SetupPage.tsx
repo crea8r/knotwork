@@ -1,6 +1,6 @@
 import type { ChangeEvent, InputHTMLAttributes, ReactNode } from 'react'
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { AlertTriangle, AlignJustify, CheckCircle2, ChevronDown, ChevronRight, FolderOpen, Maximize2, Minimize2, Play, RefreshCw, Rocket, Shield, SlidersHorizontal, Square, Trash2, Wrench, X } from 'lucide-react'
+import { AlertTriangle, AlignJustify, CheckCircle2, ChevronDown, ChevronRight, Eye, EyeOff, FolderOpen, Maximize2, Minimize2, Play, RefreshCw, Rocket, Shield, SlidersHorizontal, Square, Trash2, Wrench, X } from 'lucide-react'
 import { useSearchParams } from 'react-router-dom'
 import {
   useCancelSetup,
@@ -39,7 +39,7 @@ type InstallField =
   | 'resendApi'
   | 'emailFrom'
 
-type UninstallField = 'backupDir'
+type UninstallField = 'installDir' | 'backupDir'
 
 type TouchedMap<K extends string> = Partial<Record<K, boolean>>
 
@@ -227,23 +227,41 @@ function TextField({
   placeholder?: string
   action?: ReactNode
 }) {
+  const isPassword = type === 'password'
+  const [passwordVisible, setPasswordVisible] = useState(false)
+  const resolvedType = isPassword && passwordVisible ? 'text' : type
+
   return (
     <FieldShell label={label} required={required} error={error} help={help}>
       <div className="flex min-w-0 flex-col gap-2 sm:flex-row">
-        <input
-          type={type}
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-          onBlur={onBlur}
-          inputMode={inputMode}
-          maxLength={maxLength}
-          placeholder={placeholder}
-          className={`w-full rounded-lg border bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 ${
-            error
-              ? 'border-red-300 focus:ring-red-200'
-              : 'border-gray-200 focus:ring-brand-400'
-          }`}
-        />
+        <div className="relative min-w-0 flex-1">
+          <input
+            type={resolvedType}
+            value={value}
+            onChange={(e) => onChange(e.target.value)}
+            onBlur={onBlur}
+            inputMode={inputMode}
+            maxLength={maxLength}
+            placeholder={placeholder}
+            className={`w-full rounded-lg border bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 ${
+              isPassword ? 'pr-10' : ''
+            } ${
+              error
+                ? 'border-red-300 focus:ring-red-200'
+                : 'border-gray-200 focus:ring-brand-400'
+            }`}
+          />
+          {isPassword ? (
+            <button
+              type="button"
+              onClick={() => setPasswordVisible((visible) => !visible)}
+              className="absolute inset-y-0 right-0 flex w-10 items-center justify-center text-slate-400 transition-colors hover:text-slate-700 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-brand-400"
+              aria-label={passwordVisible ? 'Hide password' : 'Show password'}
+            >
+              {passwordVisible ? <EyeOff size={16} /> : <Eye size={16} />}
+            </button>
+          ) : null}
+        </div>
         {action ? <div className="min-w-0 sm:shrink-0">{action}</div> : null}
       </div>
     </FieldShell>
@@ -272,14 +290,16 @@ function SubdomainField({
   previewUrl: string
 }) {
   const hasError = Boolean(error)
+  const suffix = rootDomain ? `.${rootDomain}` : '.domain.com'
+  const showSuffixOverflowHint = suffix.length > 20
 
   return (
     <FieldShell label={label} error={error} help={help}>
-      <div className={`min-w-0 overflow-hidden rounded-xl border bg-white ${
+      <div className={`min-w-0 max-w-full overflow-hidden rounded-xl border bg-white ${
         hasError ? 'border-red-300' : 'border-slate-200'
       }`}>
         <div className="flex min-w-0 overflow-hidden">
-          <div className={`flex shrink-0 items-center border-r px-3 text-sm ${
+          <div className={`flex shrink-0 items-center border-r px-2 text-xs md:px-3 md:text-sm ${
             hasError ? 'border-red-200 bg-red-50 text-red-600' : 'border-slate-200 bg-slate-50 text-slate-500'
           }`}>
             https://
@@ -290,12 +310,27 @@ function SubdomainField({
             onChange={(e) => onChange(e.target.value)}
             onBlur={onBlur}
             placeholder={placeholder}
-            className="min-w-0 flex-1 px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none"
+            className="min-w-[4rem] flex-1 px-2 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none md:px-3"
           />
-          <div className={`flex shrink-0 items-center border-l px-3 text-sm ${
+          <div
+            className={`relative flex max-w-[46%] shrink items-center overflow-x-auto whitespace-nowrap border-l px-2 text-xs [scrollbar-width:none] md:max-w-[55%] md:px-3 md:text-sm [&::-webkit-scrollbar]:hidden ${
             hasError ? 'border-red-200 bg-red-50 text-red-600' : 'border-slate-200 bg-slate-50 text-slate-500'
-          }`}>
-            {rootDomain ? `.${rootDomain}` : '.domain.com'}
+          }`}
+            title={suffix}
+          >
+            <span className={showSuffixOverflowHint ? 'pr-5' : undefined}>{suffix}</span>
+            {showSuffixOverflowHint ? (
+              <span
+                aria-hidden="true"
+                className={`pointer-events-none sticky right-0 ml-1 flex h-full items-center pl-4 ${
+                  hasError
+                    ? 'bg-gradient-to-l from-red-50 via-red-50 to-transparent text-red-500'
+                    : 'bg-gradient-to-l from-slate-50 via-slate-50 to-transparent text-slate-400'
+                }`}
+              >
+                <ChevronRight size={13} />
+              </span>
+            ) : null}
           </div>
         </div>
         <div className={`border-t px-3 py-2 ${
@@ -762,6 +797,15 @@ export default function SetupPage() {
     lastCompletedRunRefreshRef.current = signature
   }, [currentRun, installDir, refetchInstallDetection])
 
+  useEffect(() => {
+    if (!restoreBackupPath) return
+    if (!backupsData) return
+    const selectedBackup = backups.find((backup) => backup.path === restoreBackupPath)
+    if (!selectedBackup || selectedBackup.stale) {
+      setRestoreBackupPath('')
+    }
+  }, [backups, backupsData, restoreBackupPath])
+
   const installErrors = useMemo(() => {
     const errors: Partial<Record<InstallField, string>> = {}
 
@@ -772,7 +816,7 @@ export default function SetupPage() {
 
     if (installMode === 'prod') {
       if (!effectiveDomain) errors.domain = 'Domain is required.'
-      else if (!isValidDomain(effectiveDomain)) errors.domain = 'Use `localhost` or a valid public hostname.'
+      else if (!isValidDomain(effectiveDomain)) errors.domain = 'Use `localhost` or a valid domain like `example.com`; no protocol, path, or leading/trailing dots.'
       if (effectiveDomain !== 'localhost') {
         if (!isValidSubdomainPart(frontendSubdomain)) errors.frontendUrl = 'Use only letters, numbers, hyphens, and dots for the frontend subdomain.'
         if (!isValidSubdomainPart(backendSubdomain)) errors.backendUrl = 'Use only letters, numbers, hyphens, and dots for the backend subdomain.'
@@ -839,9 +883,10 @@ export default function SetupPage() {
 
   const uninstallErrors = useMemo(() => {
     const errors: Partial<Record<UninstallField, string>> = {}
+    if (!installDir.trim()) errors.installDir = 'Choose the installation directory to uninstall.'
     if (createBackup && !backupDir.trim()) errors.backupDir = 'Backup directory is required.'
     return errors
-  }, [backupDir, createBackup])
+  }, [backupDir, createBackup, installDir])
 
   const showInstallError = (field: InstallField) => Boolean((installAttempted || installTouched[field]) && installErrors[field])
   const showUninstallError = (field: UninstallField) => Boolean((uninstallAttempted || uninstallTouched[field]) && uninstallErrors[field])
@@ -953,7 +998,7 @@ export default function SetupPage() {
   async function runUninstall() {
     setUninstallAttempted(true)
     if (Object.keys(uninstallErrors).length > 0) {
-      const firstError: UninstallField | undefined = uninstallErrors.backupDir ? 'backupDir' : undefined
+      const firstError: UninstallField | undefined = uninstallErrors.installDir ? 'installDir' : uninstallErrors.backupDir ? 'backupDir' : undefined
       if (firstError) scrollToField(firstError)
       return
     }
@@ -1306,64 +1351,79 @@ export default function SetupPage() {
                       title="Public access"
                       description="These settings control the public URLs and email delivery for a production-style install."
                     >
-                      <div className="grid gap-4 md:grid-cols-2">
+                      <div className="grid min-w-0 max-w-full gap-3 overflow-hidden md:grid-cols-2 md:gap-4">
                         {effectiveDomain !== 'localhost' ? (
-                          <div className="overflow-hidden rounded-3xl border border-sky-100 bg-gradient-to-br from-slate-50 via-white to-sky-50 shadow-[0_18px_60px_rgba(15,23,42,0.07)] md:col-span-2">
-                            <div className="flex flex-col gap-3 border-b border-slate-200 bg-white/75 px-4 py-4 sm:flex-row sm:items-center sm:justify-between">
-                              <div className="flex items-start gap-3">
-                                <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-sky-100 text-sky-700 shadow-[0_10px_30px_rgba(14,165,233,0.16)]">
-                                  <CheckCircle2 size={21} />
+                          <div className="min-w-0 max-w-full overflow-hidden rounded-2xl border border-sky-100 bg-gradient-to-br from-slate-50 via-white to-sky-50 shadow-[0_18px_60px_rgba(15,23,42,0.07)] md:col-span-2 md:rounded-3xl">
+                            <div className="flex flex-col gap-2 border-b border-slate-200 bg-white/75 px-3 py-3 sm:flex-row sm:items-center sm:justify-between md:gap-3 md:px-4 md:py-4">
+                              <div className="flex items-start gap-2 md:gap-3">
+                                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-sky-100 text-sky-700 shadow-[0_10px_30px_rgba(14,165,233,0.16)] md:h-11 md:w-11 md:rounded-2xl">
+                                  <CheckCircle2 size={18} />
                                 </span>
                                 <div>
-                                  <p className="text-sm font-black uppercase tracking-[0.22em] text-sky-700">Public install checklist</p>
-                                  <p className="mt-1 text-lg font-black text-slate-950">Do these before you press Run install</p>
+                                  <p className="text-[10px] font-black uppercase tracking-[0.18em] text-sky-700 md:text-sm md:tracking-[0.22em]">Public install checklist</p>
+                                  <p className="mt-0.5 text-sm font-black leading-tight text-slate-950 md:mt-1 md:text-lg">Prepare DNS and network access</p>
                                 </div>
                               </div>
-                              <span className="w-fit rounded-full border border-sky-200 bg-sky-50 px-3 py-1 text-xs font-bold text-sky-800">
+                              <span className="w-fit rounded-full border border-sky-200 bg-sky-50 px-2.5 py-1 text-[10px] font-bold text-sky-800 md:px-3 md:text-xs">
                                 Required for real domains
                               </span>
                             </div>
-                            <div className="grid gap-3 p-4 lg:grid-cols-3">
-                              <div className="rounded-2xl border border-slate-200 bg-white p-4">
-                                <div className="flex items-center gap-2">
-                                  <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-sky-100 text-sky-700">
-                                    <Rocket size={17} />
+                            <div className="grid gap-2 p-3 md:gap-3 md:p-4 lg:grid-cols-3">
+                              <div className="rounded-xl border border-slate-200 bg-white p-3 md:rounded-2xl md:p-4">
+                                <div className="flex items-start gap-2 md:items-center">
+                                  <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-sky-100 text-sky-700 md:h-8 md:w-8 md:rounded-xl">
+                                    <Rocket size={15} />
                                   </span>
-                                  <p className="text-sm font-black text-slate-950">DNS records</p>
+                                  <div className="min-w-0">
+                                    <p className="text-sm font-black text-slate-950">DNS records</p>
+                                    <p className="mt-1 text-xs leading-5 text-slate-600 md:hidden">
+                                      Point frontend and backend A records to this server IP.
+                                    </p>
+                                  </div>
                                 </div>
-                                <p className="mt-3 text-sm leading-6 text-slate-600">
+                                <p className="mt-3 hidden text-sm leading-6 text-slate-600 md:block">
                                   Create DNS A records for the frontend and backend hosts, pointing both to this server IP.
                                 </p>
                               </div>
-                              <div className="rounded-2xl border border-slate-200 bg-white p-4">
-                                <div className="flex items-center gap-2">
-                                  <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-rose-100 text-rose-700">
-                                    <Shield size={17} />
+                              <div className="rounded-xl border border-slate-200 bg-white p-3 md:rounded-2xl md:p-4">
+                                <div className="flex items-start gap-2 md:items-center">
+                                  <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-rose-100 text-rose-700 md:h-8 md:w-8 md:rounded-xl">
+                                    <Shield size={15} />
                                   </span>
-                                  <p className="text-sm font-black text-slate-950">Firewall ports</p>
+                                  <div className="min-w-0">
+                                    <p className="text-sm font-black text-slate-950">Firewall ports</p>
+                                    <p className="mt-1 text-xs leading-5 text-slate-600 md:hidden">
+                                      Keep <span className="font-black text-slate-950">80</span> and <span className="font-black text-slate-950">443</span> open.
+                                    </p>
+                                  </div>
                                 </div>
-                                <p className="mt-3 text-sm leading-6 text-slate-600">
+                                <p className="mt-3 hidden text-sm leading-6 text-slate-600 md:block">
                                   Keep ports <span className="font-black text-slate-950">80</span> and <span className="font-black text-slate-950">443</span> open in your firewall or cloud security group.
                                 </p>
                               </div>
-                              <div className="rounded-2xl border border-slate-200 bg-white p-4">
-                                <div className="flex items-center gap-2">
-                                  <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-emerald-100 text-emerald-700">
-                                    <CheckCircle2 size={17} />
+                              <div className="rounded-xl border border-slate-200 bg-white p-3 md:rounded-2xl md:p-4">
+                                <div className="flex items-start gap-2 md:items-center">
+                                  <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-emerald-100 text-emerald-700 md:h-8 md:w-8 md:rounded-xl">
+                                    <CheckCircle2 size={15} />
                                   </span>
-                                  <p className="text-sm font-black text-slate-950">Installer handles</p>
+                                  <div className="min-w-0">
+                                  <p className="text-sm font-black text-slate-950">Installer will handle</p>
+                                    <p className="mt-1 text-xs leading-5 text-slate-600 md:hidden">
+                                      nginx/certbot checks, proxy config, and TLS request.
+                                    </p>
+                                  </div>
                                 </div>
-                                <p className="mt-3 text-sm leading-6 text-slate-600">
-                                  The script checks nginx/certbot, configures reverse proxying, and requests TLS certificates.
+                                <p className="mt-3 hidden text-sm leading-6 text-slate-600 md:block">
+                                  No manual nginx/certbot setup is expected; the installer checks or installs them, configures reverse proxying, and requests TLS certificates.
                                 </p>
                               </div>
                             </div>
-                            <div className="border-t border-slate-200 bg-slate-950 px-4 py-3 text-sm font-semibold text-white">
-                              After DNS resolves, this wizard can complete the public install without manual terminal steps.
+                            <div className="border-t border-slate-200 bg-slate-950 px-3 py-2 text-xs font-semibold leading-5 text-white md:px-4 md:py-3 md:text-sm">
+                              You provide DNS and open network ports; the installer handles the server-side setup.
                             </div>
                           </div>
                         ) : null}
-                        <div ref={(node) => registerFieldRef('domain', node)}>
+                        <div ref={(node) => registerFieldRef('domain', node)} className="min-w-0 max-w-full">
                           <TextField
                             label="Domain"
                             required
@@ -1376,7 +1436,7 @@ export default function SetupPage() {
                         </div>
                         {effectiveDomain !== 'localhost' ? (
                           <>
-                            <div ref={(node) => registerFieldRef('frontendUrl', node)}>
+                            <div ref={(node) => registerFieldRef('frontendUrl', node)} className="min-w-0 max-w-full">
                               <SubdomainField
                                 label="Frontend subdomain"
                                 value={frontendSubdomain}
@@ -1389,7 +1449,7 @@ export default function SetupPage() {
                                 previewUrl={effectiveFrontendUrl}
                               />
                             </div>
-                            <div ref={(node) => registerFieldRef('backendUrl', node)}>
+                            <div ref={(node) => registerFieldRef('backendUrl', node)} className="min-w-0 max-w-full">
                               <SubdomainField
                                 label="Backend subdomain"
                                 value={backendSubdomain}
@@ -1404,11 +1464,11 @@ export default function SetupPage() {
                             </div>
                           </>
                         ) : (
-                          <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 md:col-span-2">
+                          <div className="min-w-0 max-w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 md:col-span-2">
                             <p className="text-xs text-slate-500">On `localhost`, the installer keeps both frontend and backend on local host ports instead of public subdomains.</p>
                           </div>
                         )}
-                        <div ref={(node) => registerFieldRef('pluginUrl', node)}>
+                        <div ref={(node) => registerFieldRef('pluginUrl', node)} className="min-w-0 max-w-full">
                           <TextField
                             label="OpenClaw plugin package URL"
                             required
@@ -1418,7 +1478,7 @@ export default function SetupPage() {
                             error={showInstallError('pluginUrl') ? installErrors.pluginUrl : undefined}
                           />
                         </div>
-                        <div ref={(node) => registerFieldRef('resendApi', node)}>
+                        <div ref={(node) => registerFieldRef('resendApi', node)} className="min-w-0 max-w-full">
                           <TextField
                             label="Resend API key"
                             required={effectiveDomain !== 'localhost'}
@@ -1429,7 +1489,7 @@ export default function SetupPage() {
                             type="password"
                           />
                         </div>
-                        <div ref={(node) => registerFieldRef('emailFrom', node)}>
+                        <div ref={(node) => registerFieldRef('emailFrom', node)} className="min-w-0 max-w-full">
                           <TextField
                             label="Email from"
                             required={effectiveDomain !== 'localhost'}
@@ -1619,6 +1679,46 @@ export default function SetupPage() {
                     </div>
                   ) : null}
 
+                  <FormSection
+                    title="Installation directory"
+                    description="Choose the Knotwork instance directory that should be removed. The wizard will not scan the whole machine."
+                  >
+                    <div ref={(node) => registerFieldRef('installDir', node)}>
+                      <TextField
+                        label="Installation directory"
+                        required
+                        value={installDir}
+                        onChange={setInstallDir}
+                        onBlur={() => setUninstallTouched((s) => ({ ...s, installDir: true }))}
+                        error={showUninstallError('installDir') ? uninstallErrors.installDir : undefined}
+                        action={
+                          <>
+                            <input
+                              ref={installDirectoryInputRef}
+                              type="file"
+                              className="hidden"
+                              onChange={handleDirectoryInputChange}
+                            />
+                            <Btn size="sm" variant="secondary" type="button" onClick={() => handleDirectoryPick('install')} className="w-full sm:w-auto">
+                              <FolderOpen size={14} />
+                              Choose Folder
+                            </Btn>
+                          </>
+                        }
+                      />
+                      {installDetection?.install_markers?.length ? (
+                        <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-3">
+                          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Detected markers</p>
+                          <div className="mt-2 flex flex-wrap gap-2">
+                            {installDetection.install_markers.map((marker) => (
+                              <ToneChip key={marker} tone="neutral">{marker}</ToneChip>
+                            ))}
+                          </div>
+                        </div>
+                      ) : null}
+                    </div>
+                  </FormSection>
+
                   <div className="grid gap-4 md:grid-cols-2">
                     <div className="rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3">
                       <label className="flex items-start gap-3 text-sm text-gray-800">
@@ -1717,6 +1817,9 @@ export default function SetupPage() {
                             disabled={backupDeleteSelection.length === 0}
                             loading={deleteBackups.isPending}
                             onClick={async () => {
+                              if (backupDeleteSelection.includes(restoreBackupPath)) {
+                                setRestoreBackupPath('')
+                              }
                               await deleteBackups.mutateAsync(backupDeleteSelection)
                               setBackupDeleteSelection([])
                               await refetchBackups()
