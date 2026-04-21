@@ -60,7 +60,7 @@ BOOTSTRAP_FRONTEND_PORT=${FRONTEND_PORT}
 BOOTSTRAP_BACKEND_URL=${BACKEND_URL}
 BOOTSTRAP_FRONTEND_URL=${FRONTEND_URL}
 BOOTSTRAP_API_URL=${API_URL}
-BOOTSTRAP_BACKEND_PROXY_URL=http://$(host_gateway_ip):${BACKEND_PORT}
+BOOTSTRAP_BACKEND_PROXY_URL=$(backend_proxy_target)
 BOOTSTRAP_NETWORK=${BOOTSTRAP_NETWORK}
 BOOTSTRAP_FRONTEND_MODE=
 EOF
@@ -126,6 +126,44 @@ host_gateway_ip() {
 
   printf '127.0.0.1
 '
+}
+
+backend_proxy_target() {
+  local candidates=()
+  local lan_ip=""
+  local gateway_ip=""
+  local candidate=""
+
+  gateway_ip="$(host_gateway_ip || true)"
+  lan_ip="$(server_lan_ip || true)"
+
+  candidates+=("host.docker.internal")
+  [[ -n "$gateway_ip" ]] && candidates+=("$gateway_ip")
+  candidates+=("172.17.0.1" "172.18.0.1")
+  [[ -n "$lan_ip" ]] && candidates+=("$lan_ip")
+  candidates+=("127.0.0.1")
+
+  for candidate in "${candidates[@]}"; do
+    [[ -n "$candidate" ]] || continue
+    if python3 - "$candidate" "$BACKEND_PORT" <<'PYEOF'
+import socket, sys
+host = sys.argv[1]
+port = int(sys.argv[2])
+try:
+    with socket.create_connection((host, port), timeout=1.5):
+        sys.exit(0)
+except OSError:
+    sys.exit(1)
+PYEOF
+    then
+      printf 'http://%s:%s
+' "$candidate" "$BACKEND_PORT"
+      return
+    fi
+  done
+
+  printf 'http://host.docker.internal:%s
+' "$BACKEND_PORT"
 }
 
 format_wizard_url() {
