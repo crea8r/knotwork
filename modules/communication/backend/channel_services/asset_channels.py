@@ -30,7 +30,7 @@ async def get_or_create_asset_chat_channel(
     if asset_type == "file":
         return await _get_or_create_file_channel(db, workspace_id, path=path, asset_id=asset_id, project_id=project_id)
     if asset_type == "workflow":
-        return await _get_or_create_workflow_channel(db, workspace_id, asset_id=asset_id)
+        return await _get_or_create_workflow_channel(db, workspace_id, path=path, asset_id=asset_id, project_id=project_id)
     raise ValueError("Unsupported asset type")
 
 
@@ -106,10 +106,22 @@ async def _get_or_create_file_channel(db: AsyncSession, workspace_id: UUID, *, p
     )
 
 
-async def _get_or_create_workflow_channel(db: AsyncSession, workspace_id: UUID, *, asset_id: str | None) -> Channel:
-    if not asset_id:
-        raise ValueError("Workflow not found")
-    graph = await core_graphs.get_graph(db, UUID(asset_id))
+async def _get_or_create_workflow_channel(
+    db: AsyncSession,
+    workspace_id: UUID,
+    *,
+    path: str | None,
+    asset_id: str | None,
+    project_id: UUID | None,
+) -> Channel:
+    graph = None
+    if asset_id:
+        try:
+            graph = await core_graphs.get_graph(db, UUID(asset_id))
+        except ValueError:
+            graph = None
+    if graph is None and path:
+        graph = await core_graphs.get_graph_by_asset_path(db, workspace_id, path, project_id=project_id)
     if graph is None or graph.workspace_id != workspace_id:
         raise ValueError("Workflow not found")
     return await _bound_asset_channel(

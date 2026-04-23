@@ -50,8 +50,8 @@ export default function AcceptInvitePage() {
 
   if (magicToken) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <div className="text-center">
+      <div data-ui="admin.accept.page" className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div data-ui="admin.accept.magic" className="text-center">
           {verifyMagic.isPending && (
             <>
               <div className="w-8 h-8 border-2 border-brand-400 border-t-transparent rounded-full animate-spin mx-auto mb-3" />
@@ -65,6 +65,7 @@ export default function AcceptInvitePage() {
               <button
                 className="mt-4 text-sm text-brand-500 hover:underline"
                 onClick={() => navigate('/login')}
+                data-ui="admin.accept.magic.login"
               >
                 Go to login
               </button>
@@ -89,7 +90,7 @@ function InviteAcceptFlow({ token }: { token: string | null }) {
 
   if (!token) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+      <div data-ui="admin.accept.invite.missing" className="min-h-screen flex items-center justify-center bg-gray-50">
         <p className="text-gray-500">No invitation token found.</p>
       </div>
     )
@@ -97,7 +98,7 @@ function InviteAcceptFlow({ token }: { token: string | null }) {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+      <div data-ui="admin.accept.invite.loading" className="min-h-screen flex items-center justify-center bg-gray-50">
         <div className="w-8 h-8 border-2 border-brand-400 border-t-transparent rounded-full animate-spin" />
       </div>
     )
@@ -105,7 +106,7 @@ function InviteAcceptFlow({ token }: { token: string | null }) {
 
   if (isError || !inv) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+      <div data-ui="admin.accept.invite.error" className="min-h-screen flex items-center justify-center bg-gray-50">
         <div className="text-center">
           <p className="text-red-600 font-medium">Invalid or expired invitation</p>
           <p className="text-sm text-gray-500 mt-1">Ask the workspace owner to send a new invite.</p>
@@ -116,12 +117,13 @@ function InviteAcceptFlow({ token }: { token: string | null }) {
 
   if (inv.already_accepted) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+      <div data-ui="admin.accept.invite.accepted" className="min-h-screen flex items-center justify-center bg-gray-50">
         <div className="text-center">
           <p className="text-gray-700 font-medium">Invitation already accepted</p>
           <button
             className="mt-3 text-sm text-brand-500 hover:underline"
             onClick={() => navigate('/login')}
+            data-ui="admin.accept.invite.accepted.login"
           >
             Go to login
           </button>
@@ -150,9 +152,9 @@ function InviteAcceptFlow({ token }: { token: string | null }) {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
-      <div className="w-full max-w-sm">
-        <div className="text-center mb-8">
+    <div data-ui="admin.accept.invite.page" className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
+      <div data-ui="admin.accept.invite.container" className="w-full max-w-sm">
+        <div data-ui="admin.accept.invite.header" className="text-center mb-8">
           <img src={knotworkLogo} alt="Knotwork" className="mx-auto mb-3 h-12 w-12" />
           <h1 className="text-xl font-semibold text-gray-900">Join {inv.workspace_name}</h1>
           <p className="text-sm text-gray-500 mt-1">
@@ -160,7 +162,7 @@ function InviteAcceptFlow({ token }: { token: string | null }) {
           </p>
         </div>
 
-        <form onSubmit={submit} className="bg-white border border-gray-100 rounded-xl p-6 shadow-sm space-y-4">
+        <form data-ui="admin.accept.invite.form" onSubmit={submit} className="bg-white border border-gray-100 rounded-xl p-6 shadow-sm space-y-4">
           <div>
             <label className="block text-xs text-gray-500 mb-1">Email</label>
             <p className="text-sm text-gray-700 font-medium">{inv.email}</p>
@@ -196,11 +198,12 @@ function InviteAcceptFlow({ token }: { token: string | null }) {
             />
           </div>
           {accept.isError && (
-            <p className="text-xs text-red-600">Something went wrong. Please try again.</p>
+            <p data-ui="admin.accept.invite.error-text" className="text-xs text-red-600">Something went wrong. Please try again.</p>
           )}
           <button
             type="submit"
             disabled={accept.isPending || !name.trim() || !password.trim()}
+            data-ui="admin.accept.invite.submit"
             className="w-full bg-brand-500 hover:bg-brand-600 text-white text-sm font-medium py-2 rounded-lg transition-colors disabled:opacity-60"
           >
             {accept.isPending ? 'Joining…' : 'Accept invitation'}

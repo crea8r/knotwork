@@ -14,6 +14,7 @@ import {
   useUpsertVersionDraft,
 } from "@modules/workflows/frontend/api/graphs"
 import type { Graph, GraphDefinition, GraphVersion } from '@data-models'
+import { workflowAssetLinkForGraph } from '@modules/workflows/frontend/lib/workflowAssetLinks'
 import { formatVersionName } from './graphVersionUtils'
 import type { RenameDialog, ForkDialog } from './GraphDialogs'
 import type { WorkflowTab } from './graphVersionUtils'
@@ -150,7 +151,7 @@ export function useVersionActions(
     const trimmed = forkDialog.value.trim(); if (!trimmed) return
     try {
       const created = await forkVersion.mutateAsync({ versionRowId: forkDialog.versionRowId, name: trimmed })
-      setForkDialog(null); navigate(`/graphs/${created.id}`)
+      setForkDialog(null); navigate(workflowAssetLinkForGraph(created))
     } catch (error: any) {
       window.alert(String(error?.response?.data?.detail ?? error?.message ?? 'Cannot copy workflow'))
     }

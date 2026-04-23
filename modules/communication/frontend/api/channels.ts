@@ -13,6 +13,7 @@ import type {
   ParticipantMentionOption,
 } from '@data-models'
 import { api } from '@sdk'
+import { buildActiveAssetMessageMetadata } from '@app-shell/state/assetWorkspace'
 
 export function useInbox(workspaceId: string, archived = false) {
   return useQuery({
@@ -98,21 +99,6 @@ export function useAssetChatChannel(
         },
       }).then((r) => r.data),
     enabled: !!workspaceId && (assetType === 'folder' || !!path || !!assetId),
-  })
-}
-
-export function useObjectiveAgentZeroConsultation(workspaceId: string, objectiveId: string) {
-  const qc = useQueryClient()
-  return useMutation({
-    mutationFn: () =>
-      api
-        .post<Channel>(`/workspaces/${workspaceId}/objectives/${objectiveId}/agentzero-consultation`)
-        .then((r) => r.data),
-    onSuccess: (channel) => {
-      qc.setQueryData(['channel', workspaceId, channel.id], channel)
-      qc.invalidateQueries({ queryKey: ['channel-messages', workspaceId, channel.id] })
-      qc.invalidateQueries({ queryKey: ['channel-decisions', workspaceId, channel.id] })
-    },
   })
 }
 
@@ -319,7 +305,10 @@ export function usePostChannelMessage(workspaceId: string, channelId: string) {
       run_id?: string
       node_id?: string
       metadata?: Record<string, unknown>
-    }) => api.post<ChannelMessage>(`/workspaces/${workspaceId}/channels/${channelId}/messages`, payload).then((r) => r.data),
+    }) => api.post<ChannelMessage>(`/workspaces/${workspaceId}/channels/${channelId}/messages`, {
+      ...payload,
+      metadata: buildActiveAssetMessageMetadata(payload.metadata),
+    }).then((r) => r.data),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['channel-messages', workspaceId, channelId] })
     },

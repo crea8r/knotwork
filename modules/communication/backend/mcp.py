@@ -41,7 +41,10 @@ def register_mcp_tools(mcp: FastMCP, runtime: KnotworkMCPRuntime) -> None:
         )
         return runtime.json_text(summary)
 
-    @mcp.tool()
+    @mcp.tool(
+        name="list_escalations",
+        description="List all escalation"
+    )
     async def list_escalations(status: str | None = None, ctx: Context = None) -> Any:
         api = runtime.client_from_context(ctx)
         params = {"status": status} if status else None

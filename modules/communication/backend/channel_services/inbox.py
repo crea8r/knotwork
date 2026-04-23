@@ -12,7 +12,7 @@ from ..channels_models import ChannelEvent, ChannelMessage
 from ..notifications_models import EventDelivery
 from .asset_targets import resolve_channel_asset_target
 from .inbox_rows import _inbox_row, _load_escalation, _load_event_message
-from .messages import _is_telemetry_message_kind
+from .messages import _is_non_actionable_message_kind
 from .participants import ensure_default_channel_subscriptions
 
 
@@ -80,7 +80,7 @@ async def _message_run_context(db: AsyncSession, event: ChannelEvent) -> tuple[s
 
 
 def _should_skip_inbox_for_message(message: ChannelMessage | None) -> bool:
-    return bool(message and _is_telemetry_message_kind(str((message.metadata_ or {}).get("kind") or "")))
+    return bool(message and _is_non_actionable_message_kind(str((message.metadata_ or {}).get("kind") or "")))
 
 
 async def inbox_item_by_delivery_id(

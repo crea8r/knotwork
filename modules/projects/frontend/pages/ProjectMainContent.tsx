@@ -1,16 +1,24 @@
-import { useRef, useState } from 'react'
-import { FolderKanban } from 'lucide-react'
-import { Link, useNavigate, useOutletContext } from 'react-router-dom'
+import { useMemo, useRef, useState } from 'react'
+import { useNavigate, useOutletContext } from 'react-router-dom'
 import { usePostChannelMessage } from '@modules/communication/frontend/api/channels'
 import { useGraphs } from "@modules/workflows/frontend/api/graphs"
 import { useUpdateProject } from "@modules/projects/frontend/api/projects"
-import { ChannelShell, ChannelTimeline } from '@modules/communication/frontend/components/ChannelFrame'
-import ChannelParticipantsPanel from '@modules/communication/frontend/components/ChannelParticipantsPanel'
+import { ChannelTimeline } from '@modules/communication/frontend/components/ChannelFrame'
+import { ChannelParticipantSummary } from '@modules/communication/frontend/components/ChannelParticipantsPanel'
 import WorkflowSlashComposer from '@modules/communication/frontend/components/WorkflowSlashComposer'
 import { useMentionDetection } from '@modules/communication/frontend/components/useMentionDetection'
 import { useChannelTimeline } from '@modules/communication/frontend/components/useChannelTimeline'
 import ProjectDashboard from '@modules/projects/frontend/components/ProjectDashboard'
-import { projectChannelPath, projectObjectivePath, projectPath } from '@app-shell/paths'
+import { workflowAssetLinkForGraph } from '@modules/workflows/frontend/lib/workflowAssetLinks'
+import { projectChannelPath, projectObjectivePath } from '@app-shell/paths'
+import { renderShellHeaderIcon } from '@app-shell/ShellHeaderMeta'
+import { useRegisterShellTopBarSlots } from '@app-shell/ShellTopBarSlots'
+import {
+  SHELL_RAIL_LEADING_ICON_CLASS,
+  SHELL_RAIL_SUBTITLE_CLASS,
+  SHELL_RAIL_TITLE_CLASS,
+  SHELL_TEXT_BUTTON_CLASS,
+} from '@app-shell/layoutChrome'
 import { readNamespacedStorage, removeNamespacedStorage, writeNamespacedStorage } from '@storage'
 import type { ProjectOutletContext } from './ProjectDetailPage'
 
@@ -27,10 +35,55 @@ export default function ProjectMainContent() {
 
   const projectChannelId = project.project_channel_id ?? null
   const { data: workflows = [] } = useGraphs(workspaceId)
+  const workflowById = useMemo(() => new Map(workflows.map((workflow) => [workflow.id, workflow])), [workflows])
   const { items: timelineItems } = useChannelTimeline(workspaceId, projectChannelId ?? '')
   const postProjectMessage = usePostChannelMessage(workspaceId, projectChannelId ?? '')
   const updateProject = useUpdateProject(workspaceId, projectId)
   const { mentionMenuNode } = useMentionDetection(workspaceId, projectChatDraft, setProjectChatDraft, inputRef)
+  const shellLeading = useMemo(() => (
+    <div data-ui="projects.overview.header.leading" className="flex min-w-0 items-center gap-3">
+      <div data-ui="projects.overview.header.icon" className={SHELL_RAIL_LEADING_ICON_CLASS}>
+        {renderShellHeaderIcon('project')}
+      </div>
+      <div className="min-w-0">
+        <p data-ui="projects.overview.header.title" className={SHELL_RAIL_TITLE_CLASS}>
+          {project.title}
+        </p>
+        <div data-ui="projects.overview.header.meta" className="mt-0.5 flex min-w-0 flex-wrap items-center gap-2">
+          <span data-ui="projects.overview.header.subtitle" className={SHELL_RAIL_SUBTITLE_CLASS}>
+            Project overview
+          </span>
+          {projectChannelId ? (
+            <ChannelParticipantSummary workspaceId={workspaceId} channelId={projectChannelId} />
+          ) : null}
+        </div>
+      </div>
+    </div>
+  ), [project.title, projectChannelId, workspaceId])
+  const shellActions = useMemo(() => (
+    <button
+      type="button"
+      onClick={async () => {
+        const nextTitle = window.prompt('Rename project', project.title)?.trim()
+        if (!nextTitle || nextTitle === project.title) return
+        await updateProject.mutateAsync({ title: nextTitle })
+      }}
+      data-ui="projects.overview.header.rename"
+      className={SHELL_TEXT_BUTTON_CLASS}
+    >
+      Rename
+    </button>
+  ), [project.title, updateProject])
+
+  useRegisterShellTopBarSlots({
+    leading: shellLeading,
+    actions: shellActions,
+    snapshot: {
+      title: project.title,
+      subtitle: 'Project overview',
+      iconKind: 'project',
+    },
+  })
 
   function togglePinProject() {
     const next = pinnedProjectId === projectId ? null : projectId
@@ -44,22 +97,8 @@ export default function ProjectMainContent() {
   }
 
   return (
-    <div className="h-full min-h-0 p-4 md:p-6">
-      <ChannelShell
-        eyebrow={(
-          <div className="flex min-w-0 items-center gap-1.5 overflow-hidden whitespace-nowrap">
-            <Link to={projectPath(project.slug)} className="truncate hover:text-stone-800">
-              {project.title}
-            </Link>
-          </div>
-        )}
-        typeIcon={<FolderKanban size={14} />}
-        title={project.title}
-        description={project.description || undefined}
-        onRenameTitle={async (value) => { await updateProject.mutateAsync({ title: value }) }}
-        renamePending={updateProject.isPending}
-        context={projectChannelId ? <ChannelParticipantsPanel workspaceId={workspaceId} channelId={projectChannelId} /> : null}
-        topPanel={(
+    <div data-ui="projects.overview.page" className="flex h-full min-h-0 flex-col bg-white">
+      <div data-ui="projects.overview.dashboard" className="shrink-0">
         <ProjectDashboard
           project={project}
           objectives={objectives}
@@ -77,7 +116,11 @@ export default function ProjectMainContent() {
                 objectives.find((item) => item.id === channel.objectiveId)?.slug ?? channel.channel.slug,
               )
               : channel.channel.graph_id
-                ? `/graphs/${channel.channel.graph_id}?chat=1`
+                ? (
+                  workflowById.get(channel.channel.graph_id)
+                    ? workflowAssetLinkForGraph(workflowById.get(channel.channel.graph_id)!, { assetChat: true })
+                    : projectChannelPath(project.slug, channel.channel.slug)
+                )
               : projectChannelPath(project.slug, channel.channel.slug),
           )}
           onUpdateStatus={onUpdateStatus}
@@ -85,28 +128,26 @@ export default function ProjectMainContent() {
           pinned={pinnedProjectId === projectId}
           onTogglePin={togglePinProject}
         />
-      )}
-      >
-        <ChannelTimeline items={timelineItems} />
-        <WorkflowSlashComposer
-          workspaceId={workspaceId}
-          workflows={workflows}
-          channelId={projectChannelId}
-          draft={projectChatDraft}
-          setDraft={setProjectChatDraft}
-          onSend={() => {
-            if (!projectChannelId || !projectChatDraft.trim()) return
-            postProjectMessage.mutate(
-              { content: projectChatDraft.trim(), role: 'user', author_type: 'human', author_name: 'You' },
-              { onSuccess: () => setProjectChatDraft('') },
-            )
-          }}
-          pending={postProjectMessage.isPending}
-          placeholder="Coordinate project work, delegate, ask for an update, or use @ to mention participants…"
-          inputRef={inputRef}
-          beforeInput={mentionMenuNode}
-        />
-      </ChannelShell>
+      </div>
+      <ChannelTimeline items={timelineItems} />
+      <WorkflowSlashComposer
+        workspaceId={workspaceId}
+        workflows={workflows}
+        channelId={projectChannelId}
+        draft={projectChatDraft}
+        setDraft={setProjectChatDraft}
+        onSend={() => {
+          if (!projectChannelId || !projectChatDraft.trim()) return
+          postProjectMessage.mutate(
+            { content: projectChatDraft.trim(), role: 'user', author_type: 'human', author_name: 'You' },
+            { onSuccess: () => setProjectChatDraft('') },
+          )
+        }}
+        pending={postProjectMessage.isPending}
+        placeholder="Coordinate project work, delegate, ask for an update, or use @ to mention participants…"
+        inputRef={inputRef}
+        beforeInput={mentionMenuNode}
+      />
     </div>
   )
 }

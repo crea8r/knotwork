@@ -153,7 +153,7 @@ export default function FolderBrowser({
             <p className="text-xs text-gray-300">Create a file or upload a document to get started</p>
           </div>
         ) : (
-          <div className="p-2 space-y-0.5">
+          <div className="w-full p-2 space-y-0.5">
             {dirFolders.map(fp => (
               <FolderRow key={fp} name={fp.split('/').pop() ?? fp}
                 isRenaming={renamingFolder === fp}
@@ -217,7 +217,7 @@ function FolderRow({ name, isRenaming, onClick, onContextMenu, onRenameCommit }:
   const ref = useRef<HTMLInputElement>(null)
   return (
     <div onClick={onClick} onContextMenu={onContextMenu}
-      className="flex items-center gap-2.5 px-3 py-2 rounded-lg hover:bg-gray-100 cursor-pointer select-none transition-colors group">
+      className="flex w-full items-center gap-2.5 px-3 py-2 rounded-lg hover:bg-gray-100 cursor-pointer select-none transition-colors group">
       <Folder size={15} className="flex-shrink-0 text-amber-500" />
       {isRenaming ? (
         <input ref={ref} autoFocus defaultValue={name} onClick={e => e.stopPropagation()}
@@ -241,7 +241,7 @@ function FileRow({ file, filename, selected, selectedMulti, isRenaming, onClick,
   const isWorkflow = file.entryKind === 'workflow'
   return (
     <div onClick={onClick} onContextMenu={onContextMenu}
-      className={`flex items-center gap-2.5 px-3 py-2 rounded-lg cursor-pointer select-none transition-colors ${
+      className={`flex w-full items-center gap-2.5 px-3 py-2 rounded-lg cursor-pointer select-none transition-colors ${
         selected ? 'bg-brand-50' : selectedMulti ? 'bg-blue-50' : 'hover:bg-gray-100'
       }`}>
       {!file.is_editable && !isWorkflow && <Lock size={10} className="flex-shrink-0 text-gray-300" />}

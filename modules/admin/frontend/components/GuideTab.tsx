@@ -41,8 +41,8 @@ export default function GuideTab() {
   const isDirty = guide !== undefined && draft !== (guide.guide_md ?? '')
 
   return (
-    <div className="space-y-4">
-      <Card className="p-4">
+    <div data-ui="admin.guide.tab" className="space-y-4">
+      <Card data-ui="admin.guide.card" className="p-4">
         <div className="mb-3">
           <p className="text-sm font-medium text-gray-700">Workspace guide</p>
           <p className="mt-1 text-xs text-gray-400">
@@ -52,12 +52,14 @@ export default function GuideTab() {
         </div>
 
         {isLoading ? (
-          <div className="flex justify-center py-8"><Spinner /></div>
+          <div data-ui="admin.guide.loading" className="flex justify-center py-8"><Spinner /></div>
         ) : isOwner ? (
-          <form onSubmit={handleSave}>
-            <MarkdownWysiwygEditor value={draft} onChange={(md) => { setDraft(md); setSaved(false) }} />
+          <form data-ui="admin.guide.form" onSubmit={handleSave}>
+            <div data-ui="admin.guide.editor">
+              <MarkdownWysiwygEditor value={draft} onChange={(md) => { setDraft(md); setSaved(false) }} />
+            </div>
 
-            <div className="mt-3 flex items-center justify-between">
+            <div data-ui="admin.guide.actions" className="mt-3 flex items-center justify-between">
               <div className="text-xs text-gray-400">
                 {guide && <span>Version {guide.guide_version}</span>}
               </div>
@@ -66,6 +68,7 @@ export default function GuideTab() {
                 <button
                   type="submit"
                   disabled={update.isPending || !isDirty}
+                  data-ui="admin.guide.save"
                   className="rounded-lg bg-brand-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-brand-700 disabled:opacity-50 transition-colors"
                 >
                   {update.isPending ? 'Saving…' : 'Save guide'}
@@ -74,7 +77,7 @@ export default function GuideTab() {
             </div>
           </form>
         ) : (
-          <div className="space-y-3">
+          <div data-ui="admin.guide.viewer" className="space-y-3">
             <div className="rounded-lg border border-gray-200 bg-gray-50 px-4 py-3">
               <MarkdownViewer content={draft} />
             </div>

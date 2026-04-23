@@ -136,6 +136,7 @@ openclaw gateway call knotwork.logs
 openclaw gateway call knotwork.handshake
 openclaw gateway call knotwork.reset_connection
 openclaw gateway call knotwork.execute_task   # pull + run one task immediately
+openclaw gateway call knotwork.debug_run_prompt --params '{"userPrompt":"Reply with ok"}'
 ```
 
 ### Docker logs
@@ -162,6 +163,55 @@ docker logs -f <container> 2>&1 | grep knotwork-bridge
 **`missing scope: operator.write`** — plugin installed without gateway scopes. Reinstall, restart, then run `openclaw gateway call knotwork.handshake`.
 
 **`startup:background-disabled runtime_lease=busy`** — another OpenClaw process holds the lease. Stop other instances or wait ≤30s for the stale lease to expire.
+
+## Global Knotwork MCP
+
+If you want every OpenClaw session, including plugin-created `subagent.run(...)` sessions, to have native Knotwork MCP access, register Knotwork as a global MCP server in `~/.openclaw/openclaw.json`.
+
+The bridge includes a stdio MCP proxy at:
+
+```text
+/home/node/.openclaw/extensions/knotwork-bridge/src/openclaw/knotwork-mcp-proxy.mjs
+```
+
+Example config:
+
+```json
+{
+  "mcpServers": {
+    "knotwork": {
+      "command": "node",
+      "args": [
+        "/home/node/.openclaw/extensions/knotwork-bridge/src/openclaw/knotwork-mcp-proxy.mjs"
+      ],
+      "env": {
+        "KNOTWORK_BACKEND_URL": "http://host.docker.internal:8000",
+        "KNOTWORK_WORKSPACE_ID": "<workspace-id>",
+        "KNOTWORK_PRIVATE_KEY_PATH": "/home/node/.openclaw/knotwork-agent.key",
+        "KNOTWORK_MCP_PROXY_LOG_PATH": "/tmp/knotwork-mcp-proxy.log"
+      }
+    }
+  }
+}
+```
+
+After editing the config:
+
+```bash
+bash agent-bridge/plugins/openclaw/sync-to-openclaw.sh --yes
+docker exec openclaw-openclaw-gateway-1 openclaw gateway restart
+```
+
+To verify that a plugin-created session can see the global MCP server, use the debug RPC:
+
+```bash
+docker exec openclaw-openclaw-gateway-1 openclaw gateway call knotwork.debug_run_prompt \
+  --params '{"taskId":"debug-knotwork-mcp","sessionName":"knotwork:debug:mcp","userPrompt":"Use the Knotwork MCP tools to list the available Knotwork tool names, then summarize them in one sentence."}'
+
+docker exec openclaw-openclaw-gateway-1 sed -n '1,200p' /tmp/knotwork-mcp-proxy.log
+```
+
+If the second command shows `tools/list` or `tools/call`, the session used the native Knotwork MCP bridge rather than only the semantic action protocol.
 
 ## Dev workflow
 

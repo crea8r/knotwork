@@ -19,11 +19,11 @@ function StatusIcon({ ok }: { ok: boolean | null }) {
   return <HelpCircle size={14} className="text-gray-400 shrink-0" />
 }
 
-function Row({ label, value, ok }: { label: string; value: string; ok?: boolean | null }) {
+function Row({ label, value, ok, uiName = 'admin.system.status.row' }: { label: string; value: string; ok?: boolean | null; uiName?: string }) {
   return (
-    <div className="flex items-center justify-between py-2 border-b border-gray-100 last:border-0">
-      <span className="text-sm text-gray-500">{label}</span>
-      <div className="flex items-center gap-1.5">
+    <div data-ui={uiName} className="flex items-center justify-between py-2 border-b border-gray-100 last:border-0">
+      <span data-ui={`${uiName}.label`} className="text-sm text-gray-500">{label}</span>
+      <div data-ui={`${uiName}.value`} className="flex items-center gap-1.5">
         {ok !== undefined && <StatusIcon ok={ok} />}
         <span className="text-sm font-mono text-gray-800">{value}</span>
       </div>
@@ -104,11 +104,11 @@ export default function SystemTab() {
   }
 
   if (isLoading) {
-    return <p className="text-sm text-gray-500">Loading system status…</p>
+    return <p data-ui="admin.system.loading" className="text-sm text-gray-500">Loading system status…</p>
   }
 
   if (!health) {
-    return <p className="text-sm text-red-600">Backend unreachable — could not load system status.</p>
+    return <p data-ui="admin.system.error" className="text-sm text-red-600">Backend unreachable — could not load system status.</p>
   }
 
   const workerAlive = health.worker?.alive
@@ -122,11 +122,12 @@ export default function SystemTab() {
     : 'Not running'
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
+    <div data-ui="admin.system.tab" className="space-y-6">
+      <div data-ui="admin.system.header" className="flex items-center justify-between">
         <h3 className="text-sm font-semibold text-gray-700">System Status</h3>
         <button
           onClick={() => refetch()}
+          data-ui="admin.system.refresh"
           className="flex items-center gap-1 text-xs text-gray-500 hover:text-gray-700"
         >
           <RefreshCw size={12} />
@@ -134,25 +135,26 @@ export default function SystemTab() {
         </button>
       </div>
 
-      <div className="rounded-lg border border-gray-200 bg-white px-4 divide-y divide-gray-100">
-        <Row label="API version" value={health.version} />
-        <Row label="Schema version" value={health.schema_version} />
-        <Row label="Installation ID" value={health.installation_id?.slice(0, 8) + '…'} />
+      <div data-ui="admin.system.status" className="rounded-lg border border-gray-200 bg-white px-4 divide-y divide-gray-100">
+        <Row label="API version" value={health.version} uiName="admin.system.status.api-version" />
+        <Row label="Schema version" value={health.schema_version} uiName="admin.system.status.schema-version" />
+        <Row label="Installation ID" value={health.installation_id?.slice(0, 8) + '…'} uiName="admin.system.status.installation-id" />
         <Row
           label="Background worker"
           value={workerLabel}
           ok={workerAlive === null ? null : workerAlive}
+          uiName="admin.system.status.worker"
         />
       </div>
 
-      <div>
+      <div data-ui="admin.system.email">
         <h3 className="text-sm font-semibold text-gray-700 mb-3">Workspace Email</h3>
         <div className="rounded-lg border border-gray-200 bg-white p-4 space-y-4">
           {loadingEmailConfig ? (
-            <p className="text-sm text-gray-500">Loading workspace email config…</p>
+            <p data-ui="admin.system.email.loading" className="text-sm text-gray-500">Loading workspace email config…</p>
           ) : (
             <>
-              <div className="text-xs text-gray-500">
+              <div data-ui="admin.system.email.status" className="text-xs text-gray-500">
                 Status:{' '}
                 {emailConfig?.enabled ? (
                   <span className="text-green-700 font-medium">enabled</span>
@@ -163,7 +165,7 @@ export default function SystemTab() {
               </div>
 
               {isOwner ? (
-                <form onSubmit={submitEmailConfig} className="space-y-3">
+                <form data-ui="admin.system.email.form" onSubmit={submitEmailConfig} className="space-y-3">
                   <div>
                     <label className="block text-xs text-gray-500 mb-1">Resend API key</label>
                     <input
@@ -184,10 +186,11 @@ export default function SystemTab() {
                       className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-400"
                     />
                   </div>
-                  <div className="flex items-center gap-3">
+                  <div data-ui="admin.system.email.actions" className="flex items-center gap-3">
                     <button
                       type="submit"
                       disabled={updateEmailConfig.isPending}
+                      data-ui="admin.system.email.save"
                       className="bg-brand-500 text-white px-3 py-2 rounded-lg text-sm hover:bg-brand-600 disabled:opacity-60 transition-colors"
                     >
                       {updateEmailConfig.isPending ? 'Saving…' : 'Save email config'}
@@ -197,6 +200,7 @@ export default function SystemTab() {
                         type="button"
                         onClick={clearEmailConfig}
                         disabled={updateEmailConfig.isPending}
+                        data-ui="admin.system.email.clear-key"
                         className="text-sm text-red-600 hover:text-red-700 disabled:opacity-60"
                       >
                         Clear key
@@ -216,10 +220,11 @@ export default function SystemTab() {
         </div>
       </div>
 
-      <div>
+      <div data-ui="admin.system.notification-policy">
         <button
           type="button"
           onClick={() => setPolicyOpen((open) => !open)}
+          data-ui="admin.system.notification-policy.toggle"
           className="w-full rounded-lg border border-gray-200 bg-white px-4 py-3 text-left"
         >
           <div className="flex items-center justify-between gap-3">
@@ -233,7 +238,7 @@ export default function SystemTab() {
           </div>
         </button>
         {policyOpen && (
-          <div className="mt-3 rounded-lg border border-gray-200 bg-white p-4 space-y-3 text-sm text-gray-600">
+          <div data-ui="admin.system.notification-policy.content" className="mt-3 rounded-lg border border-gray-200 bg-white p-4 space-y-3 text-sm text-gray-600">
             <p>
               This system does not have a no-code notification policy editor yet. The rules below are the current built-in behavior.
             </p>
@@ -271,7 +276,7 @@ export default function SystemTab() {
         )}
       </div>
 
-      <div>
+      <div data-ui="admin.system.participant-delivery">
         <h3 className="text-sm font-semibold text-gray-700 mb-3">Participant Delivery</h3>
         <div className="rounded-lg border border-gray-200 bg-white p-4 space-y-4">
           {isOwner && participants.length > 0 && (
@@ -280,6 +285,7 @@ export default function SystemTab() {
               <select
                 value={effectiveParticipantId}
                 onChange={(e) => setSelectedParticipantId(e.target.value)}
+                data-ui="admin.system.participant-delivery.select"
                 className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white"
               >
                 {participants.map((participant) => (
@@ -292,14 +298,14 @@ export default function SystemTab() {
           )}
 
           {!participantPrefs ? (
-            <p className="text-sm text-gray-500">Loading participant delivery preferences…</p>
+            <p data-ui="admin.system.participant-delivery.loading" className="text-sm text-gray-500">Loading participant delivery preferences…</p>
           ) : (
             <>
               <div className="text-xs text-gray-500">
                 Editing delivery for <span className="font-medium text-gray-700">{participantPrefs.display_name}</span>.
               </div>
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
+              <div data-ui="admin.system.participant-delivery.table-wrap" className="overflow-x-auto">
+                <table data-ui="admin.system.participant-delivery.table" className="w-full text-sm">
                   <thead>
                     <tr className="text-xs text-gray-500 uppercase border-b">
                       <th className="text-left py-2">Event</th>
@@ -316,6 +322,7 @@ export default function SystemTab() {
                             type="checkbox"
                             checked={pref.app_enabled}
                             disabled={participantPrefs.kind !== 'human'}
+                            data-ui="admin.system.participant-delivery.app-toggle"
                             onChange={(e) => toggleParticipantMean(pref.event_type, 'app_enabled', e.target.checked)}
                           />
                         </td>
@@ -323,6 +330,7 @@ export default function SystemTab() {
                           <input
                             type="checkbox"
                             checked={pref.email_enabled}
+                            data-ui="admin.system.participant-delivery.email-toggle"
                             onChange={(e) => toggleParticipantMean(pref.event_type, 'email_enabled', e.target.checked)}
                           />
                         </td>

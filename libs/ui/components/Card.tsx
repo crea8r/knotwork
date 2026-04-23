@@ -1,15 +1,14 @@
-import type { ReactNode } from 'react'
+import type { HTMLAttributes, ReactNode } from 'react'
 
-interface CardProps {
+type CardProps = HTMLAttributes<HTMLDivElement> & {
   children: ReactNode
-  className?: string
-  onClick?: () => void
 }
 
-export default function Card({ children, className = '', onClick }: CardProps) {
+export default function Card({ children, className = '', onClick, ...props }: CardProps) {
   const interactive = onClick ? 'cursor-pointer hover:shadow-md transition-shadow' : ''
   return (
     <div
+      {...props}
       onClick={onClick}
       className={`bg-white rounded-xl shadow-sm border border-gray-200 ${interactive} ${className}`}
     >

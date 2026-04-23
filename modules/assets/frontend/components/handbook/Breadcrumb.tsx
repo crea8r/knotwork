@@ -1,13 +1,14 @@
 /**
  * Breadcrumb — Windows-Explorer-style path navigation.
- * e.g.  Home > legal > compliance
+ * e.g.  Project Alpha > legal > compliance
  */
-import { useRef, useState } from 'react'
-import { ChevronRight, File, FileText, FileType2, GitBranch, Home, Image, Loader2, Pencil } from 'lucide-react'
+import { useRef, useState, type ReactNode } from 'react'
+import { ChevronRight, File, FileText, FileType2, GitBranch, Image, Loader2, Pencil } from 'lucide-react'
 
 interface Props {
   /** Current folder path, e.g. "legal/compliance". Empty = root. */
   path: string
+  rootLabel?: string
   onNavigate: (path: string) => void
   /** Optional file name appended as a non-clickable last segment. */
   file?: string
@@ -15,10 +16,12 @@ interface Props {
   onRenameFile?: (newName: string) => void
   onRenameFolder?: (newName: string) => void
   renamePending?: boolean
+  afterCurrent?: ReactNode
 }
 
 export default function Breadcrumb({
-  path, onNavigate, file, fileType, onRenameFile, onRenameFolder, renamePending = false,
+  path, rootLabel = 'Knowledge', onNavigate, file, fileType, onRenameFile, onRenameFolder, renamePending = false,
+  afterCurrent,
 }: Props) {
   const segments = path ? path.split('/').filter(Boolean) : []
   const [isEditing, setIsEditing] = useState(false)
@@ -43,20 +46,21 @@ export default function Breadcrumb({
   }
 
   return (
-    <nav className="flex items-center gap-1 text-sm text-gray-500 overflow-x-auto min-w-0 py-1">
+    <nav data-ui="shell.asset.breadcrumb" className="flex min-w-0 items-center gap-1 overflow-hidden whitespace-nowrap py-1 text-sm leading-5 text-stone-500">
       <button
         onClick={() => onNavigate('')}
-        className="flex items-center gap-1 hover:text-gray-800 transition-colors flex-shrink-0"
+        data-ui="shell.asset.breadcrumb.home"
+        className="min-w-0 shrink truncate transition-colors hover:text-stone-800"
+        title={rootLabel}
       >
-        <Home size={13} />
-        <span className="text-xs">Home</span>
+        <span className="block truncate">{rootLabel}</span>
       </button>
       {segments.map((seg, i) => {
         const segPath = segments.slice(0, i + 1).join('/')
         const isLast = i === segments.length - 1 && !file
         return (
-          <span key={segPath} className="flex items-center gap-1 flex-shrink-0">
-            <ChevronRight size={12} className="text-gray-300" />
+          <span key={segPath} className="flex min-w-0 shrink items-center gap-1">
+            <ChevronRight size={13} className="shrink-0 text-stone-300" />
             {isLast ? (
               isEditing ? (
                 <input
@@ -71,13 +75,13 @@ export default function Breadcrumb({
                     }
                     if (e.key === 'Escape') setIsEditing(false)
                   }}
-                  className="min-w-28 border-b border-brand-400 bg-transparent text-xs font-medium text-gray-800 outline-none"
+                  className="min-w-28 border-b border-brand-400 bg-transparent text-sm font-medium leading-5 text-stone-800 outline-none"
                 />
               ) : (
-                <span className="text-xs font-medium text-gray-800">{seg}</span>
+                <span className="block min-w-0 truncate text-sm font-medium leading-5 text-stone-800" title={seg}>{seg}</span>
               )
             ) : (
-              <button onClick={() => onNavigate(segPath)} className="text-xs hover:text-gray-800 transition-colors">
+              <button onClick={() => onNavigate(segPath)} className="min-w-0 truncate text-sm leading-5 transition-colors hover:text-stone-800" title={seg}>
                 {seg}
               </button>
             )}
@@ -85,8 +89,8 @@ export default function Breadcrumb({
         )
       })}
       {file && (
-        <span className="flex items-center gap-1 flex-shrink-0">
-          <ChevronRight size={12} className="text-gray-300" />
+        <span className="flex min-w-0 shrink items-center gap-1">
+          <ChevronRight size={13} className="shrink-0 text-stone-300" />
           {isEditing ? (
             <input
               ref={inputRef}
@@ -100,21 +104,23 @@ export default function Breadcrumb({
                 }
                 if (e.key === 'Escape') setIsEditing(false)
               }}
-              className="min-w-32 border-b border-brand-400 bg-transparent text-xs font-medium text-gray-800 outline-none"
+              className="min-w-32 border-b border-brand-400 bg-transparent text-sm font-medium leading-5 text-stone-800 outline-none"
             />
           ) : (
             <>
               <FileTypeIcon kind={fileType} />
-              <span className="text-xs font-medium text-gray-800">{file}</span>
+              <span className="block min-w-0 truncate text-sm font-medium leading-5 text-stone-800" title={file}>{file}</span>
             </>
           )}
         </span>
       )}
+      {afterCurrent ? <span data-ui="shell.asset.breadcrumb.trailing" className="flex shrink-0 items-center gap-1">{afterCurrent}</span> : null}
       {canRename && !isEditing && (
         <button
           disabled={renamePending}
           onClick={() => setIsEditing(true)}
-          className="ml-1 flex items-center justify-center rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-700 transition-colors disabled:cursor-not-allowed disabled:opacity-60"
+          data-ui="shell.asset.breadcrumb.rename"
+          className="ml-1 flex items-center justify-center rounded p-1 text-stone-400 transition-colors hover:bg-stone-100 hover:text-stone-700 disabled:cursor-not-allowed disabled:opacity-60"
           title={`Rename ${file ? 'file' : 'folder'}`}
         >
           {renamePending ? <Loader2 size={12} className="animate-spin" /> : <Pencil size={12} />}

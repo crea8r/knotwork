@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useOutletContext, useSearchParams } from 'react-router-dom'
 import { FolderPlus } from 'lucide-react'
-import { useAssetChatChannel, usePostChannelMessage } from '@modules/communication/frontend/api/channels'
 import { useDeleteGraph, useGraphs, useUpdateGraph } from "@modules/workflows/frontend/api/graphs"
 import { useKnowledgeFiles } from "@modules/assets/frontend/api/knowledge"
 import {
@@ -15,12 +14,8 @@ import {
   useRenameProjectFolder,
   useUploadProjectFile,
 } from "@modules/projects/frontend/api/projects"
-import { ChannelShell, ChannelTimeline } from '@modules/communication/frontend/components/ChannelFrame'
-import ChannelParticipantsPanel from '@modules/communication/frontend/components/ChannelParticipantsPanel'
-import WorkflowSlashComposer from '@modules/communication/frontend/components/WorkflowSlashComposer'
-import { useChannelTimeline } from '@modules/communication/frontend/components/useChannelTimeline'
-import { useMentionDetection } from '@modules/communication/frontend/components/useMentionDetection'
 import FileBrowserShell from '@modules/assets/frontend/components/file-browser/FileBrowserShell'
+import AssetChatToggleButton from '@modules/assets/frontend/components/file-browser/AssetChatToggleButton'
 import type { BrowserFile } from '@modules/assets/frontend/components/file-browser/types'
 import { useFileBrowserState } from '@modules/assets/frontend/components/file-browser/useFileBrowserState'
 import type { ContextTarget } from '@modules/assets/frontend/components/handbook/FileContextMenu'
@@ -35,6 +30,10 @@ import {
 import UploadPreviewPanel from '@modules/assets/frontend/components/handbook/UploadPreviewPanel'
 import Btn from '@ui/components/Btn'
 import ConfirmDialog from '@ui/components/ConfirmDialog'
+import GraphEditorWorkspace from '@modules/workflows/frontend/components/GraphEditorWorkspace'
+import { getAssetParentFolder, getGraphAssetPath, normalizeAssetPath } from '@modules/workflows/frontend/lib/assetPath'
+import { knowledgeFilePath, projectAssetFilePath, projectAssetFolderPath, projectAssetsPath, projectAssetWorkflowPath } from '@app-shell/paths'
+import { isSameAssetScope, useAssetWorkspaceStore } from '@app-shell/state/assetWorkspace'
 import type { ProjectOutletContext } from './ProjectDetailPage'
 
 type ProjectDeleteTarget =
@@ -265,29 +264,34 @@ function ProjectNewFolderPanel({
 }
 
 export default function ProjectAssetsPage() {
-  const { workspaceId, projectId, projectSlug } = useOutletContext<ProjectOutletContext>()
+  const { workspaceId, projectId, projectSlug, project } = useOutletContext<ProjectOutletContext>()
+  const assetChatOpen = useAssetWorkspaceStore((state) => state.isAssetChatOpen)
+  const assetWorkspaceScope = useAssetWorkspaceStore((state) => state.scope)
+  const setSelection = useAssetWorkspaceStore((state) => state.setSelection)
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
-  const urlFilePath = searchParams.get('path')
+  const urlAssetPath = searchParams.get('path')
   const urlFolder = searchParams.get('folder') ?? ''
-  const urlChat = searchParams.get('chat') === '1'
-  const highlightedMessageId = searchParams.get('message') ? `m-${searchParams.get('message')}` : null
   const { data: docs = [] } = useProjectDocuments(workspaceId, projectSlug)
   const { data: projectFolders = [] } = useProjectFolders(workspaceId, projectSlug)
-  const { data: workflows = [] } = useGraphs(workspaceId, projectId)
+  const { data: workflows = [], isLoading: workflowsLoading } = useGraphs(workspaceId, projectId)
   const { data: workspaceWorkflows = [] } = useGraphs(workspaceId)
   const { data: knowledgeFiles = [] } = useKnowledgeFiles()
   const browserState = useFileBrowserState({
-    initialFolder: urlFolder,
-    initialFilePath: urlFilePath,
-    panelWidthStorageKey: 'project-asset-chat-width',
+    initialFolder: urlAssetPath
+      ? urlAssetPath.split('/').slice(0, -1).join('/')
+      : urlFolder,
+    initialFilePath: urlAssetPath,
   })
   const uploadInputRef = useRef<HTMLInputElement>(null)
-  const chatInputRef = useRef<HTMLTextAreaElement | null>(null)
 
   const [fileQuery, setFileQuery] = useState('')
   const [deleteTarget, setDeleteTarget] = useState<ProjectDeleteTarget | null>(null)
-  const [chatDraft, setChatDraft] = useState('')
+  const projectScope = useMemo(
+    () => ({ kind: 'project', workspaceId, projectSlug } as const),
+    [projectSlug, workspaceId],
+  )
+  const scopeMatchesProject = isSameAssetScope(assetWorkspaceScope, projectScope)
 
   const createProjectDocument = useCreateProjectDocument(workspaceId, projectSlug)
   const createProjectFolder = useCreateProjectFolder(workspaceId, projectSlug)
@@ -302,7 +306,7 @@ export default function ProjectAssetsPage() {
   const workflowEntries = useMemo<BrowserFile[]>(() => workflows.map((graph) => ({
     id: `workflow-${graph.id}`,
     workspace_id: graph.workspace_id,
-    path: graph.path ? `${graph.path}/${graph.name}` : graph.name,
+    path: getGraphAssetPath(graph),
     title: graph.name,
     raw_token_count: 0,
     resolved_token_count: 0,
@@ -331,7 +335,7 @@ export default function ProjectAssetsPage() {
       .map((graph) => ({
         id: `knowledge-workflow-${graph.id}`,
         workspace_id: graph.workspace_id,
-        path: graph.path ? `${graph.path}/${graph.name}` : graph.name,
+        path: getGraphAssetPath(graph),
         title: graph.name,
         raw_token_count: 0,
         resolved_token_count: 0,
@@ -362,6 +366,18 @@ export default function ProjectAssetsPage() {
 
   const activeAssetChat = useMemo(() => {
     const panel = browserState.rightPanel
+    if (panel.kind === 'workflow') {
+      const workflow = workflowEntries.find((entry) => entry.graphId === panel.graphId)
+      return workflow
+        ? {
+            assetType: 'workflow' as const,
+            asset_id: workflow.graphId ?? null,
+            path: workflow.path,
+            project_id: projectId,
+            label: workflow.title,
+          }
+        : null
+    }
     if (panel.kind === 'file') {
       const projectDoc = docs.find((doc) => doc.path === panel.path)
       return {
@@ -388,49 +404,135 @@ export default function ProjectAssetsPage() {
       asset_id: currentProjectFolder?.id ?? null,
       path: browserState.currentFolder,
       project_id: projectId,
-      label: browserState.currentFolder || 'Project Assets',
+      label: browserState.currentFolder || 'Project assets',
     }
-  }, [browserState.currentFolder, browserState.rightPanel, docs, knowledgeFiles, projectFolders, projectId])
-  const { data: assetChatChannel = null } = useAssetChatChannel(workspaceId, activeAssetChat.assetType, {
-    path: activeAssetChat.path,
-    asset_id: activeAssetChat.asset_id,
-    project_id: activeAssetChat.project_id,
-  })
-  const { items: assetTimeline } = useChannelTimeline(workspaceId, assetChatChannel?.id ?? '')
-  const postAssetMessage = usePostChannelMessage(workspaceId, assetChatChannel?.id ?? '')
-  const { mentionMenuNode } = useMentionDetection(workspaceId, chatDraft, setChatDraft, chatInputRef)
+  }, [browserState.currentFolder, browserState.rightPanel, docs, knowledgeFiles, projectFolders, projectId, workflowEntries])
   const { currentFolder, rightPanel, setCurrentFolder, setRightPanel } = browserState
 
   useEffect(() => {
-    if (urlFilePath) {
-      const folder = urlFilePath.split('/').slice(0, -1).join('/')
+    if (rightPanel.kind === 'workflow') {
+      const workflow = workflowEntries.find((entry) => entry.graphId === rightPanel.graphId)
+      if (!workflow) return
+      setSelection({
+        scopeKind: 'project',
+        workspaceId,
+        projectSlug,
+        assetType: 'workflow',
+        path: workflow.path,
+        label: workflow.title,
+        graphId: workflow.graphId,
+      })
+      return
+    }
+    if (rightPanel.kind === 'file' || rightPanel.kind === 'knowledge-file') {
+      setSelection({
+        scopeKind: 'project',
+        workspaceId,
+        projectSlug,
+        assetType: rightPanel.kind === 'knowledge-file' ? 'knowledge-file' : 'file',
+        path: rightPanel.path,
+        label: rightPanel.path,
+      })
+      return
+    }
+    setSelection({
+      scopeKind: 'project',
+      workspaceId,
+      projectSlug,
+      assetType: 'folder',
+      path: currentFolder,
+      label: currentFolder || 'Project assets',
+    })
+  }, [currentFolder, projectSlug, rightPanel, setSelection, workflowEntries, workspaceId])
+
+  useEffect(() => {
+    const matchedWorkflow = urlAssetPath
+      ? workflowEntries.find((entry) => entry.path === normalizeAssetPath(urlAssetPath)) ?? null
+      : null
+
+    if (urlAssetPath && matchedWorkflow) {
+      const folder = getAssetParentFolder(matchedWorkflow.path)
       if (currentFolder !== folder) setCurrentFolder(folder)
       if (
-        (rightPanel.kind === 'file' || rightPanel.kind === 'folder')
-        && (rightPanel.kind !== 'file' || rightPanel.path !== urlFilePath)
+        (rightPanel.kind === 'file' || rightPanel.kind === 'folder' || rightPanel.kind === 'workflow')
+        && (rightPanel.kind !== 'workflow' || rightPanel.graphId !== matchedWorkflow.graphId || rightPanel.path !== matchedWorkflow.path)
       ) {
-        setRightPanel({ kind: 'file', path: urlFilePath })
+        setRightPanel({ kind: 'workflow', graphId: matchedWorkflow.graphId!, path: matchedWorkflow.path })
+      }
+      return
+    }
+
+    if (urlAssetPath && !workflowsLoading) {
+      const folder = urlAssetPath.split('/').slice(0, -1).join('/')
+      if (currentFolder !== folder) setCurrentFolder(folder)
+      if (
+        (rightPanel.kind === 'file' || rightPanel.kind === 'folder' || rightPanel.kind === 'workflow')
+        && (rightPanel.kind !== 'file' || rightPanel.path !== urlAssetPath)
+      ) {
+        setRightPanel({ kind: 'file', path: urlAssetPath })
       }
       return
     }
 
     if (currentFolder !== urlFolder) setCurrentFolder(urlFolder)
-    if (rightPanel.kind === 'file') setRightPanel({ kind: 'folder' })
-  }, [currentFolder, rightPanel, setCurrentFolder, setRightPanel, urlFilePath, urlFolder])
+    if (rightPanel.kind === 'file' || rightPanel.kind === 'workflow') setRightPanel({ kind: 'folder' })
+  }, [currentFolder, rightPanel, setCurrentFolder, setRightPanel, urlAssetPath, urlFolder, workflowEntries, workflowsLoading])
+
+  function navigateProjectAssetSelection(selection: { kind: 'file' | 'folder' | 'workflow'; path: string }, replace = false) {
+    const nextSearchParams = new URLSearchParams(searchParams)
+    nextSearchParams.delete('path')
+    nextSearchParams.delete('folder')
+    if (selection.kind === 'file' || selection.kind === 'workflow') {
+      nextSearchParams.set('path', selection.path)
+    } else if (selection.path) {
+      nextSearchParams.set('folder', selection.path)
+    }
+    const nextSearch = nextSearchParams.toString()
+    navigate(
+      nextSearch ? `${projectAssetsPath(projectSlug)}?${nextSearch}` : projectAssetsPath(projectSlug),
+      replace ? { replace: true } : undefined,
+    )
+  }
 
   function openProjectFilePath(path: string) {
-    const params = new URLSearchParams()
-    params.set('path', path)
-    if (urlChat) params.set('chat', '1')
-    navigate(`/projects/${projectSlug}/assets?${params.toString()}`)
+    navigateProjectAssetSelection({ kind: 'file', path })
   }
 
   function openProjectFolderPath(path: string) {
-    const params = new URLSearchParams()
-    if (path) params.set('folder', path)
-    if (urlChat) params.set('chat', '1')
-    const query = params.toString()
-    navigate(query ? `/projects/${projectSlug}/assets?${query}` : `/projects/${projectSlug}/assets`)
+    navigateProjectAssetSelection({ kind: 'folder', path })
+  }
+
+  function openWorkflow(graphId: string) {
+    const workflow = workflowEntries.find((entry) => entry.graphId === graphId)
+    if (!workflow) return
+    navigateProjectAssetSelection({ kind: 'workflow', path: workflow.path })
+  }
+
+  function handleAssetChatClick() {
+    if (assetChatOpen && scopeMatchesProject) {
+      if (rightPanel.kind === 'workflow' && rightPanel.graphId) {
+        navigate(projectAssetWorkflowPath(projectSlug, rightPanel.path), { replace: true })
+        return
+      }
+      if (rightPanel.kind === 'file' || rightPanel.kind === 'knowledge-file') {
+        navigateProjectAssetSelection({ kind: 'file', path: rightPanel.path }, true)
+        return
+      }
+      navigateProjectAssetSelection({ kind: 'folder', path: currentFolder }, true)
+      return
+    }
+    if (!activeAssetChat) return
+    if (activeAssetChat.project_id == null) {
+      navigate(knowledgeFilePath(activeAssetChat.path, { assetChat: true }))
+      return
+    }
+    navigate(
+      activeAssetChat.assetType === 'folder'
+        ? projectAssetFolderPath(projectSlug, activeAssetChat.path, { assetChat: true })
+        : activeAssetChat.assetType === 'workflow'
+          ? projectAssetWorkflowPath(projectSlug, activeAssetChat.path, { assetChat: true })
+          : projectAssetFilePath(projectSlug, activeAssetChat.path, { assetChat: true }),
+    )
   }
 
   function handleProjectFolderRename(path: string, newName: string) {
@@ -508,7 +610,15 @@ export default function ProjectAssetsPage() {
       })
       return
     }
-    deleteGraph.mutate(deleteTarget.graphId, { onSuccess: () => setDeleteTarget(null) })
+    const workflow = workflowEntries.find((entry) => entry.graphId === deleteTarget.graphId)
+    deleteGraph.mutate(deleteTarget.graphId, {
+      onSuccess: () => {
+        if (browserState.rightPanel.kind === 'workflow' && browserState.rightPanel.graphId === deleteTarget.graphId) {
+          openProjectFolderPath(workflow?.path.split('/').slice(0, -1).join('/') ?? browserState.currentFolder)
+        }
+        setDeleteTarget(null)
+      },
+    })
   }
 
   return (
@@ -532,6 +642,7 @@ export default function ProjectAssetsPage() {
           searching={false}
           fileQuery={fileQuery}
           onFileQueryChange={setFileQuery}
+          rootLabel={project.title}
           state={browserState}
           onRenameFile={handleProjectFileRename}
           onRenameWorkflow={(graphId, newName) => updateGraph.mutate({ graphId, name: newName })}
@@ -555,13 +666,13 @@ export default function ProjectAssetsPage() {
           }}
           onNavigateFolder={openProjectFolderPath}
           onNavigateFile={openProjectFilePath}
-          onNavigateWorkflow={(graphId) => navigate(`/graphs/${graphId}`)}
+          onNavigateWorkflow={openWorkflow}
           onFileCreated={openProjectFilePath}
-          onWorkflowCreated={(graphId) => navigate(`/graphs/${graphId}`)}
+          onWorkflowCreated={openWorkflow}
           onUploadSaved={openProjectFilePath}
           renderKnowledgeFileView={(path) => <FileEditor path={path} />}
           renderFileView={(path) => <FileEditor path={path} workspaceId={workspaceId} projectId={projectSlug} />}
-          renderWorkflowView={() => null}
+          renderWorkflowView={(graphId) => <GraphEditorWorkspace graphId={graphId} allowWorkflowChat={false} />}
           renderNewTextPanel={(folder, onCreate, onCancel) => (
             <ProjectNewFilePanel
               folder={folder}
@@ -613,43 +724,21 @@ export default function ProjectAssetsPage() {
               }}
             />
           )}
-          openSidePanel={urlChat}
-          sidePanelStorageKey="project-asset-chat-open"
           allowNewFolder
           allowUpload
           allowFolderRename
           allowFolderMove={false}
           allowFolderDelete
-          sidePanel={(
-            <ChannelShell
-              title={activeAssetChat.label}
-              parentLabel={projectSlug}
-              shellClassName="rounded-none border-0"
-              context={assetChatChannel?.id ? <ChannelParticipantsPanel workspaceId={workspaceId} channelId={assetChatChannel.id} /> : null}
-            >
-              <ChannelTimeline
-                items={assetTimeline}
-                emptyState="No messages yet. Start a discussion about this asset."
-                highlightedItemId={highlightedMessageId}
-                scrollToLatest
-              />
-              <WorkflowSlashComposer
-                workspaceId={workspaceId}
-                workflows={workflows}
-                channelId={assetChatChannel?.id ?? null}
-                draft={chatDraft}
-                setDraft={setChatDraft}
-                onSend={() => postAssetMessage.mutate(
-                  { content: chatDraft.trim(), role: 'user', author_type: 'human', author_name: 'You' },
-                  { onSuccess: () => setChatDraft('') },
-                )}
-                pending={postAssetMessage.isPending}
-                placeholder="Discuss this asset in context…"
-                inputRef={chatInputRef}
-                beforeInput={mentionMenuNode}
-              />
-            </ChannelShell>
-          )}
+          showToolbarChatButton={false}
+          breadcrumbActions={activeAssetChat
+            ? (
+                <AssetChatToggleButton
+                  active={assetChatOpen && scopeMatchesProject}
+                  onClick={handleAssetChatClick}
+                  label={`Open chat for ${activeAssetChat.label}`}
+                />
+              )
+            : undefined}
         />
       </div>
 

@@ -9,12 +9,12 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from libs.config import settings
+from core.api.request_urls import resolve_backend_base_url
 from libs.database import get_db
 from modules.admin.backend.workspaces_models import Workspace
 
@@ -40,6 +40,7 @@ class AgentDiscovery(BaseModel):
 @router.get("/{workspace_id}/.well-known/agent", response_model=AgentDiscovery)
 async def agent_well_known(
     workspace_id: UUID,
+    request: Request,
     db: AsyncSession = Depends(get_db),
 ) -> AgentDiscovery:
     result = await db.execute(select(Workspace).where(Workspace.id == workspace_id))
@@ -47,7 +48,7 @@ async def agent_well_known(
     if workspace is None:
         raise HTTPException(status_code=404, detail="Workspace not found")
 
-    base = settings.normalized_backend_url
+    base = resolve_backend_base_url(request)
     api = f"{base}/api/v1"
 
     return AgentDiscovery(

@@ -1,4 +1,4 @@
-import { mkdir, open, readFile, rm } from 'node:fs/promises'
+import { mkdir, open, readFile, rm, stat } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 
 const CLAIM_TTL_MS = 10 * 60_000
@@ -10,13 +10,22 @@ type ClaimData = {
   claimed_at: string
 }
 
+type RuntimeLockData = {
+  acquired_at?: string
+}
+
 function sanitizeTaskId(taskId: string): string {
   return String(taskId).replace(/[^a-zA-Z0-9._-]/g, '_')
 }
 
-function isStale(data: ClaimData): boolean {
-  const claimedAt = new Date(data.claimed_at).getTime()
-  return !Number.isFinite(claimedAt) || Date.now() - claimedAt > CLAIM_TTL_MS
+function isProcessAlive(pid: number): boolean {
+  if (!Number.isInteger(pid) || pid <= 0) return false
+  try {
+    process.kill(pid, 0)
+    return true
+  } catch {
+    return false
+  }
 }
 
 async function readClaim(claimPath: string): Promise<ClaimData | null> {
@@ -28,9 +37,37 @@ async function readClaim(claimPath: string): Promise<ClaimData | null> {
   }
 }
 
+async function claimFileAgeMs(claimPath: string): Promise<number | null> {
+  try {
+    const info = await stat(claimPath)
+    return Date.now() - info.mtimeMs
+  } catch {
+    return null
+  }
+}
+
+function claimPathFor(lockRoot: string, taskId: string): string {
+  return join(join(dirname(lockRoot), 'task-claims'), `${sanitizeTaskId(taskId)}.json`)
+}
+
+function parseTimestamp(value: string | null | undefined): number | null {
+  const parsed = new Date(String(value ?? '')).getTime()
+  return Number.isFinite(parsed) ? parsed : null
+}
+
+async function currentRuntimeStartedAtMs(lockRoot: string): Promise<number | null> {
+  try {
+    const raw = await readFile(lockRoot, 'utf8')
+    const data = JSON.parse(raw) as RuntimeLockData
+    return parseTimestamp(data.acquired_at)
+  } catch {
+    return null
+  }
+}
+
 export async function claimTask(lockRoot: string, taskId: string, deliveryId?: string | null): Promise<boolean> {
   const claimsDir = join(dirname(lockRoot), 'task-claims')
-  const claimPath = join(claimsDir, `${sanitizeTaskId(taskId)}.json`)
+  const claimPath = claimPathFor(lockRoot, taskId)
   await mkdir(claimsDir, { recursive: true })
 
   const tryClaim = async (): Promise<boolean> => {
@@ -50,13 +87,54 @@ export async function claimTask(lockRoot: string, taskId: string, deliveryId?: s
       const message = error instanceof Error ? error.message : String(error)
       if (!/exist/i.test(message)) return false
       const existing = await readClaim(claimPath)
-      if (existing && isStale(existing)) {
-        await rm(claimPath, { force: true })
-        return tryClaim()
+      const currentPid = process?.pid ?? 0
+      const ownerPid = Number(existing?.pid ?? 0)
+
+      if (existing) {
+        const ownerIsCurrentProcess = ownerPid > 0 && ownerPid === currentPid
+        const ownerIsAnotherLiveProcess =
+          ownerPid > 0 &&
+          ownerPid !== currentPid &&
+          isProcessAlive(ownerPid)
+
+        const claimedAtMs = parseTimestamp(existing.claimed_at)
+        const runtimeStartedAtMs = ownerIsCurrentProcess ? await currentRuntimeStartedAtMs(lockRoot) : null
+        const belongsToPreviousRuntime =
+          ownerIsCurrentProcess &&
+          claimedAtMs !== null &&
+          runtimeStartedAtMs !== null &&
+          claimedAtMs < runtimeStartedAtMs
+
+        if (belongsToPreviousRuntime || (!ownerIsCurrentProcess && !ownerIsAnotherLiveProcess)) {
+          await rm(claimPath, { force: true })
+          return tryClaim()
+        }
+      }
+      if (!existing) {
+        const ageMs = await claimFileAgeMs(claimPath)
+        if (ageMs !== null && ageMs > CLAIM_TTL_MS) {
+          await rm(claimPath, { force: true })
+          return tryClaim()
+        }
       }
       return false
     }
   }
 
   return tryClaim()
+}
+
+export async function releaseTaskClaim(
+  lockRoot: string,
+  taskId: string,
+  ownerPid: number = process?.pid ?? 0,
+): Promise<void> {
+  if (!lockRoot) return
+  const claimPath = claimPathFor(lockRoot, taskId)
+  const existing = await readClaim(claimPath)
+  if (existing) {
+    const existingPid = Number(existing.pid ?? 0)
+    if (existingPid > 0 && existingPid !== ownerPid) return
+  }
+  await rm(claimPath, { force: true })
 }

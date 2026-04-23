@@ -8,13 +8,13 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from libs.config import settings
 from core.api import channels as core_channels
 from core.api import knowledge as core_knowledge
+from core.api.request_urls import resolve_backend_base_url
 from libs.database import get_db
 from libs.auth.backend.deps import get_current_user, get_workspace_member
 from libs.auth.backend.models import User
@@ -27,6 +27,7 @@ router = APIRouter(prefix="/workspaces", tags=["workspaces"])
 @router.get("/{workspace_id}/skills")
 async def get_workspace_skills(
     workspace_id: UUID,
+    request: Request,
     current_user: User = Depends(get_current_user),
     member: WorkspaceMember = Depends(get_workspace_member),
     db: AsyncSession = Depends(get_db),
@@ -45,7 +46,7 @@ async def get_workspace_skills(
     knowledge_files = await core_knowledge.list_files(db, workspace_id)
     channels = await core_channels.list_channels(db, workspace_id)
 
-    mcp_url = f"{settings.normalized_backend_url}/mcp"
+    mcp_url = f"{resolve_backend_base_url(request)}/mcp"
     content = generate_skills_md(
         workspace_name=workspace.name,
         agent_name=current_user.name,

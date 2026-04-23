@@ -7,8 +7,8 @@ function sanitize(value: string | null | undefined): string {
   return normalized || 'unknown'
 }
 
-function fenced(label: string, body: string): string {
-  return [`## ${label}`, '```text', body, '```', ''].join('\n')
+function fenced(label: string, body: string, language = 'text'): string {
+  return [`### ${label}`, `\`\`\`${language}`, body, '```', ''].join('\n')
 }
 
 export class SemanticDebugTrace {
@@ -60,9 +60,16 @@ export class SemanticDebugTrace {
     await this.flushDelivery()
   }
 
-  async writeSection(_label: string, _value: unknown, _language = 'json'): Promise<void> {}
+  async writeSection(label: string, value: unknown, language = 'json'): Promise<void> {
+    void label
+    void value
+    void language
+  }
 
-  async writeMarkdownSection(_label: string, _markdown: string): Promise<void> {}
+  async writeMarkdownSection(label: string, markdown: string): Promise<void> {
+    void label
+    void markdown
+  }
 
   async writeError(error: unknown): Promise<void> {
     void error
@@ -71,14 +78,14 @@ export class SemanticDebugTrace {
   private async flushDelivery(): Promise<void> {
     if (!this.enabled) return
     await mkdir(dirname(this.filePath), { recursive: true })
-    const body = this.deliveries.map((delivery) => {
+    const deliveryBody = this.deliveries.map((delivery) => {
       const parts: string[] = []
-      if (this.deliveries.length > 1) parts.push(`# Delivery ${delivery.iteration}`, '')
-      if (delivery.extraSystemPrompt) parts.push(fenced('extraSystemPrompt', delivery.extraSystemPrompt))
-      parts.push(fenced('message', delivery.message))
-      if (delivery.reply !== undefined) parts.push(fenced('reply', delivery.reply))
+      parts.push(`## ${delivery.iteration}`, '')
+      if (delivery.extraSystemPrompt) parts.push(fenced('Agent System Prompt', delivery.extraSystemPrompt, 'markdown'))
+      parts.push(fenced('Agent User Prompt', delivery.message, 'markdown'))
+      if (delivery.reply !== undefined) parts.push(fenced('Agent Raw Reply', delivery.reply, 'text'))
       return parts.join('\n')
     }).join('\n')
-    await writeFile(this.filePath, `${body}`)
+    await writeFile(this.filePath, deliveryBody)
   }
 }

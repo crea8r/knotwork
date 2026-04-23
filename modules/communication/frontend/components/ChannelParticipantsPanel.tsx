@@ -48,6 +48,57 @@ function ParticipantAvatar({
   )
 }
 
+export function ChannelParticipantSummary({
+  workspaceId,
+  channelId,
+  maxVisible = 3,
+}: {
+  workspaceId: string
+  channelId: string
+  maxVisible?: number
+}) {
+  const { data: participants = [] } = useChannelParticipantList(workspaceId, channelId)
+  const activeParticipants = participants.filter((participant) => participant.subscribed)
+
+  if (activeParticipants.length === 0) return null
+
+  const visibleParticipants = activeParticipants.slice(0, maxVisible)
+  const hiddenCount = Math.max(0, activeParticipants.length - visibleParticipants.length)
+  const summaryLabel = activeParticipants.length === 1
+    ? activeParticipants[0].display_name
+    : `${activeParticipants.length} members`
+
+  return (
+    <div
+      data-ui="participants.summary"
+      className="inline-flex min-w-0 items-center gap-1.5 text-[11px] leading-4 text-stone-500"
+      title={activeParticipants.map((participant) => participant.display_name).join(', ')}
+    >
+      <div data-ui="participants.summary.avatars" className="flex items-center -space-x-1">
+        {visibleParticipants.map((participant) => (
+          <ParticipantAvatar
+            key={participant.participant_id}
+            name={participant.display_name}
+            avatarUrl={participant.avatar_url}
+            agentZeroRole={participant.agent_zero_role}
+          />
+        ))}
+      </div>
+      <span data-ui="participants.summary.label" className="hidden truncate sm:inline">
+        {summaryLabel}
+      </span>
+      {hiddenCount > 0 ? (
+        <span
+          data-ui="participants.summary.more"
+          className="inline-flex h-5 min-w-5 items-center justify-center rounded-full border border-stone-200 bg-white px-1 text-[10px] font-medium text-stone-600"
+        >
+          +{hiddenCount}
+        </span>
+      ) : null}
+    </div>
+  )
+}
+
 export default function ChannelParticipantsPanel({
   workspaceId,
   channelId,
@@ -87,12 +138,13 @@ export default function ChannelParticipantsPanel({
   }
 
   return (
-    <div className="flex w-full flex-wrap items-center gap-1.5">
+    <div data-ui="participants.panel" className="flex w-full flex-wrap items-center gap-1.5">
         {activeParticipants.map((participant) => {
           const canRemove = !locked && (isOwner || participant.participant_id === currentParticipantId)
           return (
             <span
               key={participant.participant_id}
+              data-ui="participants.member"
               className="inline-flex max-w-full items-center gap-1.5 rounded-md border border-stone-200 bg-white px-1.5 py-0.5 text-xs text-stone-700"
             >
               <ParticipantAvatar
@@ -106,6 +158,7 @@ export default function ChannelParticipantsPanel({
                   type="button"
                   onClick={() => removeParticipant(participant.participant_id)}
                   disabled={updateParticipant.isPending}
+                  data-ui="participants.member.remove"
                   className="rounded-sm p-0.5 text-stone-400 hover:bg-stone-100 hover:text-stone-700 disabled:opacity-50"
                   title={participant.participant_id === currentParticipantId ? 'Leave channel' : 'Remove from channel'}
                 >
@@ -120,6 +173,7 @@ export default function ChannelParticipantsPanel({
           <select
             value={selectedParticipantId}
             onChange={(event) => setSelectedParticipantId(event.target.value)}
+            data-ui="participants.add.select"
             className="h-7 max-w-[160px] rounded-md border border-stone-300 bg-white px-2 text-xs text-stone-700"
           >
             <option value="">Add member</option>
@@ -133,6 +187,7 @@ export default function ChannelParticipantsPanel({
             type="button"
             onClick={() => { void addParticipant() }}
             disabled={!selectedParticipantId || updateParticipant.isPending}
+            data-ui="participants.add.button"
             className="inline-flex h-7 items-center gap-1 rounded-md border border-stone-300 bg-white px-2 text-xs text-stone-700 hover:border-stone-400 disabled:cursor-not-allowed disabled:opacity-50"
             title="Add member"
           >

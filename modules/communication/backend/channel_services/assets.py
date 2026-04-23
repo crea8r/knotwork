@@ -34,7 +34,7 @@ async def _binding_view(db: AsyncSession, workspace_id: UUID, binding: ChannelAs
         graph = await core_graphs.get_graph(db, UUID(binding.asset_id))
         if not graph or graph.workspace_id != workspace_id:
             return None
-        return _binding_payload(binding, graph.name, graph.path, graph.status)
+        return _binding_payload(binding, graph.name, core_graphs.graph_asset_path(graph), graph.status)
     if binding.asset_type == "run":
         run = await core_runs.get_run(db, binding.asset_id)
         if not run or run.workspace_id != workspace_id:

@@ -185,7 +185,7 @@ async def execute_workflow_edit_action(
             output={
                 "id": str(graph.id),
                 "name": graph.name,
-                "path": graph.path,
+                "path": core_graphs.graph_asset_path(graph),
                 "status": graph.status,
                 "default_model": graph.default_model,
                 "has_root_draft": root_draft is not None,

@@ -117,19 +117,19 @@ export default function AccountTab() {
     window.location.href = '/'
   }
 
-  if (isLoading) return <div className="py-12 flex justify-center"><Spinner /></div>
+  if (isLoading) return <div data-ui="admin.account.loading" className="py-12 flex justify-center"><Spinner /></div>
   if (!me) return null
 
   const initials = me.name?.[0]?.toUpperCase() ?? '?'
 
   return (
-    <div className="space-y-6">
+    <div data-ui="admin.account.tab" className="space-y-6">
       {/* Profile form */}
-      <Card className="p-6">
+      <Card data-ui="admin.account.profile" className="p-6">
         <p className="text-sm font-medium text-gray-700 mb-5">Your profile</p>
 
         {/* Avatar preview */}
-        <div className="flex items-center gap-4 mb-5">
+        <div data-ui="admin.account.profile.avatar" className="flex items-center gap-4 mb-5">
           {avatarUrl ? (
             <img
               src={avatarUrl}
@@ -154,7 +154,7 @@ export default function AccountTab() {
           </div>
         </div>
 
-        <form onSubmit={handleSave} className="space-y-4">
+        <form data-ui="admin.account.profile.form" onSubmit={handleSave} className="space-y-4">
           <div>
             <label className="block text-xs text-gray-500 mb-1">Name</label>
             <input
@@ -189,8 +189,8 @@ export default function AccountTab() {
             />
           </div>
 
-          <div className="flex items-center gap-3">
-            <Btn type="submit" variant="primary" loading={update.isPending}>
+          <div data-ui="admin.account.profile.actions" className="flex items-center gap-3">
+            <Btn data-ui="admin.account.profile.save" type="submit" variant="primary" loading={update.isPending}>
               Save changes
             </Btn>
             {saved && <span className="text-sm text-green-600">✓ Saved</span>}
@@ -201,7 +201,7 @@ export default function AccountTab() {
         </form>
       </Card>
 
-      <Card className="p-6">
+      <Card data-ui="admin.account.password" className="p-6">
         <p className="text-sm font-medium text-gray-700 mb-1">Password</p>
         {me.must_change_password ? (
           <p className="text-xs text-amber-700 mb-4">
@@ -213,7 +213,7 @@ export default function AccountTab() {
           </p>
         )}
 
-        <form onSubmit={handlePasswordChange} className="space-y-4">
+        <form data-ui="admin.account.password.form" onSubmit={handlePasswordChange} className="space-y-4">
           <div>
             <label className="block text-xs text-gray-500 mb-1">Current password</label>
             <input
@@ -235,8 +235,8 @@ export default function AccountTab() {
               className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-400"
             />
           </div>
-          <div className="flex items-center gap-3">
-            <Btn type="submit" variant="primary" loading={changePassword.isPending}>
+          <div data-ui="admin.account.password.actions" className="flex items-center gap-3">
+            <Btn data-ui="admin.account.password.submit" type="submit" variant="primary" loading={changePassword.isPending}>
               Change password
             </Btn>
             {passwordSaved && <span className="text-sm text-green-600">✓ Password updated</span>}
@@ -250,7 +250,7 @@ export default function AccountTab() {
       </Card>
 
       {isLocalhostApp && (
-        <Card className="p-6">
+        <Card data-ui="admin.account.localhost-switch" className="p-6">
           <p className="text-sm font-medium text-gray-700 mb-1">Localhost Account Switching</p>
           <p className="text-xs text-gray-400 mb-4">
             Localhost keeps a safe default account. Use this to send a magic link to another workspace member without leaving the resilient localhost mode.
@@ -261,13 +261,13 @@ export default function AccountTab() {
               Configure workspace email in System settings to enable localhost user switching.
             </p>
           ) : membersLoading ? (
-            <div className="py-4"><Spinner size="sm" /></div>
+            <div data-ui="admin.account.localhost-switch.loading" className="py-4"><Spinner size="sm" /></div>
           ) : !localhostSwitchEnabled || switchableMembers.length === 0 ? (
             <p className="text-xs text-gray-500">
               Add at least one more workspace member with an email address to test account switching.
             </p>
           ) : (
-            <form onSubmit={handleRequestSwitch} className="space-y-3">
+            <form data-ui="admin.account.localhost-switch.form" onSubmit={handleRequestSwitch} className="space-y-3">
               <div>
                 <label className="block text-xs text-gray-500 mb-1">Switch to</label>
                 <select
@@ -283,11 +283,11 @@ export default function AccountTab() {
                   ))}
                 </select>
               </div>
-              <div className="flex items-center gap-3">
-                <Btn type="submit" variant="primary" loading={switchUser.isPending} disabled={!selectedUserId}>
+              <div data-ui="admin.account.localhost-switch.actions" className="flex items-center gap-3">
+                <Btn data-ui="admin.account.localhost-switch.send" type="submit" variant="primary" loading={switchUser.isPending} disabled={!selectedUserId}>
                   Send magic link
                 </Btn>
-                <Btn type="button" variant="secondary" onClick={handleReturnToDefault}>
+                <Btn data-ui="admin.account.localhost-switch.return-default" type="button" variant="secondary" onClick={handleReturnToDefault}>
                   Return to default account
                 </Btn>
               </div>
@@ -305,7 +305,7 @@ export default function AccountTab() {
       )}
 
       {/* Sign out / recovery */}
-      <Card className="p-6">
+      <Card data-ui="admin.account.recovery" className="p-6">
         <p className="text-sm font-medium text-gray-700 mb-1">{isLocalhostApp ? 'Localhost Recovery' : 'Sign out'}</p>
         {isLocalhostApp ? (
           <>
@@ -321,7 +321,7 @@ export default function AccountTab() {
             <p className="text-xs text-gray-400 mb-4">
               You'll be redirected to the login page. Your session token will be cleared.
             </p>
-            <Btn variant="danger" onClick={handleLogout}>
+            <Btn data-ui="admin.account.sign-out" variant="danger" onClick={handleLogout}>
               Sign out
             </Btn>
           </>

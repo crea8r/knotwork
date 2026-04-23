@@ -20,10 +20,18 @@ import knotworkLogo from '@ui/assets/knotwork-logo.svg'
 import { useCreateChannel, useInboxSummary } from '@modules/communication/frontend/api/channels'
 import { api } from '@sdk'
 import { useCreateProject, useProjectChannels, useProjectDashboard, useProjects } from "@modules/projects/frontend/api/projects"
+import { useGraphs } from "@modules/workflows/frontend/api/graphs"
 import { useRuns } from "@modules/workflows/frontend/api/runs"
+import { workflowAssetLinkForGraph } from '@modules/workflows/frontend/lib/workflowAssetLinks'
 import { useAuthStore } from '@auth'
 import { readNamespacedStorage, removeNamespacedStorage, writeNamespacedStorage } from '@storage'
 import { useActiveDistribution } from '@app-shell/distribution'
+import {
+  SHELL_ICON_BUTTON_CLASS,
+  SHELL_RAIL_CLASS,
+  SHELL_RAIL_INNER_CLASS,
+  SHELL_RAIL_TITLE_CLASS,
+} from '@app-shell/layoutChrome'
 import { projectChannelPath, projectObjectivePath, projectPath } from '@app-shell/paths'
 import type { Channel, Run } from '@data-models'
 
@@ -82,7 +90,73 @@ function IconNavItem({
 }
 
 function Divider({ collapsed }: { collapsed: boolean }) {
-  return <div className={`border-t border-gray-100 my-1 ${collapsed ? 'mx-1' : 'mx-2'}`} />
+  return <div className={`my-1 border-t border-stone-200 ${collapsed ? 'mx-1' : 'mx-2'}`} />
+}
+
+function SidebarHeader({
+  collapsed,
+  displayName,
+  onGoHome,
+  onCloseMobile,
+  onToggleCollapse,
+}: {
+  collapsed: boolean
+  displayName: string
+  onGoHome: () => void
+  onCloseMobile?: () => void
+  onToggleCollapse?: () => void
+}) {
+  return (
+    <div data-ui="shell.nav.header" className={SHELL_RAIL_CLASS}>
+      <div data-ui="shell.nav.header.inner" className={`${SHELL_RAIL_INNER_CLASS} ${collapsed ? 'justify-center px-2' : 'justify-between'}`}>
+        {collapsed ? (
+          <button
+            type="button"
+            onClick={onToggleCollapse}
+            className={SHELL_ICON_BUTTON_CLASS}
+            title="Expand navigation"
+            aria-label="Expand navigation"
+            data-ui="shell.nav.collapse"
+          >
+            <ChevronRight size={16} />
+          </button>
+        ) : (
+          <>
+            <button
+              type="button"
+              onClick={() => { onGoHome(); onCloseMobile?.() }}
+              className="flex min-w-0 flex-1 items-center gap-3 rounded-xl px-2 py-2 text-left transition-colors hover:bg-stone-50"
+              data-ui="shell.nav.home"
+            >
+              <img src={knotworkLogo} alt={displayName} className="h-7 w-7 flex-shrink-0" />
+              <span data-ui="shell.nav.header.title" className={SHELL_RAIL_TITLE_CLASS}>{displayName}</span>
+            </button>
+            <div data-ui="shell.nav.header.actions" className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={onToggleCollapse}
+                title="Collapse navigation"
+                aria-label="Collapse navigation"
+                className={`hidden md:inline-flex ${SHELL_ICON_BUTTON_CLASS}`}
+                data-ui="shell.nav.collapse"
+              >
+                <ChevronLeft size={16} />
+              </button>
+              <button
+                type="button"
+                onClick={onCloseMobile}
+                className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-stone-200 text-stone-600 transition-colors hover:border-stone-300 hover:bg-stone-50 hover:text-stone-900 md:hidden"
+                aria-label="Close navigation"
+                data-ui="shell.nav.close-mobile"
+              >
+                <X size={16} />
+              </button>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  )
 }
 
 type ProjectChannelNavItem = {
@@ -174,42 +248,25 @@ function MinimalSidebar({
   const Item = collapsed ? IconNavItem : NavItem
 
   return (
-    <aside className={`fixed md:static inset-y-0 left-0 z-40 flex-shrink-0 bg-white border-r border-gray-200 flex flex-col h-screen transform transition-all duration-200 ${
+    <aside data-ui="shell.nav" className={`fixed md:static inset-y-0 left-0 z-40 flex h-screen flex-shrink-0 flex-col border-r border-stone-200 bg-white transform transition-all duration-200 ${
       mobileOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'
     } ${collapsed ? 'w-14' : 'w-72'}`}>
-      <div className={`flex items-center border-b border-gray-100 ${collapsed ? 'justify-center py-[13px]' : 'justify-between'}`}>
-        {collapsed ? (
-          <button
-            onClick={() => navigate(defaultRoute)}
-            className="hover:bg-gray-50 p-1.5 rounded-lg transition-colors"
-            title={displayName}
-          >
-            <img src={knotworkLogo} alt={displayName} className="h-6 w-6" />
-          </button>
-        ) : (
-          <>
-            <button
-              onClick={() => { navigate(defaultRoute); onCloseMobile?.() }}
-              className="flex items-center gap-2 px-4 py-4 hover:bg-gray-50 transition-colors flex-1 text-left"
-            >
-              <img src={knotworkLogo} alt={displayName} className="h-6 w-6 flex-shrink-0" />
-              <span className="font-semibold text-gray-900 text-sm">{displayName}</span>
-            </button>
-            <button onClick={onCloseMobile} className="md:hidden px-3 text-gray-400 hover:text-gray-700" aria-label="Close navigation">
-              <X size={16} />
-            </button>
-          </>
-        )}
-      </div>
+      <SidebarHeader
+        collapsed={collapsed}
+        displayName={displayName}
+        onGoHome={() => navigate(defaultRoute)}
+        onCloseMobile={onCloseMobile}
+        onToggleCollapse={onToggleCollapse}
+      />
 
-      <nav className={`flex-1 overflow-y-auto py-3 space-y-0.5 ${collapsed ? 'px-1 flex flex-col items-center' : 'px-2'}`}>
+      <nav data-ui="shell.nav.body" className={`flex-1 overflow-y-auto py-3 space-y-0.5 ${collapsed ? 'px-1 flex flex-col items-center' : 'px-2'}`}>
         {hasAssets && <Item to="/knowledge" icon={<BookOpen size={iconSize} />} label="Knowledge" onClick={onCloseMobile} />}
         {hasWorkflows && <Item to="/graphs" icon={<FolderOpen size={iconSize} />} label="Workflows" onClick={onCloseMobile} />}
         {hasWorkflows && <Item to="/runs" icon={<PlayCircle size={iconSize} />} label="Runs" onClick={onCloseMobile} />}
       </nav>
 
       {hasAdmin && (
-        <div className={`border-t border-gray-100 p-2 ${collapsed ? 'flex justify-center' : ''}`}>
+        <div data-ui="shell.nav.footer" className={`border-t border-stone-200 p-2 ${collapsed ? 'flex justify-center' : ''}`}>
           {!collapsed ? (
             <NavLink
               to="/settings"
@@ -228,16 +285,6 @@ function MinimalSidebar({
           )}
         </div>
       )}
-
-      <div className={`border-t border-gray-100 p-2 hidden md:flex ${collapsed ? 'justify-center' : 'justify-end'}`}>
-        <button
-          onClick={onToggleCollapse}
-          title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-          className="p-1.5 rounded-lg text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition-colors"
-        >
-          {collapsed ? <ChevronRight size={15} /> : <ChevronLeft size={15} />}
-        </button>
-      </div>
     </aside>
   )
 }
@@ -276,8 +323,10 @@ function WorkspaceSidebar({
 
   const { data: activeProjectDashboard } = useProjectDashboard(workspaceId, activeProjectSlug ?? '')
   const { data: activeProjectChannelsRaw = [] } = useProjectChannels(workspaceId, activeProjectSlug ?? '')
+  const { data: graphs = [] } = useGraphs(workspaceId)
   const { data: runs = [] } = useRuns(workspaceId)
   const activeProjectId = activeProjectDashboard?.project.id ?? null
+  const graphById = useMemo(() => new Map(graphs.map((graph) => [graph.id, graph])), [graphs])
 
   const [expandedProjects, setExpandedProjects] = useState<Record<string, boolean>>({})
   const [pinnedProjectId, setPinnedProjectId] = useState<string | null>(
@@ -455,35 +504,18 @@ function WorkspaceSidebar({
 
   return (
     <>
-      <aside className={`fixed md:static inset-y-0 left-0 z-40 flex-shrink-0 bg-white border-r border-gray-200 flex flex-col h-screen transform transition-all duration-200 ${
+      <aside data-ui="shell.nav" className={`fixed md:static inset-y-0 left-0 z-40 flex h-screen flex-shrink-0 flex-col border-r border-stone-200 bg-white transform transition-all duration-200 ${
         mobileOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'
       } ${collapsed ? 'w-14' : 'w-72'}`}>
-      <div className={`flex items-center border-b border-gray-100 ${collapsed ? 'justify-center py-[13px]' : 'justify-between'}`}>
-        {collapsed ? (
-          <button
-            onClick={() => navigate(defaultRoute)}
-            className="hover:bg-gray-50 p-1.5 rounded-lg transition-colors"
-            title={displayName}
-          >
-            <img src={knotworkLogo} alt={displayName} className="h-6 w-6" />
-          </button>
-        ) : (
-          <>
-            <button
-              onClick={() => { navigate(defaultRoute); onCloseMobile?.() }}
-              className="flex items-center gap-2 px-4 py-4 hover:bg-gray-50 transition-colors flex-1 text-left"
-            >
-              <img src={knotworkLogo} alt={displayName} className="h-6 w-6 flex-shrink-0" />
-              <span className="font-semibold text-gray-900 text-sm">{displayName}</span>
-            </button>
-            <button onClick={onCloseMobile} className="md:hidden px-3 text-gray-400 hover:text-gray-700" aria-label="Close navigation">
-              <X size={16} />
-            </button>
-          </>
-        )}
-      </div>
+      <SidebarHeader
+        collapsed={collapsed}
+        displayName={displayName}
+        onGoHome={() => navigate(defaultRoute)}
+        onCloseMobile={onCloseMobile}
+        onToggleCollapse={onToggleCollapse}
+      />
 
-      <nav className={`flex-1 overflow-y-auto py-3 space-y-0.5 ${collapsed ? 'px-1 flex flex-col items-center' : 'px-2'}`}>
+      <nav data-ui="shell.nav.body" className={`flex-1 overflow-y-auto py-3 space-y-0.5 ${collapsed ? 'px-1 flex flex-col items-center' : 'px-2'}`}>
         {collapsed ? (
           <button
             type="button"
@@ -599,7 +631,11 @@ function WorkspaceSidebar({
                                 activeObjectives.find((item) => item.id === channel.objectiveId)?.slug ?? channel.channel.slug,
                               )
                               : channel.channel.graph_id
-                                ? `/graphs/${channel.channel.graph_id}?chat=1`
+                                ? (
+                                  graphById.get(channel.channel.graph_id)
+                                    ? workflowAssetLinkForGraph(graphById.get(channel.channel.graph_id)!, { assetChat: true })
+                                    : projectChannelPath(project.slug, channel.channel.slug)
+                                )
                               : projectChannelPath(project.slug, channel.channel.slug)}
                             onClick={onCloseMobile}
                             className={`flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm ${
@@ -612,19 +648,6 @@ function WorkspaceSidebar({
                             <span className="truncate text-xs">{channel.label}</span>
                           </Link>
                         ))}
-
-                        <Link
-                          to={`/projects/${project.slug}/assets`}
-                          onClick={onCloseMobile}
-                          className={`flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm ${
-                            location.pathname === `/projects/${project.slug}/assets`
-                              ? 'bg-brand-50 text-brand-700 font-medium'
-                              : 'text-stone-600 hover:bg-stone-100'
-                          }`}
-                        >
-                          <FolderOpen size={13} className="flex-shrink-0" />
-                          <span>Assets</span>
-                        </Link>
 
                       </div>
                     )}
@@ -665,7 +688,7 @@ function WorkspaceSidebar({
       </nav>
 
       {hasAdmin && (
-        <div className={`border-t border-gray-100 p-2 ${collapsed ? 'flex justify-center' : ''}`}>
+        <div data-ui="shell.nav.footer" className={`border-t border-stone-200 p-2 ${collapsed ? 'flex justify-center' : ''}`}>
           {!collapsed ? (
             <NavLink
               to="/settings"
@@ -684,16 +707,6 @@ function WorkspaceSidebar({
           )}
         </div>
       )}
-
-      <div className={`border-t border-gray-100 p-2 hidden md:flex ${collapsed ? 'justify-center' : 'justify-end'}`}>
-        <button
-          onClick={onToggleCollapse}
-          title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-          className="p-1.5 rounded-lg text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition-colors"
-        >
-          {collapsed ? <ChevronRight size={15} /> : <ChevronLeft size={15} />}
-        </button>
-      </div>
       </aside>
       {showNewChannelDialog && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 p-4">

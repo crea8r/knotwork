@@ -3,6 +3,7 @@ from __future__ import annotations
 import re
 from typing import Any
 
+from core.api import graphs as core_graphs
 from core.mcp.contracts.schemas import MCPContract
 from core.mcp.contracts.work_packet_builder import base_work_packet, trim_packet_context
 from core.mcp.contracts.work_packet_context import (
@@ -326,6 +327,7 @@ def build_workflows_work_packet(
             "kind": "workflow",
             "id": str(context.graph.id),
             "label": context.graph.name,
+            "path": core_graphs.graph_asset_path(context.graph),
         }
         if interaction.session_type == "workflow.edit" and context.graph is not None
         else {
@@ -351,7 +353,7 @@ def build_workflows_work_packet(
         {
             "id": str(context.graph.id),
             "name": context.graph.name,
-            "path": context.graph.path,
+            "path": core_graphs.graph_asset_path(context.graph),
             "status": context.graph.status,
             "default_model": context.graph.default_model,
             "has_root_draft": context.root_draft is not None,

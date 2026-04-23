@@ -74,7 +74,7 @@ function DiscoveryPrompt({ workspaceId }: { workspaceId: string }) {
   }
 
   return (
-    <div className="rounded-lg border border-blue-100 bg-blue-50 px-3 py-2.5 space-y-1.5">
+    <div data-ui="admin.members.discovery" className="rounded-lg border border-blue-100 bg-blue-50 px-3 py-2.5 space-y-1.5">
       <p className="text-xs text-blue-800 font-medium">Agent discovery URL</p>
       <p className="text-xs text-blue-700">
         Give this URL to your agent. It tells the agent how to authenticate and connect to
@@ -87,6 +87,7 @@ function DiscoveryPrompt({ workspaceId }: { workspaceId: string }) {
         <button
           type="button"
           onClick={copy}
+          data-ui="admin.members.discovery.copy"
           className="shrink-0 text-xs px-2.5 py-1.5 rounded border border-blue-200 bg-white text-blue-700 hover:bg-blue-50 transition-colors"
         >
           {copied ? '✓ Copied' : 'Copy'}
@@ -236,24 +237,25 @@ export default function MembersTab() {
   }
 
   return (
-    <div className="space-y-6">
+    <div data-ui="admin.members.tab" className="space-y-6">
       {/* Team members list */}
-      <Card className="overflow-hidden">
-        <div className="flex items-center justify-between px-4 py-3 border-b">
+      <Card data-ui="admin.members.list" className="overflow-hidden">
+        <div data-ui="admin.members.list.header" className="flex items-center justify-between px-4 py-3 border-b">
           <div className="flex items-center gap-2">
             <p className="text-sm font-medium text-gray-700">Team members</p>
-            <div className="relative">
+            <div data-ui="admin.members.agent-zero-help" className="relative">
               <button
                 type="button"
                 onClick={() => setShowAgentZeroHelp((open) => !open)}
                 onBlur={() => setShowAgentZeroHelp(false)}
+                data-ui="admin.members.agent-zero-help.toggle"
                 className="inline-flex h-6 w-6 items-center justify-center rounded-md text-gray-400 hover:bg-gray-100 hover:text-gray-700"
                 title="AgentZero"
               >
                 <CircleHelp size={14} />
               </button>
               {showAgentZeroHelp ? (
-                <div className="absolute left-0 top-7 z-20 w-64 rounded-md border border-stone-200 bg-white p-2 text-xs leading-5 text-stone-600 shadow-lg">
+                <div data-ui="admin.members.agent-zero-help.content" className="absolute left-0 top-7 z-20 w-64 rounded-md border border-stone-200 bg-white p-2 text-xs leading-5 text-stone-600 shadow-lg">
                   AgentZero marks the one human or machine with the broadest workspace context to consult.
                 </div>
               ) : null}
@@ -269,11 +271,12 @@ export default function MembersTab() {
           </div>
 
           {/* Kind filter */}
-          <div className="flex gap-1 text-xs">
+          <div data-ui="admin.members.filters" className="flex gap-1 text-xs">
             {(['active', 'disabled'] as AccessFilter[]).map((filter) => (
               <button
                 key={filter}
                 onClick={() => { setAccessFilter(filter); setMembersPage(1) }}
+                data-ui={`admin.members.filter.access.${filter}`}
                 className={`px-2.5 py-1 rounded-full capitalize transition-colors ${
                   accessFilter === filter
                     ? 'bg-stone-900 text-white font-medium'
@@ -287,6 +290,7 @@ export default function MembersTab() {
               <button
                 key={k}
                 onClick={() => { setKindFilter(k); setMembersPage(1) }}
+                data-ui={`admin.members.filter.kind.${k}`}
                 className={`px-2.5 py-1 rounded-full capitalize transition-colors ${
                   kindFilter === k
                     ? 'bg-brand-100 text-brand-700 font-medium'
@@ -300,14 +304,14 @@ export default function MembersTab() {
         </div>
 
         {loadingMembers ? (
-          <div className="p-6 text-center">
+          <div data-ui="admin.members.loading" className="p-6 text-center">
             <Spinner />
           </div>
         ) : !membersData || membersData.items.length === 0 ? (
-          <p className="px-4 py-6 text-sm text-gray-400 text-center">No members found.</p>
+          <p data-ui="admin.members.empty" className="px-4 py-6 text-sm text-gray-400 text-center">No members found.</p>
         ) : (
           <>
-            <table className="w-full text-sm">
+            <table data-ui="admin.members.table" className="w-full text-sm">
               <thead>
                 <tr className="text-xs text-gray-500 uppercase bg-gray-50 border-b">
                   <th className="text-left px-4 py-3">Member</th>
@@ -325,6 +329,7 @@ export default function MembersTab() {
                       setBriefDraft('')
                       setStatusNoteDraft('')
                     }}
+                    data-ui="admin.members.row"
                     className="cursor-pointer hover:bg-stone-50"
                   >
                     <td className="px-4 py-3">
@@ -381,10 +386,11 @@ export default function MembersTab() {
                   {Math.min(membersPage * membersData.page_size, membersData.total)} of{' '}
                   {membersData.total}
                 </span>
-                <div className="flex gap-2">
+                <div data-ui="admin.members.pagination" className="flex gap-2">
                   <button
                     onClick={() => setMembersPage((p) => p - 1)}
                     disabled={membersPage <= 1}
+                    data-ui="admin.members.pagination.prev"
                     className="px-2 py-1 rounded border border-gray-200 disabled:opacity-40 hover:bg-gray-50"
                   >
                     ← Prev
@@ -392,6 +398,7 @@ export default function MembersTab() {
                   <button
                     onClick={() => setMembersPage((p) => p + 1)}
                     disabled={membersPage * membersData.page_size >= membersData.total}
+                    data-ui="admin.members.pagination.next"
                     className="px-2 py-1 rounded border border-gray-200 disabled:opacity-40 hover:bg-gray-50"
                   >
                     Next →
@@ -404,9 +411,9 @@ export default function MembersTab() {
       </Card>
 
       {selectedMember && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 p-4">
-          <div className="flex max-h-[calc(100vh-2rem)] w-full max-w-lg flex-col overflow-hidden rounded-[28px] bg-white shadow-2xl">
-            <div className="flex items-start justify-between gap-3 border-b border-stone-200 px-4 py-3">
+        <div data-ui="admin.members.modal" className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 p-4">
+          <div data-ui="admin.members.modal.panel" className="flex max-h-[calc(100vh-2rem)] w-full max-w-lg flex-col overflow-hidden rounded-[28px] bg-white shadow-2xl">
+            <div data-ui="admin.members.modal.header" className="flex items-start justify-between gap-3 border-b border-stone-200 px-4 py-3">
               <div className="flex min-w-0 items-center gap-3">
                 <div className="relative shrink-0">
                   {selectedMember.avatar_url ? (
@@ -437,6 +444,7 @@ export default function MembersTab() {
               <button
                 type="button"
                 onClick={clearMemberModalState}
+                data-ui="admin.members.modal.close"
                 className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-stone-400 hover:bg-stone-100 hover:text-stone-700"
                 aria-label="Close"
                 title="Close"
@@ -445,8 +453,8 @@ export default function MembersTab() {
               </button>
             </div>
 
-            <div className="flex-1 space-y-5 overflow-y-auto px-4 py-4">
-              <div className="grid grid-cols-2 gap-3 text-sm">
+            <div data-ui="admin.members.modal.body" className="flex-1 space-y-5 overflow-y-auto px-4 py-4">
+              <div data-ui="admin.members.modal.summary" className="grid grid-cols-2 gap-3 text-sm">
                 <div>
                   <p className="text-[11px] uppercase tracking-wide text-stone-400">Kind</p>
                   <div className="mt-1">
@@ -474,12 +482,13 @@ export default function MembersTab() {
               </div>
 
               <div>
-                <div className="mb-2 flex items-center justify-between gap-2">
+                <div data-ui="admin.members.modal.status.header" className="mb-2 flex items-center justify-between gap-2">
                   <p className="text-[11px] uppercase tracking-wide text-stone-400">Status</p>
                   {(isOwner || selectedMember.user_id === currentUser?.id) && editingStatusMemberId !== selectedMember.id ? (
                     <button
                       type="button"
                       onClick={() => startStatusEdit(selectedMember)}
+                      data-ui="admin.members.modal.status.edit"
                       className="inline-flex h-7 w-7 items-center justify-center rounded-md text-stone-400 hover:bg-stone-100 hover:text-stone-700"
                       title="Edit"
                     >
@@ -488,7 +497,7 @@ export default function MembersTab() {
                   ) : null}
                 </div>
                 {editingStatusMemberId === selectedMember.id ? (
-                  <div className="space-y-2 rounded-lg border border-stone-200 bg-white p-3">
+                  <div data-ui="admin.members.modal.status.form" className="space-y-2 rounded-lg border border-stone-200 bg-white p-3">
                     <div className="grid grid-cols-2 gap-2">
                       <label className="block text-xs text-stone-500">
                         Availability
@@ -533,7 +542,7 @@ export default function MembersTab() {
                       className="w-full resize-none rounded-lg border border-stone-300 px-3 py-2 text-sm text-stone-800 outline-none focus:ring-2 focus:ring-stone-900"
                       placeholder="Blocked on customer copy review until Friday."
                     />
-                    <div className="flex justify-end gap-2">
+                    <div data-ui="admin.members.modal.status.actions" className="flex justify-end gap-2">
                       <button
                         type="button"
                         onClick={() => {
@@ -557,7 +566,7 @@ export default function MembersTab() {
                     </div>
                   </div>
                 ) : (
-                  <div className="rounded-lg border border-stone-200 bg-stone-50 px-3 py-2">
+                  <div data-ui="admin.members.modal.status.view" className="rounded-lg border border-stone-200 bg-stone-50 px-3 py-2">
                     <div className="flex flex-wrap items-center gap-2">
                       <Badge variant={statusVariant(selectedMember.availability_status)}>
                         {selectedMember.availability_status.replace('_', ' ')}
@@ -579,12 +588,13 @@ export default function MembersTab() {
               </div>
 
               <div>
-                <div className="mb-2 flex items-center justify-between gap-2">
+                <div data-ui="admin.members.modal.brief.header" className="mb-2 flex items-center justify-between gap-2">
                   <p className="text-[11px] uppercase tracking-wide text-stone-400">Role and objective</p>
                   {(isOwner || selectedMember.user_id === currentUser?.id) && editingBriefMemberId !== selectedMember.id ? (
                     <button
                       type="button"
                       onClick={() => startBriefEdit(selectedMember.id, selectedMember.contribution_brief)}
+                      data-ui="admin.members.modal.brief.edit"
                       className="inline-flex h-7 w-7 items-center justify-center rounded-md text-stone-400 hover:bg-stone-100 hover:text-stone-700"
                       title="Edit"
                     >
@@ -593,7 +603,7 @@ export default function MembersTab() {
                   ) : null}
                 </div>
                 {editingBriefMemberId === selectedMember.id ? (
-                  <div className="space-y-2">
+                  <div data-ui="admin.members.modal.brief.form" className="space-y-2">
                     <textarea
                       autoFocus
                       value={briefDraft}
@@ -613,7 +623,7 @@ export default function MembersTab() {
                       className="w-full resize-none rounded-lg border border-stone-300 px-3 py-2 text-sm text-stone-800 outline-none focus:ring-2 focus:ring-stone-900"
                       placeholder="Product: clarify scope and translate user problems into objectives."
                     />
-                    <div className="flex justify-end gap-2">
+                    <div data-ui="admin.members.modal.brief.actions" className="flex justify-end gap-2">
                       <button
                         type="button"
                         onClick={() => {
@@ -637,14 +647,14 @@ export default function MembersTab() {
                     </div>
                   </div>
                 ) : (
-                  <p className="whitespace-pre-wrap rounded-lg border border-stone-200 bg-stone-50 px-3 py-2 text-sm text-stone-700">
+                  <p data-ui="admin.members.modal.brief.view" className="whitespace-pre-wrap rounded-lg border border-stone-200 bg-stone-50 px-3 py-2 text-sm text-stone-700">
                     {selectedMember.contribution_brief || 'Not set'}
                   </p>
                 )}
               </div>
 
               {(selectedMember.current_commitments.length > 0 || selectedMember.recent_work.length > 0) ? (
-                <div className="grid gap-3 sm:grid-cols-2">
+                <div data-ui="admin.members.modal.work" className="grid gap-3 sm:grid-cols-2">
                   {selectedMember.current_commitments.length > 0 ? (
                     <div>
                       <p className="mb-2 text-[11px] uppercase tracking-wide text-stone-400">Commitments</p>
@@ -675,7 +685,7 @@ export default function MembersTab() {
               {isOwner && selectedMember.kind === 'human' && selectedMember.user_id !== currentUser?.id ? (
                 <div>
                   <p className="mb-2 text-[11px] uppercase tracking-wide text-stone-400">Reset password</p>
-                  <div className="space-y-2 rounded-lg border border-stone-200 bg-stone-50 p-3">
+                  <div data-ui="admin.members.modal.password-reset" className="space-y-2 rounded-lg border border-stone-200 bg-stone-50 p-3">
                     <input
                       type="password"
                       minLength={4}
@@ -705,6 +715,7 @@ export default function MembersTab() {
                           )
                         }
                         disabled={resetMemberPassword.isPending || memberPasswordDraft.trim().length < 4}
+                        data-ui="admin.members.modal.password-reset.submit"
                         className="inline-flex h-9 items-center justify-center rounded-lg bg-stone-900 px-3 text-sm text-white disabled:opacity-50"
                       >
                         {resetMemberPassword.isPending ? 'Resetting…' : 'Reset password'}
@@ -722,12 +733,13 @@ export default function MembersTab() {
                 </div>
               ) : null}
 
-              <div className="space-y-2 border-t border-stone-100 pt-4">
+              <div data-ui="admin.members.modal.actions" className="space-y-2 border-t border-stone-100 pt-4">
                 {isOwner ? (
                   <button
                     type="button"
                     onClick={() => updateMember.mutate({ memberId: selectedMember.id, agent_zero_role: !selectedMember.agent_zero_role })}
                     disabled={updateMember.isPending || !!selectedMember.access_disabled_at}
+                    data-ui="admin.members.modal.toggle-agent-zero"
                     className={`inline-flex h-9 w-full items-center justify-center gap-2 rounded-lg border text-sm transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
                       selectedMember.agent_zero_role
                         ? 'border-brand-200 bg-brand-50 text-brand-600 hover:bg-brand-100'
@@ -743,6 +755,7 @@ export default function MembersTab() {
                     type="button"
                     onClick={() => updateMember.mutate({ memberId: selectedMember.id, access_disabled: !selectedMember.access_disabled_at })}
                     disabled={updateMember.isPending}
+                    data-ui="admin.members.modal.toggle-access"
                     className={`inline-flex h-9 w-full items-center justify-center gap-2 rounded-lg border text-sm transition-colors disabled:opacity-50 ${
                       selectedMember.access_disabled_at
                         ? 'border-emerald-200 text-emerald-700 hover:bg-emerald-50'
@@ -760,8 +773,8 @@ export default function MembersTab() {
       )}
 
       {/* Pending invitations + add-member forms */}
-      <Card className="overflow-hidden">
-        <div className="flex items-center justify-between px-4 py-3 border-b">
+      <Card data-ui="admin.members.invitations" className="overflow-hidden">
+        <div data-ui="admin.members.invitations.header" className="flex items-center justify-between px-4 py-3 border-b">
           <p className="text-sm font-medium text-gray-700">
             Invitations
             {loadingInv && (
@@ -777,6 +790,7 @@ export default function MembersTab() {
                 setSentEmail(null)
                 setAddedAgent(null)
               }}
+              data-ui="admin.members.invitations.add"
               className="text-xs bg-brand-500 text-white px-3 py-1.5 rounded-lg hover:bg-brand-600 transition-colors"
             >
               + Add member
@@ -786,12 +800,13 @@ export default function MembersTab() {
 
         {/* Add-member form */}
         {showForm && isOwner && (
-          <div className="p-4 bg-gray-50 border-b space-y-3">
+          <div data-ui="admin.members.invitations.form" className="p-4 bg-gray-50 border-b space-y-3">
             {/* Mode toggle */}
-            <div className="flex gap-2 text-xs">
+            <div data-ui="admin.members.invitations.mode" className="flex gap-2 text-xs">
               <button
                 type="button"
                 onClick={() => setInviteMode('email')}
+                data-ui="admin.members.invitations.mode.email"
                 className={`px-3 py-1.5 rounded-lg border transition-colors ${
                   inviteMode === 'email'
                     ? 'border-brand-400 bg-brand-50 text-brand-700 font-medium'
@@ -803,6 +818,7 @@ export default function MembersTab() {
               <button
                 type="button"
                 onClick={() => setInviteMode('pubkey')}
+                data-ui="admin.members.invitations.mode.pubkey"
                 className={`px-3 py-1.5 rounded-lg border transition-colors ${
                   inviteMode === 'pubkey'
                     ? 'border-brand-400 bg-brand-50 text-brand-700 font-medium'
@@ -815,7 +831,7 @@ export default function MembersTab() {
 
             {/* Email invite form */}
             {inviteMode === 'email' && (
-              <form onSubmit={submitEmailInvite}>
+              <form data-ui="admin.members.invitations.email-form" onSubmit={submitEmailInvite}>
                 <div className="flex gap-2 items-end">
                   <div className="flex-1">
                     <label className="block text-xs text-gray-500 mb-1">Email address</label>
@@ -843,6 +859,7 @@ export default function MembersTab() {
                   <button
                     type="submit"
                     disabled={createInvitation.isPending || !emailConfig?.enabled}
+                    data-ui="admin.members.invitations.email-form.submit"
                     className="bg-brand-500 text-white px-3 py-2 rounded-lg text-sm hover:bg-brand-600 disabled:opacity-60 transition-colors"
                   >
                     {createInvitation.isPending ? 'Sending…' : 'Send invite'}
@@ -850,6 +867,7 @@ export default function MembersTab() {
                   <button
                     type="button"
                     onClick={resetForm}
+                    data-ui="admin.members.invitations.form.cancel"
                     className="text-sm text-gray-500 hover:text-gray-700 px-2 py-2"
                   >
                     Cancel
@@ -865,7 +883,7 @@ export default function MembersTab() {
 
             {/* Public key / agent form */}
             {inviteMode === 'pubkey' && (
-              <form onSubmit={submitPubkeyAdd} className="space-y-3">
+              <form data-ui="admin.members.invitations.pubkey-form" onSubmit={submitPubkeyAdd} className="space-y-3">
                 {/* Discovery URL — give this to the agent */}
                 <DiscoveryPrompt workspaceId={workspaceId ?? ''} />
 
@@ -910,6 +928,7 @@ export default function MembersTab() {
                   <button
                     type="submit"
                     disabled={addAgent.isPending}
+                    data-ui="admin.members.invitations.pubkey-form.submit"
                     className="bg-brand-500 text-white px-3 py-2 rounded-lg text-sm hover:bg-brand-600 disabled:opacity-60 transition-colors"
                   >
                     {addAgent.isPending ? 'Adding…' : 'Add agent'}
@@ -917,6 +936,7 @@ export default function MembersTab() {
                   <button
                     type="button"
                     onClick={resetForm}
+                    data-ui="admin.members.invitations.form.cancel"
                     className="text-sm text-gray-500 hover:text-gray-700 px-2 py-2"
                   >
                     Cancel
@@ -932,13 +952,13 @@ export default function MembersTab() {
 
         {/* Success banners */}
         {sentEmail && (
-          <div className="px-4 py-2 bg-green-50 text-green-700 text-xs border-b">
+          <div data-ui="admin.members.invitations.success.email" className="px-4 py-2 bg-green-50 text-green-700 text-xs border-b">
             ✓ Invitation sent to <strong>{sentEmail}</strong>. They'll receive an email with a link
             to join.
           </div>
         )}
         {addedAgent && (
-          <div className="px-4 py-2 bg-green-50 text-green-700 text-xs border-b">
+          <div data-ui="admin.members.invitations.success.agent" className="px-4 py-2 bg-green-50 text-green-700 text-xs border-b">
             ✓ Agent <strong>{addedAgent}</strong> added. Share the discovery URL above with the
             agent owner — that&apos;s all they need to authenticate and connect.
           </div>
@@ -946,11 +966,11 @@ export default function MembersTab() {
 
         {/* Invitations list */}
         {loadingInv ? (
-          <div className="p-6 text-center">
+          <div data-ui="admin.members.invitations.loading" className="p-6 text-center">
             <Spinner />
           </div>
         ) : !invitations || invitations.length === 0 ? (
-          <p className="px-4 py-6 text-sm text-gray-400 text-center">
+          <p data-ui="admin.members.invitations.empty" className="px-4 py-6 text-sm text-gray-400 text-center">
             {isOwner
               ? emailConfig?.enabled
                 ? 'No invitations yet. Add a member above.'
@@ -958,7 +978,7 @@ export default function MembersTab() {
               : 'No pending invitations.'}
           </p>
         ) : (
-          <table className="w-full text-sm">
+          <table data-ui="admin.members.invitations.table" className="w-full text-sm">
             <thead>
               <tr className="text-xs text-gray-500 uppercase bg-gray-50 border-b">
                 <th className="text-left px-4 py-3">Email</th>

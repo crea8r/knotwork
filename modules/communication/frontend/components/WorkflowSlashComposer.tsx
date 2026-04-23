@@ -1,9 +1,10 @@
 import { useMemo, useRef, useState } from 'react'
-import { GitBranch, PlayCircle, X } from 'lucide-react'
+import { FolderOpen, GitBranch, PlayCircle, X } from 'lucide-react'
 import { useTriggerRunAny } from "@modules/workflows/frontend/api/runs"
 import { ChannelComposer } from './ChannelFrame'
 import Btn from '@ui/components/Btn'
 import type { Graph } from '@data-models'
+import { formatAssetSelectionLabel, useAssetWorkspaceStore } from '@app-shell/state/assetWorkspace'
 
 function buildRunInput(raw: string): Record<string, unknown> {
   const trimmed = raw.trim()
@@ -50,6 +51,8 @@ export default function WorkflowSlashComposer({
   const [selectedWorkflow, setSelectedWorkflow] = useState<Graph | null>(null)
   const [runName, setRunName] = useState('')
   const [runInput, setRunInput] = useState('')
+  const activeAssetSelection = useAssetWorkspaceStore((state) => state.selection)
+  const assetContextLabel = formatAssetSelectionLabel(activeAssetSelection)
 
   const activeSlash = useMemo(() => {
     const cursor = inputRef.current?.selectionStart ?? draft.length
@@ -116,8 +119,17 @@ export default function WorkflowSlashComposer({
     </div>
   ) : null
 
+  const assetContextNote = assetContextLabel ? (
+    <div data-ui="workflow-slash.asset-context" className="flex items-center gap-2 rounded-xl border border-brand-200 bg-brand-50 px-3 py-2 text-xs text-brand-900">
+      <FolderOpen size={13} className="shrink-0 text-brand-600" />
+      <span className="truncate">
+        Viewing <span className="font-semibold">{assetContextLabel}</span>. Messages from this chat keep that asset as context.
+      </span>
+    </div>
+  ) : null
+
   return (
-    <>
+    <div data-ui="workflow-slash.composer">
       <ChannelComposer
         draft={draft}
         setDraft={setDraft}
@@ -129,6 +141,7 @@ export default function WorkflowSlashComposer({
         inputRef={inputRef as React.Ref<HTMLTextAreaElement>}
         beforeInput={(
           <>
+            {assetContextNote}
             {beforeInput}
             {slashMenu}
           </>
@@ -136,9 +149,9 @@ export default function WorkflowSlashComposer({
       />
 
       {selectedWorkflow ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 p-4">
-          <div className="w-full max-w-xl rounded-[28px] border border-stone-200 bg-white shadow-2xl">
-            <div className="flex items-start justify-between gap-4 border-b border-stone-100 px-5 py-4">
+        <div data-ui="workflow-slash.modal" className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 p-4">
+          <div data-ui="workflow-slash.modal.panel" className="w-full max-w-xl rounded-[28px] border border-stone-200 bg-white shadow-2xl">
+            <div data-ui="workflow-slash.modal.header" className="flex items-start justify-between gap-4 border-b border-stone-100 px-5 py-4">
               <div>
                 <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-stone-400">Start Workflow</p>
                 <h2 className="mt-1 text-base font-semibold text-stone-900">{selectedWorkflow.name}</h2>
@@ -149,16 +162,18 @@ export default function WorkflowSlashComposer({
               <button
                 type="button"
                 onClick={() => setSelectedWorkflow(null)}
+                data-ui="workflow-slash.modal.close"
                 className="rounded-lg border border-stone-200 p-2 text-stone-500 hover:text-stone-800"
               >
                 <X size={16} />
               </button>
             </div>
 
-            <div className="space-y-4 px-5 py-5">
+            <div data-ui="workflow-slash.modal.body" className="space-y-4 px-5 py-5">
               <label className="block text-sm text-stone-600">
                 Run Name
                 <input
+                  data-ui="workflow-slash.modal.run-name"
                   value={runName}
                   onChange={(event) => setRunName(event.target.value)}
                   placeholder="Optional"
@@ -169,6 +184,7 @@ export default function WorkflowSlashComposer({
               <label className="block text-sm text-stone-600">
                 Input
                 <textarea
+                  data-ui="workflow-slash.modal.input"
                   rows={8}
                   value={runInput}
                   onChange={(event) => setRunInput(event.target.value)}
@@ -178,7 +194,7 @@ export default function WorkflowSlashComposer({
               </label>
             </div>
 
-            <div className="flex justify-end gap-2 border-t border-stone-100 px-5 py-4">
+            <div data-ui="workflow-slash.modal.actions" className="flex justify-end gap-2 border-t border-stone-100 px-5 py-4">
               <Btn type="button" variant="ghost" size="sm" onClick={() => setSelectedWorkflow(null)}>
                 Cancel
               </Btn>
@@ -189,6 +205,6 @@ export default function WorkflowSlashComposer({
           </div>
         </div>
       ) : null}
-    </>
+    </div>
   )
 }

@@ -22,9 +22,18 @@ TELEMETRY_MESSAGE_KINDS = {
     "workflow_run_created",
 }
 
+ACTION_RECEIPT_MESSAGE_KINDS = {
+    "knowledge_change_created",
+}
+
 
 def _is_telemetry_message_kind(kind: str | None) -> bool:
     return str(kind or "").strip() in TELEMETRY_MESSAGE_KINDS
+
+
+def _is_non_actionable_message_kind(kind: str | None) -> bool:
+    normalized_kind = str(kind or "").strip()
+    return normalized_kind in TELEMETRY_MESSAGE_KINDS or normalized_kind in ACTION_RECEIPT_MESSAGE_KINDS
 
 
 def _assigned_participant_ids(metadata: dict | None) -> list[str]:
@@ -98,7 +107,7 @@ async def _publish_message_events(
     metadata: dict,
     mentioned_ids: list[str],
 ) -> None:
-    if not _is_telemetry_message_kind(metadata.get("kind")):
+    if not _is_non_actionable_message_kind(metadata.get("kind")):
         assigned_to = _assigned_participant_ids(metadata)
         actor_participant_id = metadata.get("author_participant_id")
         payload = {
@@ -141,6 +150,7 @@ async def _publish_message_events(
                 actor_id=actor_participant_id,
                 actor_name=data.author_name,
                 payload=payload,
+                exclude_participant_ids=mentioned_ids,
             )
 
     if mentioned_ids:

@@ -112,8 +112,8 @@ export default function LoginPage() {
 
   if (isLocalhostApp && !bootstrapFailed) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
-        <div className="w-full max-w-md rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
+      <div data-ui="admin.login.bootstrap" className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
+        <div data-ui="admin.login.bootstrap.card" className="w-full max-w-md rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
           <p className="text-sm font-medium text-gray-800">Preparing localhost session</p>
           <p className="mt-2 text-sm text-gray-500">
             Attempting automatic sign-in for this localhost install.
@@ -195,9 +195,9 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
-      <div className="w-full max-w-sm">
-        <div className="text-center mb-8">
+    <div data-ui="admin.login.page" className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
+      <div data-ui="admin.login.container" className="w-full max-w-sm">
+        <div data-ui="admin.login.header" className="text-center mb-8">
           <img src={knotworkLogo} alt="Knotwork" className="mx-auto mb-3 h-12 w-12" />
           <h1 className="text-xl font-semibold text-gray-900">Knotwork</h1>
           <p className="text-sm text-gray-500 mt-1">
@@ -206,7 +206,7 @@ export default function LoginPage() {
         </div>
 
         {resetToken ? (
-          <form onSubmit={submitReset} className="bg-white border border-gray-100 rounded-xl p-6 shadow-sm space-y-4">
+          <form data-ui="admin.login.reset.form" onSubmit={submitReset} className="bg-white border border-gray-100 rounded-xl p-6 shadow-sm space-y-4">
             <div>
               <label htmlFor="reset-password" className="block text-sm font-medium text-gray-700 mb-1">
                 New password
@@ -223,13 +223,14 @@ export default function LoginPage() {
               />
             </div>
             {errorMsg ? (
-              <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+              <p data-ui="admin.login.reset.error" className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
                 {errorMsg}
               </p>
             ) : null}
             <button
               type="submit"
               disabled={confirmReset.isPending || !resetPassword.trim()}
+              data-ui="admin.login.reset.submit"
               className="w-full bg-brand-500 hover:bg-brand-600 text-white text-sm font-medium py-2 rounded-lg transition-colors disabled:opacity-60"
             >
               {confirmReset.isPending ? 'Saving…' : 'Reset password'}
@@ -237,13 +238,14 @@ export default function LoginPage() {
             <button
               type="button"
               onClick={clearResetMode}
+              data-ui="admin.login.reset.back"
               className="w-full text-sm text-gray-500 hover:text-gray-700"
             >
               Back to sign in
             </button>
           </form>
         ) : sentMagic ? (
-          <div className="bg-white border border-gray-100 rounded-xl p-6 text-center shadow-sm">
+          <div data-ui="admin.login.magic-sent" className="bg-white border border-gray-100 rounded-xl p-6 text-center shadow-sm">
             <div className="text-2xl mb-3">📬</div>
             <p className="text-gray-700 font-medium mb-1">Check your email</p>
             <p className="text-sm text-gray-500">
@@ -252,13 +254,14 @@ export default function LoginPage() {
             <button
               className="mt-4 text-sm text-brand-500 hover:underline"
               onClick={() => { setSentMagic(false); setEmail('') }}
+              data-ui="admin.login.magic-sent.retry"
             >
               Try a different email
             </button>
           </div>
         ) : (
-          <div className="bg-white border border-gray-100 rounded-xl p-6 shadow-sm space-y-4">
-            <div className="flex gap-2 rounded-lg bg-gray-100 p-1 text-sm">
+          <div data-ui="admin.login.panel" className="bg-white border border-gray-100 rounded-xl p-6 shadow-sm space-y-4">
+            <div data-ui="admin.login.modes" className="flex gap-2 rounded-lg bg-gray-100 p-1 text-sm">
               {(['password', 'magic'] as LoginMode[]).map((value) => (
                 <button
                   key={value}
@@ -269,6 +272,7 @@ export default function LoginPage() {
                     setShowForgot(false)
                     setSentReset(false)
                   }}
+                  data-ui={`admin.login.mode.${value}`}
                   className={`flex-1 rounded-md px-3 py-2 capitalize transition-colors ${
                     mode === value ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500'
                   }`}
@@ -280,7 +284,7 @@ export default function LoginPage() {
 
             {mode === 'password' ? (
               showForgot ? (
-                <form onSubmit={submitForgotPassword} className="space-y-4">
+                <form data-ui="admin.login.forgot.form" onSubmit={submitForgotPassword} className="space-y-4">
                   <div>
                     <label htmlFor="forgot-email" className="block text-sm font-medium text-gray-700 mb-1">
                       Email address
@@ -297,18 +301,19 @@ export default function LoginPage() {
                     />
                   </div>
                   {sentReset ? (
-                    <p className="text-sm text-green-700 bg-green-50 border border-green-200 rounded-lg px-3 py-2">
+                    <p data-ui="admin.login.forgot.success" className="text-sm text-green-700 bg-green-50 border border-green-200 rounded-lg px-3 py-2">
                       If that email is registered, a password reset link has been sent.
                     </p>
                   ) : null}
                   {errorMsg ? (
-                    <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+                    <p data-ui="admin.login.forgot.error" className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
                       {errorMsg}
                     </p>
                   ) : null}
                   <button
                     type="submit"
                     disabled={requestReset.isPending}
+                    data-ui="admin.login.forgot.submit"
                     className="w-full bg-brand-500 hover:bg-brand-600 text-white text-sm font-medium py-2 rounded-lg transition-colors disabled:opacity-60"
                   >
                     {requestReset.isPending ? 'Sending…' : 'Send reset link'}
@@ -320,13 +325,14 @@ export default function LoginPage() {
                       setSentReset(false)
                       setErrorMsg(null)
                     }}
+                    data-ui="admin.login.forgot.back"
                     className="w-full text-sm text-gray-500 hover:text-gray-700"
                   >
                     Back to password sign in
                   </button>
                 </form>
               ) : (
-                <form onSubmit={submitPassword} className="space-y-4">
+                <form data-ui="admin.login.password.form" onSubmit={submitPassword} className="space-y-4">
                   <div>
                     <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-1">
                       Email address
@@ -357,13 +363,14 @@ export default function LoginPage() {
                     />
                   </div>
                   {errorMsg ? (
-                    <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+                    <p data-ui="admin.login.password.error" className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
                       {errorMsg}
                     </p>
                   ) : null}
                   <button
                     type="submit"
                     disabled={passwordLogin.isPending}
+                    data-ui="admin.login.password.submit"
                     className="w-full bg-brand-500 hover:bg-brand-600 text-white text-sm font-medium py-2 rounded-lg transition-colors disabled:opacity-60"
                   >
                     {passwordLogin.isPending ? 'Signing in…' : 'Sign in'}
@@ -375,6 +382,7 @@ export default function LoginPage() {
                       setSentReset(false)
                       setErrorMsg(null)
                     }}
+                    data-ui="admin.login.password.forgot"
                     className="w-full text-sm text-brand-500 hover:underline"
                   >
                     Forgot password?
@@ -382,7 +390,7 @@ export default function LoginPage() {
                 </form>
               )
             ) : (
-              <form onSubmit={submitMagic} className="space-y-4">
+              <form data-ui="admin.login.magic.form" onSubmit={submitMagic} className="space-y-4">
                 <div>
                   <label htmlFor="magic-email" className="block text-sm font-medium text-gray-700 mb-1">
                     Email address
@@ -399,13 +407,14 @@ export default function LoginPage() {
                   />
                 </div>
                 {errorMsg ? (
-                  <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+                  <p data-ui="admin.login.magic.error" className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
                     {errorMsg}
                   </p>
                 ) : null}
                 <button
                   type="submit"
                   disabled={requestMagic.isPending}
+                  data-ui="admin.login.magic.submit"
                   className="w-full bg-brand-500 hover:bg-brand-600 text-white text-sm font-medium py-2 rounded-lg transition-colors disabled:opacity-60"
                 >
                   {requestMagic.isPending ? 'Sending…' : 'Send magic link'}

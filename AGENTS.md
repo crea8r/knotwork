@@ -183,6 +183,25 @@ When moving legacy tests or docs, do it module by module. Do not do repo-wide ch
   - string references where relevant
 - Verify code after changes.
 
+## UI Semantics
+
+- When adding or editing frontend UI, add stable semantic hooks so future UI change requests can refer to intent instead of CSS class strings.
+- Prefer `data-ui` attributes for shell/page structure, headers, tabs, drawers, dialogs, and primary controls.
+- Name hooks by role, not styling.
+  - good: `shell.nav`, `shell.chat.header`, `shell.nav.collapse`, `shell.asset.search`, `shell.asset.breadcrumb`
+  - bad: `left-panel`, `blue-button`, `px-4-header`
+- Use a predictable dotted hierarchy when possible:
+  - `surface.region`
+  - `surface.region.slot`
+  - `surface.region.control`
+- Preserve existing `data-ui` names when refactoring unless the semantic meaning actually changes.
+- For shared layout chrome, expose semantics for:
+  - the container
+  - the header
+  - the title
+  - the actions area
+  - the primary toggles/buttons a human is likely to reference in feedback
+
 Minimum expected verification:
 
 - frontend: `npx tsc --noEmit` from `core/app-shell`

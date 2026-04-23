@@ -115,7 +115,7 @@ export default function GraphCanvas({
 
   if (!definition.nodes.length) {
     return (
-      <div className="flex h-full items-center justify-center text-gray-400 text-sm">
+      <div data-ui="workflow.editor.canvas.empty" className="flex h-full items-center justify-center text-gray-400 text-sm">
         No nodes yet — use the chat designer to add nodes.
       </div>
     )
@@ -124,8 +124,12 @@ export default function GraphCanvas({
   const btnCls = 'w-8 h-8 flex items-center justify-center bg-white border border-gray-200 rounded-lg shadow-sm text-gray-600 hover:bg-gray-50 hover:border-gray-400'
 
   return (
-    <div style={{ position: 'relative', width: '100%', height: '100%', opacity: ready ? 1 : 0 }}>
+    <div
+      data-ui="workflow.editor.canvas"
+      style={{ position: 'relative', width: '100%', height: '100%', opacity: ready ? 1 : 0 }}
+    >
       <svg
+        data-ui="workflow.editor.canvas.surface"
         ref={svgRef}
         width="100%"
         height="100%"
@@ -187,10 +191,13 @@ export default function GraphCanvas({
           })}
         </g>
       </svg>
-      <div style={{ position: 'absolute', bottom: 12, right: 12, display: 'flex', flexDirection: 'column', gap: 4 }}>
-        <button className={btnCls} onClick={() => setZoom(z => Math.min(8, z * 1.25))} title="Zoom in"><Plus size={14} /></button>
-        <button className={btnCls} onClick={() => setZoom(z => Math.max(0.05, z * 0.8))} title="Zoom out"><Minus size={14} /></button>
-        <button className={btnCls} onClick={fitToView} title="Fit to view"><Maximize2 size={14} /></button>
+      <div
+        data-ui="workflow.editor.canvas.controls"
+        style={{ position: 'absolute', bottom: 12, right: 12, display: 'flex', flexDirection: 'column', gap: 4 }}
+      >
+        <button data-ui="workflow.editor.canvas.zoom-in" className={btnCls} onClick={() => setZoom(z => Math.min(8, z * 1.25))} title="Zoom in"><Plus size={14} /></button>
+        <button data-ui="workflow.editor.canvas.zoom-out" className={btnCls} onClick={() => setZoom(z => Math.max(0.05, z * 0.8))} title="Zoom out"><Minus size={14} /></button>
+        <button data-ui="workflow.editor.canvas.fit" className={btnCls} onClick={fitToView} title="Fit to view"><Maximize2 size={14} /></button>
       </div>
     </div>
   )

@@ -7,9 +7,10 @@
 //                 Exponential backoff, give up after maxGatewayAttempts.
 
 import { spawn } from 'node:child_process'
+import { releaseTaskClaim } from '../state/task-claim'
 import { addRunningTask, removeRunningTask, upsertRecentTask } from './worker'
 import type { TaskLogger } from '../state/tasklog'
-import type { ExecutionTask, OpenClawApi, PluginState, RecentTask, RunningTaskInfo } from '../types'
+import type { ActiveSpawnInfo, ExecutionTask, OpenClawApi, PluginState, RecentTask, RunningTaskInfo } from '../types'
 
 const GATEWAY_CONN_PATTERNS = [
   /cannot connect/i, /econnrefused/i, /gateway not available/i,
@@ -34,7 +35,7 @@ export type SpawnDeps = {
   state: PluginState
   log: (msg: string) => void
   api: OpenClawApi
-  activeSpawns: Map<string, { startedAt: string }>
+  activeSpawns: Map<string, ActiveSpawnInfo>
   taskLog: TaskLogger
   persistSnapshot?: () => Promise<void>
   maxConcurrent: number
@@ -61,22 +62,41 @@ function extractGatewayPayload(output: string): { ok?: boolean; recentTask?: Rec
 export function spawnExecuteTask(deps: SpawnDeps, task: ExecutionTask, spawnContext: 'poll' | 'rpc'): void {
   const { state, log, activeSpawns, taskLog, persistSnapshot, maxConcurrent, maxGatewayAttempts, saturationRetryMs, jwt, workspaceId, knotworkUrl, taskLogPath } = deps
   const taskId = String(task.task_id)
-  if (activeSpawns.has(taskId)) {
-    log(`spawn:dedupe-skip id=${taskId} context=${spawnContext} reason=already_active`)
-    taskLog('spawn:dedupe-skip', taskId, { context: spawnContext, reason: 'already_active' })
+  const claimKey = String(task.claim_key ?? task.task_id)
+  const ownerPid = process?.pid ?? 0
+  if (activeSpawns.has(claimKey)) {
+    log(`spawn:dedupe-skip id=${taskId} claim=${claimKey} context=${spawnContext} reason=already_active`)
+    taskLog('spawn:dedupe-skip', taskId, { context: spawnContext, reason: 'already_active', claimKey })
     return
   }
   const startedAt = new Date().toISOString()
   const pluginInstanceId = state.pluginInstanceId ?? ''
   addRunningTask(state, {
     taskId,
+    claimKey,
     nodeId: task.node_id ? String(task.node_id) : null,
     runId: task.run_id ? String(task.run_id) : null,
     sessionName: task.session_name ? String(task.session_name) : null,
     startedAt, spawnContext,
   } as RunningTaskInfo)
-  activeSpawns.set(taskId, { startedAt })
-  log(`spawn:start id=${taskId} context=${spawnContext} concurrent=${activeSpawns.size}`)
+  activeSpawns.set(claimKey, {
+    startedAt,
+    taskId,
+    claimKey,
+    sessionName: task.session_name ? String(task.session_name) : null,
+  })
+  log(`spawn:start id=${taskId} claim=${claimKey} context=${spawnContext} concurrent=${activeSpawns.size}`)
+
+  const releaseClaim = (reason: string): void => {
+    void releaseTaskClaim(state.runtimeLockPath ?? '', claimKey, ownerPid)
+      .then(() => {
+        log(`claim:released id=${taskId} claim=${claimKey} reason=${reason}`)
+      })
+      .catch((error: unknown) => {
+        const message = error instanceof Error ? error.message : String(error)
+        log(`claim:release-failed id=${taskId} claim=${claimKey} reason=${reason} error=${message}`)
+      })
+  }
 
   // genuineAttempt counts only non-saturation retries toward the give-up budget.
   let genuineAttempt = 0
@@ -129,8 +149,9 @@ export function spawnExecuteTask(deps: SpawnDeps, task: ExecutionTask, spawnCont
           if (genuineAttempt >= maxGatewayAttempts) {
             taskLog('spawn:give-up', taskId, { reason: 'max_genuine_attempts', genuineAttempt: String(genuineAttempt), saturationAttempt: String(saturationAttempt) })
             log(`spawn:gateway-retry-exhausted id=${taskId} genuineAttempts=${genuineAttempt} saturationAttempts=${saturationAttempt}`)
-            activeSpawns.delete(taskId)
+            activeSpawns.delete(claimKey)
             removeRunningTask(state, taskId)
+            releaseClaim('gateway_retry_exhausted')
             return
           }
           setTimeout(() => trySpawn('gateway_unavailable', delay), delay)
@@ -139,8 +160,9 @@ export function spawnExecuteTask(deps: SpawnDeps, task: ExecutionTask, spawnCont
       }
 
       // Normal close (success or non-gateway error).
-      activeSpawns.delete(taskId)
+      activeSpawns.delete(claimKey)
       removeRunningTask(state, taskId)
+      releaseClaim(code === 0 ? 'subprocess_closed' : 'subprocess_nonzero_exit')
       taskLog('subagent:released', taskId, { code: String(code ?? 'null'), genuineAttempt: String(genuineAttempt), saturationAttempt: String(saturationAttempt) })
       if (code !== 0) {
         const snippet = output ? ` output=${output.slice(0, 1200)}` : ' output=(empty)'
@@ -157,8 +179,9 @@ export function spawnExecuteTask(deps: SpawnDeps, task: ExecutionTask, spawnCont
 
     p.on('error', (e: Error) => {
       log(`spawn:error id=${taskId} ${e.message}`)
-      activeSpawns.delete(taskId)
+      activeSpawns.delete(claimKey)
       removeRunningTask(state, taskId)
+      releaseClaim('subprocess_error')
       taskLog('subagent:killed', taskId, { error: e.message.slice(0, 200) })
     })
   }

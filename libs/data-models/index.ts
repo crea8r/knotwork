@@ -43,8 +43,10 @@ export interface Graph {
   id: string
   workspace_id: string
   project_id: string | null
+  project_slug: string | null
   name: string
   path: string
+  asset_path: string
   description: string | null
   status: 'draft' | 'active' | 'archived'
   default_model: string | null

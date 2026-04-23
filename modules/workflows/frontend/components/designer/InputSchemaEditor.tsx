@@ -1,6 +1,6 @@
 /**
  * InputSchemaEditor — manage the run input schema fields.
- * Listed in the right sidebar "Run Input" tab of GraphDetailPage.
+ * Listed in the workflow editor's right sidebar "Run Input" tab.
  */
 import { Plus, Trash2, ChevronUp, ChevronDown } from 'lucide-react'
 import type { InputFieldDef } from '@data-models'

@@ -1,8 +1,10 @@
 # Implementation Roadmap
 
-Each session lives in `docs/implementation/S<N>/` with its own spec, visual validation checklist, and automated test suite.
+`docs/implementation/` now keeps the roadmap plus the active `S12.4` lane.
 
-**Before starting a session:** read `S<N>/spec.md` and run `cd backend && pytest ../docs/implementation/S<N>/tests/ -v` to confirm the baseline passes.
+Historical sessions before `S12.4` live in `docs/implementation/archive/S<N>/`.
+
+**Before starting the active session:** read `S<N>/spec.md` and run `cd backend && pytest ../docs/implementation/S<N>/tests/ -v` to confirm the baseline passes.
 
 ---
 

@@ -59,6 +59,14 @@ def register_mcp_tools(mcp: FastMCP, runtime: KnotworkMCPRuntime) -> None:
         return await runtime.request(ctx, "GET", api.workspace_path(f"/graphs/{graph_id}"))
 
     @mcp.tool()
+    async def get_graph_by_path(path: str, project_id: str | None = None, ctx: Context = None) -> Any:
+        api = runtime.client_from_context(ctx)
+        params = {"path": path}
+        if project_id:
+            params["project_id"] = project_id
+        return await runtime.request(ctx, "GET", api.workspace_path("/graphs/by-path"), params=params)
+
+    @mcp.tool()
     async def get_graph_root_draft(graph_id: str, ctx: Context = None) -> Any:
         api = runtime.client_from_context(ctx)
         return await runtime.request(

@@ -10,18 +10,25 @@ export function EditorWorkspaceTabs<T extends string>({
   activeTab,
   onTabChange,
   actions,
+  dataUiBase,
 }: {
   tabs: EditorWorkspaceTab<T>[]
   activeTab: T
   onTabChange: (tab: T) => void
   actions?: ReactNode
+  dataUiBase?: string
 }) {
   return (
-    <div className="border-b border-gray-200 bg-white px-4 py-1.5 flex items-center justify-between gap-4" style={{ flexShrink: 0 }}>
-      <div className="flex items-center gap-4 overflow-x-auto">
+    <div
+      data-ui={dataUiBase}
+      className="border-b border-gray-200 bg-white px-4 py-1.5 flex items-center justify-between gap-4"
+      style={{ flexShrink: 0 }}
+    >
+      <div data-ui={dataUiBase ? `${dataUiBase}.list` : undefined} className="flex items-center gap-4 overflow-x-auto">
         {tabs.map((tab) => (
           <button
             key={tab.id}
+            data-ui={dataUiBase ? `${dataUiBase}.tab` : undefined}
             onClick={() => onTabChange(tab.id)}
             className={`py-1.5 text-sm transition-colors ${
               activeTab === tab.id
@@ -33,7 +40,7 @@ export function EditorWorkspaceTabs<T extends string>({
           </button>
         ))}
       </div>
-      {actions ? <div className="flex flex-shrink-0 items-center gap-2">{actions}</div> : null}
+      {actions ? <div data-ui={dataUiBase ? `${dataUiBase}.actions` : undefined} className="flex flex-shrink-0 items-center gap-2">{actions}</div> : null}
     </div>
   )
 }
@@ -56,13 +63,16 @@ export function EditorSidePanel({
   children,
   width = 440,
   className = '',
+  dataUi,
 }: {
   children: ReactNode
   width?: number
   className?: string
+  dataUi?: string
 }) {
   return (
     <div
+      data-ui={dataUi}
       style={{ width }}
       className={`flex-shrink-0 bg-white flex flex-col overflow-hidden border-l border-gray-200 ${className}`}
     >

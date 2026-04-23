@@ -118,9 +118,15 @@ async def publish_event_to_channel_subscribers(
     actor_id: str | None = None,
     actor_name: str | None = None,
     payload: dict | None = None,
+    exclude_participant_ids: list[str] | None = None,
 ) -> ChannelEvent:
     active_subscribers = await _active_channel_participant_ids(db, workspace_id, channel_id)
-    recipient_ids = [participant_id for participant_id in active_subscribers if participant_id != actor_id]
+    excluded = {participant_id for participant_id in exclude_participant_ids or [] if participant_id}
+    recipient_ids = [
+        participant_id
+        for participant_id in active_subscribers
+        if participant_id != actor_id and participant_id not in excluded
+    ]
     return await publish_channel_event(
         db,
         workspace_id=workspace_id,

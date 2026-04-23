@@ -89,20 +89,21 @@ export function ChannelShell({
   }
 
   return (
-    <div className={`flex h-full min-h-0 flex-col overflow-hidden rounded-[28px] border border-stone-200 bg-white ${shellClassName ?? ''}`}>
-      <div className="border-b border-stone-200 bg-white px-4 py-3">
-        <div className="flex items-start justify-between gap-4">
-          <div className="min-w-0">
-            {eyebrow ? <div className="min-w-0 text-[11px] text-stone-500">{eyebrow}</div> : null}
+    <div data-ui="channel.shell" className={`flex h-full min-h-0 flex-col overflow-hidden rounded-[28px] border border-stone-200 bg-white ${shellClassName ?? ''}`}>
+      <div data-ui="channel.header" className="border-b border-stone-200 bg-white px-4 py-3">
+        <div data-ui="channel.header.row" className="flex items-start justify-between gap-4">
+          <div data-ui="channel.header.main" className="min-w-0">
+            {eyebrow ? <div data-ui="channel.header.eyebrow" className="min-w-0 text-[11px] text-stone-500">{eyebrow}</div> : null}
             {title ? (
               editingTitle ? (
-                <div className={`${eyebrow ? 'mt-1.5' : ''} flex items-center gap-2`}>
+                <div data-ui="channel.header.title-edit" className={`${eyebrow ? 'mt-1.5' : ''} flex items-center gap-2`}>
                   {typeIcon ? (
-                    <span className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-stone-200 bg-stone-50 text-stone-500">
+                    <span data-ui="channel.header.icon" className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-stone-200 bg-stone-50 text-stone-500">
                       {typeIcon}
                     </span>
                   ) : null}
                   <input
+                    data-ui="channel.header.title-input"
                     autoFocus
                     value={draftTitle}
                     onChange={(e) => setDraftTitle(e.target.value)}
@@ -122,13 +123,13 @@ export function ChannelShell({
                   {status}
                 </div>
               ) : (
-                <div className={`${eyebrow ? 'mt-1.5' : ''} flex items-center gap-2`}>
+                <div data-ui="channel.header.title-row" className={`${eyebrow ? 'mt-1.5' : ''} flex items-center gap-2`}>
                   {typeIcon ? (
-                    <span className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-stone-200 bg-stone-50 text-stone-500">
+                    <span data-ui="channel.header.icon" className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-stone-200 bg-stone-50 text-stone-500">
                       {typeIcon}
                     </span>
                   ) : null}
-                  <h2 className="truncate text-sm font-semibold text-stone-900">{title}</h2>
+                  <h2 data-ui="channel.header.title" className="truncate text-sm font-semibold text-stone-900">{title}</h2>
                   {onRenameTitle ? (
                     <button
                       type="button"
@@ -136,6 +137,7 @@ export function ChannelShell({
                         setDraftTitle(title)
                         setEditingTitle(true)
                       }}
+                      data-ui="channel.header.rename"
                       className="inline-flex h-6 w-6 items-center justify-center rounded-md text-stone-400 hover:bg-stone-100 hover:text-stone-700"
                       title="Rename channel"
                       disabled={renamePending}
@@ -147,14 +149,14 @@ export function ChannelShell({
                 </div>
               )
             ) : null}
-            {parentLabel ? <p className={`${title ? 'mt-0.5' : eyebrow ? 'mt-1.5' : ''} text-[11px] text-stone-500`}>{parentLabel}</p> : null}
-            {description ? <div className="mt-1.5 text-sm text-stone-600">{description}</div> : null}
+            {parentLabel ? <p data-ui="channel.header.parent" className={`${title ? 'mt-0.5' : eyebrow ? 'mt-1.5' : ''} text-[11px] text-stone-500`}>{parentLabel}</p> : null}
+            {description ? <div data-ui="channel.header.description" className="mt-1.5 text-sm text-stone-600">{description}</div> : null}
           </div>
-          {actions ? <div className="flex shrink-0 items-center gap-2">{actions}</div> : null}
+          {actions ? <div data-ui="channel.header.actions" className="flex shrink-0 items-center gap-2">{actions}</div> : null}
         </div>
-        {context ? <div className="mt-3 flex flex-wrap gap-2">{context}</div> : null}
+        {context ? <div data-ui="channel.header.context" className="mt-3 flex flex-wrap gap-2">{context}</div> : null}
       </div>
-      {topPanel ? <div className="shrink-0">{topPanel}</div> : null}
+      {topPanel ? <div data-ui="channel.top-panel" className="shrink-0">{topPanel}</div> : null}
       {children}
     </div>
   )
@@ -162,7 +164,7 @@ export function ChannelShell({
 
 export function ChannelContextPill({ children }: { children: ReactNode }) {
   return (
-    <div className="inline-flex max-w-full items-center gap-2 rounded-full border border-stone-200 bg-stone-50 px-3 py-1.5 text-xs text-stone-700">
+    <div data-ui="channel.context-pill" className="inline-flex max-w-full items-center gap-2 rounded-full border border-stone-200 bg-stone-50 px-3 py-1.5 text-xs text-stone-700">
       {children}
     </div>
   )
@@ -204,8 +206,8 @@ export function ChannelTimeline({
   }, [highlightedItemId, items, scrollToLatest])
 
   return (
-    <div className="flex-1 overflow-y-auto bg-[#faf7f1] p-4 space-y-3">
-      {items.length === 0 ? <p className="text-sm text-stone-500">{emptyState}</p> : items.map((item) => {
+    <div data-ui="channel.timeline" className="flex-1 overflow-y-auto bg-[#faf7f1] p-4 space-y-3">
+      {items.length === 0 ? <p data-ui="channel.timeline.empty" className="text-sm text-stone-500">{emptyState}</p> : items.map((item) => {
         if (item.kind === 'message') {
           const relative = item.ts ? formatRelativeTime(item.ts) : ''
           const absolute = item.ts ? formatAbsoluteTime(item.ts) : ''
@@ -216,9 +218,10 @@ export function ChannelTimeline({
                 if (node) itemRefs.current.set(item.id, node)
                 else itemRefs.current.delete(item.id)
               }}
+              data-ui="channel.timeline.message"
               className={`max-w-[92%] ${item.mine ? 'ml-auto' : 'mr-auto'}`}
             >
-              <div className="mb-1 flex items-center gap-2 text-[10px] uppercase tracking-wide text-stone-400">
+              <div data-ui="channel.timeline.message.meta" className="mb-1 flex items-center gap-2 text-[10px] uppercase tracking-wide text-stone-400">
                 <p>{item.authorLabel}</p>
                 {item.ts ? (
                   <p className="normal-case tracking-normal text-stone-400" title={absolute}>
@@ -226,7 +229,7 @@ export function ChannelTimeline({
                   </p>
                 ) : null}
               </div>
-              <div className={`rounded-2xl border px-4 py-2.5 text-sm ${
+              <div data-ui="channel.timeline.message.body" className={`rounded-2xl border px-4 py-2.5 text-sm ${
                 item.mine
                   ? 'border-stone-900 bg-stone-900 text-white'
                   : item.tone === 'system'
@@ -253,6 +256,7 @@ export function ChannelTimeline({
                 if (node) itemRefs.current.set(item.id, node)
                 else itemRefs.current.delete(item.id)
               }}
+              data-ui="channel.timeline.decision"
               className={`max-w-[92%] rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 ${
                 highlightedItemId === item.id ? 'ring-2 ring-brand-400 ring-offset-2 ring-offset-[#faf7f1]' : ''
               }`}
@@ -276,6 +280,7 @@ export function ChannelTimeline({
               if (node) itemRefs.current.set(item.id, node)
               else itemRefs.current.delete(item.id)
             }}
+            data-ui="channel.timeline.custom"
           >
             {item.content}
           </div>
@@ -307,9 +312,10 @@ export function ChannelComposer({
   beforeInput?: ReactNode
 }) {
   return (
-    <div className="border-t border-stone-200 bg-white p-3 flex-shrink-0">
-      {beforeInput ? <div className="mb-2 space-y-2">{beforeInput}</div> : null}
+    <div data-ui="channel.composer" className="border-t border-stone-200 bg-white p-3 flex-shrink-0">
+      {beforeInput ? <div data-ui="channel.composer.before" className="mb-2 space-y-2">{beforeInput}</div> : null}
       <textarea
+        data-ui="channel.composer.input"
         ref={inputRef}
         value={draft}
         onChange={(e) => setDraft(e.target.value)}
@@ -324,9 +330,11 @@ export function ChannelComposer({
         placeholder={placeholder}
         className="w-full rounded-xl border border-stone-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-stone-900 resize-none disabled:bg-stone-50 disabled:text-stone-500"
       />
-      <div className="mt-2 flex justify-end">
+      <div data-ui="channel.composer.actions" className="mt-2 flex justify-end">
         <Btn size="sm" onClick={onSend} disabled={!draft.trim() || pending}>
-          {pending ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
+          <span data-ui="channel.composer.send">
+            {pending ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
+          </span>
           {pending ? 'Thinking…' : sendLabel}
         </Btn>
       </div>

@@ -11,7 +11,6 @@ import {
   KnowledgePage,
 } from '@modules/assets/frontend/index'
 import {
-  GraphDetailPage,
   GraphsPage,
   PublicRunPage,
   PublicWorkflowPage,
@@ -37,14 +36,6 @@ export function ManticoreApp() {
 
       <Route path="/" element={<Navigate to={manticoreDistribution.defaultRoute} replace />} />
       <Route path="/dashboard" element={<Navigate to={manticoreDistribution.defaultRoute} replace />} />
-      <Route
-        path="/graphs/:graphId"
-        element={
-          <RequireAuth>
-            <GraphDetailPage />
-          </RequireAuth>
-        }
-      />
       <Route
         element={
           <RequireAuth>

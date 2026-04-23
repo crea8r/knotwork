@@ -11,11 +11,12 @@ import EmptyState from '@ui/components/EmptyState'
 import Spinner from '@ui/components/Spinner'
 import { validateGraph } from '@modules/workflows/frontend/lib/validateGraph'
 import type { Graph } from '@data-models'
+import { workflowAssetLinkForGraph } from '@modules/workflows/frontend/lib/workflowAssetLinks'
 
 const DEV_WORKSPACE = import.meta.env.VITE_DEV_WORKSPACE_ID ?? 'dev-workspace'
 const PAGE_SIZE = 10
 
-function NewGraphModal({ onClose, onCreated }: { onClose: () => void; onCreated: (id: string) => void }) {
+function NewGraphModal({ onClose, onCreated }: { onClose: () => void; onCreated: (graph: Graph) => void }) {
   const workspaceId = useAuthStore((s) => s.workspaceId) ?? DEV_WORKSPACE
   const createGraph = useCreateGraph(workspaceId)
   const [name, setName] = useState('')
@@ -25,7 +26,7 @@ function NewGraphModal({ onClose, onCreated }: { onClose: () => void; onCreated:
     e.preventDefault()
     if (!name.trim()) return
     const g = await createGraph.mutateAsync({ name: name.trim(), description: desc.trim() || undefined })
-    onCreated(g.id)
+    onCreated(g)
   }
 
   return (
@@ -148,7 +149,7 @@ export default function GraphsPage() {
       ) : (
         <div className="grid gap-3">
           {visibleGraphs.map((g) => (
-            <Card key={g.id} className="p-4" onClick={() => navigate(`/graphs/${g.id}`)}>
+            <Card key={g.id} className="p-4" onClick={() => navigate(workflowAssetLinkForGraph(g))}>
               <div className="flex items-start justify-between">
                 <div>
                   <p className="font-semibold text-gray-900">{g.name}</p>
@@ -206,7 +207,7 @@ export default function GraphsPage() {
       {showModal && (
         <NewGraphModal
           onClose={() => setShowModal(false)}
-          onCreated={(id) => { setShowModal(false); navigate(`/graphs/${id}`) }}
+          onCreated={(graph) => { setShowModal(false); navigate(workflowAssetLinkForGraph(graph)) }}
         />
       )}
     </div>

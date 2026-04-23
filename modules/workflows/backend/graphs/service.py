@@ -14,6 +14,26 @@ from ..runs.models import Run
 from modules.communication.backend.channels_models import Channel
 
 
+def normalize_graph_asset_path(value: str | None) -> str:
+    return "/".join(part for part in str(value or "").split("/") if part)
+
+
+def split_graph_asset_path(asset_path: str) -> tuple[str, str]:
+    normalized_path = normalize_graph_asset_path(asset_path)
+    if not normalized_path:
+        raise ValueError("Workflow asset path cannot be empty")
+    folder_path, _, name = normalized_path.rpartition("/")
+    return folder_path, name or normalized_path
+
+
+def graph_asset_path(graph: Graph) -> str:
+    folder_path = normalize_graph_asset_path(graph.path)
+    name = normalize_graph_asset_path(graph.name)
+    if not name:
+        raise ValueError("Workflow name cannot be empty")
+    return f"{folder_path}/{name}" if folder_path else name
+
+
 async def list_graphs(db: AsyncSession, workspace_id: UUID, project_id: UUID | None = None) -> list[Graph]:
     stmt = select(Graph).where(Graph.workspace_id == workspace_id)
     if project_id is None:
@@ -33,6 +53,27 @@ async def list_workspace_graphs(db: AsyncSession, workspace_id: UUID) -> list[Gr
 
 async def get_graph(db: AsyncSession, graph_id: UUID) -> Graph | None:
     return await db.get(Graph, graph_id)
+
+
+async def get_graph_by_asset_path(
+    db: AsyncSession,
+    workspace_id: UUID,
+    asset_path: str,
+    *,
+    project_id: UUID | None = None,
+) -> Graph | None:
+    folder_path, name = split_graph_asset_path(asset_path)
+    stmt = select(Graph).where(
+        Graph.workspace_id == workspace_id,
+        Graph.path == folder_path,
+        Graph.name == name,
+    )
+    if project_id is None:
+        stmt = stmt.where(Graph.project_id.is_(None))
+    else:
+        stmt = stmt.where(Graph.project_id == project_id)
+    result = await db.execute(stmt.limit(1))
+    return result.scalar_one_or_none()
 
 
 async def get_latest_version(db: AsyncSession, graph_id: UUID) -> GraphVersion | None:

@@ -4,6 +4,7 @@ import { Loader2, Search, X } from 'lucide-react'
 import { useSearchKnowledgeFiles } from "@modules/assets/frontend/api/knowledge"
 import { useGraphs } from "@modules/workflows/frontend/api/graphs"
 import { useAuthStore } from '@auth'
+import { workflowAssetLinkForGraph } from '@modules/workflows/frontend/lib/workflowAssetLinks'
 
 const DEV_WORKSPACE = import.meta.env.VITE_DEV_WORKSPACE_ID ?? 'dev-workspace'
 
@@ -29,6 +30,7 @@ export default function LibrarySearch() {
             id: item.id, kind: 'workflow' as const,
             title: item.name,
             subtitle: item.description ?? item.path ?? 'Workflow',
+            href: workflowAssetLinkForGraph(item),
           })),
       ]
     : []
@@ -59,7 +61,7 @@ export default function LibrarySearch() {
                   key={`${result.kind}-${result.id}`}
                   onClick={() => {
                     setQuery('')
-                    if (result.kind === 'workflow') navigate(`/graphs/${result.id}`)
+                    if (result.kind === 'workflow') navigate(result.href)
                     else navigate(`/handbook?path=${encodeURIComponent(result.id)}`)
                   }}
                   className="w-full rounded-lg px-3 py-2 text-left hover:bg-gray-50"

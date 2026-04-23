@@ -2,6 +2,12 @@
 
 `docs/implementation/` is legacy.
 
+The root now keeps only:
+
+- `roadmap.md`
+- the active `S12.4/` lane
+- `archive/` for pre-`S12.4` material
+
 It contains historical implementation notes, specs, and tests from an older repo layout. Those files are no longer the source of truth for the active architecture.
 
 Rules going forward:

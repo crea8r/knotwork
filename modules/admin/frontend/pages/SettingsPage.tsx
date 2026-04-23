@@ -1,7 +1,8 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import { Settings2 } from 'lucide-react'
 import { useSearchParams } from 'react-router-dom'
-import PageHeader from '@ui/components/PageHeader'
 import Btn from '@ui/components/Btn'
+import { useRegisterShellTopBarSlots } from '@app-shell/ShellTopBarSlots'
 import MembersTab from '@modules/admin/frontend/components/MembersTab'
 import AccountTab from '@modules/admin/frontend/components/AccountTab'
 import ChannelsTab from '@modules/admin/frontend/components/ChannelsTab'
@@ -22,18 +23,49 @@ export default function SettingsPage() {
     setTab(initialTab)
   }, [initialTab])
 
-  return (
-    <div className="p-8 max-w-4xl mx-auto">
-      <PageHeader
-        title="Settings"
-        actions={(
-          <Btn size="sm" variant="secondary" onClick={() => openOnboarding({ reset: true })}>
-            Replay onboarding
-          </Btn>
-        )}
-      />
+  const desktopTopBarActions = useMemo(() => (
+    <Btn
+      data-ui="admin.settings.replay-onboarding"
+      size="sm"
+      variant="secondary"
+      onClick={() => openOnboarding({ reset: true })}
+    >
+      Replay onboarding
+    </Btn>
+  ), [])
 
-      <div className="flex gap-4 border-b mb-6 text-sm">
+  const settingsIcon = useMemo(() => <Settings2 size={16} strokeWidth={1.8} />, [])
+
+  useRegisterShellTopBarSlots({
+    leadingTitle: 'Settings',
+    leadingSubtitle: 'Workspace administration',
+    leadingIcon: settingsIcon,
+    leading: null,
+    actions: desktopTopBarActions,
+  })
+
+  return (
+    <div data-ui="admin.settings.page" className="p-8 max-w-4xl mx-auto">
+      <div data-ui="admin.settings.header.mobile" className="mb-6 flex items-start justify-between gap-4 md:hidden">
+        <div>
+          <h1 data-ui="admin.settings.header.mobile.title" className="text-xl font-semibold text-gray-900">
+            Settings
+          </h1>
+          <p data-ui="admin.settings.header.mobile.subtitle" className="mt-1 text-sm text-gray-500">
+            Workspace administration
+          </p>
+        </div>
+        <Btn
+          data-ui="admin.settings.replay-onboarding.mobile"
+          size="sm"
+          variant="secondary"
+          onClick={() => openOnboarding({ reset: true })}
+        >
+          Replay onboarding
+        </Btn>
+      </div>
+
+      <div data-ui="admin.settings.tabs" className="flex gap-4 border-b mb-6 text-sm">
         {TABS.map((t) => (
           <button
             key={t}
@@ -41,6 +73,7 @@ export default function SettingsPage() {
               setTab(t)
               setSearchParams({ tab: t })
             }}
+            data-ui={`admin.settings.tab.${t}`}
             className={`pb-2 capitalize ${
               tab === t
                 ? 'border-b-2 border-brand-500 text-brand-600 font-medium'
@@ -52,14 +85,14 @@ export default function SettingsPage() {
         ))}
       </div>
 
-      {tab === 'account' && <AccountTab />}
+      {tab === 'account' && <div data-ui="admin.settings.panel.account"><AccountTab /></div>}
 
-      {tab === 'members' && <MembersTab />}
+      {tab === 'members' && <div data-ui="admin.settings.panel.members"><MembersTab /></div>}
 
-      {tab === 'channels' && <ChannelsTab />}
-      {tab === 'guide' && <GuideTab />}
+      {tab === 'channels' && <div data-ui="admin.settings.panel.channels"><ChannelsTab /></div>}
+      {tab === 'guide' && <div data-ui="admin.settings.panel.guide"><GuideTab /></div>}
 
-      {tab === 'system' && <SystemTab />}
+      {tab === 'system' && <div data-ui="admin.settings.panel.system"><SystemTab /></div>}
     </div>
   )
 }

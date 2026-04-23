@@ -3,10 +3,12 @@
 import { fetchGuide, getConfig, pollInbox } from '../openclaw/bridge'
 import { renewRuntimeLease, releaseRuntimeLease, releaseRuntimeLeaseSync, LEASE_RENEW_INTERVAL_MS } from '../state/lease'
 import { claimTask } from '../state/task-claim'
-import { removeRunningTask, inboxEventToTask } from './worker'
+import { buildBundledInboxTasks, removeRunningTask } from './worker'
 import { spawnExecuteTask, type SpawnDeps } from './spawn'
 import type { TaskLogger } from '../state/tasklog'
-import type { OpenClawApi, PluginState } from '../types'
+import type { ActiveSpawnInfo, OpenClawApi, PluginState } from '../types'
+
+let timersStarted = false
 
 export type TimersDeps = {
   state: PluginState
@@ -14,7 +16,7 @@ export type TimersDeps = {
   log: (msg: string) => void
   persistSnapshot?: () => Promise<void>
   recoverAuth: (reason: string) => Promise<boolean>
-  activeSpawns: Map<string, { startedAt: string }>
+  activeSpawns: Map<string, ActiveSpawnInfo>
   lockOwnerRef: { value: boolean }
   getLockPath: () => string
   maxConcurrent: number
@@ -28,6 +30,11 @@ export type TimersDeps = {
 
 export function startTimers(deps: TimersDeps): void {
   const { state, api, log, persistSnapshot, recoverAuth, activeSpawns, lockOwnerRef, getLockPath, maxConcurrent, pollMs, maxGatewayAttempts, saturationRetryMs, spawnTtlMs, taskLog, taskLogPath } = deps
+  if (timersStarted) {
+    log('startTimers:skip reason=already_started')
+    return
+  }
+  timersStarted = true
   let reAuthInProgress = false
 
   function wasRecentlyHandled(taskId: string): boolean {
@@ -98,24 +105,25 @@ export function startTimers(deps: TimersDeps): void {
           log(`guide:loaded version=${guide.guide_version} hasContent=${Boolean(guide.guide_md)}`)
         }
         const events = collapseSiblingEvents(await pollInbox(baseUrl, workspaceId, jwt))
-        log(`poll:got count=${events.length} active=${activeSpawns.size}`)
-        for (const event of events) {
+        const tasks = buildBundledInboxTasks(events, state.guideContent)
+        log(`poll:got count=${events.length} sessions=${tasks.length} active=${activeSpawns.size}`)
+        for (const task of tasks) {
           if (activeSpawns.size >= maxConcurrent) break
-          const task = inboxEventToTask(event, state.guideContent)
-          if (activeSpawns.has(task.task_id)) {
-            log(`poll:skip-duplicate task=${task.task_id} delivery=${event.delivery_id ?? 'none'}`)
+          const claimKey = String(task.claim_key ?? task.task_id)
+          if (activeSpawns.has(claimKey)) {
+            log(`poll:skip-duplicate task=${task.task_id} claim=${claimKey}`)
             continue
           }
           if (wasRecentlyHandled(task.task_id)) {
-            log(`poll:skip-recent task=${task.task_id} delivery=${event.delivery_id ?? 'none'}`)
+            log(`poll:skip-recent task=${task.task_id} claim=${claimKey}`)
             continue
           }
-          const claimed = await claimTask(state.runtimeLockPath ?? getLockPath(), task.task_id, event.delivery_id)
+          const deliveryHint = task.delivery_ids?.[0] ?? null
+          const claimed = await claimTask(state.runtimeLockPath ?? getLockPath(), claimKey, deliveryHint)
           if (!claimed) {
-            log(`poll:skip-claimed task=${task.task_id} delivery=${event.delivery_id ?? 'none'}`)
+            log(`poll:skip-claimed task=${task.task_id} claim=${claimKey}`)
             continue
           }
-          task.agent_key = event.delivery_id ?? undefined
           void spawnExecuteTask(buildSpawnDeps(), task, 'poll')
         }
       } catch (err) {
@@ -140,12 +148,12 @@ export function startTimers(deps: TimersDeps): void {
   // ── Spawn TTL watchdog ─────────────────────────────────────────────────────
   setInterval(() => {
     const now = Date.now()
-    for (const [id, info] of activeSpawns.entries()) {
+    for (const [claimKey, info] of activeSpawns.entries()) {
       const age = now - new Date(info.startedAt).getTime()
       if (age > spawnTtlMs) {
-        log(`spawn:ttl-evict id=${id} age=${Math.round(age / 60000)}m — subprocess never exited, evicting from pool`)
-        activeSpawns.delete(id)
-        removeRunningTask(state, id)
+        log(`spawn:ttl-evict claim=${claimKey} task=${info.taskId} age=${Math.round(age / 60000)}m — subprocess never exited, evicting from pool`)
+        activeSpawns.delete(claimKey)
+        removeRunningTask(state, info.taskId)
       }
     }
   }, 60_000).unref()

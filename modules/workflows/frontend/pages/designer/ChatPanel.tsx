@@ -18,8 +18,8 @@ export default function ChatPanel({
   return (
     <>
       {/* Desktop side panel */}
-      <EditorSidePanel className="hidden md:flex">
-        <div style={{ flex: 1, overflow: 'hidden' }}>
+      <EditorSidePanel dataUi="workflow.editor.chat.desktop" className="hidden md:flex">
+        <div data-ui="workflow.editor.chat.desktop.content" style={{ flex: 1, overflow: 'hidden' }}>
           <DesignerChat
             graphId={graphId}
             sessionId={sessionId}
@@ -31,15 +31,15 @@ export default function ChatPanel({
       </EditorSidePanel>
 
       {/* Mobile bottom sheet */}
-      <div className="md:hidden fixed inset-x-0 bottom-0 z-50 flex flex-col bg-white rounded-t-2xl shadow-xl" style={{ height: '65vh' }}>
-        <div className="relative flex items-center justify-between border-b border-gray-200 px-4 py-3 flex-shrink-0">
-          <div className="absolute left-1/2 -translate-x-1/2 top-2 w-10 h-1 rounded-full bg-gray-300" />
-          <p className="text-sm font-semibold text-gray-900">Designer</p>
-          <button onClick={onClose} className="p-1.5 rounded-lg text-gray-400 hover:text-gray-700" aria-label="Close chat">
+      <div data-ui="workflow.editor.chat.mobile" className="md:hidden fixed inset-x-0 bottom-0 z-50 flex flex-col bg-white rounded-t-2xl shadow-xl" style={{ height: '65vh' }}>
+        <div data-ui="workflow.editor.chat.mobile.header" className="relative flex items-center justify-between border-b border-gray-200 px-4 py-3 flex-shrink-0">
+          <div data-ui="workflow.editor.chat.mobile.handle" className="absolute left-1/2 -translate-x-1/2 top-2 w-10 h-1 rounded-full bg-gray-300" />
+          <p data-ui="workflow.editor.chat.mobile.title" className="text-sm font-semibold text-gray-900">Designer</p>
+          <button data-ui="workflow.editor.chat.mobile.close" onClick={onClose} className="p-1.5 rounded-lg text-gray-400 hover:text-gray-700" aria-label="Close chat">
             <X size={18} />
           </button>
         </div>
-        <div className="flex-1 overflow-hidden">
+        <div data-ui="workflow.editor.chat.mobile.content" className="flex-1 overflow-hidden">
           <DesignerChat
             graphId={graphId}
             sessionId={sessionId}

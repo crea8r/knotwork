@@ -28,6 +28,7 @@
     ]
   },
   "dependencies": {
-    "@knotwork/mcp-client": "^0.1.0"
+    "@knotwork/mcp-client": "^0.1.0",
+    "@modelcontextprotocol/sdk": "^1.29.0"
   }
 }

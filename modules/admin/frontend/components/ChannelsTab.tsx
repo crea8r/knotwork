@@ -17,8 +17,8 @@ export default function ChannelsTab() {
   const handbookCount = channels.filter((channel) => channel.channel_type === 'handbook').length
 
   return (
-    <div className="space-y-6">
-      <section className="rounded-2xl border border-gray-200 bg-white p-5">
+    <div data-ui="admin.channels.tab" className="space-y-6">
+      <section data-ui="admin.channels.bulletin" className="rounded-2xl border border-gray-200 bg-white p-5">
         <div className="flex items-start justify-between gap-3">
           <div className="mt-0.5 inline-flex h-9 w-9 items-center justify-center rounded-full bg-amber-100 text-amber-700">
             <Megaphone size={18} />
@@ -38,6 +38,7 @@ export default function ChannelsTab() {
           {bulletin ? (
             <Link
               to={`/channels/${bulletin.slug}`}
+              data-ui="admin.channels.bulletin.open"
               className="inline-flex items-center gap-2 rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
             >
               Open
@@ -46,7 +47,7 @@ export default function ChannelsTab() {
         </div>
       </section>
 
-      <section className="rounded-2xl border border-gray-200 bg-white p-5">
+      <section data-ui="admin.channels.surface" className="rounded-2xl border border-gray-200 bg-white p-5">
         <div className="flex items-center justify-between gap-3">
           <div>
             <h2 className="text-sm font-semibold text-gray-900">Channel Surface</h2>
@@ -56,6 +57,7 @@ export default function ChannelsTab() {
           </div>
           <Link
             to="/channels"
+            data-ui="admin.channels.surface.open"
             className="inline-flex items-center gap-2 rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
           >
             <Hash size={14} />
@@ -63,16 +65,16 @@ export default function ChannelsTab() {
           </Link>
         </div>
 
-        <div className="mt-4 grid gap-3 sm:grid-cols-3">
-          <div className="rounded-xl border border-gray-200 bg-gray-50 p-3">
+        <div data-ui="admin.channels.surface.stats" className="mt-4 grid gap-3 sm:grid-cols-3">
+          <div data-ui="admin.channels.surface.free-chat" className="rounded-xl border border-gray-200 bg-gray-50 p-3">
             <p className="text-xs uppercase tracking-wide text-gray-500">Free Chat</p>
             <p className="mt-1 text-lg font-semibold text-gray-900">{freeChatCount}</p>
           </div>
-          <div className="rounded-xl border border-gray-200 bg-gray-50 p-3">
+          <div data-ui="admin.channels.surface.workflow" className="rounded-xl border border-gray-200 bg-gray-50 p-3">
             <p className="text-xs uppercase tracking-wide text-gray-500">Workflow</p>
             <p className="mt-1 text-lg font-semibold text-gray-900">{workflowCount}</p>
           </div>
-          <div className="rounded-xl border border-gray-200 bg-gray-50 p-3">
+          <div data-ui="admin.channels.surface.handbook" className="rounded-xl border border-gray-200 bg-gray-50 p-3">
             <p className="text-xs uppercase tracking-wide text-gray-500">Handbook</p>
             <p className="mt-1 text-lg font-semibold text-gray-900">{handbookCount}</p>
           </div>

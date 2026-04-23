@@ -3,11 +3,13 @@ import { Link } from 'react-router-dom'
 import { BookOpen, ChevronDown, ChevronRight, Hash, Megaphone, GitBranch, PlayCircle, Search } from 'lucide-react'
 import { useChannelMessages, useChannels, useMyChannelSubscriptions } from '@modules/communication/frontend/api/channels'
 import { useObjectives } from "@modules/projects/frontend/api/projects"
+import { useGraphs } from "@modules/workflows/frontend/api/graphs"
 import { useRuns } from "@modules/workflows/frontend/api/runs"
 import { projectObjectivePath } from '@app-shell/paths'
 import { useAuthStore } from '@auth'
 import Spinner from '@ui/components/Spinner'
 import EmptyState from '@ui/components/EmptyState'
+import { workflowAssetLinkForGraph } from '@modules/workflows/frontend/lib/workflowAssetLinks'
 
 const DEV_WORKSPACE = import.meta.env.VITE_DEV_WORKSPACE_ID ?? 'dev-workspace'
 const PAGE_SIZE = 10
@@ -57,6 +59,7 @@ export default function ChannelsPage() {
 
   const { data: channels = [], isLoading: channelsLoading } = useChannels(workspaceId)
   const { data: subscriptions = [] } = useMyChannelSubscriptions(workspaceId)
+  const { data: workflows = [] } = useGraphs(workspaceId)
   const { data: runs = [], isLoading: runsLoading } = useRuns(workspaceId)
   const { data: objectives = [] } = useObjectives(workspaceId)
   const [search, setSearch] = useState('')
@@ -82,6 +85,7 @@ export default function ChannelsPage() {
   }, [search])
 
   const q = search.trim().toLowerCase()
+  const workflowById = useMemo(() => new Map(workflows.map((workflow) => [workflow.id, workflow])), [workflows])
 
   const bulletinChannels = useMemo(() => {
     const bulletins = channels.filter((c) => c.channel_type === 'bulletin')
@@ -145,32 +149,36 @@ export default function ChannelsPage() {
   const subscribedChannelIds = new Set(subscriptions.filter((row) => row.subscribed).map((row) => row.channel_id))
 
   return (
-    <div className="p-6 md:p-8 max-w-5xl mx-auto space-y-5">
-      <div>
-        <h1 className="text-xl font-semibold text-gray-900">Channels</h1>
+    <div data-ui="channels.page" className="p-6 md:p-8 max-w-5xl mx-auto space-y-5">
+      <div data-ui="channels.header">
+        <h1 data-ui="channels.header.title" className="text-xl font-semibold text-gray-900">Channels</h1>
         <p className="text-sm text-gray-500 mt-1">Workspace bulletin, free chat, objective threads, handbook, runs, and workflows in one place.</p>
       </div>
 
-      <div className="relative">
+      <div data-ui="channels.search" className="relative">
         <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
         <input
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           placeholder="Search channels and runs..."
+          data-ui="channels.search.input"
           className="w-full border border-gray-200 rounded-xl pl-9 pr-3 py-2 text-sm outline-none focus:ring-2 focus:ring-brand-500"
         />
       </div>
 
       {isLoading ? (
-        <div className="flex justify-center py-16"><Spinner size="lg" /></div>
+        <div data-ui="channels.loading" className="flex justify-center py-16"><Spinner size="lg" /></div>
       ) : bulletinChannels.length === 0 && freeChats.length === 0 && objectiveChannels.length === 0 && workflowChannels.length === 0 && handbookChannels.length === 0 && runItems.length === 0 ? (
-        <EmptyState heading="No items found" subtext="Try a different search or create new items." />
+        <div data-ui="channels.empty">
+          <EmptyState heading="No items found" subtext="Try a different search or create new items." />
+        </div>
       ) : (
         <>
-          <section>
-            <div className="flex items-center justify-between mb-2">
+          <section data-ui="channels.section.bulletin">
+            <div data-ui="channels.section.bulletin.header" className="flex items-center justify-between mb-2">
               <button
                 onClick={() => setBulletinOpen((v) => !v)}
+                data-ui="channels.section.bulletin.toggle"
                 className="inline-flex items-center gap-1.5 text-xs uppercase tracking-wide text-gray-500 hover:text-gray-700"
               >
                 {bulletinOpen ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
@@ -179,11 +187,12 @@ export default function ChannelsPage() {
               <p className="text-xs text-gray-400">{bulletinChannels.length}</p>
             </div>
             {bulletinOpen && (
-              <div className="space-y-2">
+              <div data-ui="channels.section.bulletin.list" className="space-y-2">
                 {bulletinChannels.map((ch) => (
                   <Link
                     key={ch.id}
                     to={`/channels/${ch.slug}`}
+                    data-ui="channels.section.bulletin.item"
                     className="flex items-center justify-between gap-3 rounded-xl border border-amber-200 bg-amber-50/60 p-3 hover:border-amber-300"
                   >
                     <div className="flex items-center gap-2 min-w-0">
@@ -207,10 +216,11 @@ export default function ChannelsPage() {
             )}
           </section>
 
-          <section>
-            <div className="flex items-center justify-between mb-2">
+          <section data-ui="channels.section.free-chat">
+            <div data-ui="channels.section.free-chat.header" className="flex items-center justify-between mb-2">
               <button
                 onClick={() => setFreeChatOpen((v) => !v)}
+                data-ui="channels.section.free-chat.toggle"
                 className="inline-flex items-center gap-1.5 text-xs uppercase tracking-wide text-gray-500 hover:text-gray-700"
               >
                 {freeChatOpen ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
@@ -220,11 +230,12 @@ export default function ChannelsPage() {
             </div>
             {freeChatOpen && (
               <>
-                <div className="space-y-2">
+                <div data-ui="channels.section.free-chat.list" className="space-y-2">
                   {paginate(freeChats, freeChatPage).map((ch) => (
                     <Link
                       key={ch.id}
                       to={`/channels/${ch.slug}`}
+                      data-ui="channels.section.free-chat.item"
                       className="flex items-center justify-between gap-3 bg-white border border-gray-200 rounded-xl p-3 hover:border-brand-300"
                     >
                       <div className="flex items-center gap-2 min-w-0">
@@ -243,10 +254,11 @@ export default function ChannelsPage() {
             )}
           </section>
 
-          <section className="pt-1">
-            <div className="flex items-center justify-between mb-2">
+          <section data-ui="channels.section.objectives" className="pt-1">
+            <div data-ui="channels.section.objectives.header" className="flex items-center justify-between mb-2">
               <button
                 onClick={() => setObjectiveOpen((v) => !v)}
+                data-ui="channels.section.objectives.toggle"
                 className="inline-flex items-center gap-1.5 text-xs uppercase tracking-wide text-gray-500 hover:text-gray-700"
               >
                 {objectiveOpen ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
@@ -256,11 +268,12 @@ export default function ChannelsPage() {
             </div>
             {objectiveOpen && (
               <>
-                <div className="space-y-2">
+                <div data-ui="channels.section.objectives.list" className="space-y-2">
                   {paginate(objectiveChannels, objectivePage).map(({ channel, objective }) => (
                     <Link
                       key={channel.id}
                       to={objective?.project_slug ? projectObjectivePath(objective.project_slug, objective.slug) : `/channels/${channel.slug}`}
+                      data-ui="channels.section.objectives.item"
                       className="flex items-center justify-between gap-3 bg-white border border-gray-200 rounded-xl p-3 hover:border-brand-300"
                     >
                       <div className="flex items-center gap-2 min-w-0">
@@ -284,10 +297,11 @@ export default function ChannelsPage() {
             )}
           </section>
 
-          <section className="pt-1">
-            <div className="flex items-center justify-between mb-2">
+          <section data-ui="channels.section.runs" className="pt-1">
+            <div data-ui="channels.section.runs.header" className="flex items-center justify-between mb-2">
               <button
                 onClick={() => setRunsOpen((v) => !v)}
+                data-ui="channels.section.runs.toggle"
                 className="inline-flex items-center gap-1.5 text-xs uppercase tracking-wide text-gray-500 hover:text-gray-700"
               >
                 {runsOpen ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
@@ -297,11 +311,12 @@ export default function ChannelsPage() {
             </div>
             {runsOpen && (
               <>
-                <div className="space-y-2">
+                <div data-ui="channels.section.runs.list" className="space-y-2">
                   {paginate(runItems, runPage).map((r) => (
                     <Link
                       key={r.id}
                       to={`/runs/${r.id}`}
+                      data-ui="channels.section.runs.item"
                       className="flex items-center justify-between gap-3 bg-white border border-gray-200 rounded-xl p-3 hover:border-brand-300"
                     >
                       <div className="flex items-center gap-2 min-w-0">
@@ -318,10 +333,11 @@ export default function ChannelsPage() {
             )}
           </section>
 
-          <section className="pt-1">
-            <div className="flex items-center justify-between mb-2">
+          <section data-ui="channels.section.workflows" className="pt-1">
+            <div data-ui="channels.section.workflows.header" className="flex items-center justify-between mb-2">
               <button
                 onClick={() => setWorkflowsOpen((v) => !v)}
+                data-ui="channels.section.workflows.toggle"
                 className="inline-flex items-center gap-1.5 text-xs uppercase tracking-wide text-gray-500 hover:text-gray-700"
               >
                 {workflowsOpen ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
@@ -331,11 +347,14 @@ export default function ChannelsPage() {
             </div>
             {workflowsOpen && (
               <>
-                <div className="space-y-2">
+                <div data-ui="channels.section.workflows.list" className="space-y-2">
                   {paginate(workflowChannels, workflowPage).map((ch) => (
                     <Link
                       key={ch.id}
-                      to={ch.graph_id ? `/graphs/${ch.graph_id}?chat=1` : `/channels/${ch.slug}`}
+                      to={ch.graph_id && workflowById.get(ch.graph_id)
+                        ? workflowAssetLinkForGraph(workflowById.get(ch.graph_id)!, { assetChat: true })
+                        : `/channels/${ch.slug}`}
+                      data-ui="channels.section.workflows.item"
                       className="flex items-center justify-between gap-3 bg-white border border-gray-200 rounded-xl p-3 hover:border-brand-300"
                     >
                       <div className="flex items-center gap-2 min-w-0">
@@ -354,10 +373,11 @@ export default function ChannelsPage() {
             )}
           </section>
 
-          <section className="pt-1">
-            <div className="flex items-center justify-between mb-2">
+          <section data-ui="channels.section.handbook" className="pt-1">
+            <div data-ui="channels.section.handbook.header" className="flex items-center justify-between mb-2">
               <button
                 onClick={() => setHandbookOpen((v) => !v)}
+                data-ui="channels.section.handbook.toggle"
                 className="inline-flex items-center gap-1.5 text-xs uppercase tracking-wide text-gray-500 hover:text-gray-700"
               >
                 {handbookOpen ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
@@ -367,11 +387,12 @@ export default function ChannelsPage() {
             </div>
             {handbookOpen && (
               <>
-                <div className="space-y-2">
+                <div data-ui="channels.section.handbook.list" className="space-y-2">
                   {paginate(handbookChannels, handbookPage).map((ch) => (
                     <Link
                       key={ch.id}
                       to={`/channels/${ch.slug}`}
+                      data-ui="channels.section.handbook.item"
                       className="flex items-center justify-between gap-3 bg-white border border-gray-200 rounded-xl p-3 hover:border-brand-300"
                     >
                       <div className="flex items-center gap-2 min-w-0">

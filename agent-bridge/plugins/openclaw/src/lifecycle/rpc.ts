@@ -5,6 +5,7 @@ import { getConfig, getSemanticTaskLogPath } from '../openclaw/bridge'
 import { getPublicKeyB64 } from './auth'
 import { createTaskLogger } from '../state/tasklog'
 import { runClaimedTask as _runClaimedTask } from './worker'
+import { executeTaskRaw } from '../openclaw/session'
 import type { ExecutionTask, GatewayMethodContext, LooseRecord, OpenClawApi, PluginConfig, PluginState, SubprocessParams } from '../types'
 
 export type RpcCtx = {
@@ -199,6 +200,56 @@ export function registerRpcMethods(ctx: RpcCtx): void {
   }
   rpc('knotwork.execute_task', handleExecuteTask)
   rpc('knotwork.process_once', handleExecuteTask) // backward-compat alias
+
+  rpc('knotwork.debug_run_prompt', async (gwCtx: GatewayMethodContext) => {
+    const payload = getPayload(gwCtx)
+    if (!debugEnabled) {
+      ok(gwCtx, { ok: false, error: 'semanticProtocolDebug must be enabled to use knotwork.debug_run_prompt' })
+      return
+    }
+
+    const userPrompt = typeof payload.userPrompt === 'string' ? payload.userPrompt : ''
+    if (!userPrompt.trim()) {
+      ok(gwCtx, { ok: false, error: 'userPrompt is required' })
+      return
+    }
+
+    const taskId = typeof payload.taskId === 'string' && payload.taskId.trim()
+      ? payload.taskId.trim()
+      : `debug-${Date.now()}`
+    const sessionName = typeof payload.sessionName === 'string' && payload.sessionName.trim()
+      ? payload.sessionName.trim()
+      : `knotwork:debug:${taskId}`
+    const channelId = typeof payload.channelId === 'string' && payload.channelId.trim()
+      ? payload.channelId.trim()
+      : undefined
+    const systemPrompt = typeof payload.systemPrompt === 'string' ? payload.systemPrompt : ''
+
+    log(`debug_run_prompt:start taskId=${taskId} session=${sessionName}`)
+    try {
+      const result = await executeTaskRaw(api, {
+        task_id: taskId,
+        channel_id: channelId,
+        session_name: sessionName,
+        system_prompt: systemPrompt,
+        user_prompt: userPrompt,
+      })
+      if (result.type === 'failed') {
+        ok(gwCtx, { ok: false, error: result.error })
+        return
+      }
+      ok(gwCtx, {
+        ok: true,
+        output: result.output,
+        deliveredSystemPrompt: result.deliveredSystemPrompt ?? null,
+        taskId,
+        sessionName,
+        channelId: channelId ?? null,
+      })
+    } catch (err) {
+      ok(gwCtx, { ok: false, error: rememberError(err) })
+    }
+  })
 
   rpc('knotwork.reset_connection', async (gwCtx: GatewayMethodContext) => {
     await resetAuth()

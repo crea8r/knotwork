@@ -1,10 +1,13 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { AlertCircle, Archive, ArchiveRestore, AtSign, CheckCheck, Clock3, FilePenLine, PlayCircle } from 'lucide-react'
 import { useInbox, useInboxSummary, useMarkAllInboxRead, useUpdateInboxDelivery } from '@modules/communication/frontend/api/channels'
+import { SHELL_RAIL_TITLE_CLASS } from '@app-shell/layoutChrome'
+import { useRegisterShellTopBarSlots } from '@app-shell/ShellTopBarSlots'
 import { useAuthStore } from '@auth'
 import Spinner from '@ui/components/Spinner'
 import EmptyState from '@ui/components/EmptyState'
+import { workflowAssetLink } from '@modules/workflows/frontend/lib/workflowAssetLinks'
 
 const DEV_WORKSPACE = import.meta.env.VITE_DEV_WORKSPACE_ID ?? 'dev-workspace'
 
@@ -13,17 +16,17 @@ function inboxTarget(item: import('@data-models').InboxItem) {
     return `/runs/${item.run_id}`
   }
   if (item.asset_type === 'workflow' && item.asset_id) {
-    const params = new URLSearchParams()
-    params.set('chat', '1')
-    if (item.channel_id) params.set('consultation', item.channel_id)
-    if (item.message_id) params.set('message', item.message_id)
-    return `/graphs/${item.asset_id}?${params.toString()}`
+    if (item.asset_path) {
+      return workflowAssetLink(item.asset_path, item.asset_project_slug, { assetChat: true })
+    }
+    if (item.channel_id) {
+      return `/channels/${item.channel_id}${item.message_id ? `?message=${encodeURIComponent(item.message_id)}` : ''}`
+    }
   }
   if ((item.asset_type === 'file' || item.asset_type === 'folder') && item.asset_path !== null) {
     const params = new URLSearchParams()
     if (item.asset_type === 'file') params.set('path', item.asset_path)
-    else if (item.asset_path) params.set('folder', item.asset_path)
-    params.set('chat', '1')
+    else params.set('folder', item.asset_path)
     if (item.message_id) params.set('message', item.message_id)
     if (item.asset_project_slug) {
       return `/projects/${item.asset_project_slug}/assets?${params.toString()}`
@@ -43,6 +46,63 @@ function inboxTarget(item: import('@data-models').InboxItem) {
   return '/runs'
 }
 
+function InboxFilters({
+  archived,
+  activeCount,
+  archivedCount,
+  onShowActive,
+  onShowArchived,
+  uiName = 'inbox.filters',
+}: {
+  archived: boolean
+  activeCount?: number
+  archivedCount?: number
+  onShowActive: () => void
+  onShowArchived: () => void
+  uiName?: string
+}) {
+  return (
+    <div data-ui={uiName} className="inline-flex rounded-xl border border-gray-200 bg-white p-1">
+      <button
+        onClick={onShowActive}
+        data-ui={`${uiName}.active`}
+        className={`px-3 py-1.5 text-sm rounded-lg ${!archived ? 'bg-brand-50 text-brand-700' : 'text-gray-500'}`}
+      >
+        Active {typeof activeCount === 'number' ? `(${activeCount})` : ''}
+      </button>
+      <button
+        onClick={onShowArchived}
+        data-ui={`${uiName}.archived`}
+        className={`px-3 py-1.5 text-sm rounded-lg ${archived ? 'bg-brand-50 text-brand-700' : 'text-gray-500'}`}
+      >
+        Archived {typeof archivedCount === 'number' ? `(${archivedCount})` : ''}
+      </button>
+    </div>
+  )
+}
+
+function InboxReadAllButton({
+  pending,
+  onClick,
+  uiName = 'inbox.read-all',
+}: {
+  pending: boolean
+  onClick: () => void
+  uiName?: string
+}) {
+  return (
+    <button
+      onClick={onClick}
+      disabled={pending}
+      data-ui={uiName}
+      className="inline-flex items-center gap-1.5 rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+    >
+      <CheckCheck size={14} />
+      {pending ? 'Marking…' : 'Read all'}
+    </button>
+  )
+}
+
 export default function InboxPage() {
   const workspaceId = useAuthStore((s) => s.workspaceId) ?? DEV_WORKSPACE
   const navigate = useNavigate()
@@ -53,6 +113,28 @@ export default function InboxPage() {
   const markAllRead = useMarkAllInboxRead(workspaceId)
   const itemRefs = useRef(new Map<string, HTMLAnchorElement>())
   const seenDeliveryIdsRef = useRef(new Set<string>())
+  const unreadCount = summary?.unread_count ?? 0
+
+  const desktopTopBarLeading = useMemo(() => (
+    <div data-ui="inbox.header" className="flex min-w-0 items-center">
+      <h1 data-ui="inbox.header.title" className={SHELL_RAIL_TITLE_CLASS}>Inbox</h1>
+    </div>
+  ), [])
+
+  const desktopTopBarActions = useMemo(() => (
+    <InboxFilters
+      archived={archived}
+      activeCount={summary?.active_count}
+      archivedCount={summary?.archived_count}
+      onShowActive={() => setArchived(false)}
+      onShowArchived={() => setArchived(true)}
+    />
+  ), [archived, summary?.active_count, summary?.archived_count])
+
+  useRegisterShellTopBarSlots({
+    leading: desktopTopBarLeading,
+    actions: desktopTopBarActions,
+  })
 
   useEffect(() => {
     if (archived || items.length === 0) return
@@ -81,46 +163,48 @@ export default function InboxPage() {
   }, [archived, items, updateDelivery])
 
   return (
-    <div className="p-6 md:p-8 max-w-4xl mx-auto space-y-4">
-      <div className="flex items-end justify-between gap-4">
-        <div>
-        <h1 className="text-xl font-semibold text-gray-900">Inbox</h1>
+    <div data-ui="inbox.page" className="p-6 md:p-8 max-w-4xl mx-auto space-y-4">
+      <div data-ui="inbox.header.mobile" className="flex items-end justify-between gap-4 md:hidden">
+        <div data-ui="inbox.header.mobile.main">
+        <h1 data-ui="inbox.header.mobile.title" className="text-xl font-semibold text-gray-900">Inbox</h1>
           <p className="text-sm text-gray-500 mt-1">Items routed to you from channel events.</p>
         </div>
-        <div className="flex items-center gap-2">
-          {!archived && (summary?.unread_count ?? 0) > 0 && (
-            <button
+        <div data-ui="inbox.header.mobile.actions" className="flex items-center gap-2">
+          {!archived && unreadCount > 0 ? (
+            <InboxReadAllButton
+              pending={markAllRead.isPending}
               onClick={() => markAllRead.mutate()}
-              disabled={markAllRead.isPending}
-              className="inline-flex items-center gap-1.5 rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-50"
-            >
-              <CheckCheck size={14} />
-              {markAllRead.isPending ? 'Marking…' : 'Read all'}
-            </button>
-          )}
-          <div className="inline-flex rounded-xl border border-gray-200 bg-white p-1">
-            <button
-              onClick={() => setArchived(false)}
-              className={`px-3 py-1.5 text-sm rounded-lg ${!archived ? 'bg-brand-50 text-brand-700' : 'text-gray-500'}`}
-            >
-              Active {summary ? `(${summary.active_count})` : ''}
-            </button>
-            <button
-              onClick={() => setArchived(true)}
-              className={`px-3 py-1.5 text-sm rounded-lg ${archived ? 'bg-brand-50 text-brand-700' : 'text-gray-500'}`}
-            >
-              Archived {summary ? `(${summary.archived_count})` : ''}
-            </button>
-          </div>
+              uiName="inbox.read-all.mobile"
+            />
+          ) : null}
+          <InboxFilters
+            archived={archived}
+            activeCount={summary?.active_count}
+            archivedCount={summary?.archived_count}
+            onShowActive={() => setArchived(false)}
+            onShowArchived={() => setArchived(true)}
+            uiName="inbox.filters.mobile"
+          />
         </div>
       </div>
 
+      {!archived && unreadCount > 0 ? (
+        <div data-ui="inbox.bulk-actions" className="hidden md:flex justify-end">
+          <InboxReadAllButton
+            pending={markAllRead.isPending}
+            onClick={() => markAllRead.mutate()}
+          />
+        </div>
+      ) : null}
+
       {isLoading ? (
-        <div className="flex justify-center py-16"><Spinner size="lg" /></div>
+        <div data-ui="inbox.loading" className="flex justify-center py-16"><Spinner size="lg" /></div>
       ) : items.length === 0 ? (
-        <EmptyState heading={archived ? 'No archived items' : 'Inbox is clear'} subtext={archived ? 'Archived deliveries stay available here.' : 'No escalations or pending approvals.'} />
+        <div data-ui="inbox.empty">
+          <EmptyState heading={archived ? 'No archived items' : 'Inbox is clear'} subtext={archived ? 'Archived deliveries stay available here.' : 'No escalations or pending approvals.'} />
+        </div>
       ) : (
-        <div className="space-y-2">
+        <div data-ui="inbox.list" className="space-y-2">
           {items.map((item) => {
             const target = inboxTarget(item)
 
@@ -156,11 +240,12 @@ export default function InboxPage() {
                   else itemRefs.current.delete(item.id)
                 }}
                 data-delivery-id={item.delivery_id ?? undefined}
+                data-ui="inbox.card"
                 className={`block bg-white border rounded-xl p-4 hover:border-brand-300 hover:shadow-sm transition ${item.unread ? 'border-brand-200 shadow-sm' : 'border-gray-200'}`}
               >
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-2 text-sm font-medium text-gray-900">
+                <div data-ui="inbox.card.row" className="flex items-start justify-between gap-3">
+                  <div data-ui="inbox.card.main" className="min-w-0">
+                    <div data-ui="inbox.card.title-row" className="flex items-center gap-2 text-sm font-medium text-gray-900">
                       {item.item_type === 'escalation'
                         ? <AlertCircle size={15} className="text-orange-500" />
                         : item.item_type === 'mentioned_message'
@@ -175,7 +260,7 @@ export default function InboxPage() {
                     <p className="text-[11px] text-gray-400 mt-2">{new Date(item.created_at).toLocaleString()}</p>
                   </div>
 
-                  <div className="text-right shrink-0 space-y-2">
+                  <div data-ui="inbox.card.meta" className="text-right shrink-0 space-y-2">
                     <span className="inline-flex px-2 py-0.5 rounded-full text-[11px] bg-gray-100 text-gray-700 capitalize">
                       {item.status}
                     </span>
@@ -186,10 +271,11 @@ export default function InboxPage() {
                       </p>
                     )}
                     {item.delivery_id && (
-                      <div className="flex items-center justify-end gap-1" onClick={(e) => e.preventDefault()}>
+                      <div data-ui="inbox.card.actions" className="flex items-center justify-end gap-1" onClick={(e) => e.preventDefault()}>
                         {!archived && item.unread && (
                           <button
                             onClick={() => updateDelivery.mutate({ deliveryId: item.delivery_id!, read: true })}
+                            data-ui="inbox.card.mark-read"
                             className="inline-flex items-center gap-1 rounded-lg border border-gray-200 px-2 py-1 text-[11px] text-gray-600 hover:bg-gray-50"
                           >
                             <CheckCheck size={11} />
@@ -199,6 +285,7 @@ export default function InboxPage() {
                         {!archived ? (
                           <button
                             onClick={() => updateDelivery.mutate({ deliveryId: item.delivery_id!, archived: true })}
+                            data-ui="inbox.card.archive"
                             className="inline-flex items-center gap-1 rounded-lg border border-gray-200 px-2 py-1 text-[11px] text-gray-600 hover:bg-gray-50"
                           >
                             <Archive size={11} />
@@ -207,6 +294,7 @@ export default function InboxPage() {
                         ) : (
                           <button
                             onClick={() => updateDelivery.mutate({ deliveryId: item.delivery_id!, archived: false })}
+                            data-ui="inbox.card.restore"
                             className="inline-flex items-center gap-1 rounded-lg border border-gray-200 px-2 py-1 text-[11px] text-gray-600 hover:bg-gray-50"
                           >
                             <ArchiveRestore size={11} />

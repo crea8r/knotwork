@@ -168,8 +168,10 @@ class GraphOut(BaseModel):
     id: UUID
     workspace_id: UUID
     project_id: UUID | None = None
+    project_slug: str | None = None
     name: str
     path: str = ""
+    asset_path: str = ""
     description: str | None
     status: str
     default_model: str | None

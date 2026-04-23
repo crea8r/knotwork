@@ -51,8 +51,8 @@ export default function InlineKnowledgeChangeCard({ workspaceId, channelId, crea
   const interactive = status === 'pending' && !!proposalId
 
   return (
-    <div className="max-w-[92%] mr-auto rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 space-y-3">
-      <div className="flex items-start justify-between gap-3">
+    <div data-ui="channel.knowledge-change" className="max-w-[92%] mr-auto rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 space-y-3">
+      <div data-ui="channel.knowledge-change.header" className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <p className="text-[10px] uppercase tracking-wide text-amber-700">Knowledge change</p>
           <div className="mt-1 flex items-center gap-2 min-w-0">
@@ -69,6 +69,7 @@ export default function InlineKnowledgeChangeCard({ workspaceId, channelId, crea
       <button
         type="button"
         onClick={() => setExpanded((value) => !value)}
+        data-ui="channel.knowledge-change.expand"
         className="inline-flex items-center gap-1 text-xs text-amber-800 hover:text-amber-950"
       >
         {expanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
@@ -76,20 +77,20 @@ export default function InlineKnowledgeChangeCard({ workspaceId, channelId, crea
       </button>
 
       {expanded ? (
-        <div className="rounded-xl border border-amber-200 bg-white px-3 py-2 text-sm text-stone-800">
+        <div data-ui="channel.knowledge-change.preview" className="rounded-xl border border-amber-200 bg-white px-3 py-2 text-sm text-stone-800">
           <MarkdownViewer content={proposedContent || '*No proposed content provided.*'} compact />
         </div>
       ) : null}
 
       {status === 'needs_revision' && revisionRequestComment ? (
-        <div className="rounded-xl border border-stone-200 bg-white px-3 py-2">
+        <div data-ui="channel.knowledge-change.revision-request" className="rounded-xl border border-stone-200 bg-white px-3 py-2">
           <p className="text-[10px] uppercase tracking-wide text-stone-500">Requested edit</p>
           <p className="mt-1 text-sm text-stone-700 whitespace-pre-wrap">{revisionRequestComment}</p>
         </div>
       ) : null}
 
       {interactive ? (
-        <div className="rounded-xl border border-amber-200 bg-white shadow-sm overflow-hidden">
+        <div data-ui="channel.knowledge-change.review" className="rounded-xl border border-amber-200 bg-white shadow-sm overflow-hidden">
           <div className="px-3 py-2 border-b border-amber-100">
             <p className="text-xs font-medium text-amber-900">Review this proposed change</p>
             <p className="mt-0.5 text-[11px] text-stone-500">
@@ -97,13 +98,14 @@ export default function InlineKnowledgeChangeCard({ workspaceId, channelId, crea
             </p>
           </div>
           <textarea
+            data-ui="channel.knowledge-change.comment"
             value={comment}
             onChange={(e) => setComment(e.target.value)}
             placeholder="Request an edit with specific guidance…"
             rows={3}
             className="w-full resize-none border-0 bg-transparent px-3 py-2 text-sm outline-none"
           />
-          <div className="flex items-center justify-between gap-2 border-t border-amber-100 bg-amber-50/60 px-3 py-2">
+          <div data-ui="channel.knowledge-change.actions" className="flex items-center justify-between gap-2 border-t border-amber-100 bg-amber-50/60 px-3 py-2">
             <Btn
               size="sm"
               loading={review.isPending}

@@ -487,11 +487,14 @@ export type EscalationInfo = {
 
 export type ExecutionTask = {
   task_id: string
+  claim_key?: string
   node_id?: string
   run_id?: string
   workspace_id?: string
   channel_id?: string
   agent_key?: string
+  delivery_ids?: string[]
+  inbox_events?: InboxEvent[]
   remote_agent_id?: string
   agent_id?: string
   session_name?: string
@@ -548,6 +551,7 @@ export type RecentTask = {
 /** Tracks a task whose gateway spawn is currently in-flight. */
 export type RunningTaskInfo = {
   taskId: string
+  claimKey: string
   nodeId: string | null
   runId: string | null
   sessionName: string | null
@@ -555,6 +559,13 @@ export type RunningTaskInfo = {
   startedAt: string
   /** How the task was triggered: background poll or explicit RPC call. */
   spawnContext: 'poll' | 'rpc'
+}
+
+export type ActiveSpawnInfo = {
+  startedAt: string
+  taskId: string
+  claimKey: string
+  sessionName: string | null
 }
 
 export type PluginState = {

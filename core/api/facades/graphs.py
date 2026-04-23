@@ -18,6 +18,25 @@ async def get_graph(db: AsyncSession, graph_id: UUID):
     return await graphs_service.get_graph(db, graph_id)
 
 
+def graph_asset_path(graph):
+    return graphs_service.graph_asset_path(graph)
+
+
+async def get_graph_by_asset_path(
+    db: AsyncSession,
+    workspace_id: UUID,
+    asset_path: str,
+    *,
+    project_id: UUID | None = None,
+):
+    return await graphs_service.get_graph_by_asset_path(
+        db,
+        workspace_id,
+        asset_path,
+        project_id=project_id,
+    )
+
+
 async def get_latest_version(db: AsyncSession, graph_id: UUID):
     return await graphs_service.get_latest_version(db, graph_id)
 

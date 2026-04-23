@@ -7,6 +7,7 @@ from libs.database import get_db
 from libs.auth.backend.deps import get_current_user, get_workspace_member
 from libs.auth.backend.models import User
 
+from core.api import projects as core_projects
 from . import service, version_service
 from .schemas import (
     DesignChatRequest,
@@ -30,6 +31,10 @@ async def _graph_out(db: AsyncSession, graph, run_count: int | None = None) -> G
     # Prefer the latest named version; fall back to root draft for new graphs
     ver = await service.get_latest_version(db, graph.id) or await service.get_root_draft(db, graph.id)
     out = GraphOut.model_validate(graph)
+    if graph.project_id is not None:
+        project = await core_projects.get_project(db, graph.project_id)
+        out.project_slug = None if project is None else project.slug
+    out.asset_path = service.graph_asset_path(graph)
     out.run_count = run_count if run_count is not None else await service.count_graph_runs(db, graph.workspace_id, graph.id)
     out.latest_version = GraphVersionOut.model_validate(ver) if ver else None
     return out
@@ -51,6 +56,22 @@ async def create_graph(
     workspace_id: UUID, data: GraphCreate, db: AsyncSession = Depends(get_db)
 ):
     graph = await service.create_graph(db, workspace_id, data)
+    return await _graph_out(db, graph)
+
+
+@router.get("/{workspace_id}/graphs/by-path", response_model=GraphOut)
+async def get_graph_by_path(
+    workspace_id: UUID,
+    path: str = Query(...),
+    project_id: UUID | None = Query(default=None),
+    db: AsyncSession = Depends(get_db),
+):
+    try:
+        graph = await service.get_graph_by_asset_path(db, workspace_id, path, project_id=project_id)
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc
+    if not graph:
+        raise HTTPException(404, "Graph not found")
     return await _graph_out(db, graph)
 
 

@@ -16,6 +16,7 @@ import { KnotworkRestTransport } from '../transport/knotwork-rest-transport'
 import { OpenClawThinkingRuntime } from '../transport/openclaw-thinking-runtime'
 import type { KnotworkTransport } from '../transport/contracts'
 import { isAuthError } from './auth'
+import { buildChannelFailureMessage } from './failure-message.js'
 import { MAX_RECENT_TASKS } from '../state/persist'
 import type { TaskLogger } from '../state/tasklog'
 import type {
@@ -31,34 +32,197 @@ import type {
 
 const DEFAULT_AUTHOR_NAME = 'Knotwork Agent'
 
-function isChannelNotifiableFailure(error: string): boolean {
-  return (
-    /OAuth token refresh failed/i.test(error) ||
-    /FailoverError/i.test(error) ||
-    /subagent\.run failed/i.test(error) ||
-    /api\.runtime\.subagent/i.test(error) ||
-    /semantic mode failed/i.test(error) ||
-    /semantic session exceeded context-read limit/i.test(error)
-  )
+function normalizeTimestamp(value: string | null | undefined): number {
+  const parsed = new Date(String(value ?? '')).getTime()
+  return Number.isFinite(parsed) ? parsed : 0
 }
 
-function buildChannelFailureMessage(error: string): string {
-  if (/OAuth token refresh failed/i.test(error) || /openai-codex/i.test(error)) {
-    return [
-      `I could not start this task because the OpenClaw model provider authentication failed.`,
-      ``,
-      `Problem: \`openai-codex\` OAuth token refresh failed.`,
-      `Action needed: re-authenticate that provider in OpenClaw, then retry the run or send the message again.`,
-      ``,
-      `No crawl/tool work was executed before this failure.`,
-    ].join('\n')
+function compareInboxEvents(a: InboxEvent, b: InboxEvent): number {
+  const priorityDiff = inboxEventPriority(a) - inboxEventPriority(b)
+  if (priorityDiff !== 0) return priorityDiff
+  const createdDiff = normalizeTimestamp(b.created_at) - normalizeTimestamp(a.created_at)
+  if (createdDiff !== 0) return createdDiff
+  return String(a.id).localeCompare(String(b.id))
+}
+
+function summarizeInboxEvent(event: InboxEvent): Record<string, unknown> {
+  return {
+    id: event.id,
+    item_type: event.item_type,
+    delivery_id: event.delivery_id,
+    title: event.title,
+    subtitle: event.subtitle,
+    status: event.status,
+    run_id: event.run_id,
+    channel_id: event.channel_id,
+    escalation_id: event.escalation_id,
+    proposal_id: event.proposal_id ?? null,
+    message_id: event.message_id ?? null,
+    asset_type: event.asset_type ?? null,
+    asset_id: event.asset_id ?? null,
+    asset_path: event.asset_path ?? null,
+    unread: event.unread,
+    created_at: event.created_at,
+  }
+}
+
+function sessionAssetDetail(events: InboxEvent[]): Record<string, unknown> | null {
+  const assetEvent = events.find((event) => event.asset_type || event.asset_id || event.asset_path)
+  if (!assetEvent) return null
+  return {
+    type: assetEvent.asset_type ?? null,
+    id: assetEvent.asset_id ?? null,
+    path: assetEvent.asset_path ?? null,
+  }
+}
+
+export function inboxEventPriority(event: InboxEvent): number {
+  switch (event.item_type) {
+    case 'mentioned_message':
+      return 0
+    case 'escalation_assigned':
+    case 'escalation':
+      return 1
+    case 'message_posted':
+      return 2
+    case 'task_assigned':
+      return 3
+    case 'run_event':
+      return 4
+    case 'workspace_announcement':
+      return 5
+    default:
+      return 10
+  }
+}
+
+export function claimKeyForInboxEvent(event: InboxEvent): string {
+  if (typeof event.channel_id === 'string' && event.channel_id.trim()) {
+    return `channel:${event.channel_id.trim()}`
+  }
+  if (typeof event.run_id === 'string' && event.run_id.trim()) {
+    return `run:${event.run_id.trim()}`
+  }
+  if (typeof event.escalation_id === 'string' && event.escalation_id.trim()) {
+    return `escalation:${event.escalation_id.trim()}`
+  }
+  if (typeof event.proposal_id === 'string' && event.proposal_id.trim()) {
+    return `proposal:${event.proposal_id.trim()}`
+  }
+  if (typeof event.asset_path === 'string' && event.asset_path.trim()) {
+    return `asset:${event.asset_type ?? 'asset'}:${event.asset_path.trim()}`
+  }
+  if (typeof event.asset_id === 'string' && event.asset_id.trim()) {
+    return `asset:${event.asset_type ?? 'asset'}:${event.asset_id.trim()}`
+  }
+  return `event:${event.id}`
+}
+
+export function buildBundledInboxTasks(events: InboxEvent[], _guideContent: string | null): ExecutionTask[] {
+  const grouped = new Map<string, InboxEvent[]>()
+  for (const event of events) {
+    const claimKey = claimKeyForInboxEvent(event)
+    const items = grouped.get(claimKey) ?? []
+    items.push(event)
+    grouped.set(claimKey, items)
   }
 
-  return [
-    `I could not start this task because the OpenClaw runtime failed before any Knotwork action was taken.`,
-    ``,
-    `Error: ${error.slice(0, 300)}`,
-  ].join('\n')
+  return Array.from(grouped.entries())
+    .map(([claimKey, groupedEvents]) => {
+      const sortedEvents = [...groupedEvents].sort(compareInboxEvents)
+      const primary = sortedEvents[0]
+      const detail: Record<string, unknown> = {}
+      if (primary.message_id) detail.message_id = primary.message_id
+      if (primary.run_id) detail.run_id = primary.run_id
+      if (primary.escalation_id) detail.escalation_id = primary.escalation_id
+      if (primary.proposal_id) detail.proposal_id = primary.proposal_id
+      if (primary.asset_type || primary.asset_id || primary.asset_path) {
+        detail.asset = {
+          type: primary.asset_type ?? null,
+          id: primary.asset_id ?? null,
+          path: primary.asset_path ?? null,
+        }
+      }
+      const sessionAsset = sessionAssetDetail(sortedEvents)
+      if (sessionAsset) detail.session_asset = sessionAsset
+      detail.session_claim_key = claimKey
+      detail.primary_event_id = primary.id
+      detail.primary_event_type = primary.item_type
+      detail.primary_event_created_at = primary.created_at
+      detail.session_event_count = sortedEvents.length
+      detail.session_event_types = Array.from(new Set(sortedEvents.map((event) => event.item_type)))
+      detail.session_events = sortedEvents.map(summarizeInboxEvent)
+
+      const deliveryIds = sortedEvents
+        .map((event) => event.delivery_id)
+        .filter((deliveryId): deliveryId is string => typeof deliveryId === 'string' && deliveryId.trim().length > 0)
+
+      return {
+        task_id: primary.id,
+        claim_key: claimKey,
+        channel_id: primary.channel_id ?? undefined,
+        session_name: primary.channel_id
+          ? `channel-${primary.channel_id}`
+          : `inbox-${claimKey.replace(/[^a-zA-Z0-9._-]/g, '_')}`,
+        delivery_ids: Array.from(new Set(deliveryIds)),
+        inbox_events: sortedEvents,
+        trigger: {
+          type: primary.item_type,
+          delivery_id: primary.delivery_id,
+          channel_id: primary.channel_id,
+          title: primary.title,
+          subtitle: primary.subtitle,
+          detail,
+        },
+      } satisfies ExecutionTask
+    })
+    .sort((a, b) => compareInboxEvents((a.inbox_events ?? [])[0] as InboxEvent, (b.inbox_events ?? [])[0] as InboxEvent))
+}
+
+async function postFailureToChannel(input: {
+  baseUrl: string
+  workspaceId: string
+  jwt: string
+  channelId: string
+  error: string
+  authorName: string
+  task: ExecutionTask
+  failurePacket?: WorkPacket | null
+  log: (msg: string) => void
+  taskLog: TaskLogger
+  taskId: string
+  rememberError: (err: unknown) => string
+}): Promise<void> {
+  const {
+    baseUrl,
+    workspaceId,
+    jwt,
+    channelId,
+    error,
+    authorName,
+    task,
+    failurePacket,
+    log,
+    taskLog,
+    taskId,
+    rememberError,
+  } = input
+
+  try {
+    await postChannelMessage(
+      baseUrl,
+      workspaceId,
+      jwt,
+      channelId,
+      buildChannelFailureMessage(error),
+      authorName,
+      fallbackRunId(task, failurePacket),
+    )
+    log(`task:failure-posted id=${taskId} channel=${channelId}`)
+    taskLog('task:failure-posted', taskId, { channel: channelId })
+  } catch (postErr) {
+    log(`task:failure-post-failed id=${taskId} channel=${channelId} error=${rememberError(postErr)}`)
+  }
 }
 
 function fallbackRunId(task: ExecutionTask, packet?: WorkPacket | null): string | undefined {
@@ -150,32 +314,8 @@ export function removeRunningTask(state: PluginState, taskId: string): void {
  * The agent's guide (system prompt) tells it what to do per event type.
  * This user prompt provides the structured event details.
  */
-export function inboxEventToTask(event: InboxEvent, _guideContent: string | null): ExecutionTask {
-  const detail: Record<string, unknown> = {}
-  if (event.message_id) detail.message_id = event.message_id
-  if (event.run_id) detail.run_id = event.run_id
-  if (event.escalation_id) detail.escalation_id = event.escalation_id
-  if (event.proposal_id) detail.proposal_id = event.proposal_id
-  if (event.asset_type || event.asset_id || event.asset_path) {
-    detail.asset = {
-      type: event.asset_type ?? null,
-      id: event.asset_id ?? null,
-      path: event.asset_path ?? null,
-    }
-  }
-  return {
-    task_id: event.id,
-    channel_id: event.channel_id ?? undefined,
-    session_name: event.channel_id ? `channel-${event.channel_id}` : `inbox-${event.item_type}-${event.id.slice(-8)}`,
-    trigger: {
-      type: event.item_type,
-      delivery_id: event.delivery_id,
-      channel_id: event.channel_id,
-      title: event.title,
-      subtitle: event.subtitle,
-      detail,
-    },
-  }
+export function inboxEventToTask(event: InboxEvent, guideContent: string | null): ExecutionTask {
+  return buildBundledInboxTasks([event], guideContent)[0]
 }
 
 /**
@@ -217,8 +357,10 @@ export async function runClaimedTask(ctx: WorkerCtx, task: ExecutionTask, creds?
   })
   log(`task:start id=${taskId} session=${task.session_name ?? 'n/a'}`)
 
-  // Delivery ID for ACKing — stored on task.agent_key by convention (see inboxEventToTask)
-  const deliveryId = task.agent_key ?? null
+  const deliveryIds = Array.from(new Set([
+    ...((Array.isArray(task.delivery_ids) ? task.delivery_ids : []).filter((deliveryId): deliveryId is string => typeof deliveryId === 'string' && deliveryId.trim().length > 0)),
+    ...(typeof task.agent_key === 'string' && task.agent_key.trim() ? [task.agent_key.trim()] : []),
+  ]))
   let failurePacket: WorkPacket | null = null
 
   let heartbeat: ReturnType<typeof setInterval> | null = null
@@ -326,26 +468,25 @@ export async function runClaimedTask(ctx: WorkerCtx, task: ExecutionTask, creds?
     if (result.type === 'completed') taskLogExtra.outputPreview = result.output.slice(0, 500)
     taskLog('task:sent', taskId, taskLogExtra)
 
-    if (result.type === 'failed' && task.channel_id && isChannelNotifiableFailure(result.error)) {
-      try {
-        await postChannelMessage(
-          baseUrl,
-          workspaceId,
-          jwt,
-          task.channel_id,
-          buildChannelFailureMessage(result.error),
-          authorName,
-          fallbackRunId(task, failurePacket),
-        )
-        log(`task:failure-posted id=${taskId} channel=${task.channel_id}`)
-        taskLog('task:failure-posted', taskId, { channel: task.channel_id })
-      } catch (postErr) {
-        log(`task:failure-post-failed id=${taskId} channel=${task.channel_id} error=${rememberError(postErr)}`)
-      }
+    if (result.type === 'failed' && task.channel_id) {
+      await postFailureToChannel({
+        baseUrl,
+        workspaceId,
+        jwt,
+        channelId: task.channel_id,
+        error: result.error,
+        authorName,
+        task,
+        failurePacket,
+        log,
+        taskLog,
+        taskId,
+        rememberError,
+      })
     }
 
     // Archive the delivery after handling so it no longer loops in the active inbox.
-    if (deliveryId) {
+    for (const deliveryId of deliveryIds) {
       try {
         await archiveInboxDelivery(baseUrl, workspaceId, jwt, deliveryId)
         log(`task:archived id=${taskId} delivery=${deliveryId}`)
@@ -365,8 +506,26 @@ export async function runClaimedTask(ctx: WorkerCtx, task: ExecutionTask, creds?
     log(`task:error id=${taskId} ${error}`)
     taskLog('task:sent', taskId, { type: 'failed', error: error.slice(0, 200) })
 
+    if (task.channel_id) {
+      const authorName = await resolveAuthorName(baseUrl, workspaceId, jwt)
+      await postFailureToChannel({
+        baseUrl,
+        workspaceId,
+        jwt,
+        channelId: task.channel_id,
+        error,
+        authorName,
+        task,
+        failurePacket,
+        log,
+        taskLog,
+        taskId,
+        rememberError,
+      })
+    }
+
     // Still archive on failure — agent tried and failed, avoid re-delivery loops.
-    if (deliveryId) {
+    for (const deliveryId of deliveryIds) {
       try {
         await archiveInboxDelivery(baseUrl, workspaceId, jwt, deliveryId)
         log(`task:archived id=${taskId} delivery=${deliveryId} after_error=true`)
@@ -424,10 +583,7 @@ export async function pollAndRun(ctx: WorkerCtx): Promise<void> {
   }
 
   log(`poll:got count=${events.length}`)
-  for (const event of events) {
-    const task = inboxEventToTask(event, state.guideContent)
-    // Store delivery_id on agent_key for retrieval in runClaimedTask.
-    task.agent_key = event.delivery_id ?? undefined
+  for (const task of buildBundledInboxTasks(events, state.guideContent)) {
     await runClaimedTask(ctx, task)
   }
 }

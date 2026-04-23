@@ -23,7 +23,6 @@ import {
   ProjectsPage,
 } from '@modules/projects/frontend/index'
 import {
-  GraphDetailPage,
   GraphsPage,
   PublicRunPage,
   PublicWorkflowPage,
@@ -56,16 +55,6 @@ export default function ChimeraApp() {
 
       <Route path="/" element={<Navigate to={chimeraDistribution.defaultRoute} replace />} />
       <Route path="/dashboard" element={<Navigate to={chimeraDistribution.defaultRoute} replace />} />
-      {hasWorkflows && (
-        <Route
-          path="/graphs/:graphId"
-          element={
-            <RequireAuth>
-              <GraphDetailPage />
-            </RequireAuth>
-          }
-        />
-      )}
       <Route
         element={
           <RequireAuth>

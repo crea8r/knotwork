@@ -21,10 +21,10 @@ const TYPE_LABEL: Record<string, string> = {
 
 function EscalationCard({ esc }: { esc: Escalation }) {
   return (
-    <Card className="p-4">
-      <div className="flex items-center gap-4">
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2">
+    <Card data-ui="escalations.card" className="p-4">
+      <div data-ui="escalations.card.row" className="flex items-center gap-4">
+        <div data-ui="escalations.card.main" className="flex-1 min-w-0">
+          <div data-ui="escalations.card.header" className="flex items-center gap-2">
             <p className="text-sm font-medium text-gray-800 truncate">
               {TYPE_LABEL[esc.type] ?? esc.type}
             </p>
@@ -36,6 +36,7 @@ function EscalationCard({ esc }: { esc: Escalation }) {
         </div>
         <Link
           to={`/runs/${esc.run_id}`}
+          data-ui="escalations.card.link"
           className="text-xs text-blue-600 hover:underline shrink-0"
         >
           {esc.status === 'open' ? 'Review →' : 'View →'}
@@ -60,22 +61,23 @@ export default function EscalationsPage() {
   ]
 
   return (
-    <div className="p-4 md:p-8 max-w-4xl mx-auto">
+    <div data-ui="escalations.page" className="p-4 md:p-8 max-w-4xl mx-auto">
       <PageHeader
         title="Escalations"
         actions={
-          <div className="flex items-center gap-2">
+          <div data-ui="escalations.header.badges" className="flex items-center gap-2">
             <Badge variant="orange">{openCount} open</Badge>
             <Badge variant="gray">{resolvedCount} resolved</Badge>
           </div>
         }
       />
 
-      <div className="flex gap-2 mb-6">
+      <div data-ui="escalations.filters" className="flex gap-2 mb-6">
         {FILTERS.map((f) => (
           <button
             key={f.value || 'all'}
             onClick={() => setFilter(f.value)}
+            data-ui="escalations.filter"
             className={`px-4 py-1.5 rounded-full text-sm font-medium transition-colors ${
               filter === f.value
                 ? 'bg-gray-900 text-white'
@@ -88,14 +90,16 @@ export default function EscalationsPage() {
       </div>
 
       {isLoading ? (
-        <div className="flex justify-center py-16"><Spinner size="lg" /></div>
+        <div data-ui="escalations.loading" className="flex justify-center py-16"><Spinner size="lg" /></div>
       ) : escalations.length === 0 ? (
-        <EmptyState
-          heading="No escalations found"
-          subtext="Escalations appear when a run needs human review."
-        />
+        <div data-ui="escalations.empty">
+          <EmptyState
+            heading="No escalations found"
+            subtext="Escalations appear when a run needs human review."
+          />
+        </div>
       ) : (
-        <div className="space-y-2">
+        <div data-ui="escalations.list" className="space-y-2">
           {escalations.map((esc) => <EscalationCard key={esc.id} esc={esc} />)}
         </div>
       )}

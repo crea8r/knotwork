@@ -98,11 +98,21 @@ def get_mcp_contract(contract_id: str) -> MCPContractManifest:
         raise KeyError(f"Unknown MCP contract: {contract_id}") from exc
 
 
+def _materialize_resolved_contract(contract: MCPContract) -> MCPContract:
+    manifest = get_mcp_contract(contract.contract.id)
+    if contract.contract == manifest:
+        return contract
+    return contract.model_copy(update={"contract": manifest})
+
+
 def resolve_mcp_contract_with_provider(context: dict) -> ResolvedMCPContract:
     for provider in _STATE.providers:
         contract = provider.resolve(context)
         if contract is not None:
-            return ResolvedMCPContract(provider=provider, contract=contract)
+            return ResolvedMCPContract(
+                provider=provider,
+                contract=_materialize_resolved_contract(contract),
+            )
     raise LookupError(
         "No MCP contract provider matched the current context. "
         "Register a provider for this session type before building interaction packets."
@@ -120,7 +130,10 @@ def resolve_mcp_contract_for_work_packet(loaded_context: LoadedWorkPacketContext
             continue
         contract = resolver(loaded_context)
         if contract is not None:
-            return ResolvedMCPContract(provider=provider, contract=contract)
+            return ResolvedMCPContract(
+                provider=provider,
+                contract=_materialize_resolved_contract(contract),
+            )
     raise LookupError(
         "No MCP contract provider matched the current work-packet context. "
         "Register a provider for this session type before building interaction packets."

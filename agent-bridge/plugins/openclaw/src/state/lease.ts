@@ -7,7 +7,7 @@
 //   RENEW_INTERVAL_MS < LEASE_TTL_MS / 2   (holder renews at least 2× per TTL window)
 //   On graceful shutdown process.once('exit') deletes the file immediately.
 
-import { mkdir, open, readFile, rm, writeFile } from 'node:fs/promises'
+import { mkdir, open, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import { rmSync } from 'node:fs'
 import { dirname } from 'node:path'
 
@@ -16,6 +16,7 @@ const PLUGIN_ID = 'knotwork-bridge'
 const LEASE_TTL_MS = 30_000
 // How often the holder should call renewRuntimeLease().
 export const LEASE_RENEW_INTERVAL_MS = 10_000
+const LOCK_WRITE_GRACE_MS = 1_000
 
 export type LeaseResult = { acquired: boolean; pid: number | null }
 
@@ -72,7 +73,17 @@ export async function acquireRuntimeLease(
           return tryAcquire()
         }
       } catch {
-        // Corrupt lock file — remove and retry.
+        // A freshly created lock file may still be in the middle of being written
+        // by another activation. Treat it as busy unless it has been malformed for
+        // longer than a short grace period.
+        try {
+          const info = await stat(lockPath)
+          if (Date.now() - info.mtimeMs <= LOCK_WRITE_GRACE_MS) {
+            return { acquired: false, pid: null }
+          }
+        } catch {
+          return { acquired: false, pid: null }
+        }
         await rm(lockPath, { force: true })
         return tryAcquire()
       }

@@ -79,11 +79,12 @@ export default function GraphTabBar({
 
   return (
     <>
-      <div className="border-b border-gray-100 bg-gray-50 px-4 py-2 flex items-center gap-2 flex-shrink-0 overflow-x-auto">
-        {editorMode === 'edit' && <span className="inline-flex h-1.5 w-1.5 flex-shrink-0 rounded-full bg-orange-400" />}
-        <span className="text-xs font-medium text-gray-600 flex-shrink-0">{currentVersionLabel}</span>
+      <div data-ui="workflow.editor.toolbar" className="border-b border-gray-100 bg-gray-50 px-4 py-2 flex items-center gap-2 flex-shrink-0 overflow-x-auto">
+        {editorMode === 'edit' && <span data-ui="workflow.editor.toolbar.dirty-indicator" className="inline-flex h-1.5 w-1.5 flex-shrink-0 rounded-full bg-orange-400" />}
+        <span data-ui="workflow.editor.toolbar.version" className="text-xs font-medium text-gray-600 flex-shrink-0">{currentVersionLabel}</span>
         {editorMode === 'view' && activeParentVersionId === null ? (
           <button
+            data-ui="workflow.editor.toolbar.edit"
             className="flex items-center gap-1 rounded px-1.5 py-0.5 text-xs text-gray-500 hover:bg-gray-200 hover:text-gray-700 transition-colors flex-shrink-0"
             onClick={() => { setEditorMode('edit'); setViewingVersionSnapshot(false) }}
           >
@@ -93,57 +94,57 @@ export default function GraphTabBar({
           <>
             <span className="text-gray-300 flex-shrink-0">·</span>
             {autosaveState === 'error' ? (
-              <span className="flex items-center gap-1 text-xs text-red-500 flex-shrink-0">
+              <span data-ui="workflow.editor.toolbar.autosave" className="flex items-center gap-1 text-xs text-red-500 flex-shrink-0">
                 {autosaveError || 'Save failed'}
-                <button onClick={onSyncDraftNow} className="underline hover:no-underline">Retry</button>
+                <button data-ui="workflow.editor.toolbar.autosave.retry" onClick={onSyncDraftNow} className="underline hover:no-underline">Retry</button>
               </span>
             ) : autosaveState === 'saving' ? (
-              <span className="flex items-center gap-1 text-xs text-gray-400 flex-shrink-0">
+              <span data-ui="workflow.editor.toolbar.autosave" className="flex items-center gap-1 text-xs text-gray-400 flex-shrink-0">
                 <Loader2 size={10} className="animate-spin" /> Saving…
               </span>
             ) : autosaveState === 'saved' ? (
-              <span className="text-xs text-gray-400 flex-shrink-0">Saved</span>
+              <span data-ui="workflow.editor.toolbar.autosave" className="text-xs text-gray-400 flex-shrink-0">Saved</span>
             ) : (
-              <span className="text-xs text-gray-400 flex-shrink-0">Auto-saves as you edit</span>
+              <span data-ui="workflow.editor.toolbar.autosave" className="text-xs text-gray-400 flex-shrink-0">Auto-saves as you edit</span>
             )}
           </>
         ) : null}
-        <div className="ml-auto flex items-center gap-2 flex-shrink-0">
+        <div data-ui="workflow.editor.toolbar.actions" className="ml-auto flex items-center gap-2 flex-shrink-0">
           {hasValidationErrors && (
             <>
-              <span className="hidden md:inline text-xs text-amber-600 truncate max-w-[180px]" title={validationErrors.join(', ')}>
+              <span data-ui="workflow.editor.toolbar.validation.summary" className="hidden md:inline text-xs text-amber-600 truncate max-w-[180px]" title={validationErrors.join(', ')}>
                 {validationErrors[0].length > 32 ? validationErrors[0].slice(0, 30) + '…' : validationErrors[0]}
               </span>
-              <button className="md:hidden flex items-center justify-center w-6 h-6 rounded text-amber-500 hover:bg-amber-50" onClick={() => setShowErrorDialog(true)} title="Graph topology issues">
+              <button data-ui="workflow.editor.toolbar.validation.toggle" className="md:hidden flex items-center justify-center w-6 h-6 rounded text-amber-500 hover:bg-amber-50" onClick={() => setShowErrorDialog(true)} title="Graph topology issues">
                 <AlertTriangle size={14} />
               </button>
             </>
           )}
-          <Btn size="sm" variant="primary" disabled={hasValidationErrors} onClick={onRun}>
+          <Btn data-ui="workflow.editor.toolbar.run" size="sm" variant="primary" disabled={hasValidationErrors} onClick={onRun}>
             <Play size={12} /><span className="hidden md:inline"> Run</span>
           </Btn>
           {editorMode === 'edit' && <>
-            <Btn size="sm" title="Publish" loading={publishPending} onClick={onPublish}>
+            <Btn data-ui="workflow.editor.toolbar.publish" size="sm" title="Publish" loading={publishPending} onClick={onPublish}>
               <Globe size={13} /><span className="hidden md:inline"> Publish</span>
             </Btn>
-            <Btn size="sm" variant="secondary" title="Add node" onClick={() => setAddingNode((v) => !v)}>
+            <Btn data-ui="workflow.editor.toolbar.add-node" size="sm" variant="secondary" title="Add node" onClick={() => setAddingNode((v) => !v)}>
               <Plus size={13} /><span className="hidden md:inline"> Add node</span>
             </Btn>
-            <Btn size="sm" variant="secondary" disabled={deleteGraphPending} title={hasRuns ? 'Archive' : 'Delete'} onClick={onRetire}>
+            <Btn data-ui="workflow.editor.toolbar.retire" size="sm" variant="secondary" disabled={deleteGraphPending} title={hasRuns ? 'Archive' : 'Delete'} onClick={onRetire}>
               {hasRuns ? <Archive size={13} /> : <Trash2 size={13} />}
               <span className="hidden md:inline">{deleteGraphPending ? ' Working…' : hasRuns ? ' Archive' : ' Delete'}</span>
             </Btn>
-            <Btn size="sm" variant="ghost" onClick={onSyncDraftNow}>Done</Btn>
+            <Btn data-ui="workflow.editor.toolbar.done" size="sm" variant="ghost" onClick={onSyncDraftNow}>Done</Btn>
           </>}
         </div>
       </div>
 
       {hasValidationErrors && editorMode === 'edit' && (
-        <div className="mx-6 mt-3 flex flex-shrink-0 items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-4 py-2.5">
+        <div data-ui="workflow.editor.validation.banner" className="mx-6 mt-3 flex flex-shrink-0 items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-4 py-2.5">
           <AlertTriangle size={14} className="mt-0.5 flex-shrink-0 text-amber-500" />
           <div>
-            <p className="text-xs font-semibold text-amber-700">Graph topology issue</p>
-            <ul className="mt-0.5 space-y-0.5 text-xs text-amber-600">
+            <p data-ui="workflow.editor.validation.title" className="text-xs font-semibold text-amber-700">Graph topology issue</p>
+            <ul data-ui="workflow.editor.validation.list" className="mt-0.5 space-y-0.5 text-xs text-amber-600">
               {validationErrors.map((error, i) => <li key={i}>• {error}</li>)}
             </ul>
           </div>
@@ -152,28 +153,32 @@ export default function GraphTabBar({
 
       {addingNode && editorMode === 'edit' && (
         <div
+          data-ui="workflow.editor.dialog.add-node"
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4"
           onClick={() => { setAddingNode(false); setNewNodeName('') }}
         >
           <form
+            data-ui="workflow.editor.dialog.add-node.panel"
             onSubmit={handleAddNode}
             className="w-full max-w-sm rounded-xl bg-white p-5 shadow-xl"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="mb-4">
-              <p className="text-sm font-semibold text-gray-900">Add node</p>
+              <p data-ui="workflow.editor.dialog.add-node.title" className="text-sm font-semibold text-gray-900">Add node</p>
               <p className="mt-1 text-sm text-gray-500">Create a new workflow step.</p>
             </div>
-            <label className="block text-xs font-medium text-gray-600 mb-1">Node name</label>
+            <label data-ui="workflow.editor.dialog.add-node.label" className="block text-xs font-medium text-gray-600 mb-1">Node name</label>
             <input
+              data-ui="workflow.editor.dialog.add-node.input"
               autoFocus
               value={newNodeName}
               onChange={(e) => setNewNodeName(e.target.value)}
               placeholder="Node name"
               className="w-full rounded border border-gray-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-brand-500"
             />
-            <div className="mt-4 flex items-center justify-end gap-2">
+            <div data-ui="workflow.editor.dialog.add-node.actions" className="mt-4 flex items-center justify-end gap-2">
               <button
+                data-ui="workflow.editor.dialog.add-node.cancel"
                 type="button"
                 onClick={() => { setAddingNode(false); setNewNodeName('') }}
                 className="px-3 py-1.5 text-sm text-gray-500"
@@ -181,6 +186,7 @@ export default function GraphTabBar({
                 Cancel
               </button>
               <button
+                data-ui="workflow.editor.dialog.add-node.submit"
                 type="submit"
                 className="rounded bg-brand-500 px-3 py-1.5 text-sm text-white"
               >
@@ -192,16 +198,16 @@ export default function GraphTabBar({
       )}
 
       {showErrorDialog && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4" onClick={() => setShowErrorDialog(false)}>
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-sm p-5" onClick={e => e.stopPropagation()}>
+        <div data-ui="workflow.editor.dialog.validation" className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4" onClick={() => setShowErrorDialog(false)}>
+          <div data-ui="workflow.editor.dialog.validation.panel" className="bg-white rounded-xl shadow-xl w-full max-w-sm p-5" onClick={e => e.stopPropagation()}>
             <div className="flex items-center gap-2 mb-3">
               <AlertTriangle size={16} className="text-amber-500 flex-shrink-0" />
-              <p className="font-semibold text-gray-900 text-sm">Graph topology issues</p>
+              <p data-ui="workflow.editor.dialog.validation.title" className="font-semibold text-gray-900 text-sm">Graph topology issues</p>
             </div>
-            <ul className="space-y-1 text-sm text-amber-700">
+            <ul data-ui="workflow.editor.dialog.validation.list" className="space-y-1 text-sm text-amber-700">
               {validationErrors.map((err, i) => <li key={i}>• {err}</li>)}
             </ul>
-            <button className="mt-4 w-full rounded-lg border border-gray-200 py-2 text-sm text-gray-600 hover:bg-gray-50" onClick={() => setShowErrorDialog(false)}>Close</button>
+            <button data-ui="workflow.editor.dialog.validation.close" className="mt-4 w-full rounded-lg border border-gray-200 py-2 text-sm text-gray-600 hover:bg-gray-50" onClick={() => setShowErrorDialog(false)}>Close</button>
           </div>
         </div>
       )}

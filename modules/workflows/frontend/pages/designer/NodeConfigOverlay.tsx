@@ -43,21 +43,21 @@ export default function NodeConfigOverlay({
   return (
     <>
       {/* Desktop side panel */}
-      <div className="hidden md:flex border-l border-gray-200 bg-white" style={{ width: 320, flexShrink: 0, flexDirection: 'column', overflow: 'hidden' }}>
-        <div style={{ flex: 1, overflow: 'hidden' }}>
+      <div data-ui="workflow.editor.inspector.desktop" className="hidden md:flex border-l border-gray-200 bg-white" style={{ width: 320, flexShrink: 0, flexDirection: 'column', overflow: 'hidden' }}>
+        <div data-ui="workflow.editor.inspector.desktop.content" style={{ flex: 1, overflow: 'hidden' }}>
           <NodeConfigPanel {...panelProps} />
         </div>
       </div>
 
       {/* Mobile full-screen overlay */}
-      <div className="md:hidden fixed inset-0 z-50 flex flex-col bg-white">
-        <div className="flex items-center justify-between border-b border-gray-200 px-4 py-3 flex-shrink-0">
-          <p className="text-sm font-semibold text-gray-900">Node config</p>
-          <button onClick={onClose} className="p-1.5 rounded-lg text-gray-400 hover:text-gray-700" aria-label="Close">
+      <div data-ui="workflow.editor.inspector.mobile" className="md:hidden fixed inset-0 z-50 flex flex-col bg-white">
+        <div data-ui="workflow.editor.inspector.mobile.header" className="flex items-center justify-between border-b border-gray-200 px-4 py-3 flex-shrink-0">
+          <p data-ui="workflow.editor.inspector.mobile.title" className="text-sm font-semibold text-gray-900">Node config</p>
+          <button data-ui="workflow.editor.inspector.mobile.close" onClick={onClose} className="p-1.5 rounded-lg text-gray-400 hover:text-gray-700" aria-label="Close">
             <X size={18} />
           </button>
         </div>
-        <div className="flex-1 overflow-y-auto overflow-x-hidden">
+        <div data-ui="workflow.editor.inspector.mobile.content" className="flex-1 overflow-y-auto overflow-x-hidden">
           <NodeConfigPanel {...panelProps} />
         </div>
       </div>

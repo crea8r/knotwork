@@ -14,7 +14,7 @@ import { detectActivationContext, startHydration } from './lifecycle/startup'
 import { startTimers } from './lifecycle/timers'
 import { SATURATION_RETRY_MS } from './lifecycle/spawn'
 import { createTaskLogger } from './state/tasklog'
-import type { ExecutionTask, OpenClawApi, PluginState } from './types'
+import type { ActiveSpawnInfo, ExecutionTask, OpenClawApi, PluginState } from './types'
 
 const PLUGIN_ID = 'knotwork-bridge'
 const STATE_FILE = 'knotwork-bridge-state.json'
@@ -96,7 +96,7 @@ export function activate(api: OpenClawApi): void {
   let snapshotWrite: Promise<void> = Promise.resolve()
   const timerRef: TimerRef = { current: null }
   const lockOwnerRef = { value: false }
-  const activeSpawns = new Map<string, { startedAt: string }>()
+  const activeSpawns = new Map<string, ActiveSpawnInfo>()
 
   const state: PluginState = {
     pluginInstanceId: null, jwt: null, jwtExpiresAt: null,

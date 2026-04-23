@@ -29,7 +29,12 @@ async def resolve_channel_asset_target(
     if channel.graph_id is not None:
         graph = await core_graphs.get_graph(db, channel.graph_id)
         project_id = graph.project_id if graph is not None and graph.project_id is not None else channel.project_id
-        return {"asset_type": "workflow", "asset_id": str(channel.graph_id), "asset_path": None, "asset_project_slug": await _project_slug(db, project_id)}
+        return {
+            "asset_type": "workflow",
+            "asset_id": str(channel.graph_id),
+            "asset_path": None if graph is None else core_graphs.graph_asset_path(graph),
+            "asset_project_slug": await _project_slug(db, project_id),
+        }
 
     binding = await _primary_binding(db, channel, preferred_run_id=preferred_run_id)
     if binding is None:
@@ -71,7 +76,10 @@ async def _primary_binding(db: AsyncSession, channel: Channel, *, preferred_run_
 async def _binding_context(db: AsyncSession, binding: ChannelAssetBinding, project_id: UUID | None) -> tuple[str | None, UUID | None]:
     if binding.asset_type == "workflow":
         graph = await _safe_get_graph(db, binding.asset_id)
-        return None, graph.project_id if graph is not None and graph.project_id is not None else project_id
+        return (
+            None if graph is None else core_graphs.graph_asset_path(graph),
+            graph.project_id if graph is not None and graph.project_id is not None else project_id,
+        )
     if binding.asset_type == "run":
         run = await core_runs.get_run(db, binding.asset_id)
         return None, run.project_id if run is not None and run.project_id is not None else project_id
