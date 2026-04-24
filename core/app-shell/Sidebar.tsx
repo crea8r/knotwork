@@ -554,13 +554,13 @@ function WorkspaceSidebar({
         />
 
         {collapsed ? (
-          <Item to={activeProjectId ? `/projects/${activeProjectId}` : '/projects?view=list'} icon={<FolderKanban size={iconSize} />} label="Work" onClick={onCloseMobile} />
+          <Item to={activeProjectId ? `/projects/${activeProjectId}` : '/projects?view=list'} icon={<FolderKanban size={iconSize} />} label="Project" onClick={onCloseMobile} />
         ) : (
           <div className="pt-2">
             <div className="flex items-center justify-between px-3 pb-1">
               <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wide text-gray-400">
                 <FolderKanban size={12} />
-                <span>Work</span>
+                <span>Project</span>
               </div>
               <button
                 type="button"
@@ -601,8 +601,8 @@ function WorkspaceSidebar({
                         className={`inline-flex h-7 w-7 items-center justify-center rounded-md hover:bg-white ${
                           pinnedProjectId === project.id ? 'text-brand-700' : 'text-gray-400 hover:text-gray-700'
                         }`}
-                        title={pinnedProjectId === project.id ? 'Unpin project' : 'Pin project to Work'}
-                        aria-label={pinnedProjectId === project.id ? 'Unpin project' : 'Pin project to Work'}
+                        title={pinnedProjectId === project.id ? 'Unpin project' : 'Pin project'}
+                        aria-label={pinnedProjectId === project.id ? 'Unpin project' : 'Pin project'}
                       >
                         <Pin size={13} className={pinnedProjectId === project.id ? 'fill-current' : ''} />
                       </button>

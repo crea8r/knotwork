@@ -138,8 +138,8 @@ export default function ProjectDashboard({
               className={`inline-flex h-8 w-8 items-center justify-center rounded-lg border ${
                 pinned ? 'border-brand-200 bg-brand-50 text-brand-700' : 'border-transparent text-stone-400 hover:border-stone-200 hover:bg-white hover:text-stone-700'
               }`}
-              title={pinned ? 'Unpin project from Work' : 'Pin project to Work'}
-              aria-label={pinned ? 'Unpin project from Work' : 'Pin project to Work'}
+              title={pinned ? 'Unpin project' : 'Pin project'}
+              aria-label={pinned ? 'Unpin project' : 'Pin project'}
             >
               <Pin size={13} className={pinned ? 'fill-current' : ''} />
             </button>

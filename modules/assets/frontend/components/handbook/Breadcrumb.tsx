@@ -114,7 +114,6 @@ export default function Breadcrumb({
           )}
         </span>
       )}
-      {afterCurrent ? <span data-ui="shell.asset.breadcrumb.trailing" className="flex shrink-0 items-center gap-1">{afterCurrent}</span> : null}
       {canRename && !isEditing && (
         <button
           disabled={renamePending}
@@ -126,6 +125,7 @@ export default function Breadcrumb({
           {renamePending ? <Loader2 size={12} className="animate-spin" /> : <Pencil size={12} />}
         </button>
       )}
+      {afterCurrent ? <span data-ui="shell.asset.breadcrumb.trailing" className="flex shrink-0 items-center gap-1">{afterCurrent}</span> : null}
     </nav>
   )
 }

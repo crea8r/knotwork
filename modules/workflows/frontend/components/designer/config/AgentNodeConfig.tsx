@@ -3,8 +3,8 @@
  * trust_level is now a float 0.0–1.0 (shown as a slider).
  * Confidence threshold, confidence rules, and checkpoints have been removed.
  */
-import { useState } from 'react'
-import { Search, X, Maximize2 } from 'lucide-react'
+import { useMemo, useState, type ReactNode } from 'react'
+import { ArrowDown, BookOpenText, FileText, Gauge, Link2, Maximize2, Search, Users, X } from 'lucide-react'
 import { useKnowledgeFile, useKnowledgeFiles, useSearchKnowledgeFiles } from "@modules/assets/frontend/api/knowledge"
 import { useChannelParticipants } from '@modules/communication/frontend/api/channels'
 import Btn from '@ui/components/Btn'
@@ -25,17 +25,67 @@ interface Props {
 }
 
 const TRUST_LABELS: [number, string][] = [
-  [0.0, 'Always ask'],
-  [0.5, 'Supervised'],
-  [1.0, 'Fully autonomous'],
+  [0.0, 'Ask supervisor'],
+  [0.5, 'Review as needed'],
+  [1.0, 'Operator decides'],
 ]
 
 function trustLabel(val: number): string {
-  if (val <= 0.1) return 'Always ask'
-  if (val >= 0.9) return 'Fully autonomous'
-  if (val <= 0.4) return 'Low autonomy'
-  if (val <= 0.6) return 'Supervised'
-  return 'High autonomy'
+  if (val <= 0.1) return 'Ask supervisor early'
+  if (val >= 0.9) return 'Operator moves ahead'
+  if (val <= 0.4) return 'Check with supervisor'
+  if (val <= 0.6) return 'Review as needed'
+  return 'Operator decides more'
+}
+
+function assetDisplayName(path: string, titleByPath: Map<string, string>): string {
+  const title = titleByPath.get(path)?.trim()
+  if (title) return title
+  const basename = path.split('/').filter(Boolean).pop()?.trim()
+  return basename || path
+}
+
+function FlowConnector() {
+  return (
+    <div className="flex items-center gap-2 pl-3 py-0.5 text-gray-300" aria-hidden="true">
+      <div className="h-3 w-px bg-gray-200" />
+      <ArrowDown size={10} />
+    </div>
+  )
+}
+
+function FlowSection({
+  step,
+  title,
+  icon,
+  action,
+  children,
+  dataUi,
+}: {
+  step: number
+  title: string
+  icon: ReactNode
+  action?: ReactNode
+  children: ReactNode
+  dataUi?: string
+}) {
+  return (
+    <section data-ui={dataUi} className="space-y-2">
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0 flex items-center gap-2">
+          <span className="inline-flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full bg-gray-900 text-[11px] font-semibold text-white">
+            {step}
+          </span>
+          <span className="flex-shrink-0 text-gray-400">
+            {icon}
+          </span>
+          <p className="truncate text-sm font-medium text-gray-900">{title}</p>
+        </div>
+        {action}
+      </div>
+      {children}
+    </section>
+  )
 }
 
 export default function AgentNodeConfig({ node, onChange, readOnly = false }: Props) {
@@ -53,7 +103,9 @@ export default function AgentNodeConfig({ node, onChange, readOnly = false }: Pr
   const operatorParticipantId = operatorId ?? (registeredAgentId ? `agent:${registeredAgentId}` : null)
   const supervisorMatchesOperatorAgent = !!operatorParticipantId && supervisorId === operatorParticipantId
 
-  const paths: string[] = (config.knowledge_paths as string[]) ?? []
+  const paths: string[] = Array.isArray(config.knowledge_paths)
+    ? config.knowledge_paths.filter((value): value is string => typeof value === 'string' && value.trim().length > 0)
+    : []
   const [pickerOpen, setPickerOpen] = useState(false)
   const [pickerQuery, setPickerQuery] = useState('')
   const [previewPath, setPreviewPath] = useState<string | null>(null)
@@ -62,14 +114,22 @@ export default function AgentNodeConfig({ node, onChange, readOnly = false }: Pr
   const { data: searchedFiles = [] } = useSearchKnowledgeFiles(pickerQuery)
   const { data: previewFile } = useKnowledgeFile(previewPath)
 
+  const titleByPath = useMemo(() => new Map(files.map((file) => [file.path, file.title])), [files])
+
   const setField = (patch: Record<string, unknown>) => onChange(patch)
   const setConfig = (patch: Record<string, unknown>) => onChange({}, patch)
 
   const selectValue = operatorParticipantId ?? ''
-  const selectedOperator = operatorParticipantId
-    ? participants.find((participant) => participant.participant_id === operatorParticipantId)
-    : undefined
-  const operatorNotFound = !!operatorParticipantId && !selectedOperator
+  const operatorNotFound = !!operatorParticipantId && !participants.some((participant) => participant.participant_id === operatorParticipantId)
+
+  const instructionFieldKey = isHuman ? 'question' : 'system_prompt'
+  const instructionValue = (config[instructionFieldKey] as string) ?? ''
+  const instructionPlaceholder = isHuman
+    ? 'Describe what the operator should do.'
+    : 'Describe what this node should do.'
+  const instructionPreview = instructionValue.length > 220
+    ? `${instructionValue.slice(0, 220)}…`
+    : instructionValue
 
   function handleAgentSelect(e: React.ChangeEvent<HTMLSelectElement>) {
     const val = e.target.value
@@ -100,18 +160,36 @@ export default function AgentNodeConfig({ node, onChange, readOnly = false }: Pr
     })
   }
 
+  function openAssetPicker(targetPath: string | null = null) {
+    setPickerQuery('')
+    setPreviewPath(targetPath ?? paths[0] ?? null)
+    setPickerOpen(true)
+  }
+
+  function openPromptDialog() {
+    setPromptDraft(instructionValue)
+    setPromptDialogOpen(true)
+  }
+
+  function savePromptDialog() {
+    setConfig({ [instructionFieldKey]: promptDraft })
+    setPromptDialogOpen(false)
+  }
+
   return (
-    <div className="space-y-4 text-sm">
-      {/* Operator selector */}
-      <div>
-        <label className="block text-xs text-gray-500 mb-1">Operator</label>
+    <div className="space-y-3 text-sm">
+      <section data-ui="workflow.editor.inspector.agent.operator" className="space-y-2">
+        <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-gray-500">
+          <Users size={13} />
+          <span>Operator</span>
+        </div>
         <select
-          className="border rounded px-2 py-1 text-sm w-full bg-white"
+          className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-brand-500"
           value={selectValue}
           disabled={readOnly}
           onChange={handleAgentSelect}
         >
-          <option value="">— Select operator —</option>
+          <option value="">Select operator</option>
           {participants.map((participant) => (
             <option key={participant.participant_id} value={participant.participant_id}>
               {participant.display_name} ({participant.kind})
@@ -119,179 +197,219 @@ export default function AgentNodeConfig({ node, onChange, readOnly = false }: Pr
           ))}
         </select>
         {operatorNotFound && (
-          <p className="text-xs text-amber-600 mt-1">
-            The previously selected operator is no longer available. Please select a new one.
+          <p className="text-xs text-amber-600">
+            The previously selected operator is no longer available.
           </p>
         )}
         {participants.length === 0 && (
-          <p className="text-xs text-gray-400 mt-1">
+          <p className="text-xs text-gray-400">
             No participants available yet.
           </p>
         )}
-      </div>
+      </section>
 
-      <div>
-        <label className="block text-xs text-gray-500 mb-1">Supervisor</label>
-        <select
-          className="border rounded px-2 py-1 text-sm w-full bg-white"
-          value={supervisorId ?? ''}
-          disabled={readOnly}
-          onChange={(e) => setField({ supervisor_id: e.target.value || null })}
-        >
-          <option value="">— Select supervisor —</option>
-          {participants.map((participant) => {
-            const disabled = !!operatorParticipantId
-              && participant.kind === 'agent'
-              && participant.participant_id === operatorParticipantId
-            return (
-              <option key={participant.participant_id} value={participant.participant_id} disabled={disabled}>
-                {participant.display_name} ({participant.kind})
-                {disabled ? ' — already the operator' : ''}
-              </option>
-            )
-          })}
-        </select>
-        {supervisorMatchesOperatorAgent ? (
-          <p className="text-xs text-red-600 mt-1">
-            Supervisor cannot be the same agent as the node operator.
-          </p>
-        ) : (
-          <p className="text-xs text-gray-400 mt-1">
-            Humans may supervise themselves. Agents must escalate to a different participant.
-          </p>
-        )}
-      </div>
-
-      {/* Trust level slider (not shown for human nodes) */}
-      {!isHuman && (
-        <div>
-          <div className="flex justify-between items-center mb-1">
-            <label className="text-xs text-gray-500">Autonomy level</label>
-            <span className="text-xs font-medium text-gray-700">
-              {trustLevel.toFixed(1)} — {trustLabel(trustLevel)}
-            </span>
+      <FlowSection
+        step={1}
+        title="Guideline assets"
+        icon={<BookOpenText size={14} />}
+        action={!readOnly ? (
+          <Btn
+            size="sm"
+            variant="secondary"
+            onClick={() => openAssetPicker()}
+            aria-label="Connect assets"
+            title="Connect assets"
+            className="px-2 py-1.5"
+          >
+            <Link2 size={13} />
+          </Btn>
+        ) : undefined}
+        dataUi="workflow.editor.inspector.agent.assets"
+      >
+        {paths.length === 0 ? (
+          <div className="flex min-h-[56px] items-center rounded-lg bg-gray-50 px-3 text-xs text-gray-400">
+            No assets connected
           </div>
-          <input
-            type="range" min={0} max={1} step={0.1}
-            className="w-full accent-brand-500"
-            value={trustLevel}
-            disabled={readOnly}
-            onChange={e => setField({ trust_level: parseFloat(e.target.value) })}
-          />
-          <div className="flex justify-between text-xs text-gray-400 mt-0.5">
-            {TRUST_LABELS.map(([v, label]) => (
-              <span key={v}>{label}</span>
+        ) : (
+          <div className="flex flex-wrap gap-2">
+            {paths.map((path) => (
+              <div
+                key={path}
+                title={path}
+                className="inline-flex max-w-full items-stretch rounded-lg border border-amber-200 bg-amber-50 text-xs text-amber-900"
+              >
+                <button
+                  type="button"
+                  onClick={() => openAssetPicker(path)}
+                  className="inline-flex min-w-0 items-center gap-1.5 px-2.5 py-1 text-left hover:bg-amber-100/70"
+                  aria-label={`Open ${assetDisplayName(path, titleByPath)}`}
+                  title={`Open ${assetDisplayName(path, titleByPath)}`}
+                >
+                  <BookOpenText size={11} className="flex-shrink-0 text-amber-600" />
+                  <span className="truncate">{assetDisplayName(path, titleByPath)}</span>
+                </button>
+                {!readOnly && (
+                  <button
+                    type="button"
+                    onClick={(event) => {
+                      event.stopPropagation()
+                      toggleKnowledgePath(path)
+                    }}
+                    className="border-l border-amber-200 px-2 text-amber-300 hover:text-red-500"
+                    aria-label={`Disconnect ${assetDisplayName(path, titleByPath)}`}
+                  >
+                    <X size={11} />
+                  </button>
+                )}
+              </div>
             ))}
           </div>
-        </div>
+        )}
+      </FlowSection>
+
+      <FlowConnector />
+
+      <FlowSection
+        step={2}
+        title="Task instruction"
+        icon={<FileText size={14} />}
+        action={(
+          <button
+            type="button"
+            onClick={openPromptDialog}
+            className="inline-flex items-center rounded-lg p-1.5 text-brand-600 hover:bg-brand-50 hover:text-brand-700"
+            aria-label={readOnly ? 'View task instruction' : 'Edit task instruction'}
+            title={readOnly ? 'View task instruction' : 'Edit task instruction'}
+          >
+            <Maximize2 size={11} />
+          </button>
+        )}
+        dataUi="workflow.editor.inspector.agent.instruction"
+      >
+        {instructionValue ? (
+          <div className="min-h-[76px] rounded-lg bg-gray-50 px-3 py-2.5 text-xs leading-relaxed text-gray-700 whitespace-pre-wrap break-words">
+            {instructionPreview}
+          </div>
+        ) : (
+          <div className="flex min-h-[76px] items-center rounded-lg bg-gray-50 px-3 text-xs italic text-gray-400">
+            No task instruction yet
+          </div>
+        )}
+      </FlowSection>
+
+      {!isHuman && (
+        <>
+          <FlowConnector />
+
+          <FlowSection
+            step={3}
+            title="Confidence level"
+            icon={<Gauge size={14} />}
+            dataUi="workflow.editor.inspector.agent.confidence"
+          >
+            <div className="space-y-2.5 rounded-lg bg-gray-50 px-3 py-2.5">
+              <div className="flex items-center justify-between gap-2">
+                <span className="inline-flex rounded-full border border-brand-200 bg-brand-50 px-2.5 py-1 text-xs font-semibold text-brand-700">
+                  {trustLabel(trustLevel)}
+                </span>
+                <span className="text-xs font-medium text-gray-500">
+                  {trustLevel.toFixed(1)}
+                </span>
+              </div>
+              <div className="grid grid-cols-[auto_1fr_auto] items-center gap-2">
+                <span className="rounded-full bg-rose-50 px-2 py-1 text-[11px] font-semibold text-rose-600">
+                  Ask supervisor
+                </span>
+                <div className="h-1.5 rounded-full bg-gradient-to-r from-rose-200 via-amber-200 to-emerald-200" />
+                <span className="rounded-full bg-emerald-50 px-2 py-1 text-[11px] font-semibold text-emerald-600">
+                  Operator decides
+                </span>
+              </div>
+              <input
+                type="range"
+                min={0}
+                max={1}
+                step={0.1}
+                className="w-full accent-brand-500"
+                value={trustLevel}
+                disabled={readOnly}
+                onChange={e => setField({ trust_level: parseFloat(e.target.value) })}
+              />
+              <div className="flex justify-between text-[11px] text-gray-400">
+                {TRUST_LABELS.map(([v, label]) => (
+                  <span key={v}>{label}</span>
+                ))}
+              </div>
+              <div data-ui="workflow.editor.inspector.agent.confidence.supervisor" className="space-y-2 border-t border-gray-200 pt-2">
+                <label className="block text-xs font-medium text-gray-700">Supervisor</label>
+                <select
+                  className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-brand-500"
+                  value={supervisorId ?? ''}
+                  disabled={readOnly}
+                  onChange={(e) => setField({ supervisor_id: e.target.value || null })}
+                >
+                  <option value="">Select supervisor</option>
+                  {participants.map((participant) => {
+                    const disabled = !!operatorParticipantId && participant.participant_id === operatorParticipantId
+                    return (
+                      <option key={participant.participant_id} value={participant.participant_id} disabled={disabled}>
+                        {participant.display_name} ({participant.kind})
+                        {disabled ? ' — already the operator' : ''}
+                      </option>
+                    )
+                  })}
+                </select>
+                {supervisorMatchesOperatorAgent ? (
+                  <p className="text-xs text-red-600">
+                    Supervisor cannot be the same participant as the operator.
+                  </p>
+                ) : null}
+              </div>
+            </div>
+          </FlowSection>
+        </>
       )}
 
-      {/* System prompt / question */}
-      {(() => {
-        const fieldKey = isHuman ? 'question' : 'system_prompt'
-        const label = isHuman ? 'Question for operator' : 'System prompt'
-        const placeholder = isHuman ? 'Awaiting human review.' : 'Instructions for the agent…'
-        const value = (config[fieldKey] as string) ?? ''
-        const PREVIEW_LEN = 240
-        const preview = value.length > PREVIEW_LEN ? value.slice(0, PREVIEW_LEN) + '…' : value
-
-        function openDialog() {
-          setPromptDraft(value)
-          setPromptDialogOpen(true)
-        }
-        function saveDialog() {
-          setConfig({ [fieldKey]: promptDraft })
-          setPromptDialogOpen(false)
-        }
-
-        return (
-          <div>
-            <div className="flex items-center justify-between mb-1">
-              <label className="text-xs text-gray-500">{label}</label>
-              <button
-                type="button"
-                onClick={openDialog}
-                className="inline-flex items-center gap-1 text-xs text-brand-500 hover:text-brand-700"
-              >
-                <Maximize2 size={11} />
-                {readOnly ? 'Detail' : 'Edit'}
+      {promptDialogOpen && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/45 p-4">
+          <div className="flex max-h-[85vh] w-full max-w-xl flex-col overflow-hidden rounded-xl border border-gray-200 bg-white shadow-2xl">
+            <div className="flex flex-shrink-0 items-center justify-between border-b border-gray-200 px-5 py-4">
+              <p className="text-sm font-semibold text-gray-900">Task instruction</p>
+              <button onClick={() => setPromptDialogOpen(false)} className="text-gray-400 hover:text-gray-600">
+                <X size={16} />
               </button>
             </div>
-            {value ? (
-              <p className="rounded border border-gray-200 bg-gray-50 px-2 py-1.5 text-xs text-gray-600 whitespace-pre-wrap break-words leading-relaxed cursor-default min-h-[2.5rem]">
-                {preview}
-              </p>
-            ) : (
-              <p className="rounded border border-dashed border-gray-200 px-2 py-1.5 text-xs text-gray-400 italic min-h-[2.5rem]">
-                {placeholder}
-              </p>
-            )}
-
-            {promptDialogOpen && (
-              <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/45 p-4">
-                <div className="flex flex-col w-full max-w-xl max-h-[85vh] rounded-xl border border-gray-200 bg-white shadow-2xl overflow-hidden">
-                  <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200 flex-shrink-0">
-                    <p className="text-sm font-semibold text-gray-900">{label}</p>
-                    <button onClick={() => setPromptDialogOpen(false)} className="text-gray-400 hover:text-gray-600">
-                      <X size={16} />
-                    </button>
-                  </div>
-                  <div className="flex-1 overflow-y-auto p-5">
-                    {readOnly ? (
-                      <p className="text-sm text-gray-700 whitespace-pre-wrap break-words leading-relaxed">
-                        {value || <span className="italic text-gray-400">(empty)</span>}
-                      </p>
-                    ) : (
-                      <textarea
-                        autoFocus
-                        className="w-full rounded border border-gray-200 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-brand-400 resize-none"
-                        style={{ minHeight: '240px', height: '100%' }}
-                        placeholder={placeholder}
-                        value={promptDraft}
-                        onChange={e => setPromptDraft(e.target.value)}
-                      />
-                    )}
-                  </div>
-                  {!readOnly && (
-                    <div className="flex justify-end gap-2 px-5 py-4 border-t border-gray-100 flex-shrink-0">
-                      <button onClick={() => setPromptDialogOpen(false)}
-                        className="rounded-lg border border-gray-200 px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-50">
-                        Cancel
-                      </button>
-                      <button onClick={saveDialog}
-                        className="rounded-lg bg-brand-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-brand-700">
-                        Save
-                      </button>
-                    </div>
-                  )}
-                </div>
+            <div className="flex-1 overflow-y-auto p-5">
+              {readOnly ? (
+                <p className="whitespace-pre-wrap break-words text-sm leading-relaxed text-gray-700">
+                  {instructionValue || <span className="italic text-gray-400">(empty)</span>}
+                </p>
+              ) : (
+                <textarea
+                  autoFocus
+                  className="h-full min-h-[240px] w-full resize-none rounded border border-gray-200 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-brand-400"
+                  placeholder={instructionPlaceholder}
+                  value={promptDraft}
+                  onChange={e => setPromptDraft(e.target.value)}
+                />
+              )}
+            </div>
+            {!readOnly && (
+              <div className="flex flex-shrink-0 justify-end gap-2 border-t border-gray-100 px-5 py-4">
+                <button
+                  onClick={() => setPromptDialogOpen(false)}
+                  className="rounded-lg border border-gray-200 px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={savePromptDialog}
+                  className="rounded-lg bg-brand-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-brand-700"
+                >
+                  Save
+                </button>
               </div>
             )}
-          </div>
-        )
-      })()}
-
-      {/* Knowledge paths */}
-      {!isHuman && (
-        <div>
-          <label className="block text-xs text-gray-500 mb-1">Knowledge paths (Handbook)</label>
-          <div className="space-y-2">
-            <div className="flex flex-wrap gap-1.5">
-              {paths.length === 0 && <p className="text-xs text-gray-400">No handbook files selected.</p>}
-              {paths.map((path) => (
-                <span key={path} className="inline-flex items-center gap-1 rounded-full border border-gray-200 bg-gray-50 px-2 py-1 text-xs text-gray-700">
-                  <span className="font-mono">{path}</span>
-                  {!readOnly && (
-                    <button onClick={() => toggleKnowledgePath(path)} className="text-gray-300 hover:text-red-500">
-                      <X size={11} />
-                    </button>
-                  )}
-                </span>
-              ))}
-            </div>
-            <Btn size="sm" variant="secondary" disabled={readOnly} onClick={() => { setPickerOpen(true); setPreviewPath(paths[0] ?? null) }}>
-              Browse Handbook Files
-            </Btn>
           </div>
         </div>
       )}
@@ -301,8 +419,8 @@ export default function AgentNodeConfig({ node, onChange, readOnly = false }: Pr
           <div className="flex h-[80vh] w-full max-w-5xl flex-col overflow-hidden rounded-2xl bg-white shadow-xl">
             <div className="flex items-center justify-between border-b px-5 py-4">
               <div>
-                <h2 className="text-sm font-semibold text-gray-900">Select Handbook Files</h2>
-                <p className="mt-0.5 text-xs text-gray-400">Search, preview, then add files to this node.</p>
+                <h2 className="text-sm font-semibold text-gray-900">Connect assets</h2>
+                <p className="mt-0.5 text-xs text-gray-400">Search, preview, then connect files to this node.</p>
               </div>
               <button onClick={() => setPickerOpen(false)} className="text-gray-400 hover:text-gray-600">
                 <X size={16} />
@@ -315,14 +433,14 @@ export default function AgentNodeConfig({ node, onChange, readOnly = false }: Pr
                   <input
                     value={pickerQuery}
                     onChange={(e) => setPickerQuery(e.target.value)}
-                    placeholder="Search handbook files…"
+                    placeholder="Search assets…"
                     className="w-full rounded-lg border border-gray-200 py-2 pl-8 pr-3 text-sm outline-none focus:ring-2 focus:ring-brand-500"
                   />
                 </div>
-                <div className="mt-3 h-[calc(80vh-11rem)] overflow-y-auto space-y-1 pr-1">
+                <div className="mt-3 h-[calc(80vh-11rem)] space-y-1 overflow-y-auto pr-1">
                   {pickerResults.length === 0 && (
                     <p className="rounded-lg border border-dashed border-gray-200 px-3 py-4 text-sm text-gray-400">
-                      No handbook files found.
+                      No assets found.
                     </p>
                   )}
                   {pickerResults.map((file) => {
@@ -338,7 +456,7 @@ export default function AgentNodeConfig({ node, onChange, readOnly = false }: Pr
                       >
                         <p className="truncate text-sm font-medium text-gray-800">{file.title}</p>
                         <p className="mt-0.5 truncate font-mono text-xs text-gray-400">{file.path}</p>
-                        {alreadyAdded && <p className="mt-1 text-[11px] text-brand-600">Already selected</p>}
+                        {alreadyAdded && <p className="mt-1 text-[11px] text-brand-600">Connected</p>}
                       </button>
                     )
                   })}
@@ -347,21 +465,21 @@ export default function AgentNodeConfig({ node, onChange, readOnly = false }: Pr
               <div className="flex min-h-0 flex-col">
                 <div className="flex items-center justify-between border-b px-4 py-3">
                   <div className="min-w-0">
-                    <p className="truncate text-sm font-medium text-gray-900">{previewFile?.title ?? 'Preview'}</p>
-                    <p className="mt-0.5 truncate font-mono text-xs text-gray-400">{previewPath ?? 'Select a file'}</p>
+                    <p className="truncate text-sm font-medium text-gray-900">{previewFile?.title ?? 'Asset preview'}</p>
+                    <p className="mt-0.5 truncate font-mono text-xs text-gray-400">{previewPath ?? 'Select an asset'}</p>
                   </div>
                   <Btn
                     size="sm"
                     disabled={!previewPath || readOnly}
                     onClick={() => { if (previewPath) toggleKnowledgePath(previewPath) }}
                   >
-                    {previewPath && paths.includes(previewPath) ? 'Remove' : 'Add'}
+                    {previewPath && paths.includes(previewPath) ? 'Disconnect' : 'Connect'}
                   </Btn>
                 </div>
                 <div className="min-h-0 flex-1 overflow-y-auto p-4">
                   {!previewPath && (
                     <div className="flex h-full items-center justify-center text-sm text-gray-400">
-                      Select a handbook file to preview it.
+                      Select an asset to preview it.
                     </div>
                   )}
                   {previewPath && !previewFile && (
@@ -382,7 +500,6 @@ export default function AgentNodeConfig({ node, onChange, readOnly = false }: Pr
           </div>
         </div>
       )}
-
     </div>
   )
 }

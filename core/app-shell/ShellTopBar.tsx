@@ -19,7 +19,7 @@ import { formatAssetSelectionLabel, useAssetWorkspaceStore } from '@app-shell/st
 
 function topBarTitle(pathname: string, distributionName: string, projectTitle?: string | null): string {
   if (projectTitle && pathname.startsWith('/projects/')) return projectTitle
-  if (pathname.startsWith('/projects')) return 'Work'
+  if (pathname.startsWith('/projects')) return 'Project'
   if (pathname.startsWith('/objectives')) return 'Objective'
   if (pathname.startsWith('/channels')) return 'Channels'
   if (pathname.startsWith('/graphs')) return 'Workflows'

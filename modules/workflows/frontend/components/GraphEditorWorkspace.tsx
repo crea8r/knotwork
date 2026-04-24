@@ -1,4 +1,5 @@
-import { useEffect, useId, useState, type ReactNode } from 'react'
+import { startTransition, useCallback, useEffect, useId, useMemo, useState, type ReactNode } from 'react'
+import { AlertTriangle } from 'lucide-react'
 import { useWorkspaceMembers } from "@modules/admin/frontend/api/auth"
 import { useChannelParticipants } from '@modules/communication/frontend/api/channels'
 import { useGraph } from "@modules/workflows/frontend/api/graphs"
@@ -10,7 +11,7 @@ import { useAuthStore } from '@auth'
 import type { Graph, NodeDef } from '@data-models'
 import { validateGraph } from '@modules/workflows/frontend/lib/validateGraph'
 import LibrarySearch from '@modules/workflows/frontend/pages/designer/LibrarySearch'
-import GraphTabBar from '@modules/workflows/frontend/pages/designer/GraphTabBar'
+import GraphTabMetaActions from '@modules/workflows/frontend/pages/designer/GraphTabMetaActions'
 import GraphDialogs from '@modules/workflows/frontend/pages/designer/GraphDialogs'
 import HistoryTab from '@modules/workflows/frontend/pages/designer/HistoryTab'
 import UsagePanel from '@modules/workflows/frontend/pages/designer/UsagePanel'
@@ -61,13 +62,17 @@ export default function GraphEditorWorkspace({
   const { data: agentMembers } = useWorkspaceMembers(workspaceId, 1, 'agent', false)
   const { data: participants = [] } = useChannelParticipants(workspaceId)
   const { data: runs = [] } = useRuns(workspaceId)
-  const hasAgentZero = Boolean(agentMembers?.items.some((member) => member.agent_zero_role))
+  const hasAgentZero = useMemo(
+    () => Boolean(agentMembers?.items.some((member) => member.agent_zero_role)),
+    [agentMembers],
+  )
   const chatAvailable = allowWorkflowChat && hasAgentZero
-  const participantLabelMap = buildParticipantLabelMap(participants)
+  const participantLabelMap = useMemo(() => buildParticipantLabelMap(participants), [participants])
 
   const [activeTab, setActiveTab] = useState<WorkflowTab>('graph')
   const [editorMode, setEditorMode] = useState<'view' | 'edit'>('view')
   const [showChat, setShowChat] = useState(defaultShowChat && allowWorkflowChat)
+  const [hasMountedChat, setHasMountedChat] = useState(defaultShowChat && allowWorkflowChat)
   const [showRunModal, setShowRunModal] = useState(false)
 
   const selectedNodeId = useCanvasStore((state) => state.selectedNodeId)
@@ -77,6 +82,7 @@ export default function GraphEditorWorkspace({
   const removeEdge = useCanvasStore((state) => state.removeEdge)
   const updateEdge = useCanvasStore((state) => state.updateEdge)
   const setInputSchema = useCanvasStore((state) => state.setInputSchema)
+  const setCanvasGraph = useCanvasStore((state) => state.setGraph)
 
   const sync = useVersionSync(workspaceId, graphId, graph, editorMode)
   const actions = useVersionActions(
@@ -91,9 +97,13 @@ export default function GraphEditorWorkspace({
   useEffect(() => {
     if (!allowWorkflowChat) {
       setShowChat(false)
+      setHasMountedChat(false)
       return
     }
-    if (defaultShowChat) setShowChat(true)
+    if (defaultShowChat) {
+      setShowChat(true)
+      setHasMountedChat(true)
+    }
   }, [allowWorkflowChat, defaultShowChat])
 
   useEffect(() => {
@@ -107,13 +117,37 @@ export default function GraphEditorWorkspace({
     setEditorMode(sync.viewingVersionSnapshot ? 'view' : 'edit')
   }, [activeTab, selectNode, sync.viewingVersionSnapshot])
 
+  const { definition, serverDefinition, isDirty } = sync
+  const validationErrors = useMemo(() => validateGraph(definition), [definition])
+  const selectedNode = useMemo(
+    () => definition.nodes.find((node: NodeDef) => node.id === selectedNodeId) ?? null,
+    [definition.nodes, selectedNodeId],
+  )
+  const defaultVersionIsPublic = !!sync.namedVersions.find((version) => version.id === graph?.production_version_id)?.version_slug
+  const isGraphTab = activeTab === 'graph'
+  const chatVisible = isGraphTab && showChat
+  const hasRuns = (graph?.run_count ?? 0) > 0
+
+  const handleToggleChat = useCallback(() => {
+    if (!chatAvailable) return
+    if (!showChat) setHasMountedChat(true)
+    startTransition(() => {
+      setShowChat((value) => !value)
+    })
+  }, [chatAvailable, showChat])
+
+  const handleCloseChat = useCallback(() => {
+    startTransition(() => {
+      setShowChat(false)
+    })
+  }, [])
+
+  const handleChatBeforeApplyDelta = useCallback(() => {
+    if (!isDirty) setCanvasGraph(graphId, serverDefinition)
+  }, [graphId, isDirty, serverDefinition, setCanvasGraph])
+
   if (isLoading) return <p data-ui="workflow.editor.loading" className="p-8 text-sm text-gray-400">Loading…</p>
   if (!graph) return <p data-ui="workflow.editor.empty" className="p-8 text-sm text-red-500">Graph not found.</p>
-
-  const { definition, serverDefinition, isDirty } = sync
-  const validationErrors = validateGraph(definition)
-  const selectedNode = definition.nodes.find((node: NodeDef) => node.id === selectedNodeId) ?? null
-  const defaultVersionIsPublic = !!sync.namedVersions.find((version) => version.id === graph.production_version_id)?.version_slug
 
   return (
     <div data-ui="workflow.editor" className="flex h-full min-h-0 flex-col overflow-hidden bg-white">
@@ -131,9 +165,7 @@ export default function GraphEditorWorkspace({
             renameGraph: (name) => actions.updateGraph.mutate({ graphId: graph.id, name }),
             renamePending: actions.updateGraph.isPending,
             showChat,
-            toggleChat: () => {
-              if (chatAvailable) setShowChat((value) => !value)
-            },
+            toggleChat: handleToggleChat,
           })}
         </div>
       ) : null}
@@ -144,48 +176,74 @@ export default function GraphEditorWorkspace({
             tabs={WORKFLOW_TABS}
             activeTab={activeTab}
             onTabChange={setActiveTab}
+            actions={activeTab === 'graph'
+              ? (
+                  <GraphTabMetaActions
+                    currentVersionLabel={sync.currentVersionLabel}
+                    autosaveState={sync.autosaveState}
+                    autosaveError={sync.autosaveError}
+                    validationErrors={validationErrors}
+                    showLifecycleActions={editorMode === 'edit'}
+                    publishPending={actions.publishPending}
+                    deleteGraphPending={actions.deleteGraph.isPending}
+                    hasRuns={hasRuns}
+                    onOpenHistory={() => setActiveTab('history')}
+                    onRun={() => setShowRunModal(true)}
+                    onRetrySave={() => void sync.syncDraftNow()}
+                    onPublish={() => actions.setPublishDialog(true)}
+                    onRetire={() => void actions.handleRetireWorkflow()}
+                  />
+                )
+              : activeTab === 'history'
+                ? (
+                    <button
+                      type="button"
+                      data-ui="workflow.editor.tabs.history.archive-toggle"
+                      aria-pressed={sync.showArchivedVersions}
+                      onClick={() => sync.setShowArchivedVersions((value) => !value)}
+                      className="rounded-lg px-3 py-1.5 text-xs text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-700"
+                    >
+                      {sync.showArchivedVersions ? 'Hide archived' : 'Show archived'}
+                    </button>
+                  )
+                : undefined}
             dataUiBase="workflow.editor.tabs"
           />
 
-          {activeTab === 'graph' ? (
-            <GraphTabBar
-              editorMode={editorMode}
-              setEditorMode={setEditorMode}
-              autosaveState={sync.autosaveState}
-              autosaveError={sync.autosaveError}
-              currentVersionLabel={sync.currentVersionLabel}
-              activeParentVersionId={sync.activeParentVersionId}
-              validationErrors={validationErrors}
-              graph={graph}
-              serverDefinition={serverDefinition}
-              graphId={graphId}
-              publishPending={actions.publishPending}
-              deleteGraphPending={actions.deleteGraph.isPending}
-              onPublish={() => actions.setPublishDialog(true)}
-              onRetire={() => void actions.handleRetireWorkflow()}
-              onSyncDraftNow={() => void sync.syncDraftNow().finally(() => setEditorMode('view'))}
-              setViewingVersionSnapshot={sync.setViewingVersionSnapshot}
-              onRun={() => setShowRunModal(true)}
-            />
+          {isGraphTab && validationErrors.length > 0 ? (
+            <div data-ui="workflow.editor.validation.banner" className="mx-6 mt-3 flex flex-shrink-0 items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-4 py-2.5">
+              <AlertTriangle size={14} className="mt-0.5 flex-shrink-0 text-amber-500" />
+              <div>
+                <p data-ui="workflow.editor.validation.title" className="text-xs font-semibold text-amber-700">Graph topology issue</p>
+                <ul data-ui="workflow.editor.validation.list" className="mt-0.5 space-y-0.5 text-xs text-amber-600">
+                  {validationErrors.map((error, index) => <li key={index}>• {error}</li>)}
+                </ul>
+              </div>
+            </div>
           ) : null}
 
-          <div data-ui="workflow.editor.content" className="flex min-h-0 flex-1 flex-row">
-            <div data-ui="workflow.editor.canvas-region" className="flex min-w-0 flex-1 overflow-hidden p-4">
-              {activeTab === 'graph' ? (
+          <div
+            data-ui="workflow.editor.content"
+            className={`flex min-h-0 min-w-0 flex-1 overflow-hidden ${isGraphTab ? 'flex-row bg-gray-50/60' : 'bg-white'}`}
+          >
+            {isGraphTab ? (
+              <div data-ui="workflow.editor.canvas-region" className="flex h-full w-full min-h-0 min-w-0 flex-1 overflow-hidden">
                 <GraphCanvas
                   definition={definition}
                   participantLabelMap={participantLabelMap}
                   selectedNodeId={selectedNodeId}
+                  editable={editorMode === 'edit'}
+                  graphId={graphId}
                   onSelectNode={selectNode}
                 />
-              ) : activeTab === 'history' ? (
+              </div>
+            ) : activeTab === 'history' ? (
+              <div data-ui="workflow.editor.history-region" className="flex h-full w-full min-h-0 min-w-0 flex-1 overflow-hidden">
                 <HistoryTab
                   graphSlug={graph.slug ?? null}
                   namedVersions={sync.namedVersions}
                   activeDraft={sync.activeDraft}
                   versionsLoading={sync.versionsLoading}
-                  showArchivedVersions={sync.showArchivedVersions}
-                  setShowArchivedVersions={sync.setShowArchivedVersions}
                   graphDefaultVersionId={graph.production_version_id ?? null}
                   resolvedParentVersionId={sync.resolvedParentVersionId}
                   versionActionPending={actions.versionActionPending}
@@ -203,15 +261,15 @@ export default function GraphEditorWorkspace({
                   historySelection={sync.historySelection}
                   onSelectHistoryItem={sync.selectHistoryItem}
                 />
-              ) : (
-                <div className="h-full w-full overflow-hidden rounded-xl border border-gray-200 bg-white">
-                  <UsagePanel graphId={graphId} runs={runs} namedVersions={sync.namedVersions} />
-                </div>
-              )}
-            </div>
+              </div>
+            ) : (
+              <div data-ui="workflow.editor.usage-region" className="flex min-h-0 min-w-0 flex-1 overflow-hidden">
+                <UsagePanel graphId={graphId} runs={runs} namedVersions={sync.namedVersions} />
+              </div>
+            )}
 
             {activeTab === 'graph' && selectedNode ? (
-              <div data-ui="workflow.editor.inspector-region">
+              <div data-ui="workflow.editor.inspector-region" className="min-h-0 shrink-0 overflow-hidden">
                 <NodeConfigOverlay
                   node={selectedNode}
                   definition={definition}
@@ -231,16 +289,35 @@ export default function GraphEditorWorkspace({
           </div>
         </div>
 
-        {allowWorkflowChat && activeTab === 'graph' && showChat ? (
-          <div data-ui="workflow.editor.chat-region">
+        {allowWorkflowChat && hasMountedChat ? (
+          <div
+            data-ui="workflow.editor.chat-region"
+            className="hidden shrink-0 overflow-hidden md:flex motion-safe:transition-[width] motion-safe:duration-200 motion-safe:ease-in-out motion-reduce:transition-none"
+            style={{ width: chatVisible ? 440 : 0 }}
+            aria-hidden={!chatVisible}
+          >
             <ChatPanel
+              visible={chatVisible}
               graphId={graphId}
               sessionId={sessionId}
               initialConsultationChannelId={initialConsultationChannelId}
-              onClose={() => setShowChat(false)}
-              onBeforeApplyDelta={() => {
-                if (!isDirty) sync.setGraph(graphId, serverDefinition)
-              }}
+              onClose={handleCloseChat}
+              onBeforeApplyDelta={handleChatBeforeApplyDelta}
+              renderMobile={false}
+            />
+          </div>
+        ) : null}
+
+        {allowWorkflowChat && chatVisible ? (
+          <div className="md:hidden">
+            <ChatPanel
+              visible
+              graphId={graphId}
+              sessionId={sessionId}
+              initialConsultationChannelId={initialConsultationChannelId}
+              onClose={handleCloseChat}
+              onBeforeApplyDelta={handleChatBeforeApplyDelta}
+              renderDesktop={false}
             />
           </div>
         ) : null}

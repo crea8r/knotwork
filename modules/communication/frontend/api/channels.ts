@@ -282,15 +282,15 @@ export function useDetachChannelAsset(workspaceId: string, channelId: string) {
   })
 }
 
-export function useChannelMessages(workspaceId: string, channelId: string) {
+export function useChannelMessages(workspaceId: string, channelId: string, enabled = true) {
   return useQuery({
     queryKey: ['channel-messages', workspaceId, channelId],
     queryFn: () =>
       api
         .get<ChannelMessage[]>(`/workspaces/${workspaceId}/channels/${channelId}/messages`)
         .then((r) => r.data),
-    enabled: !!workspaceId && !!channelId,
-    refetchInterval: 5_000,
+    enabled: enabled && !!workspaceId && !!channelId,
+    refetchInterval: enabled ? 5_000 : false,
   })
 }
 

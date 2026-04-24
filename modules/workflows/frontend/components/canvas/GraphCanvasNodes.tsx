@@ -4,6 +4,9 @@ import {
   NODE_W, NODE_H, NODE_COLORS, SELECT_RING, SELECT_GLOW,
 } from './graphCanvasConstants'
 
+export const ASSET_NODE_W = 124
+export const ASSET_NODE_H = 30
+
 function truncateLabel(text: string, maxLength: number): string {
   return text.length > maxLength ? `${text.slice(0, maxLength - 1)}…` : text
 }
@@ -74,7 +77,7 @@ export function StartEndOval({
 }
 
 export function NodeBox({
-  node, x, y, operatorLabel, supervisorLabel, selected, neighbor, dimmed, pulse, statusColor, branchCount = 0, onClick,
+  node, x, y, operatorLabel, supervisorLabel, selected, neighbor, dimmed, pulse, statusColor, branchCount = 0, assetCount = 0, onClick,
 }: {
   node: NodeDef
   x: number
@@ -87,6 +90,7 @@ export function NodeBox({
   pulse: boolean
   statusColor?: string
   branchCount?: number
+  assetCount?: number
   onClick: () => void
 }) {
   const fill = statusColor ?? NODE_COLORS[node.type] ?? '#6b7280'
@@ -97,9 +101,15 @@ export function NodeBox({
     : neighbor
       ? 'drop-shadow(0px 4px 8px rgba(0,0,0,0.12))'
       : 'none'
-  const nodeName = truncateLabel(node.name, 20)
+  const hasAssetBadge = assetCount > 0
+  const nameY = hasAssetBadge ? 38 : 24
+  const operatorY = hasAssetBadge ? 58 : 48
+  const supervisorY = hasAssetBadge ? 72 : 64
+  const nodeName = truncateLabel(node.name, hasAssetBadge ? 18 : 20)
   const operatorText = `Operator · ${truncateLabel(operatorLabel, 15)}`
   const supervisorText = `Supervisor · ${truncateLabel(supervisorLabel, 13)}`
+  const assetLabel = `${assetCount} ${assetCount === 1 ? 'asset' : 'assets'}`
+  const assetBadgeWidth = Math.max(50, Math.min(76, assetLabel.length * 5.9 + 18))
 
   return (
     <g
@@ -128,13 +138,27 @@ export function NodeBox({
       <rect width={NODE_W} height={NODE_H} rx={8} fill={fill} fillOpacity={0.15}
         stroke={selected ? SELECT_RING : fill} strokeWidth={selected ? 4 : 1.5} />
       <rect width={4} height={NODE_H} rx={2} fill={fill} />
-      <text x={16} y={24} fontSize={13} fontWeight="600" fill="#1f2937" fontFamily="sans-serif">
+      {hasAssetBadge && (
+        <g transform="translate(16,10)">
+          <rect
+            width={assetBadgeWidth}
+            height={18}
+            rx={9}
+            fill="#fff7ed"
+            stroke="#fdba74"
+          />
+          <text x={assetBadgeWidth / 2} y={12.5} fontSize={10} fontWeight="700" fill="#c2410c" fontFamily="sans-serif" textAnchor="middle">
+            {assetLabel}
+          </text>
+        </g>
+      )}
+      <text x={16} y={nameY} fontSize={13} fontWeight="600" fill="#1f2937" fontFamily="sans-serif">
         {nodeName}
       </text>
-      <text x={16} y={48} fontSize={10} fill="#4b5563" fontFamily="sans-serif">
+      <text x={16} y={operatorY} fontSize={10} fill="#4b5563" fontFamily="sans-serif">
         {operatorText}
       </text>
-      <text x={16} y={64} fontSize={10} fill="#6b7280" fontFamily="sans-serif">
+      <text x={16} y={supervisorY} fontSize={10} fill="#6b7280" fontFamily="sans-serif">
         {supervisorText}
       </text>
       {branchCount > 1 && (
@@ -159,6 +183,66 @@ export function NodeBox({
           </text>
         </g>
       )}
+    </g>
+  )
+}
+
+export function AssetConnector({
+  startX,
+  startY,
+  endX,
+  endY,
+  side,
+}: {
+  startX: number
+  startY: number
+  endX: number
+  endY: number
+  side: -1 | 1
+}) {
+  const controlOffset = 34 * side
+  const d = `M ${startX},${startY} C ${startX + controlOffset},${startY} ${endX - controlOffset},${endY} ${endX},${endY}`
+
+  return (
+    <path
+      d={d}
+      fill="none"
+      stroke="#f59e0b"
+      strokeOpacity={0.55}
+      strokeWidth={1.5}
+      strokeDasharray="5,4"
+    />
+  )
+}
+
+export function AssetSatellite({
+  x,
+  y,
+  label,
+  subtitle,
+  tone = 'asset',
+}: {
+  x: number
+  y: number
+  label: string
+  subtitle?: string
+  tone?: 'asset' | 'overflow'
+}) {
+  const isOverflow = tone === 'overflow'
+  const fill = isOverflow ? '#f8fafc' : '#fff7ed'
+  const stroke = isOverflow ? '#cbd5e1' : '#fdba74'
+  const textColor = isOverflow ? '#475569' : '#9a3412'
+  const iconFill = isOverflow ? '#94a3b8' : '#f59e0b'
+  const mainLabel = truncateLabel(label, isOverflow ? 18 : 16)
+
+  return (
+    <g transform={`translate(${x - ASSET_NODE_W / 2},${y - ASSET_NODE_H / 2})`}>
+      <title>{subtitle ? `${label} — ${subtitle}` : label}</title>
+      <rect width={ASSET_NODE_W} height={ASSET_NODE_H} rx={10} fill={fill} stroke={stroke} />
+      <rect x={10} y={8} width={10} height={12} rx={2} fill={iconFill} fillOpacity={0.18} stroke={iconFill} />
+      <text x={28} y={18.5} fontSize={10.5} fontWeight="700" fill={textColor} fontFamily="sans-serif">
+        {mainLabel}
+      </text>
     </g>
   )
 }

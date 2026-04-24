@@ -418,7 +418,7 @@ export default function AppLayout() {
 
   const mobileTitle = (() => {
     if (hasCommunication && location.pathname.startsWith('/inbox')) return 'Now'
-    if (hasProjects && location.pathname.startsWith('/projects')) return 'Work'
+    if (hasProjects && location.pathname.startsWith('/projects')) return 'Project'
     if (location.pathname.startsWith('/objectives')) return 'Objective'
     if (hasCommunication && location.pathname.startsWith('/channels')) return 'Channels'
     if (hasWorkflows && location.pathname.startsWith('/runs')) return 'Runs'

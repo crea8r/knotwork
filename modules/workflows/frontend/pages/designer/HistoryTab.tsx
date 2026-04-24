@@ -9,7 +9,6 @@ import type { GraphVersion } from '@data-models'
 export default function HistoryTab({
   graphSlug,
   namedVersions, activeDraft, versionsLoading,
-  showArchivedVersions, setShowArchivedVersions,
   graphDefaultVersionId, resolvedParentVersionId,
   versionActionPending,
   onOpenVersion, onRenameVersion, onViewVersion,
@@ -22,8 +21,6 @@ export default function HistoryTab({
   namedVersions: GraphVersion[]
   activeDraft: GraphVersion | null
   versionsLoading: boolean
-  showArchivedVersions: boolean
-  setShowArchivedVersions: (v: boolean) => void
   graphDefaultVersionId: string | null
   resolvedParentVersionId: string | null
   versionActionPending: boolean
@@ -122,20 +119,8 @@ export default function HistoryTab({
   ) : null
 
   return (
-    <div className="relative flex h-full flex-col overflow-hidden rounded-xl border border-gray-200 bg-gray-50/40">
-      <div className="border-b border-gray-200 bg-white px-5 py-3 flex-shrink-0">
-        <div className="flex items-center justify-between gap-3">
-          <div>
-            <p className="text-sm font-semibold text-gray-900">Version history</p>
-            <p className="mt-0.5 text-xs text-gray-500">Siblings share a row · click a node to inspect</p>
-          </div>
-          <button onClick={() => setShowArchivedVersions(!showArchivedVersions)} className="text-xs text-gray-500 hover:text-gray-700 whitespace-nowrap">
-            {showArchivedVersions ? 'Hide archived' : 'Show archived'}
-          </button>
-        </div>
-      </div>
-
-      <div className="flex-1 min-h-0">
+    <div className="relative flex h-full w-full flex-col overflow-hidden bg-gray-50/40">
+      <div className="flex min-h-0 flex-1">
         {versionsLoading
           ? <div className="flex h-full items-center justify-center text-sm text-gray-400">Loading…</div>
           : <VersionHistoryCanvas

@@ -14,6 +14,7 @@ import {
 } from '@modules/communication/frontend/components/ChannelFrame'
 
 export default function WorkflowAgentZeroConsultationPanel({
+  active = true,
   workspaceId,
   graphId,
   graphName,
@@ -21,6 +22,7 @@ export default function WorkflowAgentZeroConsultationPanel({
   shellClassName,
   onLatestAgentMessageIdChange,
 }: {
+  active?: boolean
   workspaceId: string
   graphId: string
   graphName?: string | null
@@ -39,7 +41,7 @@ export default function WorkflowAgentZeroConsultationPanel({
     [workspaceParticipants],
   )
   const agentZeroName = agentZeroParticipant?.display_name ?? 'AgentZero'
-  const { data: messages = [] } = useChannelMessages(workspaceId, consultChannelId)
+  const { data: messages = [] } = useChannelMessages(workspaceId, consultChannelId, active)
   const postMessage = usePostChannelMessage(workspaceId, consultChannelId)
 
   useEffect(() => {
@@ -51,7 +53,7 @@ export default function WorkflowAgentZeroConsultationPanel({
   }, [initialConsultationChannelId])
 
   useEffect(() => {
-    if (!agentZeroParticipant || consultChannelId || consultationRequestedRef.current || openConsultation.isPending) {
+    if (!active || !agentZeroParticipant || consultChannelId || consultationRequestedRef.current || openConsultation.isPending) {
       return
     }
     setConsultationError(null)
@@ -77,7 +79,7 @@ export default function WorkflowAgentZeroConsultationPanel({
         setConsultationError(message)
       },
     })
-  }, [agentZeroParticipant, consultChannelId, openConsultation.isPending, openConsultation.mutate])
+  }, [active, agentZeroParticipant, consultChannelId, openConsultation.isPending, openConsultation.mutate])
 
   useEffect(() => {
     if (consultChannelId) {

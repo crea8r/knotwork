@@ -13,10 +13,12 @@ export default function AssetChatToggleButton({
     <button
       type="button"
       onClick={onClick}
-      className={`inline-flex h-7 w-7 items-center justify-center rounded-lg border transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2 ${
+      data-ui="shell.asset.breadcrumb.trailing.toggle"
+      aria-pressed={active}
+      className={`flex items-center justify-center rounded p-1 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2 ${
         active
-          ? 'border-brand-300 bg-brand-50 text-brand-700 hover:bg-brand-100'
-          : 'border-stone-200 bg-white text-stone-500 hover:border-stone-300 hover:bg-stone-50 hover:text-stone-800'
+          ? 'text-brand-600 hover:bg-brand-50 hover:text-brand-700'
+          : 'text-stone-400 hover:bg-stone-100 hover:text-stone-700'
       }`}
       aria-label={label}
       title={label}
