@@ -45,54 +45,58 @@ export default function SettingsPage() {
   })
 
   return (
-    <div data-ui="admin.settings.page" className="p-8 max-w-4xl mx-auto">
-      <div data-ui="admin.settings.header.mobile" className="mb-6 flex items-start justify-between gap-4 md:hidden">
-        <div>
-          <h1 data-ui="admin.settings.header.mobile.title" className="text-xl font-semibold text-gray-900">
-            Settings
-          </h1>
-          <p data-ui="admin.settings.header.mobile.subtitle" className="mt-1 text-sm text-gray-500">
-            Workspace administration
-          </p>
-        </div>
-        <Btn
-          data-ui="admin.settings.replay-onboarding.mobile"
-          size="sm"
-          variant="secondary"
-          onClick={() => openOnboarding({ reset: true })}
-        >
-          Replay onboarding
-        </Btn>
-      </div>
-
-      <div data-ui="admin.settings.tabs" className="flex gap-4 border-b mb-6 text-sm">
-        {TABS.map((t) => (
-          <button
-            key={t}
-            onClick={() => {
-              setTab(t)
-              setSearchParams({ tab: t })
-            }}
-            data-ui={`admin.settings.tab.${t}`}
-            className={`pb-2 capitalize ${
-              tab === t
-                ? 'border-b-2 border-brand-500 text-brand-600 font-medium'
-                : 'text-gray-500 hover:text-gray-700'
-            }`}
+    <div data-ui="admin.settings.page" className="h-full overflow-y-auto bg-white">
+      <div data-ui="admin.settings.content" className="mx-auto flex min-h-full w-full max-w-5xl flex-col px-4 py-5 sm:px-6 md:px-8 md:py-8">
+        <div data-ui="admin.settings.header.mobile" className="mb-6 flex items-start justify-between gap-4 md:hidden">
+          <div>
+            <h1 data-ui="admin.settings.header.mobile.title" className="text-xl font-semibold text-gray-900">
+              Settings
+            </h1>
+            <p data-ui="admin.settings.header.mobile.subtitle" className="mt-1 text-sm text-gray-500">
+              Workspace administration
+            </p>
+          </div>
+          <Btn
+            data-ui="admin.settings.replay-onboarding.mobile"
+            size="sm"
+            variant="secondary"
+            onClick={() => openOnboarding({ reset: true })}
           >
-            {t}
-          </button>
-        ))}
+            Replay onboarding
+          </Btn>
+        </div>
+
+        <div data-ui="admin.settings.tabs" className="mb-6 overflow-x-auto border-b text-sm">
+          <div data-ui="admin.settings.tabs.row" className="flex min-w-max gap-4">
+            {TABS.map((t) => (
+              <button
+                key={t}
+                onClick={() => {
+                  setTab(t)
+                  setSearchParams({ tab: t })
+                }}
+                data-ui={`admin.settings.tab.${t}`}
+                className={`pb-2 capitalize ${
+                  tab === t
+                    ? 'border-b-2 border-brand-500 font-medium text-brand-600'
+                    : 'text-gray-500 hover:text-gray-700'
+                }`}
+              >
+                {t}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {tab === 'account' && <div data-ui="admin.settings.panel.account"><AccountTab /></div>}
+
+        {tab === 'members' && <div data-ui="admin.settings.panel.members"><MembersTab /></div>}
+
+        {tab === 'channels' && <div data-ui="admin.settings.panel.channels"><ChannelsTab /></div>}
+        {tab === 'guide' && <div data-ui="admin.settings.panel.guide"><GuideTab /></div>}
+
+        {tab === 'system' && <div data-ui="admin.settings.panel.system"><SystemTab /></div>}
       </div>
-
-      {tab === 'account' && <div data-ui="admin.settings.panel.account"><AccountTab /></div>}
-
-      {tab === 'members' && <div data-ui="admin.settings.panel.members"><MembersTab /></div>}
-
-      {tab === 'channels' && <div data-ui="admin.settings.panel.channels"><ChannelsTab /></div>}
-      {tab === 'guide' && <div data-ui="admin.settings.panel.guide"><GuideTab /></div>}
-
-      {tab === 'system' && <div data-ui="admin.settings.panel.system"><SystemTab /></div>}
     </div>
   )
 }

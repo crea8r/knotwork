@@ -163,153 +163,155 @@ export default function InboxPage() {
   }, [archived, items, updateDelivery])
 
   return (
-    <div data-ui="inbox.page" className="p-6 md:p-8 max-w-4xl mx-auto space-y-4">
-      <div data-ui="inbox.header.mobile" className="flex items-end justify-between gap-4 md:hidden">
-        <div data-ui="inbox.header.mobile.main">
-        <h1 data-ui="inbox.header.mobile.title" className="text-xl font-semibold text-gray-900">Inbox</h1>
-          <p className="text-sm text-gray-500 mt-1">Items routed to you from channel events.</p>
+    <div data-ui="inbox.page" className="h-full overflow-y-auto bg-white">
+      <div data-ui="inbox.content" className="mx-auto flex min-h-full w-full max-w-5xl flex-col gap-4 px-4 py-5 sm:px-6 md:px-8 md:py-8">
+        <div data-ui="inbox.header.mobile" className="flex items-end justify-between gap-4 md:hidden">
+          <div data-ui="inbox.header.mobile.main">
+            <h1 data-ui="inbox.header.mobile.title" className="text-xl font-semibold text-gray-900">Inbox</h1>
+            <p className="mt-1 text-sm text-gray-500">Items routed to you from channel events.</p>
+          </div>
+          <div data-ui="inbox.header.mobile.actions" className="flex items-center gap-2">
+            {!archived && unreadCount > 0 ? (
+              <InboxReadAllButton
+                pending={markAllRead.isPending}
+                onClick={() => markAllRead.mutate()}
+                uiName="inbox.read-all.mobile"
+              />
+            ) : null}
+            <InboxFilters
+              archived={archived}
+              activeCount={summary?.active_count}
+              archivedCount={summary?.archived_count}
+              onShowActive={() => setArchived(false)}
+              onShowArchived={() => setArchived(true)}
+              uiName="inbox.filters.mobile"
+            />
+          </div>
         </div>
-        <div data-ui="inbox.header.mobile.actions" className="flex items-center gap-2">
-          {!archived && unreadCount > 0 ? (
+
+        {!archived && unreadCount > 0 ? (
+          <div data-ui="inbox.bulk-actions" className="hidden justify-end md:flex">
             <InboxReadAllButton
               pending={markAllRead.isPending}
               onClick={() => markAllRead.mutate()}
-              uiName="inbox.read-all.mobile"
             />
-          ) : null}
-          <InboxFilters
-            archived={archived}
-            activeCount={summary?.active_count}
-            archivedCount={summary?.archived_count}
-            onShowActive={() => setArchived(false)}
-            onShowArchived={() => setArchived(true)}
-            uiName="inbox.filters.mobile"
-          />
-        </div>
-      </div>
+          </div>
+        ) : null}
 
-      {!archived && unreadCount > 0 ? (
-        <div data-ui="inbox.bulk-actions" className="hidden md:flex justify-end">
-          <InboxReadAllButton
-            pending={markAllRead.isPending}
-            onClick={() => markAllRead.mutate()}
-          />
-        </div>
-      ) : null}
+        {isLoading ? (
+          <div data-ui="inbox.loading" className="flex flex-1 justify-center py-16"><Spinner size="lg" /></div>
+        ) : items.length === 0 ? (
+          <div data-ui="inbox.empty" className="flex flex-1 items-center justify-center py-10">
+            <EmptyState heading={archived ? 'No archived items' : 'Inbox is clear'} subtext={archived ? 'Archived deliveries stay available here.' : 'No escalations or pending approvals.'} />
+          </div>
+        ) : (
+          <div data-ui="inbox.list" className="space-y-2 pb-4">
+            {items.map((item) => {
+              const target = inboxTarget(item)
 
-      {isLoading ? (
-        <div data-ui="inbox.loading" className="flex justify-center py-16"><Spinner size="lg" /></div>
-      ) : items.length === 0 ? (
-        <div data-ui="inbox.empty">
-          <EmptyState heading={archived ? 'No archived items' : 'Inbox is clear'} subtext={archived ? 'Archived deliveries stay available here.' : 'No escalations or pending approvals.'} />
-        </div>
-      ) : (
-        <div data-ui="inbox.list" className="space-y-2">
-          {items.map((item) => {
-            const target = inboxTarget(item)
-
-            async function openItem(event: React.MouseEvent<HTMLAnchorElement>) {
-              if (
-                event.defaultPrevented ||
-                event.button !== 0 ||
-                event.metaKey ||
-                event.ctrlKey ||
-                event.shiftKey ||
-                event.altKey
-              ) {
-                return
+              async function openItem(event: React.MouseEvent<HTMLAnchorElement>) {
+                if (
+                  event.defaultPrevented ||
+                  event.button !== 0 ||
+                  event.metaKey ||
+                  event.ctrlKey ||
+                  event.shiftKey ||
+                  event.altKey
+                ) {
+                  return
+                }
+                event.preventDefault()
+                if (item.delivery_id) {
+                  await updateDelivery.mutateAsync({
+                    deliveryId: item.delivery_id,
+                    read: true,
+                    archived: true,
+                  })
+                }
+                navigate(target)
               }
-              event.preventDefault()
-              if (item.delivery_id) {
-                await updateDelivery.mutateAsync({
-                  deliveryId: item.delivery_id,
-                  read: true,
-                  archived: true,
-                })
-              }
-              navigate(target)
-            }
 
-            return (
-              <Link
-                key={item.id}
-                to={target}
-                onClick={(event) => { void openItem(event) }}
-                ref={(node) => {
-                  if (node) itemRefs.current.set(item.id, node)
-                  else itemRefs.current.delete(item.id)
-                }}
-                data-delivery-id={item.delivery_id ?? undefined}
-                data-ui="inbox.card"
-                className={`block bg-white border rounded-xl p-4 hover:border-brand-300 hover:shadow-sm transition ${item.unread ? 'border-brand-200 shadow-sm' : 'border-gray-200'}`}
-              >
-                <div data-ui="inbox.card.row" className="flex items-start justify-between gap-3">
-                  <div data-ui="inbox.card.main" className="min-w-0">
-                    <div data-ui="inbox.card.title-row" className="flex items-center gap-2 text-sm font-medium text-gray-900">
-                      {item.item_type === 'escalation'
-                        ? <AlertCircle size={15} className="text-orange-500" />
-                        : item.item_type === 'mentioned_message'
-                          ? <AtSign size={15} className="text-brand-500" />
-                        : item.item_type === 'run_event'
-                          ? <PlayCircle size={15} className="text-blue-500" />
-                        : <FilePenLine size={15} className="text-blue-500" />}
-                      {item.unread && <span className="inline-block w-2 h-2 rounded-full bg-brand-500" />}
-                      <span className="truncate">{item.title}</span>
-                    </div>
-                    {item.subtitle && <p className="text-xs text-gray-500 mt-1 line-clamp-2">{item.subtitle}</p>}
-                    <p className="text-[11px] text-gray-400 mt-2">{new Date(item.created_at).toLocaleString()}</p>
-                  </div>
-
-                  <div data-ui="inbox.card.meta" className="text-right shrink-0 space-y-2">
-                    <span className="inline-flex px-2 py-0.5 rounded-full text-[11px] bg-gray-100 text-gray-700 capitalize">
-                      {item.status}
-                    </span>
-                    {item.due_at && (
-                      <p className="mt-1 text-[11px] text-orange-600 inline-flex items-center gap-1">
-                        <Clock3 size={10} />
-                        {new Date(item.due_at).toLocaleString()}
-                      </p>
-                    )}
-                    {item.delivery_id && (
-                      <div data-ui="inbox.card.actions" className="flex items-center justify-end gap-1" onClick={(e) => e.preventDefault()}>
-                        {!archived && item.unread && (
-                          <button
-                            onClick={() => updateDelivery.mutate({ deliveryId: item.delivery_id!, read: true })}
-                            data-ui="inbox.card.mark-read"
-                            className="inline-flex items-center gap-1 rounded-lg border border-gray-200 px-2 py-1 text-[11px] text-gray-600 hover:bg-gray-50"
-                          >
-                            <CheckCheck size={11} />
-                            Read
-                          </button>
-                        )}
-                        {!archived ? (
-                          <button
-                            onClick={() => updateDelivery.mutate({ deliveryId: item.delivery_id!, archived: true })}
-                            data-ui="inbox.card.archive"
-                            className="inline-flex items-center gap-1 rounded-lg border border-gray-200 px-2 py-1 text-[11px] text-gray-600 hover:bg-gray-50"
-                          >
-                            <Archive size={11} />
-                            Archive
-                          </button>
-                        ) : (
-                          <button
-                            onClick={() => updateDelivery.mutate({ deliveryId: item.delivery_id!, archived: false })}
-                            data-ui="inbox.card.restore"
-                            className="inline-flex items-center gap-1 rounded-lg border border-gray-200 px-2 py-1 text-[11px] text-gray-600 hover:bg-gray-50"
-                          >
-                            <ArchiveRestore size={11} />
-                            Restore
-                          </button>
-                        )}
+              return (
+                <Link
+                  key={item.id}
+                  to={target}
+                  onClick={(event) => { void openItem(event) }}
+                  ref={(node) => {
+                    if (node) itemRefs.current.set(item.id, node)
+                    else itemRefs.current.delete(item.id)
+                  }}
+                  data-delivery-id={item.delivery_id ?? undefined}
+                  data-ui="inbox.card"
+                  className={`block rounded-xl border bg-white p-4 transition hover:border-brand-300 hover:shadow-sm ${item.unread ? 'border-brand-200 shadow-sm' : 'border-gray-200'}`}
+                >
+                  <div data-ui="inbox.card.row" className="flex items-start justify-between gap-3">
+                    <div data-ui="inbox.card.main" className="min-w-0">
+                      <div data-ui="inbox.card.title-row" className="flex items-center gap-2 text-sm font-medium text-gray-900">
+                        {item.item_type === 'escalation'
+                          ? <AlertCircle size={15} className="text-orange-500" />
+                          : item.item_type === 'mentioned_message'
+                            ? <AtSign size={15} className="text-brand-500" />
+                          : item.item_type === 'run_event'
+                            ? <PlayCircle size={15} className="text-blue-500" />
+                            : <FilePenLine size={15} className="text-blue-500" />}
+                        {item.unread && <span className="inline-block h-2 w-2 rounded-full bg-brand-500" />}
+                        <span className="truncate">{item.title}</span>
                       </div>
-                    )}
+                      {item.subtitle && <p className="mt-1 line-clamp-2 text-xs text-gray-500">{item.subtitle}</p>}
+                      <p className="mt-2 text-[11px] text-gray-400">{new Date(item.created_at).toLocaleString()}</p>
+                    </div>
+
+                    <div data-ui="inbox.card.meta" className="shrink-0 space-y-2 text-right">
+                      <span className="inline-flex rounded-full bg-gray-100 px-2 py-0.5 text-[11px] capitalize text-gray-700">
+                        {item.status}
+                      </span>
+                      {item.due_at && (
+                        <p className="mt-1 inline-flex items-center gap-1 text-[11px] text-orange-600">
+                          <Clock3 size={10} />
+                          {new Date(item.due_at).toLocaleString()}
+                        </p>
+                      )}
+                      {item.delivery_id && (
+                        <div data-ui="inbox.card.actions" className="flex items-center justify-end gap-1" onClick={(e) => e.preventDefault()}>
+                          {!archived && item.unread && (
+                            <button
+                              onClick={() => updateDelivery.mutate({ deliveryId: item.delivery_id!, read: true })}
+                              data-ui="inbox.card.mark-read"
+                              className="inline-flex items-center gap-1 rounded-lg border border-gray-200 px-2 py-1 text-[11px] text-gray-600 hover:bg-gray-50"
+                            >
+                              <CheckCheck size={11} />
+                              Read
+                            </button>
+                          )}
+                          {!archived ? (
+                            <button
+                              onClick={() => updateDelivery.mutate({ deliveryId: item.delivery_id!, archived: true })}
+                              data-ui="inbox.card.archive"
+                              className="inline-flex items-center gap-1 rounded-lg border border-gray-200 px-2 py-1 text-[11px] text-gray-600 hover:bg-gray-50"
+                            >
+                              <Archive size={11} />
+                              Archive
+                            </button>
+                          ) : (
+                            <button
+                              onClick={() => updateDelivery.mutate({ deliveryId: item.delivery_id!, archived: false })}
+                              data-ui="inbox.card.restore"
+                              className="inline-flex items-center gap-1 rounded-lg border border-gray-200 px-2 py-1 text-[11px] text-gray-600 hover:bg-gray-50"
+                            >
+                              <ArchiveRestore size={11} />
+                              Restore
+                            </button>
+                          )}
+                        </div>
+                      )}
+                    </div>
                   </div>
-                </div>
-              </Link>
-            )
-          })}
-        </div>
-      )}
+                </Link>
+              )
+            })}
+          </div>
+        )}
+      </div>
     </div>
   )
 }

@@ -5,7 +5,7 @@
  * - Add-node / zoom / fit controls in the bottom-right corner
  * - Auto-fits all nodes on first render and when node count changes
  */
-import { memo, useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
+import { memo, useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import { Maximize2, SquarePlus, ZoomIn, ZoomOut } from 'lucide-react'
 import type { GraphDefinition, NodeDef, NodeStatus } from '@data-models'
 import { getNodeAssignmentLabels, type ParticipantLabelMap } from '@modules/workflows/frontend/lib/participantLabels'
@@ -70,6 +70,7 @@ interface Props {
   participantLabelMap?: ParticipantLabelMap
   selectedNodeId?: string | null
   editable?: boolean
+  fitOnNodeSelect?: boolean
   graphId?: string
   onSelectNode?: (nodeId: string | null) => void
 }
@@ -80,6 +81,7 @@ function GraphCanvas({
   participantLabelMap = {},
   selectedNodeId,
   editable = false,
+  fitOnNodeSelect = false,
   graphId,
   onSelectNode,
 }: Props) {
@@ -162,7 +164,7 @@ function GraphCanvas({
       })
     : []
 
-  function fitToView() {
+  const fitToView = useCallback(() => {
     const svg = svgRef.current
     if (!svg) return
     const { clientWidth: cw, clientHeight: ch } = svg
@@ -170,12 +172,20 @@ function GraphCanvas({
     const s = Math.min(cw / (gw + PAD * 2), ch / (gh + PAD * 2))
     setZoom(s)
     setPan({ x: (cw - gw * s) / 2, y: (ch - gh * s) / 2 })
-  }
+  }, [gh, gw])
 
   useEffect(() => {
     const id = requestAnimationFrame(() => { fitToView(); setReady(true) })
     return () => cancelAnimationFrame(id)
-  }, [definition.nodes.length])
+  }, [definition.nodes.length, fitToView])
+
+  useEffect(() => {
+    if (!fitOnNodeSelect || !selectedNodeId) return
+    const id = requestAnimationFrame(() => {
+      fitToView()
+    })
+    return () => cancelAnimationFrame(id)
+  }, [fitOnNodeSelect, fitToView, selectedNodeId])
 
   function onMouseDown(e: React.MouseEvent<SVGSVGElement>) {
     if (e.button !== 0) return

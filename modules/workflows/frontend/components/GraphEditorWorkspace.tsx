@@ -233,6 +233,7 @@ export default function GraphEditorWorkspace({
                   participantLabelMap={participantLabelMap}
                   selectedNodeId={selectedNodeId}
                   editable={editorMode === 'edit'}
+                  fitOnNodeSelect
                   graphId={graphId}
                   onSelectNode={selectNode}
                 />
