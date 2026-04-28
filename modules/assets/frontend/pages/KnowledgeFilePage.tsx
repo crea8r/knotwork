@@ -1,6 +1,6 @@
 /**
- * KnowledgeFilePage — standalone route for direct linking to a handbook file.
- * Delegates rendering to FileEditor. Kept for direct-link compatibility (/handbook/file?path=…).
+ * KnowledgeFilePage — standalone route for direct linking to a knowledge asset file.
+ * Delegates rendering to FileEditor for direct knowledge file links.
  */
 import { useSearchParams, Link } from 'react-router-dom'
 import FileEditor from '@modules/assets/frontend/components/handbook/FileEditor'
@@ -15,7 +15,7 @@ export default function KnowledgeFilePage() {
     <div className="flex flex-col h-full">
       {/* Breadcrumb */}
       <div className="flex items-center gap-2 text-xs text-gray-400 px-5 pt-4 pb-1">
-        <Link to="/handbook" className="hover:text-gray-600">Handbook</Link>
+        <Link to="/knowledge" className="hover:text-gray-600">Knowledge</Link>
         <span>›</span>
         <span className="text-gray-600 font-mono">{path}</span>
       </div>

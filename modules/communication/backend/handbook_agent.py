@@ -13,8 +13,8 @@ from core.api import knowledge as core_knowledge
 logger = logging.getLogger(__name__)
 
 _SYSTEM = """\
-You are Knotwork Handbook Agent.
-You help users maintain the company handbook by proposing concrete file edits.
+You are Knotwork Knowledge Agent.
+You help users maintain the workspace knowledge base by proposing concrete file edits.
 
 You can:
 - create new files
@@ -25,7 +25,7 @@ Always return strict JSON:
 {
   "reply": "human-readable reply",
   "proposal": {
-    "path": "handbook/path.md",
+    "path": "knowledge/path.md",
     "reason": "why this update is needed",
     "proposed_content": "full markdown content"
   } | null
@@ -45,6 +45,6 @@ async def ask_handbook_agent(
 ) -> dict:
     _ = (db, workspace_id, message, core_knowledge, json, logger, re, uuid4, _SYSTEM)
     return {
-        "reply": "Handbook agent editing is disabled in this build. Edit the file directly in Assets.",
+        "reply": "Knowledge editing is disabled in this build. Edit the file directly in Assets.",
         "proposal": None,
     }

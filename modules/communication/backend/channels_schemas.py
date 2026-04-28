@@ -4,7 +4,7 @@ from datetime import datetime
 from typing import Literal
 from uuid import UUID
 
-from pydantic import BaseModel
+from pydantic import AliasChoices, BaseModel, ConfigDict, Field, computed_field, model_validator
 
 
 class ChannelOut(BaseModel):
@@ -13,22 +13,68 @@ class ChannelOut(BaseModel):
     name: str
     slug: str
     channel_type: str
-    graph_id: UUID | None = None
+    workflow_id: UUID | None = Field(
+        default=None,
+        alias="graph_id",
+        validation_alias=AliasChoices("workflow_id", "graph_id"),
+        serialization_alias="workflow_id",
+    )
     project_id: UUID | None = None
     objective_id: UUID | None = None
     archived_at: datetime | None = None
     created_at: datetime
     updated_at: datetime
 
-    model_config = {"from_attributes": True}
+    model_config = ConfigDict(from_attributes=True, populate_by_name=True)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _normalize_legacy_handbook_channel(cls, data):
+        if isinstance(data, dict):
+            if data.get("channel_type") == "handbook":
+                normalized = dict(data)
+                normalized["channel_type"] = "knowledge"
+                return normalized
+            return data
+        if getattr(data, "channel_type", None) != "handbook":
+            return data
+        return {
+            "id": getattr(data, "id"),
+            "workspace_id": getattr(data, "workspace_id"),
+            "name": getattr(data, "name"),
+            "slug": getattr(data, "slug"),
+            "channel_type": "knowledge",
+            "graph_id": getattr(data, "graph_id", None),
+            "project_id": getattr(data, "project_id", None),
+            "objective_id": getattr(data, "objective_id", None),
+            "archived_at": getattr(data, "archived_at", None),
+            "created_at": getattr(data, "created_at"),
+            "updated_at": getattr(data, "updated_at"),
+        }
+
+    @computed_field(return_type=UUID | None)
+    @property
+    def graph_id(self) -> UUID | None:
+        return self.workflow_id
 
 
 class ChannelCreate(BaseModel):
     name: str
-    channel_type: Literal["normal", "bulletin", "workflow", "handbook", "run", "project", "objective", "consultation"] = "normal"
-    graph_id: UUID | None = None
+    channel_type: Literal["normal", "bulletin", "workflow", "knowledge", "run", "project", "objective", "consultation"] = "normal"
+    workflow_id: UUID | None = Field(
+        default=None,
+        alias="graph_id",
+        validation_alias=AliasChoices("workflow_id", "graph_id"),
+        serialization_alias="workflow_id",
+    )
     project_id: UUID | None = None
     objective_id: UUID | None = None
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    @property
+    def graph_id(self) -> UUID | None:
+        return self.workflow_id
 
 
 class ChannelUpdate(BaseModel):

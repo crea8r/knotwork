@@ -107,7 +107,7 @@ export function useGraphAgentZeroConsultation(workspaceId: string, graphId: stri
   return useMutation({
     mutationFn: () =>
       api
-        .post<Channel>(`/workspaces/${workspaceId}/graphs/${graphId}/agentzero-consultation`)
+        .post<Channel>(`/workspaces/${workspaceId}/workflows/${graphId}/agentzero-consultation`)
         .then((r) => r.data),
     onSuccess: (channel) => {
       qc.setQueryData(['channel', workspaceId, channel.id], channel)
@@ -221,7 +221,7 @@ export function useUpdateParticipantDeliveryPreference(workspaceId: string, part
 export function useCreateChannel(workspaceId: string) {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (payload: { name: string; channel_type?: 'normal' | 'workflow' | 'handbook' | 'project' | 'objective' | 'consultation'; graph_id?: string; project_id?: string; objective_id?: string }) =>
+    mutationFn: (payload: { name: string; channel_type?: 'normal' | 'workflow' | 'knowledge' | 'project' | 'objective' | 'consultation'; graph_id?: string; project_id?: string; objective_id?: string }) =>
       api.post<Channel>(`/workspaces/${workspaceId}/channels`, payload).then((r) => r.data),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['channels', workspaceId] })
@@ -376,7 +376,7 @@ export function useCreateChannelDecision(workspaceId: string, channelId: string)
 }
 
 
-export function useResolveHandbookProposal(workspaceId: string, channelId: string) {
+export function useResolveKnowledgeChange(workspaceId: string, channelId: string) {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: (payload: {
@@ -385,7 +385,7 @@ export function useResolveHandbookProposal(workspaceId: string, channelId: strin
       final_content?: string
     }) =>
       api.post<{ status: string; proposal_id: string }>(
-        `/workspaces/${workspaceId}/channels/${channelId}/handbook/proposals/${payload.proposalId}/resolve`,
+        `/workspaces/${workspaceId}/channels/${channelId}/knowledge/changes/${payload.proposalId}/resolve`,
         { resolution: payload.resolution, final_content: payload.final_content },
       ).then((r) => r.data),
     onSuccess: () => {

@@ -17,8 +17,9 @@ export function decisionLabel(kind: string): string {
     case 'aborted':
     case 'abort_run':
       return 'Aborted run'
+    case 'knowledge_change_requested':
     case 'handbook_change_requested':
-      return 'Handbook change requested'
+      return 'Knowledge change requested'
     default:
       return kind.replace(/_/g, ' ')
   }

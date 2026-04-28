@@ -9,46 +9,27 @@ from core.mcp.runtime import KnotworkMCPRuntime
 
 
 def register_mcp_tools(mcp: FastMCP, runtime: KnotworkMCPRuntime) -> None:
-    @mcp.tool()
-    async def list_members(
+    async def _list_members(
+        ctx: Context | None,
+        *,
         kind: str | None = None,
         disabled: bool | None = None,
-        ctx: Context = None,
-    ) -> Any:
+    ) -> dict[str, Any]:
         api = runtime.client_from_context(ctx)
-        params: dict[str, Any] = {}
+        params: dict[str, Any] = {"page_size": 100}
         if kind:
             params["kind"] = kind
         if disabled is not None:
             params["disabled"] = disabled
-        return await runtime.request(ctx, "GET", api.workspace_path("/members"), params=params or None)
+        payload = await runtime.request(ctx, "GET", api.workspace_path("/members"), params=params)
+        return payload if isinstance(payload, dict) else {"items": payload}
 
-    @mcp.tool()
-    async def list_agent_members(q: str | None = None, ctx: Context = None) -> Any:
-        api = runtime.client_from_context(ctx)
-        params: dict[str, Any] = {"kind": "agent"}
-        if q:
-            params["q"] = q
-        return await runtime.request(ctx, "GET", api.workspace_path("/members"), params=params)
-
-    @mcp.tool()
-    async def get_member(member_id: str, ctx: Context = None) -> Any:
-        api = runtime.client_from_context(ctx)
-        return await runtime.request(ctx, "GET", api.workspace_path(f"/members/{member_id}"))
-
-    @mcp.tool()
-    async def get_current_member(ctx: Context = None) -> Any:
-        api = runtime.client_from_context(ctx)
+    async def _current_member(ctx: Context | None) -> dict[str, Any]:
         access_token = get_access_token()
         if access_token is None:
             raise RuntimeError("Missing bearer token in MCP request")
-        members = await runtime.request(
-            ctx,
-            "GET",
-            api.workspace_path("/members"),
-            params={"page_size": 100},
-        )
-        items = members.get("items", []) if isinstance(members, dict) else []
+        members = await _list_members(ctx, disabled=False)
+        items = members.get("items", [])
         for member in items:
             if not isinstance(member, dict):
                 continue
@@ -64,42 +45,127 @@ def register_mcp_tools(mcp: FastMCP, runtime: KnotworkMCPRuntime) -> None:
                 if kind == "human"
                 else member_id
             )
-            return {
-                **member,
-                "participant_id": participant_id,
-            }
+            return {**member, "participant_id": participant_id}
         raise RuntimeError("Current bearer token is not a member of this workspace")
 
-    @mcp.tool()
-    async def update_member_profile(
-        member_id: str,
-        contribution_brief: str | None = None,
-        availability_status: str | None = None,
-        capacity_level: str | None = None,
-        status_note: str | None = None,
-        current_commitments: list[dict[str, Any]] | None = None,
-        recent_work: list[dict[str, Any]] | None = None,
-        ctx: Context = None,
-    ) -> Any:
+    @mcp.resource(
+        "knotwork://admin/members",
+        name="admin_members",
+        title="Workspace Members",
+        description="Active workspace members with their status, role, and participation metadata.",
+        mime_type="application/json",
+    )
+    async def members_resource() -> str:
+        return runtime.json_text(await _list_members(mcp.get_context(), disabled=False))
+
+    @mcp.resource(
+        "knotwork://admin/members/agents",
+        name="admin_agent_members",
+        title="Agent Members",
+        description="Active agent members registered in this workspace.",
+        mime_type="application/json",
+    )
+    async def agent_members_resource() -> str:
+        return runtime.json_text(await _list_members(mcp.get_context(), kind="agent", disabled=False))
+
+    @mcp.resource(
+        "knotwork://admin/members/{member_id}",
+        name="admin_member_detail",
+        title="Member Detail",
+        description="Full workspace member profile for one member id.",
+        mime_type="application/json",
+    )
+    async def member_resource(member_id: str, ctx: Context = None) -> str:
         api = runtime.client_from_context(ctx)
-        body: dict[str, Any] = {}
-        if contribution_brief is not None:
-            body["contribution_brief"] = contribution_brief
-        if availability_status is not None:
-            body["availability_status"] = availability_status
-        if capacity_level is not None:
-            body["capacity_level"] = capacity_level
-        if status_note is not None:
-            body["status_note"] = status_note
-        if current_commitments is not None:
-            body["current_commitments"] = current_commitments
-        if recent_work is not None:
-            body["recent_work"] = recent_work
-        if not body:
-            raise RuntimeError("No member profile update provided")
-        return await runtime.request(
-            ctx,
-            "PATCH",
-            api.workspace_path(f"/members/{member_id}"),
-            body=body,
+        return runtime.json_text(await runtime.request(ctx, "GET", api.workspace_path(f"/members/{member_id}")))
+
+    @mcp.resource(
+        "knotwork://admin/members/current",
+        name="admin_current_member",
+        title="Current Member",
+        description="Self-profile bootstrap for the current actor in this workspace.",
+        mime_type="application/json",
+    )
+    async def current_member_resource() -> str:
+        return runtime.json_text(await _current_member(mcp.get_context()))
+
+    @mcp.resource(
+        "knotwork://admin/capacity-board",
+        name="admin_capacity_board",
+        title="Capacity Board",
+        description="Contribution briefs, availability, capacity, commitments, and recent work across active members.",
+        mime_type="application/json",
+    )
+    async def capacity_board_resource() -> str:
+        members = await _list_members(mcp.get_context(), disabled=False)
+        items = members.get("items", []) if isinstance(members, dict) else []
+        board = [
+            {
+                "member_id": item.get("id"),
+                "name": item.get("name"),
+                "kind": item.get("kind"),
+                "role": item.get("role"),
+                "contribution_brief": item.get("contribution_brief"),
+                "availability_status": item.get("availability_status"),
+                "capacity_level": item.get("capacity_level"),
+                "status_note": item.get("status_note"),
+                "current_commitments": item.get("current_commitments") or [],
+                "recent_work": item.get("recent_work") or [],
+                "status_updated_at": item.get("status_updated_at"),
+            }
+            for item in items
+            if isinstance(item, dict)
+        ]
+        return runtime.json_text({"items": board})
+
+    @mcp.resource(
+        "knotwork://admin/workspace/policies",
+        name="admin_workspace_policies",
+        title="Workspace Policies",
+        description="Workspace-level operating guidance for this workspace when it exists.",
+        mime_type="text/markdown",
+    )
+    async def workspace_policies_resource() -> str:
+        api = runtime.client_from_context(mcp.get_context())
+        guide = await runtime.request(mcp.get_context(), "GET", api.workspace_path("/guide"))
+        if isinstance(guide, dict) and isinstance(guide.get("guide_md"), str):
+            return guide["guide_md"] or "# Workspace Policies\n\nNo workspace guide is currently set."
+        return "# Workspace Policies\n\nNo workspace guide is currently set."
+
+    @mcp.prompt(
+        name="admin.update_my_status",
+        title="Update My Status",
+        description="Guidance for updating your own member availability, capacity, and commitments.",
+    )
+    def update_my_status_prompt() -> str:
+        return (
+            "Update only your own current status.\n"
+            "Capture availability, capacity, current commitments, recent work, and any short status note.\n"
+            "Prefer concrete signals over narrative.\n"
+            "Stay scoped to status and coordination context, not broader business-task routing."
+        )
+
+    @mcp.prompt(
+        name="admin.choose_member_for_task",
+        title="Choose Member For Task",
+        description="Guidance for selecting the right active member for a task.",
+    )
+    def choose_member_for_task_prompt(task_summary: str) -> str:
+        return (
+            f"Choose the best active member for this task: {task_summary}\n"
+            "Use active members only.\n"
+            "Weight contribution brief, availability, capacity, and recent work before routing the task.\n"
+            "Prefer the smallest viable handoff."
+        )
+
+    @mcp.prompt(
+        name="admin.summarize_team_capacity",
+        title="Summarize Team Capacity",
+        description="Guidance for summarizing current workspace capacity and constraints.",
+    )
+    def summarize_team_capacity_prompt() -> str:
+        return (
+            "Summarize current team capacity from active members only.\n"
+            "Call out who is available, who is constrained, and any obvious overload or gaps.\n"
+            "Keep the summary operational rather than motivational."
         )

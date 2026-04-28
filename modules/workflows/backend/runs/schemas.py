@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from uuid import UUID
 
-from pydantic import BaseModel
+from pydantic import AliasChoices, BaseModel, ConfigDict, Field, computed_field
 
 
 class RunAttachmentRef(BaseModel):
@@ -29,9 +29,20 @@ class RunCreate(BaseModel):
     input: dict = {}
     context_files: list[dict] = []
     trigger: str = "manual"
-    graph_version_id: UUID | None = None
+    workflow_version_id: UUID | None = Field(
+        default=None,
+        alias="graph_version_id",
+        validation_alias=AliasChoices("workflow_version_id", "graph_version_id"),
+        serialization_alias="workflow_version_id",
+    )
     objective_id: UUID | None = None
     source_channel_id: UUID | None = None
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    @property
+    def graph_version_id(self) -> UUID | None:
+        return self.workflow_version_id
 
 
 class RunUpdate(BaseModel):
@@ -123,8 +134,17 @@ class RunOut(BaseModel):
     workspace_id: UUID
     project_id: UUID | None = None
     objective_id: UUID | None = None
-    graph_id: UUID
-    graph_version_id: UUID | None = None
+    workflow_id: UUID = Field(
+        alias="graph_id",
+        validation_alias=AliasChoices("workflow_id", "graph_id"),
+        serialization_alias="workflow_id",
+    )
+    workflow_version_id: UUID | None = Field(
+        default=None,
+        alias="graph_version_id",
+        validation_alias=AliasChoices("workflow_version_id", "graph_version_id"),
+        serialization_alias="workflow_version_id",
+    )
     # Draft run metadata — non-null when run was executed against a draft
     draft_snapshot_at: datetime | None = None
     draft_parent_version_id: UUID | None = None  # enriched from graph_version_id FK
@@ -144,7 +164,17 @@ class RunOut(BaseModel):
     output_summary: str | None = None
     needs_attention: bool = False
 
-    model_config = {"from_attributes": True}
+    model_config = ConfigDict(from_attributes=True, populate_by_name=True)
+
+    @computed_field(return_type=UUID)
+    @property
+    def graph_id(self) -> UUID:
+        return self.workflow_id
+
+    @computed_field(return_type=UUID | None)
+    @property
+    def graph_version_id(self) -> UUID | None:
+        return self.workflow_version_id
 
 
 class ResumeRun(BaseModel):

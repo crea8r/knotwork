@@ -215,7 +215,7 @@ export default function MarkdownWysiwygEditor({ value, onChange }: Props) {
         <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/30 p-4">
           <div className="w-full max-w-md rounded-xl border border-gray-200 bg-white p-4 shadow-xl">
             <h3 className="text-sm font-semibold text-gray-900">Insert link</h3>
-            <p className="mt-1 text-xs text-gray-500">Link selected text to a handbook file or external URL.</p>
+            <p className="mt-1 text-xs text-gray-500">Link selected text to a knowledge file or external URL.</p>
 
             <div className="mt-3 flex items-center gap-4">
               <label className="inline-flex items-center gap-2 text-sm text-gray-700">
@@ -225,7 +225,7 @@ export default function MarkdownWysiwygEditor({ value, onChange }: Props) {
                   checked={linkMode === 'file'}
                   onChange={() => setLinkMode('file')}
                 />
-                Handbook file
+                Knowledge file
               </label>
               <label className="inline-flex items-center gap-2 text-sm text-gray-700">
                 <input
@@ -245,7 +245,7 @@ export default function MarkdownWysiwygEditor({ value, onChange }: Props) {
                   value={linkFilePath}
                   onChange={(e) => setLinkFilePath(e.target.value)}
                 >
-                  {!knowledgeFiles.length && <option value="">No handbook files</option>}
+                  {!knowledgeFiles.length && <option value="">No knowledge files</option>}
                   {knowledgeFiles.map((f) => (
                     <option key={f.path} value={f.path}>{f.title} ({f.path})</option>
                   ))}

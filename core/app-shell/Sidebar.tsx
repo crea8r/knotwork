@@ -17,8 +17,7 @@ import {
   X,
 } from 'lucide-react'
 import knotworkLogo from '@ui/assets/knotwork-logo.svg'
-import { useCreateChannel, useInboxSummary } from '@modules/communication/frontend/api/channels'
-import { api } from '@sdk'
+import { useInboxSummary } from '@modules/communication/frontend/api/channels'
 import { useCreateProject, useProjectChannels, useProjectDashboard, useProjects } from "@modules/projects/frontend/api/projects"
 import { useGraphs } from "@modules/workflows/frontend/api/graphs"
 import { useRuns } from "@modules/workflows/frontend/api/runs"
@@ -261,7 +260,7 @@ function MinimalSidebar({
 
       <nav data-ui="shell.nav.body" className={`flex-1 overflow-y-auto py-3 space-y-0.5 ${collapsed ? 'px-1 flex flex-col items-center' : 'px-2'}`}>
         {hasAssets && <Item to="/knowledge" icon={<BookOpen size={iconSize} />} label="Knowledge" onClick={onCloseMobile} />}
-        {hasWorkflows && <Item to="/graphs" icon={<FolderOpen size={iconSize} />} label="Workflows" onClick={onCloseMobile} />}
+        {hasWorkflows && <Item to="/workflows" icon={<FolderOpen size={iconSize} />} label="Workflows" onClick={onCloseMobile} />}
         {hasWorkflows && <Item to="/runs" icon={<PlayCircle size={iconSize} />} label="Runs" onClick={onCloseMobile} />}
       </nav>
 
@@ -314,7 +313,6 @@ function WorkspaceSidebar({
   const { data: inboxSummary } = useInboxSummary(workspaceId)
   const { data: projects = [] } = useProjects(workspaceId)
   const createProject = useCreateProject(workspaceId)
-  const createChannel = useCreateChannel(workspaceId)
 
   const activeProjectSlug = useMemo(() => {
     const match = location.pathname.match(/^\/projects\/([^/]+)/)
@@ -332,10 +330,7 @@ function WorkspaceSidebar({
   const [pinnedProjectId, setPinnedProjectId] = useState<string | null>(
     () => readNamespacedStorage(PINNED_PROJECT_STORAGE_KEY, ['kw-pinned-project']),
   )
-  const [showNewChannelDialog, setShowNewChannelDialog] = useState(false)
   const [showNewProjectDialog, setShowNewProjectDialog] = useState(false)
-  const [newChannelProjectId, setNewChannelProjectId] = useState('')
-  const [newChannelMessage, setNewChannelMessage] = useState('')
   const [newProjectTitle, setNewProjectTitle] = useState('')
   const [newProjectDescription, setNewProjectDescription] = useState('')
 
@@ -388,45 +383,6 @@ function WorkspaceSidebar({
   }, [activeProjectChannelsRaw, activeProjectDashboard?.project.project_channel_id, objectiveMap, runByChannelName])
 
   const visibleChannels = activeProjectChannels.slice(0, 5)
-
-  function openNewChannelDialog() {
-    setNewChannelProjectId(activeProjectId ?? recentProjects[0]?.id ?? projects[0]?.id ?? '')
-    setNewChannelMessage('')
-    setShowNewChannelDialog(true)
-  }
-
-  function deriveChannelName() {
-    const words = newChannelMessage
-      .trim()
-      .replace(/\s+/g, ' ')
-      .split(' ')
-      .filter(Boolean)
-      .slice(0, 8)
-    return words.join(' ') || 'New channel'
-  }
-
-  async function submitNewChannel() {
-    const targetProjectId = newChannelProjectId || activeProjectId || recentProjects[0]?.id || projects[0]?.id
-    if (!targetProjectId) return
-    const targetProject = projects.find((project) => project.id === targetProjectId)
-    if (!targetProject) return
-    const channel = await createChannel.mutateAsync({
-      name: deriveChannelName(),
-      channel_type: 'normal',
-      project_id: targetProjectId,
-    })
-    if (newChannelMessage.trim()) {
-      await api.post(`/workspaces/${workspaceId}/channels/${channel.slug}/messages`, {
-        content: newChannelMessage.trim(),
-        role: 'user',
-        author_type: 'human',
-        author_name: 'You',
-      })
-    }
-    setShowNewChannelDialog(false)
-    onCloseMobile?.()
-    navigate(projectChannelPath(targetProject.slug, channel.slug))
-  }
 
   function openNewProjectDialog() {
     setNewProjectTitle('')
@@ -516,27 +472,6 @@ function WorkspaceSidebar({
       />
 
       <nav data-ui="shell.nav.body" className={`flex-1 overflow-y-auto py-3 space-y-0.5 ${collapsed ? 'px-1 flex flex-col items-center' : 'px-2'}`}>
-        {collapsed ? (
-          <button
-            type="button"
-            onClick={openNewChannelDialog}
-            title="New channel"
-            aria-label="New channel"
-            className="mb-1 flex h-9 w-9 items-center justify-center rounded-lg text-gray-500 transition-colors hover:bg-gray-100"
-          >
-            <Plus size={18} />
-          </button>
-        ) : (
-          <button
-            type="button"
-            onClick={openNewChannelDialog}
-            className="mb-1 flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-sm text-gray-700 transition-colors hover:bg-gray-100"
-          >
-            <Plus size={16} />
-            <span>New channel</span>
-          </button>
-        )}
-
         <Item
           to="/inbox"
           icon={(
@@ -708,72 +643,6 @@ function WorkspaceSidebar({
         </div>
       )}
       </aside>
-      {showNewChannelDialog && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 p-4">
-        <div className="w-full max-w-2xl rounded-[32px] bg-white p-6 shadow-2xl">
-          <div className="flex items-center justify-between gap-4">
-            <h2 className="text-xl font-semibold text-stone-950">New channel</h2>
-            <button
-              type="button"
-              onClick={() => setShowNewChannelDialog(false)}
-              className="rounded-lg border border-stone-200 p-2 text-stone-500 hover:text-stone-900"
-            >
-              <X size={16} />
-            </button>
-          </div>
-
-          <form
-            className="mt-5 space-y-4"
-            onSubmit={(event) => {
-              event.preventDefault()
-              void submitNewChannel()
-            }}
-          >
-            <label className="block text-sm text-stone-600">
-              Project
-              <select
-                value={newChannelProjectId}
-                onChange={(event) => setNewChannelProjectId(event.target.value)}
-                className="mt-1 w-full rounded-xl border border-stone-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-stone-900"
-              >
-                {projects.map((project) => (
-                  <option key={project.id} value={project.id}>{project.title}</option>
-                ))}
-              </select>
-            </label>
-
-            <label className="block text-sm text-stone-600">
-              First message
-              <textarea
-                autoFocus
-                rows={8}
-                value={newChannelMessage}
-                onChange={(event) => setNewChannelMessage(event.target.value)}
-                placeholder="Start the thread here."
-                className="mt-1 w-full rounded-2xl border border-stone-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-stone-900"
-              />
-            </label>
-
-            <div className="flex justify-end gap-2">
-              <button
-                type="button"
-                onClick={() => setShowNewChannelDialog(false)}
-                className="rounded-xl px-3 py-2 text-sm text-stone-600 hover:bg-stone-100"
-              >
-                Cancel
-              </button>
-              <button
-                type="submit"
-                disabled={!newChannelProjectId || createChannel.isPending}
-                className="rounded-xl bg-stone-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
-              >
-                {createChannel.isPending ? 'Creating…' : 'Create channel'}
-              </button>
-            </div>
-          </form>
-          </div>
-        </div>
-      )}
       {showNewProjectDialog && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 p-4">
           <div className="w-full max-w-lg rounded-[28px] bg-white p-6 shadow-2xl">

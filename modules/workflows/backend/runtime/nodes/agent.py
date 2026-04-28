@@ -52,10 +52,10 @@ def _build_participant_task_prompt(
         handbook_sections = []
         for fragment in fragments:
             handbook_sections.append(f"### {fragment.path}\n{fragment.content}".strip())
-        sections.append("## Handbook Context\n" + "\n\n".join(handbook_sections))
+        sections.append("## Knowledge Context\n" + "\n\n".join(handbook_sections))
     missing_links = list(getattr(knowledge_tree, "missing_links", []) or [])
     if missing_links:
-        sections.append("## Missing Handbook Files\n" + "\n".join(f"- {path}" for path in missing_links))
+        sections.append("## Missing Knowledge Files\n" + "\n".join(f"- {path}" for path in missing_links))
     return "\n\n".join(section for section in sections if section.strip())
 
 

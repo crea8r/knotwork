@@ -129,12 +129,12 @@ def generate_skills_md(
     """Render the agent skills document for a workspace participant."""
     generated_at = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
 
-    # Handbook summary — first 20 files
+    # Knowledge summary — first 20 files
     if knowledge_files:
         lines = [f"- **{f.title}** (`{f.path}`)" for f in knowledge_files[:20]]
         handbook_summary = "\n".join(lines)
     else:
-        handbook_summary = "_No handbook files yet._"
+        handbook_summary = "_No knowledge files yet._"
 
     # Key files — top-level only (no directory separator in path)
     top_level = [f for f in knowledge_files if "/" not in f.path][:10]

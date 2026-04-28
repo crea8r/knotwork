@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from libs.config import settings
 from libs.database import get_db
-from modules.workflows.backend.graphs.schemas import GraphDefinitionSchema
+from modules.workflows.backend.graphs.schemas import WorkflowDefinitionSchema
 from modules.assets.backend.storage import get_storage_adapter
 from modules.communication.backend.channels_schemas import ChannelMessageOut
 
@@ -41,15 +41,16 @@ def _build_attachment_key(workspace_id: UUID, attachment_id: str, filename: str)
     return f"runs/{workspace_id}/{attachment_id}/{filename}"
 
 
-@router.post("/{workspace_id}/graphs/{graph_id}/runs", response_model=RunOut, status_code=201)
+@router.post("/{workspace_id}/workflows/{workflow_id}/runs", response_model=RunOut, status_code=201)
+@router.post("/{workspace_id}/graphs/{workflow_id}/runs", response_model=RunOut, status_code=201, include_in_schema=False)
 async def trigger_run(
     workspace_id: UUID,
-    graph_id: UUID,
+    workflow_id: UUID,
     data: RunCreate,
     db: AsyncSession = Depends(get_db),
 ):
     try:
-        run = await service.create_run(db, workspace_id, graph_id, data)
+        run = await service.create_run(db, workspace_id, workflow_id, data)
     except ValueError as e:
         raise HTTPException(400, str(e))
     return RunOut.model_validate(run)
@@ -137,7 +138,7 @@ async def get_run(workspace_id: UUID, run_id: str = PathParam(..., min_length=8,
     return RunOut.model_validate(run)
 
 
-@router.get("/{workspace_id}/runs/{run_id}/definition", response_model=GraphDefinitionSchema)
+@router.get("/{workspace_id}/runs/{run_id}/definition", response_model=WorkflowDefinitionSchema)
 async def get_run_definition(
     workspace_id: UUID,
     run_id: str = PathParam(..., min_length=8, max_length=36),
@@ -149,7 +150,7 @@ async def get_run_definition(
     definition = await service.get_run_definition(db, run_id)
     if definition is None:
         raise HTTPException(404, "Run definition not found")
-    return GraphDefinitionSchema.model_validate(definition)
+    return WorkflowDefinitionSchema.model_validate(definition)
 
 
 @router.patch("/{workspace_id}/runs/{run_id}", response_model=RunOut)
@@ -279,12 +280,13 @@ async def clone_run(
     return RunOut.model_validate(draft)
 
 
-@router.get("/{workspace_id}/graphs/{graph_id}/runs", response_model=list[RunOut])
-async def list_graph_runs(
-    workspace_id: UUID, graph_id: UUID, db: AsyncSession = Depends(get_db)
+@router.get("/{workspace_id}/workflows/{workflow_id}/runs", response_model=list[RunOut])
+@router.get("/{workspace_id}/graphs/{workflow_id}/runs", response_model=list[RunOut], include_in_schema=False)
+async def list_workflow_runs(
+    workspace_id: UUID, workflow_id: UUID, db: AsyncSession = Depends(get_db)
 ):
     rows = await service.list_workspace_runs(db, workspace_id)
-    return [RunOut.model_validate(r) for r in rows if str(r["graph_id"]) == str(graph_id)]
+    return [RunOut.model_validate(r) for r in rows if str(r["graph_id"]) == str(workflow_id)]
 
 
 @router.get("/{workspace_id}/runs/{run_id}/worklog", response_model=list[RunWorklogEntryOut])
@@ -299,7 +301,7 @@ async def get_run_worklog(
 
 
 @router.get(
-    "/{workspace_id}/runs/{run_id}/handbook-proposals",
+    "/{workspace_id}/runs/{run_id}/knowledge-changes",
     response_model=list[RunHandbookProposalOut],
 )
 async def get_run_proposals(

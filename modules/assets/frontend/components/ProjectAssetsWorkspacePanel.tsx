@@ -4,16 +4,16 @@ import { useLocation, useNavigate } from 'react-router-dom'
 import { useDeleteGraph, useGraphs, useUpdateGraph } from "@modules/workflows/frontend/api/graphs"
 import { useKnowledgeFiles } from "@modules/assets/frontend/api/knowledge"
 import {
-  useCreateProjectDocument,
+  useCreateProjectAssetFile,
   useCreateProjectFolder,
-  useDeleteProjectDocument,
+  useDeleteProjectAssetFile,
   useDeleteProjectFolder,
-  useProjectDocuments,
+  useProjectAssetFiles,
   useProjectFolders,
-  useRenameProjectDocument,
+  useRenameProjectAssetFile,
   useRenameProjectFolder,
   useUploadProjectFile,
-} from "@modules/projects/frontend/api/projects"
+} from "@modules/assets/frontend/api/projectAssets"
 import FileBrowserShell from '@modules/assets/frontend/components/file-browser/FileBrowserShell'
 import AssetChatToggleButton from '@modules/assets/frontend/components/file-browser/AssetChatToggleButton'
 import type { BrowserFile } from '@modules/assets/frontend/components/file-browser/types'
@@ -216,7 +216,7 @@ export default function ProjectAssetsWorkspacePanel({
       ? selection.path
       : null
   )
-  const { data: docs = [] } = useProjectDocuments(workspaceId, projectSlug)
+  const { data: docs = [] } = useProjectAssetFiles(workspaceId, projectSlug)
   const { data: projectFolders = [] } = useProjectFolders(workspaceId, projectSlug)
   const { data: workflows = [], isLoading: workflowsLoading } = useGraphs(workspaceId, projectId)
   const { data: workspaceWorkflows = [] } = useGraphs(workspaceId)
@@ -234,12 +234,12 @@ export default function ProjectAssetsWorkspacePanel({
     snapshot,
   )
 
-  const createProjectDocument = useCreateProjectDocument(workspaceId, projectSlug)
+  const createProjectAssetFile = useCreateProjectAssetFile(workspaceId, projectSlug)
   const createProjectFolder = useCreateProjectFolder(workspaceId, projectSlug)
   const renameProjectFolder = useRenameProjectFolder(workspaceId, projectSlug)
   const deleteProjectFolder = useDeleteProjectFolder(workspaceId, projectSlug)
-  const renameProjectDocument = useRenameProjectDocument(workspaceId, projectSlug)
-  const deleteProjectDocument = useDeleteProjectDocument(workspaceId, projectSlug)
+  const renameProjectAssetFile = useRenameProjectAssetFile(workspaceId, projectSlug)
+  const deleteProjectAssetFile = useDeleteProjectAssetFile(workspaceId, projectSlug)
   const uploadProjectFile = useUploadProjectFile(workspaceId, projectSlug)
   const updateGraph = useUpdateGraph(workspaceId)
   const deleteGraph = useDeleteGraph(workspaceId)
@@ -521,7 +521,7 @@ export default function ProjectAssetsWorkspacePanel({
   }
 
   function handleProjectFileRename(path: string, newPath: string) {
-    renameProjectDocument.mutate({ path, new_path: newPath }, {
+    renameProjectAssetFile.mutate({ path, new_path: newPath }, {
       onSuccess: (file) => {
         if (browserState.rightPanel.kind === 'file' && browserState.rightPanel.path === path) openProjectFilePath(file.path)
       },
@@ -547,7 +547,7 @@ export default function ProjectAssetsWorkspacePanel({
   function confirmProjectDelete() {
     if (!deleteTarget) return
     if (deleteTarget.kind === 'file') {
-      deleteProjectDocument.mutate(deleteTarget.path, {
+      deleteProjectAssetFile.mutate(deleteTarget.path, {
         onSuccess: () => {
           if (browserState.rightPanel.kind === 'file' && browserState.rightPanel.path === deleteTarget.path) {
             openProjectFolderPath(deleteTarget.path.split('/').slice(0, -1).join('/'))
@@ -585,14 +585,14 @@ export default function ProjectAssetsWorkspacePanel({
     })
   }
 
-  const busy = renameProjectDocument.isPending || updateGraph.isPending || renameProjectFolder.isPending || deleteProjectDocument.isPending || deleteProjectFolder.isPending || deleteGraph.isPending || uploadProjectFile.isPending
-  const busyLabel = renameProjectDocument.isPending
+  const busy = renameProjectAssetFile.isPending || updateGraph.isPending || renameProjectFolder.isPending || deleteProjectAssetFile.isPending || deleteProjectFolder.isPending || deleteGraph.isPending || uploadProjectFile.isPending
+  const busyLabel = renameProjectAssetFile.isPending
     ? 'Renaming…'
     : renameProjectFolder.isPending
       ? 'Renaming folder…'
       : updateGraph.isPending
         ? 'Updating workflow…'
-        : deleteProjectDocument.isPending || deleteProjectFolder.isPending || deleteGraph.isPending
+        : deleteProjectAssetFile.isPending || deleteProjectFolder.isPending || deleteGraph.isPending
           ? 'Deleting…'
           : uploadProjectFile.isPending
             ? 'Uploading…'
@@ -634,7 +634,7 @@ export default function ProjectAssetsWorkspacePanel({
         onDeleteFolder={(path) => setDeleteTarget({ kind: 'folder', path })}
         isBusy={busy}
         busyLabel={busyLabel}
-        renamePending={renameProjectDocument.isPending || renameProjectFolder.isPending || updateGraph.isPending}
+        renamePending={renameProjectAssetFile.isPending || renameProjectFolder.isPending || updateGraph.isPending}
         onUploadClick={() => uploadInputRef.current?.click()}
         onDrop={async (event) => {
           event.preventDefault()
@@ -655,8 +655,8 @@ export default function ProjectAssetsWorkspacePanel({
             folder={folder}
             onCreate={onCreate}
             onCancel={onCancel}
-            isPending={createProjectDocument.isPending}
-            onSubmit={async (path) => { await createProjectDocument.mutateAsync({ path, title: path.split('/').pop(), content: '' }) }}
+            isPending={createProjectAssetFile.isPending}
+            onSubmit={async (path) => { await createProjectAssetFile.mutateAsync({ path, title: path.split('/').pop(), content: '' }) }}
           />
         )}
         renderNewPresentationPanel={(folder, onCreate, onCancel) => (
@@ -664,8 +664,8 @@ export default function ProjectAssetsWorkspacePanel({
             folder={folder}
             onCreate={onCreate}
             onCancel={onCancel}
-            isPending={createProjectDocument.isPending}
-            onSubmit={async (path, title, content) => { await createProjectDocument.mutateAsync({ path, title, content, file_type: 'presentation' }) }}
+            isPending={createProjectAssetFile.isPending}
+            onSubmit={async (path, title, content) => { await createProjectAssetFile.mutateAsync({ path, title, content, file_type: 'presentation' }) }}
           />
         )}
         renderNewWorkflowPanel={(folder, onCreate, onCancel) => <NewWorkflowPanel folder={folder} projectId={projectId} onCreate={onCreate} onCancel={onCancel} />}
@@ -683,9 +683,9 @@ export default function ProjectAssetsWorkspacePanel({
             preview={preview}
             onSaved={onSaved}
             onCancel={onCancel}
-            isSaving={createProjectDocument.isPending}
+            isSaving={createProjectAssetFile.isPending}
             saveLabel="Save to Project"
-            onSave={async (payload) => { await createProjectDocument.mutateAsync(payload) }}
+            onSave={async (payload) => { await createProjectAssetFile.mutateAsync(payload) }}
           />
         )}
         allowNewFolder
@@ -710,7 +710,7 @@ export default function ProjectAssetsWorkspacePanel({
           folderPaths={folderPaths}
           onConfirm={handleProjectMoveConfirm}
           onCancel={() => browserState.setMovingTarget(null)}
-          isPending={renameProjectDocument.isPending || updateGraph.isPending}
+          isPending={renameProjectAssetFile.isPending || updateGraph.isPending}
         />
       ) : null}
 
@@ -721,7 +721,7 @@ export default function ProjectAssetsWorkspacePanel({
           warning={deleteTarget.kind === 'file' ? 'This action cannot be undone.' : deleteTarget.kind === 'folder' ? 'All files and sub-folders inside this folder will be deleted.' : 'Workflows with runs are archived. Workflows without runs are deleted.'}
           confirmLabel={deleteTarget.kind === 'workflow' ? 'Continue' : 'Delete'}
           confirmVariant="danger"
-          isPending={deleteTarget.kind === 'file' ? deleteProjectDocument.isPending : deleteTarget.kind === 'folder' ? deleteProjectFolder.isPending : deleteGraph.isPending}
+          isPending={deleteTarget.kind === 'file' ? deleteProjectAssetFile.isPending : deleteTarget.kind === 'folder' ? deleteProjectFolder.isPending : deleteGraph.isPending}
           onCancel={() => setDeleteTarget(null)}
           onConfirm={confirmProjectDelete}
         />

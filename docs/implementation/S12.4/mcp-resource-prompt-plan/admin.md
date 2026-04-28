@@ -20,9 +20,8 @@ It should expose member/workspace status surfaces that other modules can use for
 
 ## Tools
 
-- `list_members(kind?, disabled?)`
-- `search_members(name?, is_free?, recent_work_query?)`
-- `update_member_profile(member_id, contribution_brief?, availability_status?, capacity_level?, status_note?, current_commitments?, recent_work?)`
+- No public `knotwork_*` tool calls are planned in `admin`.
+- `admin` stays as a context and resource module for routing, identity, and workspace policy.
 
 ## Prompts
 

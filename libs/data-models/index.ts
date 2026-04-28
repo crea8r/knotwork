@@ -20,6 +20,7 @@ export type EscalationResolution =
 
 export interface GraphVersion {
   id: string
+  workflow_id: string
   graph_id: string
   definition: GraphDefinition
   note: string | null
@@ -58,6 +59,9 @@ export interface Graph {
   updated_at: string
 }
 
+export type WorkflowVersion = GraphVersion
+export type Workflow = Graph
+
 export interface InputFieldDef {
   name: string
   label: string
@@ -72,6 +76,8 @@ export interface GraphDefinition {
   entry_point?: string | null
   input_schema?: InputFieldDef[]
 }
+
+export type WorkflowDefinition = GraphDefinition
 
 export interface NodeDef {
   id: string
@@ -106,7 +112,9 @@ export interface Run {
   workspace_id: string
   project_id: string | null
   objective_id: string | null
+  workflow_id: string
   graph_id: string
+  workflow_version_id: string | null
   graph_version_id: string | null   // S9.1: nullable; null for legacy runs
   // S9.1 draft run metadata
   draft_snapshot_at: string | null
@@ -135,7 +143,9 @@ export function isDraftRun(run: Run): boolean {
 export interface PublicWorkflowLink {
   id: string
   workspace_id: string
+  workflow_id: string
   graph_id: string
+  workflow_version_id: string | null
   graph_version_id: string | null
   token: string
   description_md: string
@@ -274,7 +284,8 @@ export interface Channel {
   workspace_id: string
   name: string
   slug: string
-  channel_type: 'normal' | 'bulletin' | 'workflow' | 'handbook' | 'run' | 'agent_main' | 'project' | 'objective' | 'consultation' | 'knowledge_change'
+  channel_type: 'normal' | 'bulletin' | 'workflow' | 'knowledge' | 'run' | 'agent_main' | 'project' | 'objective' | 'consultation' | 'knowledge_change'
+  workflow_id: string | null
   graph_id: string | null
   project_id: string | null
   objective_id: string | null
@@ -335,28 +346,6 @@ export interface Objective {
   latest_run_id: string | null
   created_at: string
   updated_at: string
-}
-
-export interface ProjectDocument {
-  id: string
-  workspace_id: string
-  project_id: string | null
-  path: string
-  title: string
-  owner_id: string | null
-  raw_token_count: number
-  resolved_token_count: number
-  linked_paths: string[]
-  current_version_id: string | null
-  health_score: number | null
-  file_type: string
-  is_editable: boolean
-  updated_at: string
-}
-
-export interface ProjectDocumentWithContent extends ProjectDocument {
-  content: string
-  version_id: string
 }
 
 export interface ProjectDashboard {

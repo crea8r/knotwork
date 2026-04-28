@@ -1,9 +1,4 @@
-"""
-Knowledge change review endpoints.
-
-Agents propose structured knowledge changes that are discussed in normal channels.
-Approving a change applies the requested action to the underlying knowledge asset.
-"""
+"""Asset change review endpoints."""
 from __future__ import annotations
 
 from datetime import datetime, timezone
@@ -14,13 +9,14 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from core.api.facades import projects as core_projects
 from modules.communication.backend.channels_models import Channel
 from libs.database import get_db
 
 from . import knowledge_change_service, knowledge_folder_service, knowledge_service
 from .knowledge_models import KnowledgeChange
 
-router = APIRouter(prefix="/workspaces", tags=["proposals"])
+router = APIRouter(prefix="/workspaces", tags=["assets"])
 
 
 class KnowledgeChangeOut(BaseModel):
@@ -54,6 +50,7 @@ class KnowledgeChangeCreate(BaseModel):
     path: str
     proposed_content: str
     reason: str
+    project_ref: str | None = None
     run_id: str | None = None
     node_id: str | None = None
     agent_ref: str | None = None
@@ -73,8 +70,8 @@ async def _get_change_for_workspace(db: AsyncSession, workspace_id: UUID, change
     return change
 
 
-@router.get("/{workspace_id}/handbook/proposals", response_model=list[KnowledgeChangeOut])
-async def list_handbook_proposals(
+@router.get("/{workspace_id}/assets/changes", response_model=list[KnowledgeChangeOut])
+async def list_knowledge_changes(
     workspace_id: UUID,
     status: str | None = None,
     db: AsyncSession = Depends(get_db),
@@ -90,27 +87,34 @@ async def list_handbook_proposals(
     return list(result.scalars())
 
 
-@router.get("/{workspace_id}/knowledge/changes", response_model=list[KnowledgeChangeOut])
-async def list_knowledge_changes(
+@router.get("/{workspace_id}/assets/changes/{proposal_id}", response_model=KnowledgeChangeOut)
+async def get_knowledge_change(
     workspace_id: UUID,
-    status: str | None = None,
+    proposal_id: UUID,
     db: AsyncSession = Depends(get_db),
 ):
-    return await list_handbook_proposals(workspace_id=workspace_id, status=status, db=db)
+    return await _get_change_for_workspace(db, workspace_id, proposal_id)
 
 
-@router.post("/{workspace_id}/knowledge/changes", response_model=KnowledgeChangeOut, status_code=201)
+@router.post("/{workspace_id}/assets/changes", response_model=KnowledgeChangeOut, status_code=201)
 async def create_knowledge_change(
     workspace_id: UUID,
     body: KnowledgeChangeCreate,
     db: AsyncSession = Depends(get_db),
 ):
+    project_id = None
+    if body.project_ref:
+        project = await core_projects.resolve_project_ref(db, workspace_id, body.project_ref)
+        if project is None:
+            raise HTTPException(404, "Project not found")
+        project_id = project.id
     return await knowledge_change_service.create_knowledge_change(
         db,
         workspace_id=workspace_id,
         path=body.path,
         proposed_content=body.proposed_content,
         reason=body.reason,
+        project_id=project_id,
         run_id=body.run_id,
         node_id=body.node_id,
         agent_ref=body.agent_ref,
@@ -131,7 +135,7 @@ async def _apply_change(db: AsyncSession, workspace_id: UUID, change, final_cont
         content_to_write = final_content or change.proposed_content
         if not content_to_write:
             raise HTTPException(400, "Knowledge change is missing proposed content")
-        existing = await knowledge_service.get_file_by_path(db, workspace_id, target_path)
+        existing = await knowledge_service.get_file_by_path(db, workspace_id, target_path, project_id=change.project_id)
         if existing:
             await knowledge_service.update_file(
                 db,
@@ -140,6 +144,7 @@ async def _apply_change(db: AsyncSession, workspace_id: UUID, change, final_cont
                 content_to_write,
                 updated_by="knowledge_change",
                 change_summary=f"Approved change: {change.reason[:80]}",
+                project_id=change.project_id,
             )
         else:
             title = target_path.split("/")[-1].replace("-", " ").replace("_", " ").title()
@@ -151,6 +156,7 @@ async def _apply_change(db: AsyncSession, workspace_id: UUID, change, final_cont
                 content_to_write,
                 created_by="knowledge_change",
                 change_summary=f"Approved change: {change.reason[:80]}",
+                project_id=change.project_id,
             )
         change.final_content = content_to_write
         return
@@ -159,32 +165,38 @@ async def _apply_change(db: AsyncSession, workspace_id: UUID, change, final_cont
         new_path = str(payload.get("new_path") or "").strip("/")
         if not new_path:
             raise HTTPException(400, "Knowledge change move is missing new_path")
-        await knowledge_service.rename_file(db, workspace_id, target_path, new_path)
+        await knowledge_service.rename_file(db, workspace_id, target_path, new_path, project_id=change.project_id)
         return
 
     if action_type == "move" and target_type == "folder":
         new_path = str(payload.get("new_path") or "").strip("/")
         if not new_path:
             raise HTTPException(400, "Knowledge change move is missing new_path")
-        await knowledge_folder_service.rename_folder(db, workspace_id, target_path, new_path)
+        await knowledge_folder_service.rename_folder(db, workspace_id, target_path, new_path, project_id=change.project_id)
         return
 
     if action_type == "create" and target_type == "folder":
-        await knowledge_folder_service.create_folder(db, workspace_id, target_path)
+        await knowledge_folder_service.create_folder(db, workspace_id, target_path, project_id=change.project_id)
         return
 
     if action_type == "delete" and target_type == "file":
-        await knowledge_service.delete_file(db, workspace_id, target_path, deleted_by="knowledge_change")
+        await knowledge_service.delete_file(
+            db,
+            workspace_id,
+            target_path,
+            deleted_by="knowledge_change",
+            project_id=change.project_id,
+        )
         return
 
     if action_type == "delete" and target_type == "folder":
-        await knowledge_folder_service.delete_folder(db, workspace_id, target_path)
+        await knowledge_folder_service.delete_folder(db, workspace_id, target_path, project_id=change.project_id)
         return
 
     raise HTTPException(400, f"Unsupported knowledge change action: {action_type}:{target_type}")
 
 
-@router.post("/{workspace_id}/handbook/proposals/{proposal_id}/approve", response_model=KnowledgeChangeOut)
+@router.post("/{workspace_id}/assets/changes/{proposal_id}/approve", response_model=KnowledgeChangeOut)
 async def approve_handbook_proposal(
     workspace_id: UUID,
     proposal_id: UUID,
@@ -203,17 +215,7 @@ async def approve_handbook_proposal(
     return change
 
 
-@router.post("/{workspace_id}/knowledge/changes/{proposal_id}/approve", response_model=KnowledgeChangeOut)
-async def approve_knowledge_change(
-    workspace_id: UUID,
-    proposal_id: UUID,
-    body: KnowledgeChangeReview,
-    db: AsyncSession = Depends(get_db),
-):
-    return await approve_handbook_proposal(workspace_id=workspace_id, proposal_id=proposal_id, body=body, db=db)
-
-
-@router.post("/{workspace_id}/handbook/proposals/{proposal_id}/reject", response_model=KnowledgeChangeOut)
+@router.post("/{workspace_id}/assets/changes/{proposal_id}/reject", response_model=KnowledgeChangeOut)
 async def reject_handbook_proposal(
     workspace_id: UUID,
     proposal_id: UUID,
@@ -227,12 +229,3 @@ async def reject_handbook_proposal(
     await db.commit()
     await db.refresh(change)
     return change
-
-
-@router.post("/{workspace_id}/knowledge/changes/{proposal_id}/reject", response_model=KnowledgeChangeOut)
-async def reject_knowledge_change(
-    workspace_id: UUID,
-    proposal_id: UUID,
-    db: AsyncSession = Depends(get_db),
-):
-    return await reject_handbook_proposal(workspace_id=workspace_id, proposal_id=proposal_id, db=db)

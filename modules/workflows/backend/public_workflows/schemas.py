@@ -14,7 +14,7 @@ class PublicWorkflowViewOut(BaseModel):
     input_schema: list[dict]
     rate_limit_max_requests: int
     rate_limit_window_seconds: int
-    # Resolved version slug — useful when accessing via the graph-level URL
+    # Resolved version slug — useful when accessing via the workflow-level URL
     resolved_version_slug: str
     notice_test_only: bool = True
     notice_future_paid: bool = True

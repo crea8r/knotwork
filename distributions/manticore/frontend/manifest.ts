@@ -78,7 +78,7 @@ export const manticoreDistribution = {
         hrefLabel: 'Open knowledge',
         tip: 'If a workflow depends on stable guidance, put that guidance in knowledge instead of chat.',
         match: {
-          pathnamePrefixes: ['/knowledge', '/handbook'],
+          pathnamePrefixes: ['/knowledge'],
         },
       },
       {
@@ -86,11 +86,11 @@ export const manticoreDistribution = {
         title: 'Open workflows',
         description: 'Review the workflow definitions that drive execution.',
         benefit: 'You can understand what will run before triggering execution.',
-        href: '/graphs',
+        href: '/workflows',
         hrefLabel: 'Open workflows',
         tip: 'Workflows are the executable layer. Review the graph before starting a run.',
         match: {
-          pathnamePrefixes: ['/graphs'],
+          pathnamePrefixes: ['/workflows', '/graphs'],
         },
       },
       {

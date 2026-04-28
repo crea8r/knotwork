@@ -82,6 +82,15 @@ async def get_file_by_path(db: AsyncSession, workspace_id: UUID, path: str, proj
     return result.scalars().first()
 
 
+async def read_file_content(
+    workspace_id: UUID,
+    path: str,
+    project_id: UUID | None = None,
+):
+    adapter = get_storage_adapter()
+    return await adapter.read(_storage_key(workspace_id, project_id), path)
+
+
 async def create_file(
     db: AsyncSession, workspace_id: UUID, path: str, title: str | None, content: str,
     created_by: str, change_summary: str | None = None, project_id: UUID | None = None,
@@ -196,21 +205,23 @@ async def store_raw_file(
     file_type: str,  # 'pdf' | 'docx' | 'image' | 'other'
     agent_md: str,
     created_by: str,
+    project_id: UUID | None = None,
 ) -> KnowledgeFile:
     """
     Store a binary file as view-only. The raw bytes go to storage._raw/,
     agent_md (extracted text for LLM context) goes as the text version.
     """
     adapter = get_storage_adapter()
-    await adapter.write_raw(str(workspace_id), path, raw_bytes)
-    version_id = await adapter.write(str(workspace_id), path, agent_md,
+    storage_key = _storage_key(workspace_id, project_id)
+    await adapter.write_raw(storage_key, path, raw_bytes)
+    version_id = await adapter.write(storage_key, path, agent_md,
                                      saved_by=created_by, change_summary="Initial binary upload")
     token_count = _count_tokens(agent_md)
 
-    kf = await get_file_by_path(db, workspace_id, path)
+    kf = await get_file_by_path(db, workspace_id, path, project_id=project_id)
     if kf is None:
         kf = KnowledgeFile(
-            workspace_id=workspace_id, path=path, title=title,
+            workspace_id=workspace_id, project_id=project_id, path=path, title=title,
             raw_token_count=token_count, resolved_token_count=token_count,
             linked_paths=[], current_version_id=version_id,
             file_type=file_type, is_editable=False,
@@ -238,20 +249,30 @@ async def store_raw_file(
     return kf
 
 
-async def get_history(workspace_id: str, path: str) -> list[FileVersion]:
+async def get_history(
+    workspace_id: UUID,
+    path: str,
+    project_id: UUID | None = None,
+) -> list[FileVersion]:
     adapter = get_storage_adapter()
-    return await adapter.history(workspace_id, path)
+    return await adapter.history(_storage_key(workspace_id, project_id), path)
 
 
 async def restore_version(
-    db: AsyncSession, workspace_id: UUID, path: str, version_id: str, restored_by: str,
+    db: AsyncSession,
+    workspace_id: UUID,
+    path: str,
+    version_id: str,
+    restored_by: str,
+    project_id: UUID | None = None,
 ) -> KnowledgeFile:
     adapter = get_storage_adapter()
-    new_version_id = await adapter.restore(str(workspace_id), path, version_id, restored_by)
-    kf = await get_file_by_path(db, workspace_id, path)
+    storage_key = _storage_key(workspace_id, project_id)
+    new_version_id = await adapter.restore(storage_key, path, version_id, restored_by)
+    kf = await get_file_by_path(db, workspace_id, path, project_id=project_id)
     if kf is None:
         raise FileNotFoundError(path)
-    fc = await adapter.read(str(workspace_id), path)
+    fc = await adapter.read(storage_key, path)
     kf.raw_token_count = _count_tokens(fc.content)
     kf.resolved_token_count = kf.raw_token_count
     kf.linked_paths = _extract_links(fc.content)

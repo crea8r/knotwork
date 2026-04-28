@@ -111,12 +111,18 @@ export function parseRequestContext(markdown?: string | null): ParsedRequestCont
 
   const sections = splitByHeading(raw, /^##\s+(.+?)\s*$/)
   const intro = sections.find((section) => section.heading === null)?.content.trim() ?? ''
-  const handbookSection = sections.find((section) => section.heading?.toLowerCase() === 'handbook context')
-  const missingSection = sections.find((section) => section.heading?.toLowerCase() === 'missing handbook files')
+  const handbookSection = sections.find((section) => {
+    const heading = section.heading?.toLowerCase()
+    return heading === 'knowledge context' || heading === 'handbook context'
+  })
+  const missingSection = sections.find((section) => {
+    const heading = section.heading?.toLowerCase()
+    return heading === 'missing knowledge files' || heading === 'missing handbook files'
+  })
   const extraSections = sections
     .filter((section) => {
       const heading = section.heading?.toLowerCase()
-      return !!section.heading && heading !== 'handbook context' && heading !== 'missing handbook files'
+      return !!section.heading && heading !== 'knowledge context' && heading !== 'handbook context' && heading !== 'missing knowledge files' && heading !== 'missing handbook files'
     })
     .map((section) => ({
       title: section.heading ?? 'Context',

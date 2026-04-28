@@ -1,11 +1,4 @@
-"""
-Folder management endpoints.
-
-GET    /workspaces/{id}/knowledge/folders          — list all folders
-POST   /workspaces/{id}/knowledge/folders          — create folder
-DELETE /workspaces/{id}/knowledge/folders?path=    — delete folder + contents
-PATCH  /workspaces/{id}/knowledge/folders?path=    — rename folder
-"""
+"""Workspace asset folder endpoints."""
 from __future__ import annotations
 
 from uuid import UUID
@@ -18,15 +11,15 @@ from libs.database import get_db
 from . import knowledge_folder_service as svc
 from .knowledge_schemas import CreateFolderRequest, KnowledgeFolderOut, RenameFolderRequest
 
-router = APIRouter(prefix="/workspaces", tags=["knowledge-folders"])
+router = APIRouter(prefix="/workspaces", tags=["assets"])
 
 
-@router.get("/{workspace_id}/knowledge/folders", response_model=list[KnowledgeFolderOut])
+@router.get("/{workspace_id}/assets/workspace/folders", response_model=list[KnowledgeFolderOut])
 async def list_folders(workspace_id: UUID, db: AsyncSession = Depends(get_db)):
     return await svc.list_folders(db, workspace_id)
 
 
-@router.post("/{workspace_id}/knowledge/folders", response_model=KnowledgeFolderOut, status_code=201)
+@router.post("/{workspace_id}/assets/workspace/folders", response_model=KnowledgeFolderOut, status_code=201)
 async def create_folder(
     workspace_id: UUID,
     body: CreateFolderRequest,
@@ -38,7 +31,7 @@ async def create_folder(
     return await svc.create_folder(db, workspace_id, path)
 
 
-@router.delete("/{workspace_id}/knowledge/folders", status_code=204)
+@router.delete("/{workspace_id}/assets/workspace/folders", status_code=204)
 async def delete_folder(
     workspace_id: UUID,
     path: str = Query(...),
@@ -47,7 +40,7 @@ async def delete_folder(
     await svc.delete_folder(db, workspace_id, path)
 
 
-@router.patch("/{workspace_id}/knowledge/folders", status_code=204)
+@router.patch("/{workspace_id}/assets/workspace/folders", status_code=204)
 async def rename_folder(
     workspace_id: UUID,
     path: str = Query(...),

@@ -19,7 +19,7 @@ export function useEscalations(workspaceId: string, status?: string) {
     queryFn: () => {
       const params = status ? `?status=${status}` : ''
       return api
-        .get<Escalation[]>(`/workspaces/${workspaceId}/escalations${params}`)
+        .get<Escalation[]>(`/workspaces/${workspaceId}/runs/escalations${params}`)
         .then((r) => r.data)
     },
     enabled: !!workspaceId,
@@ -27,30 +27,45 @@ export function useEscalations(workspaceId: string, status?: string) {
   })
 }
 
-export function useEscalation(workspaceId: string, escalationId: string) {
+export function useRunEscalations(workspaceId: string, runId: string, status?: string) {
   return useQuery({
-    queryKey: ['escalation', escalationId],
-    queryFn: () =>
-      api
-        .get<Escalation>(`/workspaces/${workspaceId}/escalations/${escalationId}`)
-        .then((r) => r.data),
-    enabled: !!workspaceId && !!escalationId,
+    queryKey: ['run-escalations', workspaceId, runId, status],
+    queryFn: () => {
+      const params = status ? `?status=${status}` : ''
+      return api
+        .get<Escalation[]>(`/workspaces/${workspaceId}/runs/${runId}/escalations${params}`)
+        .then((r) => r.data)
+    },
+    enabled: !!workspaceId && !!runId,
+    refetchInterval: 10_000,
   })
 }
 
-export function useResolveEscalation(workspaceId: string, escalationId: string) {
+export function useEscalation(workspaceId: string, runId: string, escalationId: string) {
+  return useQuery({
+    queryKey: ['escalation', runId, escalationId],
+    queryFn: () =>
+      api
+        .get<Escalation>(`/workspaces/${workspaceId}/runs/${runId}/escalations/${escalationId}`)
+        .then((r) => r.data),
+    enabled: !!workspaceId && !!runId && !!escalationId,
+  })
+}
+
+export function useResolveEscalation(workspaceId: string, runId: string, escalationId: string) {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: (data: EscalationResolve) =>
       api
         .post<Escalation>(
-          `/workspaces/${workspaceId}/escalations/${escalationId}/resolve`,
+          `/workspaces/${workspaceId}/runs/${runId}/escalations/${escalationId}/resolve`,
           data,
         )
         .then((r) => r.data),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['escalations', workspaceId] })
-      qc.invalidateQueries({ queryKey: ['escalation', escalationId] })
+      qc.invalidateQueries({ queryKey: ['run-escalations', workspaceId, runId] })
+      qc.invalidateQueries({ queryKey: ['escalation', runId, escalationId] })
     },
   })
 }
@@ -58,16 +73,17 @@ export function useResolveEscalation(workspaceId: string, escalationId: string) 
 export function useResolveEscalationAny(workspaceId: string) {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: ({ escalationId, data }: { escalationId: string; data: EscalationResolve }) =>
+    mutationFn: ({ runId, escalationId, data }: { runId: string; escalationId: string; data: EscalationResolve }) =>
       api
         .post<Escalation>(
-          `/workspaces/${workspaceId}/escalations/${escalationId}/resolve`,
+          `/workspaces/${workspaceId}/runs/${runId}/escalations/${escalationId}/resolve`,
           data,
         )
         .then((r) => r.data),
     onSuccess: (_, vars) => {
       qc.invalidateQueries({ queryKey: ['escalations', workspaceId] })
-      qc.invalidateQueries({ queryKey: ['escalation', vars.escalationId] })
+      qc.invalidateQueries({ queryKey: ['run-escalations', workspaceId, vars.runId] })
+      qc.invalidateQueries({ queryKey: ['escalation', vars.runId, vars.escalationId] })
     },
   })
 }

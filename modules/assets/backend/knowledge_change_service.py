@@ -82,13 +82,13 @@ async def create_knowledge_change(
     reason: str,
     run_id: str | None,
     node_id: str | None,
+    project_id: UUID | None = None,
     agent_ref: str | None = None,
     source_channel_id: UUID | None = None,
     action_type: str = "update_content",
     target_type: str = "file",
     payload: dict | None = None,
 ) -> KnowledgeChange:
-    project_id: UUID | None = None
     inline_review = source_channel_id is not None
     if inline_review:
         channel = await db.get(Channel, source_channel_id)
@@ -179,7 +179,7 @@ async def create_knowledge_change(
     )
 
     if target_type == "file":
-        existing = await knowledge_service.get_file_by_path(db, workspace_id, path)
+        existing = await knowledge_service.get_file_by_path(db, workspace_id, path, project_id=project_id)
         if existing is not None:
             project_id = existing.project_id
             change.project_id = existing.project_id
@@ -195,7 +195,7 @@ async def create_knowledge_change(
                 except ValueError:
                     pass
     elif target_type == "folder":
-        folder = await knowledge_folder_service.create_folder(db, workspace_id, path)
+        folder = await knowledge_folder_service.create_folder(db, workspace_id, path, project_id=project_id)
         if folder is not None:
             project_id = folder.project_id
             change.project_id = folder.project_id

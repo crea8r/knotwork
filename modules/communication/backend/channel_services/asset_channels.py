@@ -56,11 +56,11 @@ async def _root_folder_channel(db: AsyncSession, workspace_id: UUID, *, project_
     if project_id is None:
         await ensure_handbook_channel(db, workspace_id)
         result = await db.execute(
-            select(Channel).where(Channel.workspace_id == workspace_id, Channel.channel_type == "handbook", Channel.archived_at.is_(None)).limit(1)
+            select(Channel).where(Channel.workspace_id == workspace_id, Channel.channel_type == "knowledge", Channel.archived_at.is_(None)).limit(1)
         )
         channel = result.scalar_one_or_none()
         if channel is None:
-            raise ValueError("Handbook channel not found")
+            raise ValueError("Knowledge channel not found")
         return channel
 
     result = await db.execute(

@@ -6,7 +6,7 @@ export function useGraphs(workspaceId: string, projectId?: string | null) {
   return useQuery({
     queryKey: ['graphs', workspaceId, projectId ?? 'global'],
     queryFn: () =>
-      api.get<Graph[]>(`/workspaces/${workspaceId}/graphs`, {
+      api.get<Graph[]>(`/workspaces/${workspaceId}/workflows`, {
         params: projectId ? { project_id: projectId } : {},
       }).then((r) => r.data),
     enabled: !!workspaceId,
@@ -17,7 +17,7 @@ export function useGraph(workspaceId: string, graphId: string) {
   return useQuery({
     queryKey: ['graph', graphId],
     queryFn: () =>
-      api.get<Graph>(`/workspaces/${workspaceId}/graphs/${graphId}`).then((r) => r.data),
+      api.get<Graph>(`/workspaces/${workspaceId}/workflows/${graphId}`).then((r) => r.data),
     enabled: !!workspaceId && !!graphId,
   })
 }
@@ -26,7 +26,7 @@ export function useCreateGraph(workspaceId: string) {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: (data: { name: string; path?: string; description?: string; project_id?: string | null }) =>
-      api.post<Graph>(`/workspaces/${workspaceId}/graphs`, data).then((r) => r.data),
+      api.post<Graph>(`/workspaces/${workspaceId}/workflows`, data).then((r) => r.data),
     onSuccess: (_, data) => {
       qc.invalidateQueries({ queryKey: ['graphs', workspaceId] })
       qc.invalidateQueries({ queryKey: ['graphs', workspaceId, data.project_id ?? 'global'] })
@@ -42,7 +42,7 @@ export function useUpdateGraph(workspaceId: string) {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: ({ graphId, ...data }: { graphId: string; name?: string; path?: string; description?: string; status?: string; default_model?: string | null; project_id?: string | null }) =>
-      api.patch<Graph>(`/workspaces/${workspaceId}/graphs/${graphId}`, data).then((r) => r.data),
+      api.patch<Graph>(`/workspaces/${workspaceId}/workflows/${graphId}`, data).then((r) => r.data),
     onSuccess: (_, { graphId }) => {
       qc.invalidateQueries({ queryKey: ['graphs', workspaceId] })
       qc.invalidateQueries({ queryKey: ['graph', graphId] })
@@ -55,7 +55,7 @@ export function useGraphVersion(workspaceId: string, versionId: string) {
     queryKey: ['graph-version', versionId],
     queryFn: () =>
       api
-        .get<GraphVersion>(`/workspaces/${workspaceId}/graphs/versions/${versionId}`)
+        .get<GraphVersion>(`/workspaces/${workspaceId}/workflows/versions/${versionId}`)
         .then((r) => r.data),
     enabled: !!workspaceId && !!versionId,
   })
@@ -67,7 +67,7 @@ export function useGraphVersions(workspaceId: string, graphId: string, includeAr
     queryKey: ['graph-versions', graphId, includeArchived],
     queryFn: () =>
       api
-        .get<GraphVersion[]>(`/workspaces/${workspaceId}/graphs/${graphId}/versions`, {
+        .get<GraphVersion[]>(`/workspaces/${workspaceId}/workflows/${graphId}/versions`, {
           params: { include_archived: includeArchived },
         })
         .then((r) => r.data),
@@ -82,7 +82,7 @@ export function useVersionDraft(workspaceId: string, graphId: string, versionRow
     queryFn: () =>
       api
         .get<GraphVersion>(
-          `/workspaces/${workspaceId}/graphs/${graphId}/versions/${versionRowId}/draft`,
+          `/workspaces/${workspaceId}/workflows/${graphId}/versions/${versionRowId}/draft`,
         )
         .then((r) => r.data),
     enabled: !!workspaceId && !!graphId && !!versionRowId,
@@ -96,7 +96,7 @@ export function useUpsertVersionDraft(workspaceId: string, graphId: string) {
     mutationFn: ({ versionRowId, definition }: { versionRowId: string; definition: GraphDefinition }) =>
       api
         .put<GraphVersion>(
-          `/workspaces/${workspaceId}/graphs/${graphId}/versions/${versionRowId}/draft`,
+          `/workspaces/${workspaceId}/workflows/${graphId}/versions/${versionRowId}/draft`,
           { definition },
         )
         .then((r) => r.data),
@@ -113,7 +113,7 @@ export function useUpsertRootDraft(workspaceId: string, graphId: string) {
   return useMutation({
     mutationFn: (definition: GraphDefinition) =>
       api
-        .put<GraphVersion>(`/workspaces/${workspaceId}/graphs/${graphId}/root-draft`, { definition })
+        .put<GraphVersion>(`/workspaces/${workspaceId}/workflows/${graphId}/draft`, { definition })
         .then((r) => r.data),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['graph-versions', graphId] })
@@ -129,7 +129,7 @@ export function usePromoteDraft(workspaceId: string, graphId: string) {
     mutationFn: (versionRowId: string) =>
       api
         .post<GraphVersion>(
-          `/workspaces/${workspaceId}/graphs/${graphId}/versions/${versionRowId}/promote`,
+          `/workspaces/${workspaceId}/workflows/${graphId}/versions/${versionRowId}/promote`,
         )
         .then((r) => r.data),
     onSuccess: () => {
@@ -145,7 +145,7 @@ export function usePromoteRootDraft(workspaceId: string, graphId: string) {
   return useMutation({
     mutationFn: () =>
       api
-        .post<GraphVersion>(`/workspaces/${workspaceId}/graphs/${graphId}/root-draft/promote`)
+        .post<GraphVersion>(`/workspaces/${workspaceId}/workflows/${graphId}/draft/promote`)
         .then((r) => r.data),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['graph-versions', graphId] })
@@ -161,7 +161,7 @@ export function useRenameVersion(workspaceId: string, graphId: string) {
     mutationFn: ({ versionRowId, name }: { versionRowId: string; name: string }) =>
       api
         .patch<GraphVersion>(
-          `/workspaces/${workspaceId}/graphs/${graphId}/versions/${versionRowId}`,
+          `/workspaces/${workspaceId}/workflows/${graphId}/versions/${versionRowId}`,
           { name },
         )
         .then((r) => r.data),
@@ -176,7 +176,7 @@ export function useSetProduction(workspaceId: string, graphId: string) {
     mutationFn: (versionRowId: string) =>
       api
         .post<Graph>(
-          `/workspaces/${workspaceId}/graphs/${graphId}/versions/${versionRowId}/production`,
+          `/workspaces/${workspaceId}/workflows/${graphId}/versions/${versionRowId}/production`,
         )
         .then((r) => r.data),
     onSuccess: () => {
@@ -193,7 +193,7 @@ export function useArchiveVersion(workspaceId: string, graphId: string) {
     mutationFn: (versionRowId: string) =>
       api
         .post<GraphVersion>(
-          `/workspaces/${workspaceId}/graphs/${graphId}/versions/${versionRowId}/archive`,
+          `/workspaces/${workspaceId}/workflows/${graphId}/versions/${versionRowId}/archive`,
         )
         .then((r) => r.data),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['graph-versions', graphId] }),
@@ -207,7 +207,7 @@ export function useUnarchiveVersion(workspaceId: string, graphId: string) {
     mutationFn: (versionRowId: string) =>
       api
         .post<GraphVersion>(
-          `/workspaces/${workspaceId}/graphs/${graphId}/versions/${versionRowId}/unarchive`,
+          `/workspaces/${workspaceId}/workflows/${graphId}/versions/${versionRowId}/unarchive`,
         )
         .then((r) => r.data),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['graph-versions', graphId] }),
@@ -220,7 +220,7 @@ export function useDeleteVersion(workspaceId: string, graphId: string) {
   return useMutation({
     mutationFn: (versionRowId: string) =>
       api
-        .delete(`/workspaces/${workspaceId}/graphs/${graphId}/versions/${versionRowId}`)
+        .delete(`/workspaces/${workspaceId}/workflows/${graphId}/versions/${versionRowId}`)
         .then((r) => r.data),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['graph-versions', graphId] })
@@ -236,7 +236,7 @@ export function useForkVersion(workspaceId: string, graphId: string) {
     mutationFn: ({ versionRowId, name }: { versionRowId: string; name: string }) =>
       api
         .post<Graph>(
-          `/workspaces/${workspaceId}/graphs/${graphId}/versions/${versionRowId}/fork`,
+          `/workspaces/${workspaceId}/workflows/${graphId}/versions/${versionRowId}/fork`,
           { name },
         )
         .then((r) => r.data),
@@ -249,7 +249,7 @@ export function useSaveGraphVersion(workspaceId: string, graphId: string) {
   return useMutation({
     mutationFn: (definition: GraphDefinition) =>
       api
-        .post(`/workspaces/${workspaceId}/graphs/${graphId}/versions`, { definition })
+        .post(`/workspaces/${workspaceId}/workflows/${graphId}/versions`, { definition })
         .then((r) => r.data),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['graph', graphId] }),
   })
@@ -265,7 +265,7 @@ export function useDeleteGraph(workspaceId: string) {
   return useMutation({
     mutationFn: (graphId: string) =>
       api
-        .delete<GraphDeleteResult>(`/workspaces/${workspaceId}/graphs/${graphId}`)
+        .delete<GraphDeleteResult>(`/workspaces/${workspaceId}/workflows/${graphId}`)
         .then((r) => r.data),
     onSuccess: (_, graphId) => {
       qc.invalidateQueries({ queryKey: ['graphs', workspaceId] })

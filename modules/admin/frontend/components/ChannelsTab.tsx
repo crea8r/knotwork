@@ -14,7 +14,7 @@ export default function ChannelsTab() {
   const latestBulletinMessage = bulletinMessages.length > 0 ? bulletinMessages[bulletinMessages.length - 1] : null
   const freeChatCount = channels.filter((channel) => channel.channel_type === 'normal' || channel.channel_type === 'agent_main').length
   const workflowCount = channels.filter((channel) => channel.channel_type === 'workflow').length
-  const handbookCount = channels.filter((channel) => channel.channel_type === 'handbook').length
+  const knowledgeCount = channels.filter((channel) => channel.channel_type === 'knowledge').length
 
   return (
     <div data-ui="admin.channels.tab" className="space-y-6">
@@ -74,9 +74,9 @@ export default function ChannelsTab() {
             <p className="text-xs uppercase tracking-wide text-gray-500">Workflow</p>
             <p className="mt-1 text-lg font-semibold text-gray-900">{workflowCount}</p>
           </div>
-          <div data-ui="admin.channels.surface.handbook" className="rounded-xl border border-gray-200 bg-gray-50 p-3">
-            <p className="text-xs uppercase tracking-wide text-gray-500">Handbook</p>
-            <p className="mt-1 text-lg font-semibold text-gray-900">{handbookCount}</p>
+          <div data-ui="admin.channels.surface.knowledge" className="rounded-xl border border-gray-200 bg-gray-50 p-3">
+            <p className="text-xs uppercase tracking-wide text-gray-500">Knowledge</p>
+            <p className="mt-1 text-lg font-semibold text-gray-900">{knowledgeCount}</p>
           </div>
         </div>
       </section>

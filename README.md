@@ -2,6 +2,26 @@
 
 Visual agent workflow platform for non-technical operators. Design AI-powered business processes through conversation, run and monitor them from any device.
 
+## Win by ONE intent
+
+Knotwork bears only one intent: Experts want to run their workflow automatically.
+Thus, there are few sub-intents for agents and humans that knotwork need to care
+
+- Finish a `run`:
+  - `escalate` to supervisor
+  - `resolve` an escalation
+  - Send the result (find a suitable wording)
+- Improve a workflow
+  - `create` and/or `edit` a workflow
+  - `find` a relevant asset
+  - `read` an asset
+  - `propose` changes on an asset (render in comment & accept format)
+- Communicate:
+  - `reply` in a channel that is not a run
+- Project:
+  - `update` an objective or project: progress, key results, status update
+  - `suggest` an objective key results
+
 ## Documentation
 
 | Doc | Description |

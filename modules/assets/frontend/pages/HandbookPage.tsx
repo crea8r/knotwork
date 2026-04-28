@@ -1,7 +1,7 @@
 /**
- * HandbookPage — Handbook file management using the reusable FileBrowserShell.
+ * HandbookPage — workspace knowledge asset management using the reusable FileBrowserShell.
  * All layout and navigation logic lives in FileBrowserShell + useFileBrowserState.
- * This page only owns API calls, upload flow, and handbook-specific modals.
+ * This page only owns API calls, upload flow, and workspace-knowledge-specific modals.
  */
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
@@ -387,7 +387,7 @@ export default function HandbookPage() {
       : undefined
 
   if (isLoading) return <div className="flex justify-center py-16"><Spinner size="lg" /></div>
-  if (error) return <div className="p-8 text-red-500">Failed to load Handbook.</div>
+  if (error) return <div className="p-8 text-red-500">Failed to load knowledge assets.</div>
 
   return (
     <>

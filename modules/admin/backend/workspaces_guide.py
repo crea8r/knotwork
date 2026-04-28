@@ -19,10 +19,10 @@ DEFAULT_GUIDE_MD = """\
 ## Event handling
 
 **task_assigned**
-1. Fetch the full escalation details via MCP (`get_escalation`)
+1. Load the full escalation context via MCP (`knotwork://workflows/escalation/{escalation_id}/context`)
 2. Read any relevant handbook files for guidelines
-3. If you can resolve confidently → call `resolve_escalation` with your output
-4. If not → call `resolve_escalation` with `escalate=true` and detailed guidance explaining what you tried and what is missing
+3. If you can resolve confidently → call `knotwork_run_supervisor_resolve_escalation` with the right decision and resolved output
+4. If not → call `knotwork_run_supervisor_resolve_escalation` with `decision=request_revision` and detailed `operator_guidance` explaining what you tried and what is missing
 5. Mark the inbox item as read
 
 **escalation_created**
@@ -31,12 +31,12 @@ DEFAULT_GUIDE_MD = """\
 3. If it clearly requires your action and no `task_assigned` item exists, handle it using the same path as `task_assigned`
 
 **mentioned_message**
-1. Fetch the channel thread via MCP (`get_channel_messages`)
+1. Fetch the channel thread via MCP (`knotwork://communication/channel/{channel_ref}/messages`)
 2. Read context and any relevant handbook files
 3. If the mention is old or was missed earlier, say that you are responding late
 4. If the request depends on time-sensitive facts, current status, or "today" style wording, re-check current reality before answering
 5. If the delay makes the original request risky or no longer actionable, explain that and ask a clarifying follow-up instead of pretending the timing is unchanged
-6. Post a reply via MCP (`post_channel_message`)
+6. Post a reply via MCP (`knotwork_channel_post_message`)
 7. Mark the inbox item as read
 
 **knowledge_change**
@@ -74,6 +74,6 @@ After every 10 completed runs:
 If you encounter a task you cannot handle:
 1. Do not loop or retry indefinitely
 2. Post a message in the relevant channel explaining what you tried and what is missing
-3. If it is an escalation, resolve with `escalate=true` and detailed guidance
+3. If it is an escalation, resolve with `decision=request_revision` and detailed `operator_guidance`
 4. A human operator will take over
 """

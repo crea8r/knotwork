@@ -17,8 +17,8 @@ It should not become the home of domain instructions for workflows, assets, proj
 
 ## Tools
 
-- `build_session_packet(task_id, trigger, session_name?, legacy_user_prompt?)`
-  Build one normalized session packet from a task trigger so a client can start from a single canonical entrypoint instead of re-resolving module ownership and cross-module context itself.
+- No public `knotwork_*` tool calls are planned in `core`.
+- Session bootstrap and composition may remain internal, but public tool calls belong to the owning modules.
 
 ## Prompts
 

@@ -21,7 +21,7 @@ export default function UploadPreviewPanel({
   onCancel,
   onSave,
   isSaving = false,
-  saveLabel = 'Save to Handbook',
+  saveLabel = 'Save to Knowledge',
 }: Props) {
   const [path, setPath] = useState(preview.suggested_path)
   const [title, setTitle] = useState(preview.suggested_title)

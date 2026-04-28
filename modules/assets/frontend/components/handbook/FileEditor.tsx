@@ -1,14 +1,14 @@
 /**
- * FileEditor — inline editor for a Handbook file (editor / history / usage tabs).
- * Shared by HandbookPage (inline panel) and KnowledgeFilePage (standalone route).
+ * FileEditor — inline editor for a knowledge asset file (editor / history / usage tabs).
+ * Shared by the workspace knowledge page and KnowledgeFilePage.
  */
 import { useState, useEffect } from 'react'
 import {
-  useProjectDocument,
-  useProjectDocumentHistory,
-  useRestoreProjectDocument,
-  useUpdateProjectDocument,
-} from "@modules/projects/frontend/api/projects"
+  useProjectAssetFile,
+  useProjectAssetHistory,
+  useRestoreProjectAssetFile,
+  useUpdateProjectAssetFile,
+} from "@modules/assets/frontend/api/projectAssets"
 import {
   useKnowledgeFile,
   useKnowledgeHistory,
@@ -62,9 +62,9 @@ function HistoryPanel({
   projectId?: string
 }) {
   const knowledgeHistory = useKnowledgeHistory(!projectId ? path : null)
-  const projectHistory = useProjectDocumentHistory(workspaceId ?? '', projectId ?? '', projectId ? path : null)
+  const projectHistory = useProjectAssetHistory(workspaceId ?? '', projectId ?? '', projectId ? path : null)
   const restoreKnowledge = useRestoreKnowledgeFile(path)
-  const restoreProject = useRestoreProjectDocument(workspaceId ?? '', projectId ?? '', path)
+  const restoreProject = useRestoreProjectAssetFile(workspaceId ?? '', projectId ?? '', path)
   const versions = (projectId ? projectHistory.data : knowledgeHistory.data) ?? []
   const isLoading = projectId ? projectHistory.isLoading : knowledgeHistory.isLoading
   const restore = projectId ? restoreProject : restoreKnowledge
@@ -96,9 +96,9 @@ interface Props {
 
 export default function FileEditor({ path, workspaceId, projectId }: Props) {
   const knowledgeFile = useKnowledgeFile(!projectId ? path || null : null)
-  const projectFile = useProjectDocument(workspaceId ?? '', projectId ?? '', projectId ? path : '')
+  const projectFile = useProjectAssetFile(workspaceId ?? '', projectId ?? '', projectId ? path : '')
   const updateKnowledge = useUpdateKnowledgeFile(path)
-  const updateProject = useUpdateProjectDocument(workspaceId ?? '', projectId ?? '', path)
+  const updateProject = useUpdateProjectAssetFile(workspaceId ?? '', projectId ?? '', path)
   const file = projectId ? projectFile.data : knowledgeFile.data
   const isLoading = projectId ? projectFile.isLoading : knowledgeFile.isLoading
   const error = projectId ? projectFile.error : knowledgeFile.error

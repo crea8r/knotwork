@@ -123,6 +123,23 @@ async def list_workspace_escalations(
     return list(result.scalars())
 
 
+async def list_run_escalations(
+    db: AsyncSession,
+    workspace_id: UUID,
+    run_id: str,
+    status: str | None = None,
+) -> list[Escalation]:
+    q = select(Escalation).where(
+        Escalation.workspace_id == workspace_id,
+        Escalation.run_id == run_id,
+    )
+    if status:
+        q = q.where(Escalation.status == status)
+    q = q.order_by(Escalation.created_at.desc())
+    result = await db.execute(q)
+    return list(result.scalars())
+
+
 async def resolve_escalation(
     db: AsyncSession,
     escalation_id: UUID,

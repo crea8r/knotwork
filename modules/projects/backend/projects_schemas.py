@@ -58,47 +58,6 @@ class ObjectiveUpdate(BaseModel):
     parent_objective_id: UUID | None = None
 
 
-class ProjectDocumentCreate(BaseModel):
-    path: str
-    title: str | None = None
-    content: str
-    file_type: str = "md"
-    change_summary: str | None = None
-
-
-class ProjectDocumentUpdate(BaseModel):
-    content: str
-    change_summary: str | None = None
-
-
-class ProjectDocumentRename(BaseModel):
-    new_path: str
-
-
-class ProjectDocumentOut(BaseModel):
-    id: UUID
-    workspace_id: UUID
-    project_id: UUID | None = None
-    path: str
-    title: str
-    owner_id: UUID | None = None
-    raw_token_count: int
-    resolved_token_count: int
-    linked_paths: list[str]
-    current_version_id: str | None = None
-    health_score: float | None = None
-    file_type: str
-    is_editable: bool
-    updated_at: datetime
-
-    model_config = {"from_attributes": True}
-
-
-class ProjectDocumentWithContent(ProjectDocumentOut):
-    content: str
-    version_id: str
-
-
 class ProjectStatusUpdateOut(BaseModel):
     id: UUID
     workspace_id: UUID

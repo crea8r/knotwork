@@ -22,9 +22,9 @@ function topBarTitle(pathname: string, distributionName: string, projectTitle?: 
   if (pathname.startsWith('/projects')) return 'Project'
   if (pathname.startsWith('/objectives')) return 'Objective'
   if (pathname.startsWith('/channels')) return 'Channels'
-  if (pathname.startsWith('/graphs')) return 'Workflows'
+  if (pathname.startsWith('/workflows') || pathname.startsWith('/graphs')) return 'Workflows'
   if (pathname.startsWith('/runs')) return 'Runs'
-  if (pathname.startsWith('/knowledge') || pathname.startsWith('/handbook')) return 'Knowledge'
+  if (pathname.startsWith('/knowledge')) return 'Knowledge'
   if (pathname.startsWith('/settings')) return 'Settings'
   if (pathname.startsWith('/inbox')) return 'Now'
   return distributionName

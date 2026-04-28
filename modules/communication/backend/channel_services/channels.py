@@ -18,7 +18,7 @@ async def list_channels(db: AsyncSession, workspace_id: UUID) -> list[Channel]:
     result = await db.execute(
         select(Channel)
         .where(Channel.workspace_id == workspace_id, Channel.archived_at.is_(None))
-        .where(Channel.channel_type.in_(("normal", "bulletin", "workflow", "handbook", "run", "project", "objective", "task", "knowledge_change")))
+        .where(Channel.channel_type.in_(("normal", "bulletin", "workflow", "knowledge", "handbook", "run", "project", "objective", "task", "knowledge_change")))
         .order_by(Channel.updated_at.desc(), Channel.created_at.desc())
     )
     return list(result.scalars())
@@ -31,20 +31,21 @@ async def create_channel(
     *,
     initial_participant_id: str | None = None,
 ) -> Channel:
-    if data.channel_type == "workflow" and data.graph_id is None:
+    channel_type = "knowledge" if data.channel_type == "handbook" else data.channel_type
+    if channel_type == "workflow" and data.graph_id is None:
         raise ValueError("workflow channels require graph_id")
-    if data.channel_type != "workflow" and data.graph_id is not None:
+    if channel_type != "workflow" and data.graph_id is not None:
         raise ValueError("graph_id is only valid for workflow channels")
-    if data.channel_type == "project" and data.project_id is None:
+    if channel_type == "project" and data.project_id is None:
         raise ValueError("project channels require project_id")
-    if data.channel_type == "objective" and data.objective_id is None:
+    if channel_type == "objective" and data.objective_id is None:
         raise ValueError("objective channels require objective_id")
 
     channel = Channel(
         workspace_id=workspace_id,
         name=data.name.strip(),
         slug=await _generate_channel_slug(db, data.name.strip()),
-        channel_type=data.channel_type,
+        channel_type=channel_type,
         graph_id=data.graph_id,
         project_id=data.project_id,
         objective_id=data.objective_id,

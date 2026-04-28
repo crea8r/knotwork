@@ -42,7 +42,7 @@ export default function LibrarySearch() {
         <input
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          placeholder="Search handbook…"
+          placeholder="Search knowledge…"
           className="w-full rounded-lg border border-gray-200 py-1.5 pl-8 pr-7 text-sm outline-none focus:ring-2 focus:ring-brand-500"
         />
         {query && (
@@ -62,7 +62,7 @@ export default function LibrarySearch() {
                   onClick={() => {
                     setQuery('')
                     if (result.kind === 'workflow') navigate(result.href)
-                    else navigate(`/handbook?path=${encodeURIComponent(result.id)}`)
+                    else navigate(`/knowledge?path=${encodeURIComponent(result.id)}`)
                   }}
                   className="w-full rounded-lg px-3 py-2 text-left hover:bg-gray-50"
                 >

@@ -161,7 +161,7 @@ export function useVersionActions(
     if (!graph) return
     const hasRuns = (graph.run_count ?? 0) > 0
     if (!window.confirm(hasRuns ? `Archive "${graph.name}"? It has ${graph.run_count} run(s), so it cannot be deleted.` : `Delete "${graph.name}" permanently?`)) return
-    try { await deleteGraph.mutateAsync(graph.id); navigate('/graphs') }
+    try { await deleteGraph.mutateAsync(graph.id); navigate('/workflows') }
     catch (error: any) { window.alert(`Cannot update workflow: ${String(error?.response?.data?.detail ?? error?.message ?? 'Action failed')}`) }
   }
 

@@ -2,7 +2,7 @@
 
 ## Role
 
-`assets` should own handbook/knowledge/file-change task guidance.
+`assets` should own asset search, asset read, and reviewed asset change guidance.
 
 It should not leave asset-change session policy in the plugin.
 
@@ -27,23 +27,22 @@ It should not leave asset-change session policy in the plugin.
 
 ## Tools
 
-- `get_knowledge_file_by_id(file_id)`
-  Returns the file metadata identified by id, including scope, project binding where present, current canonical path, file type, editability, version info, and other asset metadata.
-- `get_knowledge_folder_by_id(folder_id)`
-  Returns the folder metadata identified by id, including scope, project binding where present, current canonical path, and other folder metadata.
-- `search_assets(scope, project_id?, title?, content?, creator?)`
-  Searches assets by title, content, and creator metadata. The caller must explicitly choose either workspace knowledge base scope or project scope; if project scope is chosen, `project_id` is required.
-- `change_asset_content(scope, path, project_id?, new_content, change_summary?, auto_approve?)`
-  Changes the content of a file asset at the canonical path within the chosen scope. When `auto_approve` is false or omitted, this creates a pending asset change for review; when `auto_approve` is true, the change may be applied immediately if policy allows.
+- `knotwork_asset_search(query_text, project_path_prefix?, workspace_path_prefix?, related_workflow_ref?)`
+  Search for relevant non-workflow assets from text found in the current asset chat. `project_path_prefix` narrows the search inside the current project asset space; `workspace_path_prefix` narrows the search inside the workspace knowledge base; `related_workflow_ref` links the search to a known workflow when that relationship matters.
+- `knotwork_asset_read(path?, asset_id?, scope?, project_ref?, revision?)`
+  Read one asset when the agent already knows the canonical path or stable asset id. `path` is the primary lookup key; `asset_id` is an optional alternative when the agent already has the durable asset identifier.
+- `knotwork_asset_change(change_type, reason, path?, asset_id?, scope?, project_ref?, new_path?, proposed_diff?, proposed_content?, base_revision?, source_channel_ref?)`
+  Propose a reviewed non-workflow asset change in comment-and-accept format. `change_type` is `create`, `edit`, or `delete`. `proposed_diff` is required for edits; `proposed_content` is used when the change needs full replacement content; `new_path` is used for creates when the asset does not yet exist; `base_revision` guards against stale edits. The change request is posted into the current chat channel for convenience, and the resulting accepted diff is posted to the asset channel when the change takes effect.
 
 ## Prompts
 
-- `assets.propose_knowledge_change`
-- `assets.review_knowledge_change`
-- `assets.create_knowledge_file`
+- `assets.propose_asset_change`
+- `assets.review_asset_change`
+- `assets.create_file`
+- `assets.create_folder`
 - `assets.extract_handbook_update_from_channel`
 - `assets.summarize_relevant_knowledge_for_task`
 
 ## Notes
 
-- A workflow is still an asset file. It should be treated like other files at the assets layer and distinguished by workflow file type rather than by a separate asset class.
+- A workflow file still lives in the asset system, but public workflow mutation should go through `knotwork_workflow_edit`, not `knotwork_asset_change`.

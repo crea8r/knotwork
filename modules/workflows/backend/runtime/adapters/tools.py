@@ -3,7 +3,7 @@ Knotwork-native tool definitions shared across all adapters.
 
 Four tools are always available to every agent:
   write_worklog           — log observations/thoughts/actions to the run worklog
-  propose_handbook_update — propose a file change (requires human approval)
+  propose_knowledge_update — propose a file change (requires human approval)
   escalate                — pause the run and ask a human operator
   complete_node           — signal step completion with output + optional branch
 """
@@ -28,17 +28,17 @@ KNOTWORK_TOOLS: list[dict] = [
         },
     },
     {
-        "name": "propose_handbook_update",
+        "name": "propose_knowledge_update",
         "description": (
-            "Propose an improvement to a Handbook file. "
+            "Propose an improvement to a knowledge file. "
             "A human must approve before any change is made."
         ),
         "input_schema": {
             "type": "object",
             "properties": {
-                "path": {"type": "string", "description": "Handbook file path, e.g. legal/contracts.md"},
+                "path": {"type": "string", "description": "Knowledge file path, e.g. legal/contracts.md"},
                 "proposed_content": {"type": "string", "description": "Full proposed file content."},
-                "reason": {"type": "string", "description": "Why this change improves the Handbook."},
+                "reason": {"type": "string", "description": "Why this change improves the knowledge base."},
             },
             "required": ["path", "proposed_content", "reason"],
         },

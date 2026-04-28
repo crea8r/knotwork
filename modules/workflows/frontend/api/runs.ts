@@ -121,12 +121,12 @@ export function useTriggerRun(workspaceId: string, graphId: string) {
       input: Record<string, unknown>
       name?: string
       context_files?: RunAttachmentRef[]
-      graph_version_id?: string
+      workflow_version_id?: string
       objective_id?: string
       source_channel_id?: string
     }) =>
       api
-        .post<Run>(`/workspaces/${workspaceId}/graphs/${graphId}/runs`, data)
+        .post<Run>(`/workspaces/${workspaceId}/workflows/${graphId}/runs`, data)
         .then((r) => r.data),
   })
 }
@@ -138,16 +138,16 @@ export function useTriggerRunAny(workspaceId: string) {
       input: Record<string, unknown>
       name?: string
       context_files?: RunAttachmentRef[]
-      graph_version_id?: string
+      workflow_version_id?: string
       objective_id?: string
       source_channel_id?: string
     }) =>
       api
-        .post<Run>(`/workspaces/${workspaceId}/graphs/${data.graphId}/runs`, {
+        .post<Run>(`/workspaces/${workspaceId}/workflows/${data.graphId}/runs`, {
           input: data.input,
           name: data.name,
           context_files: data.context_files ?? [],
-          graph_version_id: data.graph_version_id,
+          workflow_version_id: data.workflow_version_id,
           objective_id: data.objective_id,
           source_channel_id: data.source_channel_id,
         })

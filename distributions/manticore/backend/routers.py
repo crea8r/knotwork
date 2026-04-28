@@ -15,9 +15,11 @@ from modules.assets.backend.routers import (
     knowledge_proposals_router as proposals_router,
     knowledge_router,
     knowledge_upload_router,
+    project_assets_router,
 )
 from modules.workflows.backend.agent_api.router import router as agent_api_router
 from modules.workflows.backend.routers import (
+    escalations_router,
     graphs_router,
     public_workflows_public_router,
     public_workflows_router,
@@ -41,6 +43,7 @@ def mount_routers(app: FastAPI, *, prefix: str = "/api/v1") -> None:
 
     if "workflows" in enabled_modules:
         app.include_router(graphs_router, prefix=prefix)
+        app.include_router(escalations_router, prefix=prefix)
         app.include_router(runs_router, prefix=prefix)
         if "websocket_runs" in enabled_features:
             app.include_router(ws_router, prefix=prefix)
@@ -55,6 +58,7 @@ def mount_routers(app: FastAPI, *, prefix: str = "/api/v1") -> None:
         app.include_router(knowledge_folder_router, prefix=prefix)
         app.include_router(knowledge_upload_router, prefix=prefix)
         app.include_router(proposals_router, prefix=prefix)
+        app.include_router(project_assets_router, prefix=prefix)
 
     app.include_router(mcp_contracts_router, prefix=prefix)
     app.include_router(agent_sessions_router, prefix=prefix)

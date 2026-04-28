@@ -1,11 +1,4 @@
-"""
-Upload and binary file endpoints.
-
-POST /workspaces/{id}/handbook/upload         — convert file → MD preview (unchanged)
-POST /workspaces/{id}/handbook/upload-raw     — store binary file as view-only
-GET  /workspaces/{id}/knowledge/file/raw      — serve binary for download/view
-GET  /workspaces/{id}/knowledge/file/html     — DOCX → HTML for browser display
-"""
+"""Workspace asset upload and binary file endpoints."""
 from __future__ import annotations
 
 import mimetypes
@@ -32,13 +25,13 @@ from .presentation_codec import (
 )
 from .storage import get_storage_adapter
 
-router = APIRouter(prefix="/workspaces", tags=["knowledge-upload"])
+router = APIRouter(prefix="/workspaces", tags=["assets"])
 
 _IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg", ".bmp", ".tiff"}
 _VIDEO_EXTS = {".mp4", ".mov", ".avi", ".mkv", ".webm", ".flv", ".wmv", ".m4v", ".3gp"}
 
 
-@router.post("/{workspace_id}/handbook/upload")
+@router.post("/{workspace_id}/assets/workspace/uploads/preview")
 async def upload_handbook_file(
     workspace_id: UUID,
     file: UploadFile = File(...),
@@ -100,7 +93,7 @@ async def upload_handbook_file(
     }
 
 
-@router.post("/{workspace_id}/handbook/upload-raw", status_code=201)
+@router.post("/{workspace_id}/assets/workspace/uploads/raw", status_code=201)
 async def upload_raw_file(
     workspace_id: UUID,
     file: UploadFile = File(...),
@@ -150,7 +143,7 @@ async def upload_raw_file(
     return KnowledgeFileOut.model_validate(kf)
 
 
-@router.get("/{workspace_id}/knowledge/file/raw")
+@router.get("/{workspace_id}/assets/workspace/files/by-path/raw")
 async def get_raw_file(
     workspace_id: UUID,
     path: str = Query(...),
@@ -180,7 +173,7 @@ async def get_raw_file(
     )
 
 
-@router.get("/{workspace_id}/knowledge/file/html", response_class=HTMLResponse)
+@router.get("/{workspace_id}/assets/workspace/files/by-path/html", response_class=HTMLResponse)
 async def get_docx_as_html(
     workspace_id: UUID,
     path: str = Query(...),

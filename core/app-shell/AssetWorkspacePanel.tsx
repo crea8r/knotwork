@@ -1,7 +1,7 @@
 import { FolderOpen } from 'lucide-react'
 import { useProjectDashboard } from '@modules/projects/frontend/api/projects'
 import KnowledgeAssetsWorkspacePanel from '@modules/assets/frontend/components/KnowledgeAssetsWorkspacePanel'
-import ProjectAssetsWorkspacePanel from '@modules/projects/frontend/components/ProjectAssetsWorkspacePanel'
+import ProjectAssetsWorkspacePanel from '@modules/assets/frontend/components/ProjectAssetsWorkspacePanel'
 import Spinner from '@ui/components/Spinner'
 import AssetWorkspaceChatPanel from './AssetWorkspaceChatPanel'
 import { SHELL_ICON_BUTTON_CLASS } from './layoutChrome'

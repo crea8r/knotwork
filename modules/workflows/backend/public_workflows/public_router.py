@@ -52,25 +52,25 @@ def _workflow_view_out(version, description_md: str) -> PublicWorkflowViewOut:
 
 # ── Version-specific URL ─────────────────────────────────────────────────────
 
-@public_router.get("/workflows/{graph_slug}/{version_slug}", response_model=PublicWorkflowViewOut)
+@public_router.get("/workflows/{workflow_slug}/{version_slug}", response_model=PublicWorkflowViewOut)
 async def get_public_workflow_by_version_slug(
-    graph_slug: str, version_slug: str, db: AsyncSession = Depends(get_db),
+    workflow_slug: str, version_slug: str, db: AsyncSession = Depends(get_db),
 ) -> PublicWorkflowViewOut:
-    _graph, version = await resolve_version_by_slugs(db, graph_slug, version_slug)
+    _graph, version = await resolve_version_by_slugs(db, workflow_slug, version_slug)
     return _workflow_view_out(version, version.public_description_md or "")
 
 
-@public_router.post("/workflows/{graph_slug}/{version_slug}/trigger", response_model=PublicRunTriggerOut, status_code=201)
+@public_router.post("/workflows/{workflow_slug}/{version_slug}/trigger", response_model=PublicRunTriggerOut, status_code=201)
 async def trigger_public_workflow_by_version_slug(
-    graph_slug: str, version_slug: str,
+    workflow_slug: str, version_slug: str,
     body: PublicRunTriggerRequest, request: Request, db: AsyncSession = Depends(get_db),
 ) -> PublicRunTriggerOut:
-    graph, version = await resolve_version_by_slugs(db, graph_slug, version_slug)
+    graph, version = await resolve_version_by_slugs(db, workflow_slug, version_slug)
     share = await service.trigger_public_run(
         db=db, graph=graph, version=version,
         input_payload=body.input, email=body.email,
         context_files=[item.model_dump() for item in body.context_files],
-        rate_key=f"{graph_slug}/{version_slug}",
+        rate_key=f"{workflow_slug}/{version_slug}",
         client_ip=service.client_ip_from_headers(
             request.headers.get("x-forwarded-for"),
             request.client.host if request.client else None,
@@ -79,45 +79,45 @@ async def trigger_public_workflow_by_version_slug(
     return PublicRunTriggerOut(run_id=share.run_id, run_token=share.token, run_public_url=f"/public/runs/{share.token}")
 
 
-@public_router.post("/workflows/{graph_slug}/{version_slug}/attachments", response_model=RunAttachmentUploadOut, status_code=201)
+@public_router.post("/workflows/{workflow_slug}/{version_slug}/attachments", response_model=RunAttachmentUploadOut, status_code=201)
 async def upload_attachment_by_version_slug(
-    graph_slug: str, version_slug: str,
+    workflow_slug: str, version_slug: str,
     file: UploadFile = File(...), db: AsyncSession = Depends(get_db),
 ) -> RunAttachmentUploadOut:
-    graph, _version = await resolve_version_by_slugs(db, graph_slug, version_slug)
-    return await _do_upload(graph.workspace_id, f"{graph_slug}/{version_slug}", file)
+    graph, _version = await resolve_version_by_slugs(db, workflow_slug, version_slug)
+    return await _do_upload(graph.workspace_id, f"{workflow_slug}/{version_slug}", file)
 
 
-@public_router.get("/workflows/{graph_slug}/{version_slug}/attachments/{attachment_id}/{filename}")
+@public_router.get("/workflows/{workflow_slug}/{version_slug}/attachments/{attachment_id}/{filename}")
 async def serve_attachment_by_version_slug(
-    graph_slug: str, version_slug: str, attachment_id: str, filename: str,
+    workflow_slug: str, version_slug: str, attachment_id: str, filename: str,
     download_token: str = Query(...), db: AsyncSession = Depends(get_db),
 ):
-    graph, _version = await resolve_version_by_slugs(db, graph_slug, version_slug)
+    graph, _version = await resolve_version_by_slugs(db, workflow_slug, version_slug)
     return await _do_serve(graph.workspace_id, attachment_id, filename, download_token)
 
 
-# ── Graph-level URL (proxies to default version) ─────────────────────────────
+# ── Workflow-level URL (proxies to default version) ──────────────────────────
 
-@public_router.get("/workflows/{graph_slug}", response_model=PublicWorkflowViewOut)
-async def get_public_workflow_by_graph_slug(
-    graph_slug: str, db: AsyncSession = Depends(get_db),
+@public_router.get("/workflows/{workflow_slug}", response_model=PublicWorkflowViewOut)
+async def get_public_workflow_by_workflow_slug(
+    workflow_slug: str, db: AsyncSession = Depends(get_db),
 ) -> PublicWorkflowViewOut:
-    _graph, version = await resolve_default_version_by_graph_slug(db, graph_slug)
+    _graph, version = await resolve_default_version_by_graph_slug(db, workflow_slug)
     return _workflow_view_out(version, version.public_description_md or "")
 
 
-@public_router.post("/workflows/{graph_slug}/trigger", response_model=PublicRunTriggerOut, status_code=201)
-async def trigger_public_workflow_by_graph_slug(
-    graph_slug: str,
+@public_router.post("/workflows/{workflow_slug}/trigger", response_model=PublicRunTriggerOut, status_code=201)
+async def trigger_public_workflow_by_workflow_slug(
+    workflow_slug: str,
     body: PublicRunTriggerRequest, request: Request, db: AsyncSession = Depends(get_db),
 ) -> PublicRunTriggerOut:
-    graph, version = await resolve_default_version_by_graph_slug(db, graph_slug)
+    graph, version = await resolve_default_version_by_graph_slug(db, workflow_slug)
     share = await service.trigger_public_run(
         db=db, graph=graph, version=version,
         input_payload=body.input, email=body.email,
         context_files=[item.model_dump() for item in body.context_files],
-        rate_key=graph_slug,
+        rate_key=workflow_slug,
         client_ip=service.client_ip_from_headers(
             request.headers.get("x-forwarded-for"),
             request.client.host if request.client else None,

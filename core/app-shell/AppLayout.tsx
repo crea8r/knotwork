@@ -230,7 +230,7 @@ export default function AppLayout() {
         projectSlug: projectMatch.params.projectSlug,
       }
     }
-    if (location.pathname.startsWith('/knowledge') || location.pathname.startsWith('/handbook')) {
+    if (location.pathname.startsWith('/knowledge')) {
       return { kind: 'knowledge', workspaceId }
     }
     return null
@@ -254,7 +254,7 @@ export default function AppLayout() {
     matchPath('/projects/:projectSlug/objectives/:objectiveSlug', location.pathname)
     ?? matchPath('/projects/:projectSlug/objectives/:objectiveSlug/*', location.pathname)
   )
-  const routeIsKnowledgeAsset = location.pathname === '/knowledge' || location.pathname === '/handbook'
+  const routeIsKnowledgeAsset = location.pathname === '/knowledge'
   const routeShowsAssetWorkspaceFromUrl = routeAssetScope !== null && locationTargetsAsset
   const routeHasAssetChatParam = locationSearchParams.get('assetChat') === '1'
   const routeHasCurrentChat = routeIsProjectHome || routeIsProjectChannel || routeIsProjectObjective
@@ -422,8 +422,8 @@ export default function AppLayout() {
     if (location.pathname.startsWith('/objectives')) return 'Objective'
     if (hasCommunication && location.pathname.startsWith('/channels')) return 'Channels'
     if (hasWorkflows && location.pathname.startsWith('/runs')) return 'Runs'
-    if (hasWorkflows && location.pathname.startsWith('/graphs')) return 'Workflows'
-    if (hasAssets && (location.pathname.startsWith('/knowledge') || location.pathname.startsWith('/handbook'))) {
+    if (hasWorkflows && (location.pathname.startsWith('/workflows') || location.pathname.startsWith('/graphs'))) return 'Workflows'
+    if (hasAssets && location.pathname.startsWith('/knowledge')) {
       return 'Knowledge'
     }
     if (hasAdmin && location.pathname.startsWith('/settings')) return 'Settings'

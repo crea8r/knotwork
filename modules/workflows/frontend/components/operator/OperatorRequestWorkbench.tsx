@@ -115,7 +115,7 @@ export default function OperatorRequestWorkbench({
             </span>
             {context.handbookEntries.length > 0 ? (
               <span className="rounded-full bg-gray-100 px-2.5 py-1 text-[11px] font-medium text-gray-700">
-                {context.handbookEntries.length} handbook file{context.handbookEntries.length === 1 ? '' : 's'}
+                {context.handbookEntries.length} knowledge file{context.handbookEntries.length === 1 ? '' : 's'}
               </span>
             ) : null}
           </div>
@@ -224,13 +224,13 @@ export default function OperatorRequestWorkbench({
                     </div>
                   ) : (
                     <div className="rounded-2xl border border-dashed border-gray-300 bg-white px-4 py-6 text-sm text-gray-500">
-                      No handbook files were attached to this request.
+                      No knowledge files were attached to this request.
                     </div>
                   )}
 
                   {context.missingHandbookFiles.length > 0 ? (
                     <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-4">
-                      <p className="text-sm font-medium text-amber-900">Missing handbook files</p>
+                      <p className="text-sm font-medium text-amber-900">Missing knowledge files</p>
                       <ul className="mt-2 space-y-1 text-xs text-amber-900/90">
                         {context.missingHandbookFiles.map((path) => (
                           <li key={path} className="font-mono">{path}</li>
@@ -252,7 +252,7 @@ export default function OperatorRequestWorkbench({
                     </>
                   ) : (
                     <div className="flex h-full items-center justify-center px-6 text-sm text-gray-500">
-                      Select a handbook source to read it.
+                      Select a knowledge source to read it.
                     </div>
                   )}
                 </div>

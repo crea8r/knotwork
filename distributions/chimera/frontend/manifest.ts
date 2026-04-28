@@ -115,7 +115,7 @@ export const chimeraDistribution = {
         hrefLabel: 'Open knowledge',
         tip: 'When the source of truth is wrong or incomplete, update knowledge instead of letting the fix disappear into chat.',
         match: {
-          pathnamePrefixes: ['/knowledge', '/handbook'],
+          pathnamePrefixes: ['/knowledge'],
         },
       },
       {

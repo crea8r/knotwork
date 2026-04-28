@@ -211,7 +211,7 @@ export default function RunTriggerModal({
       input,
       name: runName.trim() || undefined,
       context_files: contextFiles,
-      graph_version_id: graphVersionId || undefined,
+      workflow_version_id: graphVersionId || undefined,
     })
     navigate(`/runs/${run.id}`)
   }

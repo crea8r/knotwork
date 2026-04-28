@@ -7,6 +7,7 @@ style imports. Bootstrap and agent-session entrypoints live in subpackages.
 from importlib import import_module
 
 _FACADE_MODULES = {
+    "assets",
     "channels",
     "graphs",
     "knowledge",

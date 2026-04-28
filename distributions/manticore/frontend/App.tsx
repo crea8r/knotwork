@@ -25,7 +25,7 @@ export function ManticoreApp() {
       <Route path="/login" element={<LoginPage />} />
       <Route path="/accept-invite" element={<AcceptInvitePage />} />
       {manticoreDistribution.publicRoutes.workflows && (
-        <Route path="/public/workflows/:graphSlug/:versionSlug" element={<PublicWorkflowPage />} />
+        <Route path="/public/workflows/:workflowSlug/:versionSlug" element={<PublicWorkflowPage />} />
       )}
       {manticoreDistribution.publicRoutes.workflows && (
         <Route path="/public/workflows/:token" element={<PublicWorkflowPage />} />
@@ -43,13 +43,12 @@ export function ManticoreApp() {
           </RequireAuth>
         }
       >
-        <Route path="/graphs" element={<GraphsPage />} />
+        <Route path="/graphs" element={<Navigate to="/workflows" replace />} />
+        <Route path="/workflows" element={<GraphsPage />} />
         <Route path="/runs" element={<RunsPage />} />
         <Route path="/runs/:runId" element={<RunDetailPage />} />
         <Route path="/knowledge" element={<KnowledgePage />} />
         <Route path="/knowledge/file" element={<KnowledgeFilePage />} />
-        <Route path="/handbook" element={<Navigate to="/knowledge" replace />} />
-        <Route path="/handbook/file" element={<KnowledgeFilePage />} />
         <Route path="/settings" element={<SettingsPage />} />
       </Route>
     </Routes>

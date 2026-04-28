@@ -64,7 +64,7 @@ async def ensure_handbook_channel(db: AsyncSession, workspace_id: UUID) -> None:
     existing = await db.execute(
         select(Channel).where(
             Channel.workspace_id == workspace_id,
-            Channel.name == "handbook-chat",
+            Channel.name.in_(("knowledge-chat", "handbook-chat")),
             Channel.archived_at.is_(None),
         )
     )
@@ -73,9 +73,9 @@ async def ensure_handbook_channel(db: AsyncSession, workspace_id: UUID) -> None:
         db.add(
             Channel(
                 workspace_id=workspace_id,
-                name="handbook-chat",
-                slug=await _generate_channel_slug(db, "handbook chat"),
-                channel_type="handbook",
+                name="knowledge-chat",
+                slug=await _generate_channel_slug(db, "knowledge chat"),
+                channel_type="knowledge",
                 graph_id=None,
             )
         )
@@ -84,8 +84,11 @@ async def ensure_handbook_channel(db: AsyncSession, workspace_id: UUID) -> None:
 
     updated = False
     for channel in channels:
-        if channel.channel_type != "handbook":
-            channel.channel_type = "handbook"
+        if channel.name != "knowledge-chat":
+            channel.name = "knowledge-chat"
+            updated = True
+        if channel.channel_type != "knowledge":
+            channel.channel_type = "knowledge"
             updated = True
     if updated:
         await db.commit()

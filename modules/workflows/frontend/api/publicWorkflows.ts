@@ -10,7 +10,7 @@ export function usePublishVersion(workspaceId: string, graphId: string) {
   return useMutation({
     mutationFn: ({ versionId, description_md }: { versionId: string; description_md: string }) =>
       api
-        .post<GraphVersion>(`/workspaces/${workspaceId}/graphs/${graphId}/versions/${versionId}/publish`, { description_md })
+        .post<GraphVersion>(`/workspaces/${workspaceId}/workflows/${graphId}/versions/${versionId}/publish`, { description_md })
         .then((r) => r.data),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ['graph-versions', workspaceId, graphId] })
@@ -24,7 +24,7 @@ export function useUnpublishVersion(workspaceId: string, graphId: string) {
   return useMutation({
     mutationFn: (versionId: string) =>
       api
-        .delete<GraphVersion>(`/workspaces/${workspaceId}/graphs/${graphId}/versions/${versionId}/publish`)
+        .delete<GraphVersion>(`/workspaces/${workspaceId}/workflows/${graphId}/versions/${versionId}/publish`)
         .then((r) => r.data),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ['graph-versions', workspaceId, graphId] })
@@ -51,13 +51,13 @@ export function useTriggerPublicRun(token: string) {
   })
 }
 
-export function useUploadPublicWorkflowAttachment(graphSlug: string, versionSlug: string) {
+export function useUploadPublicWorkflowAttachment(workflowSlug: string, versionSlug: string) {
   return useMutation({
     mutationFn: async (file: File) => {
       const form = new FormData()
       form.append('file', file)
       const { data } = await api.post<RunAttachmentRef>(
-        `/public/workflows/${graphSlug}/${versionSlug}/attachments`,
+        `/public/workflows/${workflowSlug}/${versionSlug}/attachments`,
         form,
         { headers: { 'Content-Type': 'multipart/form-data' } },
       )

@@ -64,7 +64,7 @@ export default function NewFilePanel({ folder, onCreate, onCancel }: Props) {
             </p>
           )}
         </div>
-        <p className="text-xs text-gray-400">Creates a Markdown handbook document.</p>
+        <p className="text-xs text-gray-400">Creates a Markdown knowledge asset.</p>
         {error && <p className="text-sm text-red-500">{error}</p>}
         <div className="flex gap-2 pt-2">
           <Btn type="submit" size="sm" loading={create.isPending}>Create</Btn>

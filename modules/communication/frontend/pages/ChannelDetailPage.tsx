@@ -58,6 +58,7 @@ function channelIconKind(type: string | undefined): ShellHeaderIconKind {
       return 'run'
     case 'workflow':
       return 'workflow'
+    case 'knowledge':
     case 'handbook':
       return 'knowledge'
     case 'agent_main':
@@ -76,6 +77,7 @@ function channelSubtitle(type: string | undefined, linkedProjectTitle?: string |
       return 'Objective channel'
     case 'workflow':
       return 'Workflow channel'
+    case 'knowledge':
     case 'handbook':
       return 'Knowledge channel'
     case 'run':
@@ -362,8 +364,8 @@ export default function ChannelDetailPage() {
           { onSuccess: () => setDraft('') },
         )}
         pending={postMessage.isPending}
-        placeholder={channel?.channel_type === 'handbook'
-          ? 'Ask the assistant to propose handbook edits. Type @ to mention people…'
+        placeholder={channel?.channel_type === 'knowledge'
+          ? 'Ask the assistant to propose knowledge edits. Type @ to mention people…'
           : 'Type a message. Use @ to mention participants…'}
         inputRef={inputRef}
         beforeInput={(

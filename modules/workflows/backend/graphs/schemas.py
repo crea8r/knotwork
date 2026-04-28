@@ -4,7 +4,7 @@ from datetime import datetime
 from typing import Literal
 from uuid import UUID
 
-from pydantic import BaseModel, field_validator, model_validator
+from pydantic import AliasChoices, BaseModel, ConfigDict, Field, computed_field, field_validator, model_validator
 
 
 LEGACY_NODE_TYPE_MAP = {
@@ -67,7 +67,7 @@ class InputFieldDef(BaseModel):
     type: Literal["text", "textarea", "number"] = "text"
 
 
-class GraphDefinitionSchema(BaseModel):
+class WorkflowDefinitionSchema(BaseModel):
     nodes: list[NodeDefSchema] = []
     edges: list[EdgeDefSchema] = []
     entry_point: str | None = None
@@ -79,7 +79,7 @@ class GraphDefinitionSchema(BaseModel):
         return normalize_graph_definition(data)
 
 
-class GraphUpdate(BaseModel):
+class WorkflowUpdate(BaseModel):
     name: str | None = None
     path: str | None = None
     description: str | None = None
@@ -88,17 +88,38 @@ class GraphUpdate(BaseModel):
     project_id: UUID | None = None
 
 
-class DesignChatRequest(BaseModel):
+class DesignWorkflowChatRequest(BaseModel):
     session_id: str
     message: str
-    graph_id: str
+    workflow_id: str = Field(
+        alias="graph_id",
+        validation_alias=AliasChoices("workflow_id", "graph_id"),
+        serialization_alias="workflow_id",
+    )
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    @property
+    def graph_id(self) -> str:
+        return self.workflow_id
 
 
-class DesignChatResponse(BaseModel):
+class DesignWorkflowChatResponse(BaseModel):
     reply: str
-    graph_delta: dict
+    workflow_delta: dict = Field(
+        default_factory=dict,
+        validation_alias=AliasChoices("workflow_delta", "graph_delta"),
+        serialization_alias="workflow_delta",
+    )
     questions: list[str]
     author_name: str | None = None
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    @computed_field(return_type=dict)
+    @property
+    def graph_delta(self) -> dict:
+        return self.workflow_delta
 
 
 class ImportMdRequest(BaseModel):
@@ -106,23 +127,23 @@ class ImportMdRequest(BaseModel):
     name: str
 
 
-class GraphCreate(BaseModel):
+class WorkflowCreate(BaseModel):
     name: str
     path: str = ""
     description: str | None = None
     default_model: str | None = None
     project_id: UUID | None = None
-    definition: GraphDefinitionSchema = GraphDefinitionSchema()
+    definition: WorkflowDefinitionSchema = WorkflowDefinitionSchema()
 
 
-class GraphVersionCreate(BaseModel):
-    definition: GraphDefinitionSchema
+class WorkflowVersionCreate(BaseModel):
+    definition: WorkflowDefinitionSchema
     note: str | None = None
 
 
 class DraftUpsertRequest(BaseModel):
     """Create or update the draft for a given parent version (or root draft)."""
-    definition: GraphDefinitionSchema
+    definition: WorkflowDefinitionSchema
 
 
 class VersionRenameRequest(BaseModel):
@@ -133,9 +154,13 @@ class ForkRequest(BaseModel):
     name: str  # name of the new workflow
 
 
-class GraphVersionOut(BaseModel):
+class WorkflowVersionOut(BaseModel):
     id: UUID
-    graph_id: UUID
+    workflow_id: UUID = Field(
+        alias="graph_id",
+        validation_alias=AliasChoices("workflow_id", "graph_id"),
+        serialization_alias="workflow_id",
+    )
     definition: dict
     note: str | None
     # Versioning
@@ -149,22 +174,27 @@ class GraphVersionOut(BaseModel):
     updated_at: datetime
     created_at: datetime
     # Enriched: attached draft (if any), run count — populated by list endpoints
-    draft: GraphVersionOut | None = None
+    draft: WorkflowVersionOut | None = None
     run_count: int = 0
 
-    model_config = {"from_attributes": True}
+    model_config = ConfigDict(from_attributes=True, populate_by_name=True)
 
     @field_validator("definition", mode="before")
     @classmethod
     def _normalize_definition(cls, value):
         return normalize_graph_definition(value)
 
+    @computed_field(return_type=UUID)
+    @property
+    def graph_id(self) -> UUID:
+        return self.workflow_id
+
 
 # Forward reference needed for self-referential `draft` field
-GraphVersionOut.model_rebuild()
+WorkflowVersionOut.model_rebuild()
 
 
-class GraphOut(BaseModel):
+class WorkflowOut(BaseModel):
     id: UUID
     workspace_id: UUID
     project_id: UUID | None = None
@@ -178,13 +208,25 @@ class GraphOut(BaseModel):
     production_version_id: UUID | None = None
     slug: str | None = None
     run_count: int = 0
-    latest_version: GraphVersionOut | None = None
+    latest_version: WorkflowVersionOut | None = None
     created_at: datetime
     updated_at: datetime
 
-    model_config = {"from_attributes": True}
+    model_config = ConfigDict(from_attributes=True, populate_by_name=True)
 
 
-class GraphDeleteResult(BaseModel):
+class WorkflowDeleteResult(BaseModel):
     action: Literal["deleted", "archived"]
     run_count: int
+
+
+# Backward-compatible internal aliases. Use Workflow* names at public boundaries.
+GraphDefinitionSchema = WorkflowDefinitionSchema
+GraphUpdate = WorkflowUpdate
+DesignChatRequest = DesignWorkflowChatRequest
+DesignChatResponse = DesignWorkflowChatResponse
+GraphCreate = WorkflowCreate
+GraphVersionCreate = WorkflowVersionCreate
+GraphVersionOut = WorkflowVersionOut
+GraphOut = WorkflowOut
+GraphDeleteResult = WorkflowDeleteResult

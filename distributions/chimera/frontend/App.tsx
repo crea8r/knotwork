@@ -12,11 +12,11 @@ import {
 import {
   KnowledgeFilePage,
   KnowledgePage,
+  ProjectAssetsPage,
 } from '@modules/assets/frontend/index'
 import {
   ObjectiveDetailPage,
   ObjectiveDetailPanel,
-  ProjectAssetsPage,
   ProjectChannelPage,
   ProjectDetailPage,
   ProjectMainContent,
@@ -44,7 +44,7 @@ export default function ChimeraApp() {
       {hasAdmin && <Route path="/login" element={<LoginPage />} />}
       {hasAdmin && <Route path="/accept-invite" element={<AcceptInvitePage />} />}
       {chimeraDistribution.publicRoutes.workflows && (
-        <Route path="/public/workflows/:graphSlug/:versionSlug" element={<PublicWorkflowPage />} />
+        <Route path="/public/workflows/:workflowSlug/:versionSlug" element={<PublicWorkflowPage />} />
       )}
       {chimeraDistribution.publicRoutes.workflows && (
         <Route path="/public/workflows/:token" element={<PublicWorkflowPage />} />
@@ -72,13 +72,12 @@ export default function ChimeraApp() {
           </Route>
         )}
         {hasProjects && <Route path="/objectives/:objectiveSlug" element={<ObjectiveDetailPage />} />}
-        {hasWorkflows && <Route path="/graphs" element={<GraphsPage />} />}
+        {hasWorkflows && <Route path="/graphs" element={<Navigate to="/workflows" replace />} />}
+        {hasWorkflows && <Route path="/workflows" element={<GraphsPage />} />}
         {hasWorkflows && <Route path="/runs" element={<RunsPage />} />}
         {hasWorkflows && <Route path="/runs/:runId" element={<RunDetailPage />} />}
         {hasAssets && <Route path="/knowledge" element={<KnowledgePage />} />}
         {hasAssets && <Route path="/knowledge/file" element={<KnowledgeFilePage />} />}
-        {hasAssets && <Route path="/handbook" element={<Navigate to="/knowledge" replace />} />}
-        {hasAssets && <Route path="/handbook/file" element={<KnowledgeFilePage />} />}
         {hasAdmin && <Route path="/settings" element={<SettingsPage />} />}
         {hasCommunication && communicationRoutes()}
       </Route>

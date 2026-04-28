@@ -35,9 +35,9 @@ export function useDesignChat(workspaceId: string | undefined, graphId: string) 
   return useMutation<DesignChatResponse, Error, { session_id: string; message: string }>({
     mutationFn: (body) =>
       api
-        .post(`/workspaces/${resolvedWorkspaceId}/graphs/design/chat`, {
+        .post(`/workspaces/${resolvedWorkspaceId}/workflows/design/chat`, {
           ...body,
-          graph_id: graphId,
+          workflow_id: graphId,
         })
         .then((r) => r.data),
     onSuccess: () => {
@@ -51,7 +51,7 @@ export function useImportMd(workspaceId?: string) {
   const qc = useQueryClient()
   return useMutation<Graph, Error, { content: string; name: string }>({
     mutationFn: (body) =>
-      api.post(`/workspaces/${resolvedWorkspaceId}/graphs/import-md`, body).then((r) => r.data),
+      api.post(`/workspaces/${resolvedWorkspaceId}/workflows/import-md`, body).then((r) => r.data),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['graphs', resolvedWorkspaceId] }),
   })
 }
@@ -68,7 +68,7 @@ export function useDesignerMessages(workspaceId: string, graphId: string) {
     queryKey: ['designer-messages', workspaceId, graphId],
     queryFn: () =>
       api
-        .get<DesignerMessage[]>(`/workspaces/${workspaceId}/graphs/${graphId}/designer-messages`)
+        .get<DesignerMessage[]>(`/workspaces/${workspaceId}/workflows/${graphId}/designer-messages`)
         .then((r) => r.data),
     enabled: !!graphId,
   })
@@ -78,7 +78,7 @@ export function useClearDesignerHistory(workspaceId: string, graphId: string) {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: () =>
-      api.delete(`/workspaces/${workspaceId}/graphs/${graphId}/designer-messages`),
+      api.delete(`/workspaces/${workspaceId}/workflows/${graphId}/designer-messages`),
     onSuccess: () =>
       qc.invalidateQueries({ queryKey: ['designer-messages', workspaceId, graphId] }),
   })

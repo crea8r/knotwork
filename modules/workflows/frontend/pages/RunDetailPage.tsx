@@ -297,7 +297,7 @@ export default function RunDetailPage() {
                             <div className="mt-1.5 flex flex-wrap gap-1">
                               {requestContext.handbookEntries.length > 0 ? (
                                 <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] text-amber-800">
-                                  Handbook {requestContext.handbookEntries.length}
+                                  Knowledge {requestContext.handbookEntries.length}
                                 </span>
                               ) : null}
                               {requestContext.missingHandbookFiles.length > 0 ? (
@@ -353,7 +353,7 @@ export default function RunDetailPage() {
                             <div className="mt-1.5 flex flex-wrap gap-1">
                               {requestContext.handbookEntries.length > 0 ? (
                                 <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] text-amber-800">
-                                  Handbook {requestContext.handbookEntries.length}
+                                  Knowledge {requestContext.handbookEntries.length}
                                 </span>
                               ) : null}
                               {requestContext.missingHandbookFiles.length > 0 ? (

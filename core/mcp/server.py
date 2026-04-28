@@ -13,7 +13,7 @@ from mcp.server.transport_security import TransportSecuritySettings
 
 from libs.auth.backend.service import decode_access_token
 from libs.config import settings
-from core.mcp.module_registry import register_enabled_module_mcp_tools
+from core.mcp.module_registry import enabled_module_names, register_enabled_module_mcp_tools
 from core.mcp.runtime import KnotworkMCPRuntime
 
 
@@ -116,6 +116,41 @@ def _json_text(payload: Any) -> str:
     return json.dumps(payload, indent=2, sort_keys=True)
 
 
+def _resource_module(uri: str) -> str | None:
+    if uri.startswith("knotwork://workspace/"):
+        return "core"
+    for module_name in ("admin", "assets", "communication", "projects", "workflows"):
+        if uri.startswith(f"knotwork://{module_name}/"):
+            return module_name
+    return None
+
+
+def _prompt_module(name: str) -> str | None:
+    if name.startswith("admin."):
+        return "admin"
+    if name.startswith("assets."):
+        return "assets"
+    if name.startswith("communication."):
+        return "communication"
+    if name.startswith("projects."):
+        return "projects"
+    if name.startswith("run.") or name.startswith("workflow."):
+        return "workflows"
+    return None
+
+
+def _tool_module(name: str) -> str | None:
+    if name.startswith("knotwork_asset_"):
+        return "assets"
+    if name.startswith("knotwork_channel_"):
+        return "communication"
+    if name.startswith("knotwork_objective_") or name.startswith("knotwork_project_"):
+        return "projects"
+    if name.startswith("knotwork_run_") or name.startswith("knotwork_workflow_"):
+        return "workflows"
+    return None
+
+
 def _mcp_transport_security_settings() -> TransportSecuritySettings:
     backend = urlparse(settings.normalized_backend_url)
     frontend = urlparse(settings.normalized_frontend_url)
@@ -190,6 +225,105 @@ def build_server(client: KnotworkAPIClient | None = None) -> FastMCP:
             workspace_id=workspace_id,
         )
 
+    async def _current_member(ctx: Context | None) -> dict[str, Any]:
+        api = _client_from_context(ctx)
+        access_token = get_access_token()
+        if access_token is None:
+            raise KnotworkAPIError("Missing bearer token in MCP request")
+        members = await _request(
+            ctx,
+            "GET",
+            api.workspace_path("/members"),
+            params={"page_size": 100, "disabled": False},
+        )
+        items = members.get("items", []) if isinstance(members, dict) else []
+        for member in items:
+            if not isinstance(member, dict):
+                continue
+            if str(member.get("user_id")) != access_token.client_id:
+                continue
+            member_id = str(member.get("id"))
+            user_id = str(member.get("user_id"))
+            kind = str(member.get("kind") or "")
+            participant_id = (
+                f"agent:{member_id}"
+                if kind == "agent"
+                else f"human:{user_id}"
+                if kind == "human"
+                else member_id
+            )
+            return {**member, "participant_id": participant_id}
+        raise KnotworkAPIError("Current bearer token is not a member of this workspace")
+
+    def _public_capability_registry() -> dict[str, Any]:
+        modules = {
+            "core": {"resources": [], "tools": [], "prompts": []},
+            "admin": {"resources": [], "tools": [], "prompts": []},
+            "assets": {"resources": [], "tools": [], "prompts": []},
+            "communication": {"resources": [], "tools": [], "prompts": []},
+            "projects": {"resources": [], "tools": [], "prompts": []},
+            "workflows": {"resources": [], "tools": [], "prompts": []},
+        }
+
+        resources = list(mcp.list_resources())
+        resource_templates = list(mcp.list_resource_templates())
+        for resource in resources:
+            uri = str(resource.uri)
+            module_name = _resource_module(uri)
+            if not module_name:
+                continue
+            modules[module_name]["resources"].append(
+                {
+                    "uri": uri,
+                    "title": resource.title,
+                    "description": resource.description,
+                }
+            )
+        for template in resource_templates:
+            uri = str(template.uri_template)
+            module_name = _resource_module(uri)
+            if not module_name:
+                continue
+            modules[module_name]["resources"].append(
+                {
+                    "uri": uri,
+                    "title": template.title,
+                    "description": template.description,
+                }
+            )
+        for tool in mcp.list_tools():
+            module_name = _tool_module(tool.name)
+            if not module_name:
+                continue
+            modules[module_name]["tools"].append(
+                {
+                    "name": tool.name,
+                    "title": tool.title,
+                    "description": tool.description,
+                }
+            )
+        for prompt in mcp.list_prompts():
+            module_name = _prompt_module(prompt.name)
+            if not module_name:
+                continue
+            modules[module_name]["prompts"].append(
+                {
+                    "name": prompt.name,
+                    "title": prompt.title,
+                    "description": prompt.description,
+                }
+            )
+
+        for payload in modules.values():
+            payload["resources"].sort(key=lambda item: item["uri"])
+            payload["tools"].sort(key=lambda item: item["name"])
+            payload["prompts"].sort(key=lambda item: item["name"])
+
+        return {
+            "enabled_modules": ["core", *enabled_module_names()],
+            "modules": modules,
+        }
+
     async def _request(
         ctx: Context | None,
         method: str,
@@ -234,7 +368,7 @@ def build_server(client: KnotworkAPIClient | None = None) -> FastMCP:
         escalations = await _request(
             ctx,
             "GET",
-            api.workspace_path("/escalations"),
+            api.workspace_path("/runs/escalations"),
             params={"status": "open"},
         )
         inbox_summary = await _request(ctx, "GET", api.workspace_path("/inbox/summary"))
@@ -268,6 +402,43 @@ def build_server(client: KnotworkAPIClient | None = None) -> FastMCP:
         return _json_text(await get_workspace_overview(mcp.get_context()))
 
     register_enabled_module_mcp_tools(mcp=mcp, runtime=runtime)
+
+    @mcp.resource(
+        "knotwork://workspace/bootstrap",
+        name="workspace_bootstrap",
+        title="Workspace Bootstrap",
+        description="Current member, enabled modules, prompt ids, and bootstrap guidance for this workspace.",
+        mime_type="application/json",
+    )
+    async def workspace_bootstrap_resource() -> str:
+        ctx = mcp.get_context()
+        api = _client_from_context(ctx)
+        skills = await _request(ctx, "GET", api.workspace_path("/skills"))
+        capability_registry = _public_capability_registry()
+        prompt_ids = [
+            prompt["name"]
+            for module_payload in capability_registry["modules"].values()
+            for prompt in module_payload["prompts"]
+        ]
+        payload = {
+            "workspace_id": api.workspace_id,
+            "current_member": await _current_member(ctx),
+            "enabled_modules": capability_registry["enabled_modules"],
+            "available_prompt_ids": sorted(prompt_ids),
+            "capabilities_resource": "knotwork://workspace/capabilities",
+            "bootstrap_markdown": skills.get("text") if isinstance(skills, dict) and "text" in skills else str(skills),
+        }
+        return _json_text(payload)
+
+    @mcp.resource(
+        "knotwork://workspace/capabilities",
+        name="workspace_capabilities",
+        title="Workspace Capabilities",
+        description="Thin registry of public module MCP resources, prompts, and tools.",
+        mime_type="application/json",
+    )
+    async def workspace_capabilities_resource() -> str:
+        return _json_text(_public_capability_registry())
 
     @mcp.tool()
     async def list_mcp_contracts(ctx: Context = None) -> Any:

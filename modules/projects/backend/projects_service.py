@@ -1,18 +1,13 @@
 from __future__ import annotations
-
-import re
 from uuid import UUID
 
 from sqlalchemy import delete, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from core.api import assets as core_assets
 from core.api import channels as core_channels
 from libs.slugs import make_slug_candidate, parse_uuid_ref
-from modules.assets.backend.knowledge_change_summary import generate_change_summary
-from modules.assets.backend.knowledge_health import compute_health_score
-from modules.assets.backend.knowledge_models import KnowledgeFile, KnowledgeFolder
-from modules.assets.backend.knowledge_suggestions import generate_suggestions
-from modules.assets.backend.storage import get_storage_adapter
+from modules.assets.backend.knowledge_models import KnowledgeFile
 from modules.communication.backend.channels_models import Channel, ChannelAssetBinding
 from modules.workflows.backend.graphs.models import Graph
 from modules.workflows.backend.runs.models import Run
@@ -22,24 +17,9 @@ from .projects_schemas import (
     ObjectiveCreate,
     ObjectiveUpdate,
     ProjectCreate,
-    ProjectDocumentCreate,
-    ProjectDocumentRename,
-    ProjectDocumentUpdate,
     ProjectUpdate,
     ProjectStatusUpdateCreate,
 )
-
-
-def _project_storage_key(workspace_id: UUID, project_id: UUID) -> str:
-    return f"{workspace_id}:project:{project_id}"
-
-
-def _count_tokens(content: str) -> int:
-    return max(1, len(content) // 4)
-
-
-def _extract_links(content: str) -> list[str]:
-    return re.findall(r"\[\[([^\]]+)\]\]", content)
 
 
 async def _get_project_channel_id(db: AsyncSession, project_id: UUID) -> UUID | None:
@@ -379,285 +359,16 @@ async def update_objective(db: AsyncSession, workspace_id: UUID, objective_id: U
     return objective
 
 
-async def list_project_documents(db: AsyncSession, workspace_id: UUID, project_id: UUID) -> list[KnowledgeFile]:
-    result = await db.execute(
-        select(KnowledgeFile)
-        .where(KnowledgeFile.workspace_id == workspace_id, KnowledgeFile.project_id == project_id)
-        .order_by(KnowledgeFile.path.asc())
-    )
-    return list(result.scalars())
-
-
-async def list_project_folders(db: AsyncSession, workspace_id: UUID, project_id: UUID) -> list[KnowledgeFolder]:
-    result = await db.execute(
-        select(KnowledgeFolder)
-        .where(KnowledgeFolder.workspace_id == workspace_id, KnowledgeFolder.project_id == project_id)
-        .order_by(KnowledgeFolder.path.asc())
-    )
-    return list(result.scalars())
-
-
-async def create_project_folder(db: AsyncSession, workspace_id: UUID, project_id: UUID, path: str) -> KnowledgeFolder:
-    result = await db.execute(
-        select(KnowledgeFolder).where(
-            KnowledgeFolder.workspace_id == workspace_id,
-            KnowledgeFolder.project_id == project_id,
-            KnowledgeFolder.path == path,
-        )
-    )
-    folder = result.scalar_one_or_none()
-    if folder is not None:
-        return folder
-    folder = KnowledgeFolder(workspace_id=workspace_id, project_id=project_id, path=path)
-    db.add(folder)
-    await db.commit()
-    await db.refresh(folder)
-    return folder
-
-
-async def rename_project_folder(
-    db: AsyncSession,
-    workspace_id: UUID,
-    project_id: UUID,
-    old_path: str,
-    new_path: str,
-) -> None:
-    adapter = get_storage_adapter()
-    prefix = old_path + "/"
-
-    files_result = await db.execute(
-        select(KnowledgeFile).where(
-            KnowledgeFile.workspace_id == workspace_id,
-            KnowledgeFile.project_id == project_id,
-        )
-    )
-    for file in files_result.scalars().all():
-        if file.path.startswith(prefix):
-            new_file_path = new_path + "/" + file.path[len(prefix):]
-            try:
-                await adapter.move(_project_storage_key(workspace_id, project_id), file.path, new_file_path, "system")
-            except Exception:
-                pass
-            file.path = new_file_path
-
-    folders_result = await db.execute(
-        select(KnowledgeFolder).where(
-            KnowledgeFolder.workspace_id == workspace_id,
-            KnowledgeFolder.project_id == project_id,
-        )
-    )
-    for folder in folders_result.scalars().all():
-        if folder.path == old_path:
-            folder.path = new_path
-        elif folder.path.startswith(prefix):
-            folder.path = new_path + "/" + folder.path[len(prefix):]
-
-    await db.commit()
-
-
-async def delete_project_folder(db: AsyncSession, workspace_id: UUID, project_id: UUID, path: str) -> None:
-    adapter = get_storage_adapter()
-    prefix = path + "/"
-
-    files_result = await db.execute(
-        select(KnowledgeFile).where(
-            KnowledgeFile.workspace_id == workspace_id,
-            KnowledgeFile.project_id == project_id,
-        )
-    )
-    for file in files_result.scalars().all():
-        if file.path == path or file.path.startswith(prefix):
-            try:
-                await adapter.delete(_project_storage_key(workspace_id, project_id), file.path)
-            except Exception:
-                pass
-            await db.delete(file)
-
-    folders_result = await db.execute(
-        select(KnowledgeFolder).where(
-            KnowledgeFolder.workspace_id == workspace_id,
-            KnowledgeFolder.project_id == project_id,
-        )
-    )
-    paths_to_delete = [
-        row.path for row in folders_result.scalars().all()
-        if row.path == path or row.path.startswith(prefix)
-    ]
-    if paths_to_delete:
-        await db.execute(
-            delete(KnowledgeFolder).where(
-                KnowledgeFolder.workspace_id == workspace_id,
-                KnowledgeFolder.project_id == project_id,
-                KnowledgeFolder.path.in_(paths_to_delete),
-            )
-        )
-    await db.commit()
-
-
-async def get_project_document(db: AsyncSession, workspace_id: UUID, project_id: UUID, path: str) -> KnowledgeFile | None:
-    result = await db.execute(
-        select(KnowledgeFile).where(
-            KnowledgeFile.workspace_id == workspace_id,
-            KnowledgeFile.project_id == project_id,
-            KnowledgeFile.path == path,
-        )
-    )
-    return result.scalar_one_or_none()
-
-
-async def create_project_document(db: AsyncSession, workspace_id: UUID, project_id: UUID, data: ProjectDocumentCreate) -> KnowledgeFile:
-    existing = await get_project_document(db, workspace_id, project_id, data.path)
-    if existing is not None:
-        raise ValueError(f'File "{data.path}" already exists')
-    adapter = get_storage_adapter()
-    version_id = await adapter.write(
-        _project_storage_key(workspace_id, project_id),
-        data.path,
-        data.content,
-        saved_by="system",
-        change_summary=data.change_summary,
-    )
-    file = KnowledgeFile(
-        workspace_id=workspace_id,
-        project_id=project_id,
-        path=data.path,
-        title=(data.title or data.path.split("/")[-1]).strip(),
-        raw_token_count=max(1, len(data.content) // 4),
-        resolved_token_count=max(1, len(data.content) // 4),
-        linked_paths=[],
-        current_version_id=version_id,
-        file_type=data.file_type,
-        is_editable=data.file_type != "other",
-    )
-    db.add(file)
-    await db.commit()
-    await db.refresh(file)
-    return file
-
-
-async def update_project_document(
-    db: AsyncSession, workspace_id: UUID, project_id: UUID, path: str, data: ProjectDocumentUpdate
-) -> KnowledgeFile:
-    file = await get_project_document(db, workspace_id, project_id, path)
-    if file is None:
-        raise FileNotFoundError(path)
-    adapter = get_storage_adapter()
-    version_id = await adapter.write(
-        _project_storage_key(workspace_id, project_id),
-        path,
-        data.content,
-        saved_by="system",
-        change_summary=data.change_summary,
-    )
-    file.current_version_id = version_id
-    file.raw_token_count = max(1, len(data.content) // 4)
-    file.resolved_token_count = file.raw_token_count
-    await db.commit()
-    await db.refresh(file)
-    return file
-
-
-async def rename_project_document(
-    db: AsyncSession, workspace_id: UUID, project_id: UUID, path: str, data: ProjectDocumentRename
-) -> KnowledgeFile:
-    file = await get_project_document(db, workspace_id, project_id, path)
-    if file is None:
-        raise FileNotFoundError(path)
-    existing = await get_project_document(db, workspace_id, project_id, data.new_path)
-    if existing is not None and existing.id != file.id:
-        raise ValueError(f'File "{data.new_path}" already exists')
-    adapter = get_storage_adapter()
-    version_id = await adapter.move(
-        _project_storage_key(workspace_id, project_id),
-        path,
-        data.new_path,
-        "system",
-    )
-    file.path = data.new_path
-    file.current_version_id = version_id
-    await db.commit()
-    await db.refresh(file)
-    return file
-
-
-async def delete_project_document(db: AsyncSession, workspace_id: UUID, project_id: UUID, path: str) -> None:
-    file = await get_project_document(db, workspace_id, project_id, path)
-    if file is None:
-        raise FileNotFoundError(path)
-    adapter = get_storage_adapter()
-    await adapter.delete(_project_storage_key(workspace_id, project_id), path)
-    await db.delete(file)
-    await db.commit()
-
-
-async def get_project_document_content(workspace_id: UUID, project_id: UUID, path: str):
-    adapter = get_storage_adapter()
-    return await adapter.read(_project_storage_key(workspace_id, project_id), path)
-
-
-async def get_project_document_history(workspace_id: UUID, project_id: UUID, path: str):
-    adapter = get_storage_adapter()
-    return await adapter.history(_project_storage_key(workspace_id, project_id), path)
-
-
-async def restore_project_document(
-    db: AsyncSession, workspace_id: UUID, project_id: UUID, path: str, version_id: str, restored_by: str
-) -> KnowledgeFile:
-    adapter = get_storage_adapter()
-    new_version_id = await adapter.restore(_project_storage_key(workspace_id, project_id), path, version_id, restored_by)
-    file = await get_project_document(db, workspace_id, project_id, path)
-    if file is None:
-        raise FileNotFoundError(path)
-    fc = await adapter.read(_project_storage_key(workspace_id, project_id), path)
-    file.raw_token_count = _count_tokens(fc.content)
-    file.resolved_token_count = file.raw_token_count
-    file.linked_paths = _extract_links(fc.content)
-    file.current_version_id = new_version_id
-    await db.commit()
-    await db.refresh(file)
-    return file
-
-
-async def summarize_project_document_diff(
-    db: AsyncSession, workspace_id: UUID, project_id: UUID, path: str, content: str
-) -> str:
-    file = await get_project_document(db, workspace_id, project_id, path)
-    if file is None:
-        raise FileNotFoundError(path)
-    adapter = get_storage_adapter()
-    fc = await adapter.read(_project_storage_key(workspace_id, project_id), path)
-    return await generate_change_summary(path, fc.content, content)
-
-
-async def get_project_document_health(
-    db: AsyncSession, workspace_id: UUID, project_id: UUID, path: str
-) -> float:
-    file = await get_project_document(db, workspace_id, project_id, path)
-    if file is None:
-        raise FileNotFoundError(path)
-    return await compute_health_score(file.id, db)
-
-
-async def get_project_document_suggestions(
-    db: AsyncSession, workspace_id: UUID, project_id: UUID, path: str
-) -> list[str]:
-    file = await get_project_document(db, workspace_id, project_id, path)
-    if file is None:
-        raise FileNotFoundError(path)
-    return await generate_suggestions(file.id, db)
-
-
 async def render_project_context(db: AsyncSession, workspace_id: UUID, project_id: UUID | None) -> str:
     if project_id is None:
         return ""
-    files = await list_project_documents(db, workspace_id, project_id)
+    files = await core_assets.list_files(db, workspace_id, project_id=project_id)
     if not files:
         return ""
-    adapter = get_storage_adapter()
     sections: list[str] = []
     for file in files:
         try:
-            fc = await adapter.read(_project_storage_key(workspace_id, project_id), file.path)
+            fc = await core_assets.read_file_content(workspace_id, file.path, project_id=project_id)
         except FileNotFoundError:
             continue
         sections.append(f"## {file.path}\n\n{fc.content}")

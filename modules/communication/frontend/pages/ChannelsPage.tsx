@@ -67,20 +67,20 @@ export default function ChannelsPage() {
   const [freeChatPage, setFreeChatPage] = useState(1)
   const [runPage, setRunPage] = useState(1)
   const [workflowPage, setWorkflowPage] = useState(1)
-  const [handbookPage, setHandbookPage] = useState(1)
+  const [knowledgePage, setKnowledgePage] = useState(1)
   const [objectivePage, setObjectivePage] = useState(1)
   const [bulletinOpen, setBulletinOpen] = useState(true)
   const [freeChatOpen, setFreeChatOpen] = useState(true)
   const [objectiveOpen, setObjectiveOpen] = useState(true)
   const [runsOpen, setRunsOpen] = useState(true)
   const [workflowsOpen, setWorkflowsOpen] = useState(true)
-  const [handbookOpen, setHandbookOpen] = useState(true)
+  const [knowledgeOpen, setKnowledgeOpen] = useState(true)
 
   useEffect(() => {
     setFreeChatPage(1)
     setRunPage(1)
     setWorkflowPage(1)
-    setHandbookPage(1)
+    setKnowledgePage(1)
     setObjectivePage(1)
   }, [search])
 
@@ -130,9 +130,9 @@ export default function ChannelsPage() {
     return [...filtered].sort((a, b) => a.name.localeCompare(b.name))
   }, [channels, q])
 
-  const handbookChannels = useMemo(() => {
-    const handbook = channels.filter((c) => c.channel_type === 'handbook')
-    const filtered = q ? handbook.filter((c) => c.name.toLowerCase().includes(q)) : handbook
+  const knowledgeChannels = useMemo(() => {
+    const knowledge = channels.filter((c) => c.channel_type === 'knowledge')
+    const filtered = q ? knowledge.filter((c) => c.name.toLowerCase().includes(q)) : knowledge
     return [...filtered].sort((a, b) => a.name.localeCompare(b.name))
   }, [channels, q])
 
@@ -152,7 +152,7 @@ export default function ChannelsPage() {
     <div data-ui="channels.page" className="p-6 md:p-8 max-w-5xl mx-auto space-y-5">
       <div data-ui="channels.header">
         <h1 data-ui="channels.header.title" className="text-xl font-semibold text-gray-900">Channels</h1>
-        <p className="text-sm text-gray-500 mt-1">Workspace bulletin, free chat, objective threads, handbook, runs, and workflows in one place.</p>
+        <p className="text-sm text-gray-500 mt-1">Workspace bulletin, free chat, objective threads, knowledge, runs, and workflows in one place.</p>
       </div>
 
       <div data-ui="channels.search" className="relative">
@@ -168,7 +168,7 @@ export default function ChannelsPage() {
 
       {isLoading ? (
         <div data-ui="channels.loading" className="flex justify-center py-16"><Spinner size="lg" /></div>
-      ) : bulletinChannels.length === 0 && freeChats.length === 0 && objectiveChannels.length === 0 && workflowChannels.length === 0 && handbookChannels.length === 0 && runItems.length === 0 ? (
+      ) : bulletinChannels.length === 0 && freeChats.length === 0 && objectiveChannels.length === 0 && workflowChannels.length === 0 && knowledgeChannels.length === 0 && runItems.length === 0 ? (
         <div data-ui="channels.empty">
           <EmptyState heading="No items found" subtext="Try a different search or create new items." />
         </div>
@@ -373,38 +373,38 @@ export default function ChannelsPage() {
             )}
           </section>
 
-          <section data-ui="channels.section.handbook" className="pt-1">
-            <div data-ui="channels.section.handbook.header" className="flex items-center justify-between mb-2">
+          <section data-ui="channels.section.knowledge" className="pt-1">
+            <div data-ui="channels.section.knowledge.header" className="flex items-center justify-between mb-2">
               <button
-                onClick={() => setHandbookOpen((v) => !v)}
-                data-ui="channels.section.handbook.toggle"
+                onClick={() => setKnowledgeOpen((v) => !v)}
+                data-ui="channels.section.knowledge.toggle"
                 className="inline-flex items-center gap-1.5 text-xs uppercase tracking-wide text-gray-500 hover:text-gray-700"
               >
-                {handbookOpen ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
-                Handbook
+                {knowledgeOpen ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+                Knowledge
               </button>
-              <p className="text-xs text-gray-400">{handbookChannels.length}</p>
+              <p className="text-xs text-gray-400">{knowledgeChannels.length}</p>
             </div>
-            {handbookOpen && (
+            {knowledgeOpen && (
               <>
-                <div data-ui="channels.section.handbook.list" className="space-y-2">
-                  {paginate(handbookChannels, handbookPage).map((ch) => (
+                <div data-ui="channels.section.knowledge.list" className="space-y-2">
+                  {paginate(knowledgeChannels, knowledgePage).map((ch) => (
                     <Link
                       key={ch.id}
                       to={`/channels/${ch.slug}`}
-                      data-ui="channels.section.handbook.item"
+                      data-ui="channels.section.knowledge.item"
                       className="flex items-center justify-between gap-3 bg-white border border-gray-200 rounded-xl p-3 hover:border-brand-300"
                     >
                       <div className="flex items-center gap-2 min-w-0">
                         <BookOpen size={15} className="text-emerald-600 shrink-0" />
                         <p className="text-sm text-gray-800 truncate">{ch.name}</p>
                       </div>
-                      <span className="text-[11px] px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700">handbook</span>
+                      <span className="text-[11px] px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700">knowledge</span>
                     </Link>
                   ))}
-                  {handbookChannels.length === 0 && <p className="text-sm text-gray-500">No handbook channels.</p>}
+                  {knowledgeChannels.length === 0 && <p className="text-sm text-gray-500">No knowledge channels.</p>}
                 </div>
-                <Pager page={handbookPage} setPage={setHandbookPage} total={handbookChannels.length} />
+                <Pager page={knowledgePage} setPage={setKnowledgePage} total={knowledgeChannels.length} />
               </>
             )}
           </section>

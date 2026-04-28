@@ -20,36 +20,35 @@ from .deps import caller_participant_id
 router = APIRouter()
 
 
-@router.post("/{workspace_id}/channels/{channel_ref}/handbook/ask", response_model=HandbookChatAskResponse)
+def _is_knowledge_channel(channel) -> bool:
+    return channel.channel_type in {"knowledge", "handbook"}
+
+
+@router.post("/{workspace_id}/channels/{channel_ref}/knowledge/ask", response_model=HandbookChatAskResponse)
 async def ask_handbook_chat(workspace_id: UUID, channel_ref: str, body: HandbookChatAskRequest, user: User = Depends(get_current_user), member=Depends(get_workspace_member), db: AsyncSession = Depends(get_db)):
     from ..handbook_agent import ask_handbook_agent
 
     channel = await service.get_channel(db, workspace_id, channel_ref)
     if not channel:
         raise HTTPException(404, "Channel not found")
-    if channel.channel_type != "handbook":
-        raise HTTPException(400, "Channel is not a handbook channel")
+    if not _is_knowledge_channel(channel):
+        raise HTTPException(400, "Channel is not a knowledge channel")
     user_text = body.message.strip()
     if not user_text:
         raise HTTPException(400, "message is required")
 
-    await service.create_message(db, workspace_id, channel.id, ChannelMessageCreate(role="user", author_type="human", author_name=user.name, content=user_text, metadata={"intent": "handbook_edit_request", "author_participant_id": caller_participant_id(user, member)}))
+    await service.create_message(db, workspace_id, channel.id, ChannelMessageCreate(role="user", author_type="human", author_name=user.name, content=user_text, metadata={"intent": "knowledge_edit_request", "author_participant_id": caller_participant_id(user, member)}))
     result = await ask_handbook_agent(db, workspace_id, user_text)
-    await service.create_message(db, workspace_id, channel.id, ChannelMessageCreate(role="assistant", author_type="agent", author_name="Knotwork Agent", content=result["reply"], metadata={"source": "handbook_agent"}))
+    await service.create_message(db, workspace_id, channel.id, ChannelMessageCreate(role="assistant", author_type="agent", author_name="Knotwork Agent", content=result["reply"], metadata={"source": "knowledge_agent"}))
 
     proposal = result.get("proposal")
     proposal_id = str(proposal.get("proposal_id")) if isinstance(proposal, dict) else None
     decision_payload = proposal if isinstance(proposal, dict) else {"request": user_text}
-    decision_type = "knowledge_change" if isinstance(proposal, dict) else "handbook_change_requested"
+    decision_type = "knowledge_change" if isinstance(proposal, dict) else "knowledge_change_requested"
     actor_type = "agent" if isinstance(proposal, dict) else "human"
     actor_name = "Knotwork Agent" if isinstance(proposal, dict) else user.name
     await service.create_decision(db, workspace_id, channel.id, DecisionEventCreate(decision_type=decision_type, actor_type=actor_type, actor_name=actor_name, payload=decision_payload))
     return HandbookChatAskResponse(reply=result["reply"], proposal_id=proposal_id)
-
-
-@router.post("/{workspace_id}/channels/{channel_ref}/handbook/proposals/{proposal_id}/resolve")
-async def resolve_handbook_knowledge_change_legacy(workspace_id: UUID, channel_ref: str, proposal_id: str, body: HandbookProposalResolveRequest, _member=Depends(get_workspace_member), db: AsyncSession = Depends(get_db)):
-    return await resolve_knowledge_change(workspace_id=workspace_id, channel_ref=channel_ref, proposal_id=proposal_id, body=body, _member=_member, db=db)
 
 
 @router.post("/{workspace_id}/channels/{channel_ref}/knowledge/changes/{proposal_id}/resolve")
@@ -57,8 +56,8 @@ async def resolve_knowledge_change(workspace_id: UUID, channel_ref: str, proposa
     channel = await service.get_channel(db, workspace_id, channel_ref)
     if not channel:
         raise HTTPException(404, "Channel not found")
-    if channel.channel_type != "handbook":
-        raise HTTPException(400, "Channel is not a handbook channel")
+    if not _is_knowledge_channel(channel):
+        raise HTTPException(400, "Channel is not a knowledge channel")
     target = await _knowledge_decision(db, workspace_id, channel.id, proposal_id)
     payload = dict(target.payload or {})
     if payload.get("status") != "pending":
@@ -67,15 +66,15 @@ async def resolve_knowledge_change(workspace_id: UUID, channel_ref: str, proposa
     if body.resolution in ("accept_output", "override_output"):
         path = str(payload.get("path") or "").strip()
         content = (body.final_content or str(payload.get("proposed_content") or "")).strip()
-        reason = str(payload.get("reason") or "Approved from handbook chat").strip()
+        reason = str(payload.get("reason") or "Approved from knowledge chat").strip()
         if not path or not content:
             raise HTTPException(400, "Proposal payload is invalid")
         existing = await core_knowledge.get_file_by_path(db, workspace_id, path)
         if existing:
-            await core_knowledge.update_file(db, workspace_id, path, content, updated_by="handbook_chat", change_summary=f"Handbook chat: {reason[:80]}")
+            await core_knowledge.update_file(db, workspace_id, path, content, updated_by="knowledge_chat", change_summary=f"Knowledge chat: {reason[:80]}")
         else:
             title = path.split("/")[-1].replace("-", " ").replace("_", " ").title()
-            await core_knowledge.create_file(db, workspace_id, path, title, content, created_by="handbook_chat", change_summary=f"Handbook chat: {reason[:80]}")
+            await core_knowledge.create_file(db, workspace_id, path, title, content, created_by="knowledge_chat", change_summary=f"Knowledge chat: {reason[:80]}")
         payload.update({"status": "approved", "final_content": content})
     else:
         payload["status"] = "aborted"
@@ -84,7 +83,7 @@ async def resolve_knowledge_change(workspace_id: UUID, channel_ref: str, proposa
     await db.commit()
     await db.refresh(target)
     message = f"Proposal {proposal_id} approved and applied to {payload.get('path')}." if payload["status"] == "approved" else f"Proposal {proposal_id} was aborted."
-    await service.create_message(db, workspace_id, channel.id, ChannelMessageCreate(role="assistant", author_type="agent", author_name="Knotwork Agent", content=message, metadata={"source": "handbook_agent"}))
+    await service.create_message(db, workspace_id, channel.id, ChannelMessageCreate(role="assistant", author_type="agent", author_name="Knotwork Agent", content=message, metadata={"source": "knowledge_agent"}))
     return {"status": payload["status"], "proposal_id": proposal_id}
 
 

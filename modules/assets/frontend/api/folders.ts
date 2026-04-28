@@ -1,12 +1,14 @@
-/**
- * Handbook folder API hooks.
- */
+/** Workspace knowledge folder hooks backed by the asset API. */
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from '@sdk'
 import { useAuthStore } from '@auth'
 
 function useWorkspaceId() {
   return useAuthStore((s) => s.workspaceId) ?? import.meta.env.VITE_DEV_WORKSPACE_ID ?? 'dev-workspace'
+}
+
+function workspaceAssetBase(workspaceId: string) {
+  return `/workspaces/${workspaceId}/assets/workspace`
 }
 
 export interface KnowledgeFolder {
@@ -21,7 +23,7 @@ export function useKnowledgeFolders() {
   return useQuery<KnowledgeFolder[]>({
     queryKey: ['knowledge-folders', workspaceId],
     queryFn: () =>
-      api.get(`/workspaces/${workspaceId}/knowledge/folders`).then(r => r.data),
+      api.get(`${workspaceAssetBase(workspaceId)}/folders`).then(r => r.data),
   })
 }
 
@@ -30,7 +32,7 @@ export function useCreateFolder() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: (path: string) =>
-      api.post(`/workspaces/${workspaceId}/knowledge/folders`, { path }).then(r => r.data),
+      api.post(`${workspaceAssetBase(workspaceId)}/folders`, { path }).then(r => r.data),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['knowledge-folders', workspaceId] }),
   })
 }
@@ -40,7 +42,7 @@ export function useDeleteFolder() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: (path: string) =>
-      api.delete(`/workspaces/${workspaceId}/knowledge/folders`, { params: { path } }),
+      api.delete(`${workspaceAssetBase(workspaceId)}/folders`, { params: { path } }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['knowledge-folders', workspaceId] })
       qc.invalidateQueries({ queryKey: ['knowledge', workspaceId] })
@@ -53,7 +55,7 @@ export function useRenameFolder() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: ({ path, new_path }: { path: string; new_path: string }) =>
-      api.patch(`/workspaces/${workspaceId}/knowledge/folders`, { new_path }, { params: { path } }),
+      api.patch(`${workspaceAssetBase(workspaceId)}/folders`, { new_path }, { params: { path } }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['knowledge-folders', workspaceId] })
       qc.invalidateQueries({ queryKey: ['knowledge', workspaceId] })

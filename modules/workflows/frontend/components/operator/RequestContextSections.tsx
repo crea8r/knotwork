@@ -23,7 +23,7 @@ export default function RequestContextSections({ contextMarkdown }: Props) {
       {context.handbookEntries.length > 0 ? (
         <details className="rounded-lg border border-amber-100 bg-white">
           <summary className="cursor-pointer px-3 py-2 text-xs font-medium text-gray-800 outline-none focus-visible:ring-2 focus-visible:ring-amber-300">
-            Handbook context · {context.handbookEntries.length} file{context.handbookEntries.length === 1 ? '' : 's'}
+            Knowledge context · {context.handbookEntries.length} file{context.handbookEntries.length === 1 ? '' : 's'}
           </summary>
           <div className="space-y-2 border-t border-amber-100 px-3 py-3">
             {context.handbookEntries.map((entry) => (
@@ -42,7 +42,7 @@ export default function RequestContextSections({ contextMarkdown }: Props) {
 
       {context.missingHandbookFiles.length > 0 ? (
         <div className="rounded-lg border border-amber-200 bg-amber-50/70 px-3 py-2">
-          <p className="mb-1 text-[10px] uppercase tracking-wide text-amber-700">Missing handbook files</p>
+          <p className="mb-1 text-[10px] uppercase tracking-wide text-amber-700">Missing knowledge files</p>
           <ul className="space-y-1 text-xs text-amber-900/85">
             {context.missingHandbookFiles.map((path) => (
               <li key={path} className="font-mono">

@@ -22,7 +22,7 @@ async def resolve_channel_asset_target(
     channel = await db.get(Channel, channel_id)
     if channel is None:
         return {"asset_type": None, "asset_id": None, "asset_path": None, "asset_project_slug": None}
-    if channel.channel_type == "handbook":
+    if channel.channel_type in {"knowledge", "handbook"}:
         return {"asset_type": "folder", "asset_id": None, "asset_path": "", "asset_project_slug": None}
     if channel.channel_type == "normal" and channel.name == "project assets":
         return {"asset_type": "folder", "asset_id": None, "asset_path": "", "asset_project_slug": await _project_slug(db, channel.project_id)}

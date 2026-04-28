@@ -67,10 +67,11 @@ async def get_objective_agentzero_consultation(workspace_id: UUID, objective_id:
     return ChannelOut.model_validate(channel)
 
 
-@router.post("/{workspace_id}/graphs/{graph_id}/agentzero-consultation", response_model=ChannelOut, status_code=201)
-async def get_graph_agentzero_consultation(workspace_id: UUID, graph_id: UUID, user: User = Depends(get_current_user), member=Depends(get_workspace_member), db: AsyncSession = Depends(get_db)):
+@router.post("/{workspace_id}/workflows/{workflow_id}/agentzero-consultation", response_model=ChannelOut, status_code=201)
+@router.post("/{workspace_id}/graphs/{workflow_id}/agentzero-consultation", response_model=ChannelOut, status_code=201, include_in_schema=False)
+async def get_workflow_agentzero_consultation(workspace_id: UUID, workflow_id: UUID, user: User = Depends(get_current_user), member=Depends(get_workspace_member), db: AsyncSession = Depends(get_db)):
     try:
-        channel = await service.get_or_create_graph_agentzero_consultation(db, workspace_id, graph_id, requester_member=member, requester_user=user)
+        channel = await service.get_or_create_graph_agentzero_consultation(db, workspace_id, workflow_id, requester_member=member, requester_user=user)
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc))
     return ChannelOut.model_validate(channel)
